@@ -145,7 +145,7 @@ class ResistorBundle(var resistance: Double, obj: ElectricalObject<*>) {
      * This "prepares" the bundle, so future calls to *getOfferedResistor* that result in a new resistor being created will cause an error.
      * @see ElectricalObject.addComponents
      * */
-    fun register(connections: List<ElectricalObject<*>>, circuit: Circuit) {
+    fun addComponents(connections: List<ElectricalObject<*>>, circuit: Circuit) {
         if (prepared) {
             error("Already prepared")
         }

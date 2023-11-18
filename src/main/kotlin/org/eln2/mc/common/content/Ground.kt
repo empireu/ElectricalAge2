@@ -33,7 +33,7 @@ class GroundObject(cell: Cell) : ElectricalObject<Cell>(cell) {
     }
 
     override fun addComponents(circuit: Circuit) {
-        resistors.register(connections, circuit)
+        resistors.addComponents(connections, circuit)
     }
 
     override fun build() {

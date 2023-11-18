@@ -9,13 +9,18 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.level.saveddata.SavedData
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.ageseries.libage.data.MutableMapPairBiMap
+import org.ageseries.libage.data.MutableSetMapMultiMap
 import org.ageseries.libage.sim.electrical.mna.Circuit
+import org.ageseries.libage.sim.electrical.mna.component.Line
 import org.ageseries.libage.sim.electrical.mna.component.PowerVoltageSource
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.ageseries.libage.sim.thermal.Simulator
 import org.eln2.mc.*
 import org.eln2.mc.common.cells.CellRegistry
+import org.eln2.mc.common.content.LineResistor
+import org.eln2.mc.common.content.ResistorLinePartObject
+import org.eln2.mc.common.content.self
 import org.eln2.mc.data.*
 import org.eln2.mc.mathematics.approxEq
 import java.util.*
@@ -26,6 +31,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.collections.ArrayList
+import kotlin.collections.HashSet
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 
@@ -1110,6 +1116,204 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         electricalSims.forEach { postProcessCircuit(it) }
     }
 
+    private fun buildLines(set: Set<Cell>) {
+        // Line objects with 1 or 2 connections
+        val lineComponentParts = HashSet<ResistorLinePartObject<*>>()
+
+        set.forEach {
+            val obj = it.objects.electricalObject
+
+            if(obj is ResistorLinePartObject<*>) {
+                val connections = obj.connectionList
+
+                if(connections.size == 1 || connections.size == 2) {
+                    lineComponentParts.add(obj)
+                }
+                else {
+                    // It is a node. We don't need any extra processing here, so we just set the component directly.
+                    obj.setComponent(NodeLineResistor(obj))
+                }
+            }
+        }
+
+        if(lineComponentParts.isEmpty()) {
+            return
+        }
+
+        /**
+         * Parts which have *2 connections* to other parts **in the same cluster**.
+         * They do not accept component offers. Parts are purely symbolic; they are not components and **don't exist in the `Circuit`**.
+         * */
+        val innersByLine = MutableSetMapMultiMap<Line, ResistorLinePartObject<*>>()
+
+        /**
+         * Parts which are "terminals" of a Line component.
+         * They have 1 connection or are connected to objects external to the cluster.
+         * Endpoints **accept remote component offers** towards the external objects.
+         * There should be **at most 2 end points per line**!
+         * */
+        val endpointsByLine = MutableSetMapMultiMap<Line, ResistorLinePartObject<*>>()
+
+        val queue = ArrayDeque<ResistorLinePartObject<*>>()
+
+        val pending = HashSet(lineComponentParts)
+
+        while (pending.isNotEmpty()) {
+            val lineComponent = Line()
+
+            val innerParts = innersByLine[lineComponent]
+            val endpointParts = endpointsByLine[lineComponent]
+
+            queue.add(pending.first())
+
+            while (queue.isNotEmpty()) {
+                val front = queue.remove()
+
+                if(!innerParts.add(front)) {
+                    continue
+                }
+
+                fun markEndpoint() = endpointParts.add(front)
+
+                pending.remove(front)
+
+                val connections = front.self.connectionList
+
+                if(connections.size == 1) {
+                    markEndpoint()
+                }
+
+                connections.forEach { remoteObj ->
+                    if(remoteObj is ResistorLinePartObject<*> && lineComponentParts.contains(remoteObj)) {
+                        queue.add(remoteObj)
+                    }
+                    else {
+                        markEndpoint()
+                    }
+                }
+            }
+
+            check(endpointParts.size <= 2)
+
+            endpointParts.forEach {
+                innerParts.remove(it)
+            }
+        }
+
+        // Now assign components to all of them:
+
+        innersByLine.map.forEach { (lineComponent, innerParts) ->
+            innerParts.forEach { innerPart ->
+                innerPart.setComponent(
+                    PartLineResistor(
+                        lineComponent.add(lineComponent.size)
+                    )
+                )
+            }
+        }
+
+        var pin = 0
+
+        endpointsByLine.map.forEach { (lineComponent, endpointParts) ->
+            endpointParts.forEach { endpointPart ->
+                endpointPart.setComponent(
+                    EndpointLineResistor(
+                        endpointPart,
+                        innersByLine[lineComponent],
+                        endpointsByLine[lineComponent]
+                            .filter { it != endpointPart }
+                            .toSet(),
+                        (pin++) % 2,
+                        lineComponent.add(lineComponent.size)
+                    )
+                )
+            }
+        }
+    }
+
+    private open class PartLineResistor(val linePart: Line.Part) : LineResistor {
+        override var resistance: Double by linePart::resistance
+
+        override fun getOfferedComponent(neighbour: ElectricalObject<*>): ElectricalComponentInfo {
+            error("Cannot offer component")
+        }
+
+        override fun addComponents(circuit: Circuit) {
+            // empty
+        }
+
+        override fun build() {
+            // empty
+        }
+
+        override val power: Double
+            get() = linePart.power
+    }
+
+    private class EndpointLineResistor(
+        val part: ResistorLinePartObject<*>,
+        val innerParts: Set<ResistorLinePartObject<*>>,
+        val otherEndPoints: Set<ResistorLinePartObject<*>>,
+        val pin: Int,
+        linePart: Line.Part
+    ) : PartLineResistor(linePart) {
+        override fun getOfferedComponent(neighbour: ElectricalObject<*>): ElectricalComponentInfo {
+            return ElectricalComponentInfo(
+                linePart.line,
+                pin
+            )
+        }
+
+        override fun addComponents(circuit: Circuit) {
+            circuit.add(linePart.line)
+        }
+
+        override fun build() {
+            part.self.connectionList.forEach { remoteObj ->
+                if(remoteObj !is ResistorLinePartObject<*> || (!innerParts.contains(remoteObj) && !otherEndPoints.contains(remoteObj))) {
+                    val remoteOffer = remoteObj.offerComponent(part.self)
+                    val localOffer = getOfferedComponent(remoteObj)
+
+                    localOffer.component.connect(
+                        localOffer.index,
+                        remoteOffer.component,
+                        remoteOffer.index
+                    )
+                }
+            }
+        }
+    }
+
+    private class NodeLineResistor(val part: ResistorLinePartObject<*>) : LineResistor {
+        val bundle = ResistorBundle(0.5, part.self)
+
+        override var resistance: Double
+            get() = bundle.resistance * 2.0
+            set(value) { bundle.resistance = value / 2.0 }
+
+        override fun getOfferedComponent(neighbour: ElectricalObject<*>) = bundle.getOfferedResistor(neighbour)
+
+        override fun addComponents(circuit: Circuit) = bundle.addComponents(part.self.connectionList, circuit)
+
+        override fun build() {
+            // The Wire uses a bundle of 4 resistors. Every resistor's "Internal Pin" is connected to every
+            // other resistor's internal pin. "External Pins" are offered to connection candidates:
+
+            bundle.connect(part.self.connectionList, part.self)
+
+            bundle.forEach { a ->
+                bundle.forEach { b ->
+                    if (a != b) {
+                        a.connect(INTERNAL_PIN, b, INTERNAL_PIN)
+                    }
+                }
+            }
+        }
+
+        override val power: Double
+            get() = bundle.totalPower
+    }
+
     /**
      * This method realizes the electrical circuits for all cells that have an electrical object.
      * */
@@ -1118,6 +1322,9 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
 
         realizeComponents(SimulationObjectType.Electrical, factory = { set ->
             val circuit = Circuit()
+
+            buildLines(set)
+
             set.forEach { it.objects.electricalObject.setNewCircuit(circuit) }
             electricalSims.add(circuit)
         })
@@ -1150,16 +1357,11 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
      * @param type The simulation type to search for.
      * @param factory A factory method to generate the subset from the discovered cells.
      * */
-    private fun <TComponent> realizeComponents(
-        type: SimulationObjectType,
-        factory: ((HashSet<Cell>) -> TComponent),
-        extraCondition: ((SimulationObject<*>, SimulationObject<*>) -> Boolean)? = null,
-    ) {
-        val pending = HashSet(cells.filter { it.hasObject(type) })
-        val queue = ArrayDeque<Cell>()
+    private fun <TComponent> realizeComponents(type: SimulationObjectType, factory: ((Set<Cell>) -> TComponent), predicate: ((SimulationObject<*>, SimulationObject<*>) -> Boolean)? = null, ) {
+        val pending = cells.asSequence().filter { it.hasObject(type) }.toHashSet()
 
-        // todo: can we use pending instead?
-        val visited = HashSet<Cell>()
+        val queue = ArrayDeque<Cell>()
+        val visited = HashSet<Cell>(pending.size)
 
         val results = ArrayList<TComponent>()
 
@@ -1179,14 +1381,10 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
 
                 pending.remove(cell)
 
-                cell.connections.forEach { connectedCell ->
+                for (connectedCell in cell.connections) {
                     if (connectedCell.hasObject(type)) {
-                        if (extraCondition != null && !extraCondition(
-                                cell.objects[type],
-                                connectedCell.objects[type]
-                            )
-                        ) {
-                            return@forEach
+                        if (predicate != null && !predicate(cell.objects[type], connectedCell.objects[type])) {
+                            continue
                         }
 
                         queue.add(connectedCell)

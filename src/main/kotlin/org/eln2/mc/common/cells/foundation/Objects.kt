@@ -147,6 +147,8 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
 
     protected val connections = ArrayList<ElectricalObject<*>>()
 
+    val connectionList get() = connections as List<ElectricalObject<*>>
+
     final override val type = SimulationObjectType.Electrical
 
     /**

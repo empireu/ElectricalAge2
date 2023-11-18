@@ -59,7 +59,7 @@ class VoltageSourceObject(cell: Cell) : ElectricalObject<Cell>(cell) {
 
     override fun addComponents(circuit: Circuit) {
         circuit.add(source)
-        resistors.register(connections, circuit)
+        resistors.addComponents(connections, circuit)
     }
 
     override fun build() {

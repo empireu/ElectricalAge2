@@ -34,6 +34,7 @@ import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.electrical.mna.Circuit
+import org.ageseries.libage.sim.electrical.mna.component.IPower
 import org.ageseries.libage.sim.thermal.*
 import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
@@ -129,7 +130,7 @@ class ElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
 
     override fun clearComponents() = resistors.clear()
 
-    override fun addComponents(circuit: Circuit) = resistors.register(connections, circuit)
+    override fun addComponents(circuit: Circuit) = resistors.addComponents(connections, circuit)
 
     override fun build() {
         // The Wire uses a bundle of 4 resistors. Every resistor's "Internal Pin" is connected to every
@@ -144,6 +145,50 @@ class ElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
                 }
             }
         }
+    }
+}
+
+interface LineResistor : IPower {
+    var resistance: Double
+    fun getOfferedComponent(neighbour: ElectricalObject<*>) : ElectricalComponentInfo
+    fun addComponents(circuit: Circuit)
+    fun build()
+}
+
+interface ResistorLinePartObject<Self> where Self : ResistorLinePartObject<Self>, Self : ElectricalObject<*> {
+    fun setComponent(resistor: LineResistor)
+}
+
+val ResistorLinePartObject<*>.self get() = this as ElectricalObject<*>
+
+/**
+ * Generalized electrical wire, created by joining the "internal" pins of a [ResistorBundle].
+ * The "external" pins are offered to other cells.
+ * */
+class ElectricalWireObjectLine(cell: Cell) : ElectricalObject<Cell>(cell), ResistorLinePartObject<ElectricalWireObjectLine> {
+    var resistor: LineResistor? = null
+
+    var resistance: Double = 1.0
+        set(value) {
+            if(field != value) {
+                field = value
+                resistor?.resistance = value
+            }
+        }
+
+    val totalPower: Double get() = resistor?.power ?: 0.0
+
+    override fun offerComponent(neighbour: ElectricalObject<*>) = resistor!!.getOfferedComponent(neighbour)
+
+    override fun clearComponents() { resistor = null }
+
+    override fun addComponents(circuit: Circuit) = resistor!!.addComponents(circuit)
+
+    override fun build() = resistor!!.build()
+
+    override fun setComponent(resistor: LineResistor) {
+        this.resistor = resistor
+        resistor.resistance = this.resistance
     }
 }
 
@@ -535,10 +580,9 @@ open class ThermalWireCell(ci: CellCreateInfo, connectionCrossSection: Double, v
         else null
 }
 
-
 open class ElectricalWireCell(ci: CellCreateInfo, contactCrossSection: Double, thermalProperties: WireThermalProperties, val electricalProperties: WireElectricalProperties) : ThermalWireCell(ci, contactCrossSection, thermalProperties) {
     @SimObject
-    val electricalWire = ElectricalWireObject(self()).also {
+    val electricalWire = ElectricalWireObjectLine(self()).also {
         it.resistance = electricalProperties.electricalResistance
     }
 
