@@ -35,6 +35,8 @@ import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.component.IPower
+import org.ageseries.libage.sim.electrical.mna.component.Line
+import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.thermal.*
 import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
@@ -148,25 +150,35 @@ class ElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
     }
 }
 
-interface LineResistor : IPower {
+/**
+ * Represents a conductor, implemented as a *Virtual Resistor*.
+ * It may correspond to one or more [Resistor]s or one [Line.Part] (backed by a single [Line]).
+ * [getOfferedComponent] may not be called by user code, without first checking if that is allowed. An error will be produced.
+ * */
+interface LineConductor : IPower {
+    /**
+     * Gets or sets the resistance.
+     * It should be assumed that setting the resistance **is expensive**; it will be so if this virtual resistor corresponds to a [Resistor].
+     * */
     var resistance: Double
+
     fun getOfferedComponent(neighbour: ElectricalObject<*>) : ElectricalComponentInfo
     fun addComponents(circuit: Circuit)
     fun build()
 }
 
-interface ResistorLinePartObject<Self> where Self : ResistorLinePartObject<Self>, Self : ElectricalObject<*> {
-    fun setComponent(resistor: LineResistor)
+interface LineConductorObject<Self> where Self : LineConductorObject<Self>, Self : ElectricalObject<*> {
+    fun setComponent(resistor: LineConductor)
 }
 
-val ResistorLinePartObject<*>.self get() = this as ElectricalObject<*>
+val LineConductorObject<*>.self get() = this as ElectricalObject<*>
 
 /**
  * Generalized electrical wire, created by joining the "internal" pins of a [ResistorBundle].
  * The "external" pins are offered to other cells.
  * */
-class ElectricalWireObjectLine(cell: Cell) : ElectricalObject<Cell>(cell), ResistorLinePartObject<ElectricalWireObjectLine> {
-    var resistor: LineResistor? = null
+class ElectricalWireObjectLine(cell: Cell) : ElectricalObject<Cell>(cell), LineConductorObject<ElectricalWireObjectLine> {
+    var resistor: LineConductor? = null
 
     var resistance: Double = 1.0
         set(value) {
@@ -186,7 +198,7 @@ class ElectricalWireObjectLine(cell: Cell) : ElectricalObject<Cell>(cell), Resis
 
     override fun build() = resistor!!.build()
 
-    override fun setComponent(resistor: LineResistor) {
+    override fun setComponent(resistor: LineConductor) {
         this.resistor = resistor
         resistor.resistance = this.resistance
     }

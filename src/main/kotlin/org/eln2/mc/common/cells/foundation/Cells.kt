@@ -18,8 +18,8 @@ import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.ageseries.libage.sim.thermal.Simulator
 import org.eln2.mc.*
 import org.eln2.mc.common.cells.CellRegistry
-import org.eln2.mc.common.content.LineResistor
-import org.eln2.mc.common.content.ResistorLinePartObject
+import org.eln2.mc.common.content.LineConductor
+import org.eln2.mc.common.content.LineConductorObject
 import org.eln2.mc.common.content.self
 import org.eln2.mc.data.*
 import org.eln2.mc.mathematics.approxEq
@@ -1116,22 +1116,31 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         electricalSims.forEach { postProcessCircuit(it) }
     }
 
-    private fun buildLines(set: Set<Cell>) {
+    private fun buildLineConductors(set: Set<Cell>) {
         // Line objects with 1 or 2 connections
-        val lineComponentParts = HashSet<ResistorLinePartObject<*>>()
+        val lineComponentParts = HashSet<LineConductorObject<*>>()
 
-        set.forEach {
-            val obj = it.objects.electricalObject
+        set.forEach { cell ->
+            val obj = cell.objects.electricalObject
 
-            if(obj is ResistorLinePartObject<*>) {
+            if(obj is LineConductorObject<*>) {
                 val connections = obj.connectionList
 
-                if(connections.size == 1 || connections.size == 2) {
+                // Check if any of the connections are to other line part objects
+                // If not, then it does not make sense to write this one off as an end point or inner part; it is a node or direct resistor.
+                if((connections.size == 1 || connections.size == 2) && connections.any { it is LineConductorObject<*> }) {
                     lineComponentParts.add(obj)
                 }
                 else {
-                    // It is a node. We don't need any extra processing here, so we just set the component directly.
-                    obj.setComponent(NodeLineResistor(obj))
+                    obj.setComponent(
+                        if(connections.size == 2) {
+                            // Optimized case: Direct resistor instead of 2 resistors from a bundle.
+                            ResistorConductor(obj)
+                        }
+                        else {
+                            ResistorNodeConductor(obj)
+                        }
+                    )
                 }
             }
         }
@@ -1144,7 +1153,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
          * Parts which have *2 connections* to other parts **in the same cluster**.
          * They do not accept component offers. Parts are purely symbolic; they are not components and **don't exist in the `Circuit`**.
          * */
-        val innersByLine = MutableSetMapMultiMap<Line, ResistorLinePartObject<*>>()
+        val innersByLine = MutableSetMapMultiMap<Line, LineConductorObject<*>>()
 
         /**
          * Parts which are "terminals" of a Line component.
@@ -1152,9 +1161,9 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
          * Endpoints **accept remote component offers** towards the external objects.
          * There should be **at most 2 end points per line**!
          * */
-        val endpointsByLine = MutableSetMapMultiMap<Line, ResistorLinePartObject<*>>()
+        val endpointsByLine = MutableSetMapMultiMap<Line, LineConductorObject<*>>()
 
-        val queue = ArrayDeque<ResistorLinePartObject<*>>()
+        val queue = ArrayDeque<LineConductorObject<*>>()
 
         val pending = HashSet(lineComponentParts)
 
@@ -1184,7 +1193,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
                 }
 
                 connections.forEach { remoteObj ->
-                    if(remoteObj is ResistorLinePartObject<*> && lineComponentParts.contains(remoteObj)) {
+                    if(remoteObj is LineConductorObject<*> && lineComponentParts.contains(remoteObj)) {
                         queue.add(remoteObj)
                     }
                     else {
@@ -1205,7 +1214,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         innersByLine.map.forEach { (lineComponent, innerParts) ->
             innerParts.forEach { innerPart ->
                 innerPart.setComponent(
-                    PartLineResistor(
+                    LineInteriorConductor(
                         lineComponent.add(lineComponent.size)
                     )
                 )
@@ -1217,7 +1226,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         endpointsByLine.map.forEach { (lineComponent, endpointParts) ->
             endpointParts.forEach { endpointPart ->
                 endpointPart.setComponent(
-                    EndpointLineResistor(
+                    LineEndpointConductor(
                         endpointPart,
                         innersByLine[lineComponent],
                         endpointsByLine[lineComponent]
@@ -1231,7 +1240,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         }
     }
 
-    private open class PartLineResistor(val linePart: Line.Part) : LineResistor {
+    private open class LineInteriorConductor(val linePart: Line.Part) : LineConductor {
         override var resistance: Double by linePart::resistance
 
         override fun getOfferedComponent(neighbour: ElectricalObject<*>): ElectricalComponentInfo {
@@ -1248,15 +1257,17 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
 
         override val power: Double
             get() = linePart.power
+
+        override fun toString() = "LP[R=$resistance]"
     }
 
-    private class EndpointLineResistor(
-        val part: ResistorLinePartObject<*>,
-        val innerParts: Set<ResistorLinePartObject<*>>,
-        val otherEndPoints: Set<ResistorLinePartObject<*>>,
+    private class LineEndpointConductor(
+        val part: LineConductorObject<*>,
+        val inners: Set<LineConductorObject<*>>,
+        val ends: Set<LineConductorObject<*>>,
         val pin: Int,
         linePart: Line.Part
-    ) : PartLineResistor(linePart) {
+    ) : LineInteriorConductor(linePart) {
         override fun getOfferedComponent(neighbour: ElectricalObject<*>): ElectricalComponentInfo {
             return ElectricalComponentInfo(
                 linePart.line,
@@ -1270,7 +1281,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
 
         override fun build() {
             part.self.connectionList.forEach { remoteObj ->
-                if(remoteObj !is ResistorLinePartObject<*> || (!innerParts.contains(remoteObj) && !otherEndPoints.contains(remoteObj))) {
+                if(remoteObj !is LineConductorObject<*> || (!inners.contains(remoteObj) && !ends.contains(remoteObj))) {
                     val remoteOffer = remoteObj.offerComponent(part.self)
                     val localOffer = getOfferedComponent(remoteObj)
 
@@ -1282,9 +1293,11 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
                 }
             }
         }
+
+        override fun toString() = "LE[R=$resistance]"
     }
 
-    private class NodeLineResistor(val part: ResistorLinePartObject<*>) : LineResistor {
+    private class ResistorNodeConductor(val part: LineConductorObject<*>) : LineConductor {
         val bundle = ResistorBundle(0.5, part.self)
 
         override var resistance: Double
@@ -1312,6 +1325,51 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
 
         override val power: Double
             get() = bundle.totalPower
+
+        override fun toString() = "LN[R=$resistance]"
+    }
+
+    private class ResistorConductor(val part: LineConductorObject<*>) : LineConductor {
+        init {
+            require(part.self.connectionList.size == 2) {
+                "Direct resistor requires exactly 2 connections"
+            }
+        }
+
+        val resistor = Resistor()
+
+        override var resistance by resistor::resistance
+
+        override fun getOfferedComponent(neighbour: ElectricalObject<*>) = ElectricalComponentInfo(
+            resistor,
+            part.self.connectionList.indexOf(neighbour).also {
+                require(it != -1) {
+                    error("Illegal direct resistor query")
+                }
+            }
+        )
+
+        override fun addComponents(circuit: Circuit) {
+            circuit.add(resistor)
+        }
+
+        override fun build() {
+            part.self.connectionList.forEach { remoteObj ->
+                val remoteOffer = remoteObj.offerComponent(part.self)
+                val localOffer = getOfferedComponent(remoteObj)
+
+                localOffer.component.connect(
+                    localOffer.index,
+                    remoteOffer.component,
+                    remoteOffer.index
+                )
+            }
+        }
+
+        override val power: Double
+            get() = resistor.power
+
+        override fun toString() = "NL[R=$resistance]"
     }
 
     /**
@@ -1323,7 +1381,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         realizeComponents(SimulationObjectType.Electrical, factory = { set ->
             val circuit = Circuit()
 
-            buildLines(set)
+            buildLineConductors(set)
 
             set.forEach { it.objects.electricalObject.setNewCircuit(circuit) }
             electricalSims.add(circuit)
