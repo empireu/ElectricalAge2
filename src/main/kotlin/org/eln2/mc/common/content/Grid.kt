@@ -765,16 +765,17 @@ class GridElectricalObject(cell: GridCell, val tapResistance: Double) : Electric
         externalResistor.clear()
     }
 
-    override fun build() {
+    override fun build(map: ElectricalConnectivityMap) {
         // Connects grids to grids, and external to external:
-        super.build()
+        super.build(map)
 
         if(externalResistor.isPresent) { // If not present, it is illegal to connect it (not in graph)
             // Connects grid to external:
             val offer = externalResistor.offerInternal()
 
             gridResistors.values.forEach { gridResistor ->
-                gridResistor.connect(
+                map.connect(
+                    gridResistor,
                     EXTERNAL_PIN,
                     offer.component,
                     offer.index
@@ -786,7 +787,7 @@ class GridElectricalObject(cell: GridCell, val tapResistance: Double) : Electric
             gridResistors.values.forEach { gridResistor1 ->
                 gridResistors.values.forEach { gridResistor2 ->
                     if(gridResistor1 != gridResistor2) {
-                        gridResistor1.connect(EXTERNAL_PIN, gridResistor2, EXTERNAL_PIN)
+                        map.connect(gridResistor1, EXTERNAL_PIN, gridResistor2, EXTERNAL_PIN)
                     }
                 }
             }

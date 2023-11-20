@@ -9,20 +9,18 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.level.saveddata.SavedData
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.ageseries.libage.data.MutableMapPairBiMap
-import org.ageseries.libage.data.MutableSetMapMultiMap
 import org.ageseries.libage.sim.electrical.mna.Circuit
-import org.ageseries.libage.sim.electrical.mna.component.Line
 import org.ageseries.libage.sim.electrical.mna.component.PowerVoltageSource
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.ageseries.libage.sim.thermal.Simulator
 import org.eln2.mc.*
 import org.eln2.mc.common.cells.CellRegistry
-import org.eln2.mc.common.content.LineConductor
-import org.eln2.mc.common.content.LineConductorObject
-import org.eln2.mc.common.content.self
+import org.eln2.mc.common.cells.foundation.SimulationObjectType.*
 import org.eln2.mc.data.*
 import org.eln2.mc.mathematics.approxEq
+import java.io.File
+import java.io.FileOutputStream
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -458,13 +456,13 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
                 // We can form a connection here.
 
                 when (localObj.type) {
-                    SimulationObjectType.Electrical -> {
+                    Electrical -> {
                         (localObj as ElectricalObject).addConnection(
                             remoteCell.objects.electricalObject
                         )
                     }
 
-                    SimulationObjectType.Thermal -> {
+                    Thermal -> {
                         (localObj as ThermalObject).addConnection(
                             remoteCell.objects.thermalObject
                         )
@@ -473,12 +471,6 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
             }
         }
     }
-
-    /**
-     * Called when the solver is being built, in order to finish setting up the underlying components in the
-     * simulation objects.
-     * */
-    fun build() = objects.forEachObject { it.build() }
 
     /**
      * Checks if this cell has the specified simulation object type.
@@ -1109,289 +1101,55 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         cells.forEach { it.clearObjectConnections() }
         cells.forEach { it.recordObjectConnections() }
 
-        realizeElectrical()
+        val circuitBuilders = realizeElectrical()
+
         realizeThermal()
 
-        cells.forEach { it.build() }
+        cells.forEach { cell ->
+            cell.objects.forEachObject {
+                when(it.type) {
+                    Electrical -> {
+                        (it as ElectricalObject<*>).build(circuitBuilders[it.circuit!!]!!)
+                    }
+                    Thermal -> {
+                        (it as ThermalObject<*>).build()
+                    }
+                }
+            }
+        }
+
+        circuitBuilders.values.forEach {
+            it.realizeVirtual()
+        }
+
         electricalSims.forEach { postProcessCircuit(it) }
-    }
-
-    private fun buildLineConductors(set: Set<Cell>) {
-        // Line objects with 1 or 2 connections
-        val lineComponentParts = HashSet<LineConductorObject<*>>()
-
-        set.forEach { cell ->
-            val obj = cell.objects.electricalObject
-
-            if(obj is LineConductorObject<*>) {
-                val connections = obj.connectionList
-
-                // Check if any of the connections are to other line part objects
-                // If not, then it does not make sense to write this one off as an end point or inner part; it is a node or direct resistor.
-                if((connections.size == 1 || connections.size == 2) && connections.any { it is LineConductorObject<*> }) {
-                    lineComponentParts.add(obj)
-                }
-                else {
-                    obj.setComponent(
-                        if(connections.size == 2) {
-                            // Optimized case: Direct resistor instead of 2 resistors from a bundle.
-                            ResistorConductor(obj)
-                        }
-                        else {
-                            ResistorNodeConductor(obj)
-                        }
-                    )
-                }
-            }
-        }
-
-        if(lineComponentParts.isEmpty()) {
-            return
-        }
-
-        /**
-         * Parts which have *2 connections* to other parts **in the same cluster**.
-         * They do not accept component offers. Parts are purely symbolic; they are not components and **don't exist in the `Circuit`**.
-         * */
-        val innersByLine = MutableSetMapMultiMap<Line, LineConductorObject<*>>()
-
-        /**
-         * Parts which are "terminals" of a Line component.
-         * They have 1 connection or are connected to objects external to the cluster.
-         * Endpoints **accept remote component offers** towards the external objects.
-         * There should be **at most 2 end points per line**!
-         * */
-        val endpointsByLine = MutableSetMapMultiMap<Line, LineConductorObject<*>>()
-
-        val queue = ArrayDeque<LineConductorObject<*>>()
-
-        val pending = HashSet(lineComponentParts)
-
-        while (pending.isNotEmpty()) {
-            val lineComponent = Line()
-
-            val innerParts = innersByLine[lineComponent]
-            val endpointParts = endpointsByLine[lineComponent]
-
-            queue.add(pending.first())
-
-            while (queue.isNotEmpty()) {
-                val front = queue.remove()
-
-                if(!innerParts.add(front)) {
-                    continue
-                }
-
-                fun markEndpoint() = endpointParts.add(front)
-
-                pending.remove(front)
-
-                val connections = front.self.connectionList
-
-                if(connections.size == 1) {
-                    markEndpoint()
-                }
-
-                connections.forEach { remoteObj ->
-                    if(remoteObj is LineConductorObject<*> && lineComponentParts.contains(remoteObj)) {
-                        queue.add(remoteObj)
-                    }
-                    else {
-                        markEndpoint()
-                    }
-                }
-            }
-
-            check(endpointParts.size <= 2)
-
-            endpointParts.forEach {
-                innerParts.remove(it)
-            }
-        }
-
-        // Now assign components to all of them:
-
-        innersByLine.map.forEach { (lineComponent, innerParts) ->
-            innerParts.forEach { innerPart ->
-                innerPart.setComponent(
-                    LineInteriorConductor(
-                        lineComponent.add(lineComponent.size)
-                    )
-                )
-            }
-        }
-
-        var pin = 0
-
-        endpointsByLine.map.forEach { (lineComponent, endpointParts) ->
-            endpointParts.forEach { endpointPart ->
-                endpointPart.setComponent(
-                    LineEndpointConductor(
-                        endpointPart,
-                        innersByLine[lineComponent],
-                        endpointsByLine[lineComponent]
-                            .filter { it != endpointPart }
-                            .toSet(),
-                        (pin++) % 2,
-                        lineComponent.add(lineComponent.size)
-                    )
-                )
-            }
-        }
-    }
-
-    private open class LineInteriorConductor(val linePart: Line.Part) : LineConductor {
-        override var resistance: Double by linePart::resistance
-
-        override fun getOfferedComponent(neighbour: ElectricalObject<*>): ElectricalComponentInfo {
-            error("Cannot offer component")
-        }
-
-        override fun addComponents(circuit: Circuit) {
-            // empty
-        }
-
-        override fun build() {
-            // empty
-        }
-
-        override val power: Double
-            get() = linePart.power
-
-        override fun toString() = "LP[R=$resistance]"
-    }
-
-    private class LineEndpointConductor(
-        val part: LineConductorObject<*>,
-        val inners: Set<LineConductorObject<*>>,
-        val ends: Set<LineConductorObject<*>>,
-        val pin: Int,
-        linePart: Line.Part
-    ) : LineInteriorConductor(linePart) {
-        override fun getOfferedComponent(neighbour: ElectricalObject<*>): ElectricalComponentInfo {
-            return ElectricalComponentInfo(
-                linePart.line,
-                pin
-            )
-        }
-
-        override fun addComponents(circuit: Circuit) {
-            circuit.add(linePart.line)
-        }
-
-        override fun build() {
-            part.self.connectionList.forEach { remoteObj ->
-                if(remoteObj !is LineConductorObject<*> || (!inners.contains(remoteObj) && !ends.contains(remoteObj))) {
-                    val remoteOffer = remoteObj.offerComponent(part.self)
-                    val localOffer = getOfferedComponent(remoteObj)
-
-                    localOffer.component.connect(
-                        localOffer.index,
-                        remoteOffer.component,
-                        remoteOffer.index
-                    )
-                }
-            }
-        }
-
-        override fun toString() = "LE[R=$resistance]"
-    }
-
-    private class ResistorNodeConductor(val part: LineConductorObject<*>) : LineConductor {
-        val bundle = ResistorBundle(0.5, part.self)
-
-        override var resistance: Double
-            get() = bundle.resistance * 2.0
-            set(value) { bundle.resistance = value / 2.0 }
-
-        override fun getOfferedComponent(neighbour: ElectricalObject<*>) = bundle.getOfferedResistor(neighbour)
-
-        override fun addComponents(circuit: Circuit) = bundle.addComponents(part.self.connectionList, circuit)
-
-        override fun build() {
-            // The Wire uses a bundle of 4 resistors. Every resistor's "Internal Pin" is connected to every
-            // other resistor's internal pin. "External Pins" are offered to connection candidates:
-
-            bundle.connect(part.self.connectionList, part.self)
-
-            bundle.forEach { a ->
-                bundle.forEach { b ->
-                    if (a != b) {
-                        a.connect(INTERNAL_PIN, b, INTERNAL_PIN)
-                    }
-                }
-            }
-        }
-
-        override val power: Double
-            get() = bundle.totalPower
-
-        override fun toString() = "LN[R=$resistance]"
-    }
-
-    private class ResistorConductor(val part: LineConductorObject<*>) : LineConductor {
-        init {
-            require(part.self.connectionList.size == 2) {
-                "Direct resistor requires exactly 2 connections"
-            }
-        }
-
-        val resistor = Resistor()
-
-        override var resistance by resistor::resistance
-
-        override fun getOfferedComponent(neighbour: ElectricalObject<*>) = ElectricalComponentInfo(
-            resistor,
-            part.self.connectionList.indexOf(neighbour).also {
-                require(it != -1) {
-                    error("Illegal direct resistor query")
-                }
-            }
-        )
-
-        override fun addComponents(circuit: Circuit) {
-            circuit.add(resistor)
-        }
-
-        override fun build() {
-            part.self.connectionList.forEach { remoteObj ->
-                val remoteOffer = remoteObj.offerComponent(part.self)
-                val localOffer = getOfferedComponent(remoteObj)
-
-                localOffer.component.connect(
-                    localOffer.index,
-                    remoteOffer.component,
-                    remoteOffer.index
-                )
-            }
-        }
-
-        override val power: Double
-            get() = resistor.power
-
-        override fun toString() = "NL[R=$resistance]"
     }
 
     /**
      * This method realizes the electrical circuits for all cells that have an electrical object.
      * */
-    private fun realizeElectrical() {
+    private fun realizeElectrical() : HashMap<Circuit, CircuitBuilder> {
         electricalSims.clear()
 
-        realizeComponents(SimulationObjectType.Electrical, factory = { set ->
+        val builders = HashMap<Circuit, CircuitBuilder>()
+
+        realizeComponents(Electrical, factory = { set ->
             val circuit = Circuit()
+            val builder = CircuitBuilder(circuit)
 
-            buildLineConductors(set)
-
-            set.forEach { it.objects.electricalObject.setNewCircuit(circuit) }
+            set.forEach { it.objects.electricalObject.setNewCircuit(builder) }
             electricalSims.add(circuit)
+
+            builders[circuit] = builder
         })
+
+        return builders
     }
 
     private fun realizeThermal() {
         thermalSims.clear()
 
-        realizeComponents(SimulationObjectType.Thermal, factory = { set ->
+        realizeComponents(Thermal, factory = { set ->
             val simulation = Simulator()
             set.forEach { it.objects.thermalObject.setNewSimulation(simulation) }
             thermalSims.add(simulation)
@@ -1911,11 +1669,15 @@ const val NEGATIVE_PIN = INTERNAL_PIN
  * */
 open class VRGeneratorObject<C : Cell>(cell: Cell, val map: PoleMap) : ElectricalObject<Cell>(cell) {
     private val resistor = ComponentHolder {
-        Resistor().also { it.resistance = resistanceExact }
+        val result = Resistor()
+        result.resistance = resistanceExact
+        result
     }
 
     private val source = ComponentHolder {
-        VoltageSource().also { it.potential = potentialExact }
+        val result = VoltageSource()
+        result.potential = potentialExact
+        result
     }
 
     /**
@@ -1992,14 +1754,14 @@ open class VRGeneratorObject<C : Cell>(cell: Cell, val map: PoleMap) : Electrica
         source.clear()
     }
 
-    override fun addComponents(circuit: Circuit) {
+    override fun addComponents(circuit: ElectricalComponentSet) {
         circuit.add(resistor)
         circuit.add(source)
     }
 
-    override fun build() {
-        resistor.connectInternal(source.offerPositive())
-        super.build()
+    override fun build(map: ElectricalConnectivityMap) {
+        resistor.connectInternal(source.offerPositive(), map)
+        super.build(map)
     }
 }
 

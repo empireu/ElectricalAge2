@@ -46,10 +46,7 @@ import net.minecraft.world.phys.shapes.VoxelShape
 import net.minecraftforge.common.ForgeMod
 import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.network.NetworkHooks
-import org.ageseries.libage.data.BiMap
-import org.ageseries.libage.data.MutableSetMapMultiMap
-import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.mutableBiMapOf
+import org.ageseries.libage.data.*
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.Scale
 import org.ageseries.libage.sim.electrical.mna.Circuit
@@ -388,9 +385,6 @@ inline fun <reified T : Cell> Level.getCell(mb: MultiblockManager, cellPosId: Bl
 */
 
 const val LIBAGE_SET_EPS = 1e-3
-fun org.ageseries.libage.sim.electrical.mna.component.Component.connect(pin: Int, info: ElectricalComponentInfo) {
-    this.connect(pin, info.component, info.index)
-}
 
 fun Circuit.add(holder: ComponentHolder<*>) {
     this.add(holder.instance)
@@ -1151,3 +1145,5 @@ fun VoxelShape.toBoxList() : List<AABB> {
 
     return results
 }
+
+fun<K, V> MultiMap<K, V>.valueSequence() = this.valueSets.asSequence().flatten()

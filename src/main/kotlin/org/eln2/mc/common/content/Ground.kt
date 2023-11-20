@@ -2,6 +2,8 @@ package org.eln2.mc.common.content
 
 import mcp.mobius.waila.api.IPluginConfig
 import org.ageseries.libage.sim.electrical.mna.Circuit
+import org.eln2.mc.ElectricalComponentSet
+import org.eln2.mc.ElectricalConnectivityMap
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
 import org.eln2.mc.common.cells.foundation.*
@@ -13,7 +15,7 @@ import org.eln2.mc.integration.WailaTooltipBuilder
 import org.eln2.mc.mathematics.Base6Direction3dMask
 
 class GroundObject(cell: Cell) : ElectricalObject<Cell>(cell) {
-    private val resistors = ResistorBundle(0.01, this)
+    private val resistors = resistorBundle(0.01)
 
     val totalCurrent get() = resistors.totalCurrent
     val totalPower get() = resistors.totalPower
@@ -32,12 +34,12 @@ class GroundObject(cell: Cell) : ElectricalObject<Cell>(cell) {
         resistors.clear()
     }
 
-    override fun addComponents(circuit: Circuit) {
+    override fun addComponents(circuit: ElectricalComponentSet) {
         resistors.addComponents(connections, circuit)
     }
 
-    override fun build() {
-        resistors.connect(connections, this)
+    override fun build(map: ElectricalConnectivityMap) {
+        resistors.connect(connections, this, map)
         resistors.forEach { it.ground(INTERNAL_PIN) }
     }
 }
