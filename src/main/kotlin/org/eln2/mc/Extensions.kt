@@ -1106,6 +1106,12 @@ fun<K, V> MutableMap<K, V>.putUnique(key: K, value: V) {
     }
 }
 
+fun<V> MutableSet<V>.addUnique(value: V) {
+    require(this.add(value)) {
+        "Element $value was not unique"
+    }
+}
+
 /**
  * Gets the celestial phase from the in-game celestial angle.
  * @param sunAngle The celestial angle, as per [Level.getSunAngle]
@@ -1147,3 +1153,9 @@ fun VoxelShape.toBoxList() : List<AABB> {
 }
 
 fun<K, V> MultiMap<K, V>.valueSequence() = this.valueSets.asSequence().flatten()
+
+fun<T> MutableSet<T>.removeFirst() : T {
+    val value = this.first()
+    this.remove(value)
+    return value
+}

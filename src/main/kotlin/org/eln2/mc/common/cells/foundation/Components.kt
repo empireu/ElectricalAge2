@@ -5,6 +5,7 @@ import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.eln2.mc.*
 import kotlin.math.abs
 
+// TODO Please remove
 class ComponentHolder<T : Component>(private val factory: () -> T) {
     var value: T? = null
         private set

@@ -27,12 +27,10 @@ import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.HitResult
-import net.minecraft.world.phys.Vec3
 import net.minecraftforge.network.NetworkEvent
 import org.ageseries.libage.data.MutableMapPairBiMap
 import org.ageseries.libage.data.MutableSetMapMultiMap
 import org.ageseries.libage.sim.Material
-import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.eln2.mc.*
 import org.eln2.mc.client.render.*
 import org.eln2.mc.client.render.foundation.*
@@ -41,7 +39,6 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
-import org.eln2.mc.common.parts.foundation.PartPlacementInfo
 import org.eln2.mc.common.parts.foundation.PartRenderer
 import org.eln2.mc.data.*
 import org.eln2.mc.mathematics.*
@@ -727,12 +724,13 @@ object GridConnectionManagerClient {
  * @param tapResistance The resistance of the connection between the grid and the neighboring objects.
  * */
 class GridElectricalObject(cell: GridCell, val tapResistance: Double) : ElectricalObject<GridCell>(cell) {
-    private val gridResistors = HashMap<GridElectricalObject, Resistor>()
+    private val gridResistors = HashMap<GridElectricalObject, ResistorVirtual>()
 
-    private val externalResistor = ComponentHolder {
-        Resistor().also {
-            it.resistance = tapResistance
-        }
+    // Reset on clear, isPresent -> Is connected
+    private val tapResistor = UnsafeLazyResettable {
+        val result = ResistorVirtual()
+        result.resistance = tapResistance
+        result
     }
 
     override fun offerComponent(neighbour: ElectricalObject<*>) =
@@ -745,51 +743,52 @@ class GridElectricalObject(cell: GridCell, val tapResistance: Double) : Electric
                 // Part of grid:
                 ElectricalComponentInfo(
                     gridResistors.computeIfAbsent(neighbour) {
-                        Resistor().also {
-                            it.resistance = contact / 2.0
-                        }
+                        val result = ResistorVirtual()
+                        result.resistance = contact / 2.0
+                        result
                     },
-                    INTERNAL_PIN
+                    EXTERNAL_PIN
                 )
             }
             else {
-                externalResistor.offerExternal()
+                ElectricalComponentInfo(tapResistor.value, EXTERNAL_PIN)
             }
         }
         else {
-            externalResistor.offerExternal()
+            ElectricalComponentInfo(tapResistor.value, EXTERNAL_PIN)
         }
 
     override fun clearComponents() {
         gridResistors.clear()
-        externalResistor.clear()
+        tapResistor.reset()
     }
 
     override fun build(map: ElectricalConnectivityMap) {
         // Connects grids to grids, and external to external:
         super.build(map)
 
-        if(externalResistor.isPresent) { // If not present, it is illegal to connect it (not in graph)
-            // Connects grid to external:
-            val offer = externalResistor.offerInternal()
+        gridResistors.values.forEach { a ->
+            gridResistors.values.forEach { b ->
+                if(a != b) {
+                    map.connect(
+                        a,
+                        INTERNAL_PIN,
+                        b,
+                        INTERNAL_PIN
+                    )
+                }
+            }
+        }
 
+        if(tapResistor.isInitialized()) { // If not present, it is illegal to connect it (not in graph)
+            // Connects grid to external:
             gridResistors.values.forEach { gridResistor ->
                 map.connect(
                     gridResistor,
-                    EXTERNAL_PIN,
-                    offer.component,
-                    offer.index
+                    INTERNAL_PIN,
+                    tapResistor.value,
+                    INTERNAL_PIN
                 )
-            }
-        }
-        else {
-            // Connect the pins of the grid resistors so the grid circuit is closed (pass-trough):
-            gridResistors.values.forEach { gridResistor1 ->
-                gridResistors.values.forEach { gridResistor2 ->
-                    if(gridResistor1 != gridResistor2) {
-                        map.connect(gridResistor1, EXTERNAL_PIN, gridResistor2, EXTERNAL_PIN)
-                    }
-                }
             }
         }
     }

@@ -1,6 +1,8 @@
 package org.eln2.mc
 
 import com.mojang.blaze3d.systems.RenderSystem
+import cpw.mods.modlauncher.Environment
+import net.minecraft.SharedConstants
 import net.minecraft.core.BlockPos
 import net.minecraft.sounds.SoundEvent
 import net.minecraft.sounds.SoundEvents
@@ -18,6 +20,8 @@ import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.minecraftforge.api.distmarker.Dist
+import net.minecraftforge.common.ForgeHooks
+import net.minecraftforge.fml.loading.FMLEnvironment
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.ageseries.libage.data.*
 import org.eln2.mc.data.CsvLoader
@@ -270,34 +274,9 @@ fun loadCsvGrid2(name: String): MappedGridInterpolator {
     return MappedGridInterpolator(grid.interpolator(), listOf(xMapping, yMapping))
 }
 
-fun prepareBucket(
-    bucketStack: ItemStack,
-    target: Item,
-    player: Player,
-    hand: InteractionHand,
-    pos: BlockPos,
-    sound: SoundEvent = SoundEvents.BUCKET_FILL,
-    source: SoundSource = SoundSource.BLOCKS,
-) {
-    player.setItemInHand(
-        hand,
-        ItemUtils.createFilledResult(
-            bucketStack,
-            player,
-            ItemStack(target, 1)
-        )
-    )
-
-    player.level.playSound(null, pos, sound, source, 1.0F, 1.0F);
-}
-
-inline fun requireIsOnServerThread(message: () -> String) = require(ServerLifecycleHooks.getCurrentServer().isSameThread) {
-    message()
-}
+inline fun requireIsOnServerThread(message: () -> String) = require(ServerLifecycleHooks.getCurrentServer().isSameThread) { message() }
 fun requireIsOnServerThread() = requireIsOnServerThread { "Requirement failed: not on server thread (${Thread.currentThread()})" }
-
 inline fun requireIsOnRenderThread(message: () -> String) = require(RenderSystem.isOnRenderThread(), message)
-
 fun requireIsOnRenderThread() = requireIsOnRenderThread { "Requirement failed: not on render thread (${Thread.currentThread()})" }
 
 fun<K, V> ConcurrentHashMap<K, V>.atomicRemoveIf(consumer: (Map.Entry<K, V>) -> Boolean) {
@@ -327,55 +306,13 @@ class SidedLazy<T>(factory: () -> T, val side: Dist) {
     operator fun invoke() = get()
 }
 
-class SidedHolder<T>(initialValue: T, val side: Dist) {
-    var value = initialValue
-        get() {
-            validateSide(side)
-            return field
-        }
-        set(value) {
-            validateSide(side)
-            field = value
-        }
-}
-
 fun<T> clientOnlyHolder(factory: () -> T) = SidedLazy(factory, Dist.CLIENT)
 fun<T> serverOnlyHolder(factory: () -> T) = SidedLazy(factory, Dist.DEDICATED_SERVER)
-fun<T> clientOnlyField(value: T) = SidedHolder(value, Dist.CLIENT)
-fun<T> serverOnlyField(value: T) = SidedHolder(value, Dist.DEDICATED_SERVER)
 
 private val UNIQUE_ID_ATOMIC = AtomicInteger()
-
 fun getUniqueId() = UNIQUE_ID_ATOMIC.getAndIncrement()
 
 inline fun<T> T?.requireNotNull(message: () -> String) : T {
     require(this != null, message)
     return this
 }
-
-enum class WeatherStateType {
-    Clear,
-    Rain,
-    Thunder
-}
-
-enum class DayNightStateType {
-    Day,
-    Night
-}
-
-fun Level.getWeatherStateType() =
-    if(this.isThundering) {
-        WeatherStateType.Thunder
-    } else if(this.isRaining) {
-        WeatherStateType.Rain
-    } else {
-        WeatherStateType.Clear
-    }
-
-fun Level.getDayNightStateType() =
-    if(this.isDay) {
-        DayNightStateType.Day
-    } else {
-        DayNightStateType.Night
-    }
