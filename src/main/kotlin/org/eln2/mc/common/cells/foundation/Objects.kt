@@ -2,7 +2,6 @@ package org.eln2.mc.common.cells.foundation
 
 import net.minecraft.nbt.CompoundTag
 import org.ageseries.libage.sim.electrical.mna.Circuit
-import org.ageseries.libage.sim.electrical.mna.component.Component
 import org.ageseries.libage.sim.thermal.ConnectionParameters
 import org.ageseries.libage.sim.thermal.Simulator
 import org.eln2.mc.*
@@ -29,11 +28,6 @@ abstract class SimulationObject<C : Cell>(val cell: C) {
      * Here, the previous state should be cleared so that the object is ready to join a new simulation.
      * */
     abstract fun clear()
-
-    /**
-     * Called when the solver is being built, after *clear*.
-     * */
-    abstract fun build()
 
     /**
      * Called when the cell is destroyed.
@@ -112,7 +106,7 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
         connections.clear()
     }
 
-    override fun build() {
+    fun build() {
         if (simulation == null) {
             error("Tried to build thermal obj with null simulation")
         }
@@ -134,7 +128,7 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     protected abstract fun addComponents(simulator: Simulator)
 }
 
-data class ElectricalComponentInfo(val component: Component, val index: Int)
+data class ElectricalComponentInfo(val component: Any, val index: Int)
 
 abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     /**
@@ -146,6 +140,8 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
         private set
 
     protected val connections = ArrayList<ElectricalObject<*>>()
+
+    val connectionList get() = connections as List<ElectricalObject<*>>
 
     final override val type = SimulationObjectType.Electrical
 
@@ -175,10 +171,10 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
      * Called by the building logic when the electrical object is made part of a circuit.
      * Also calls the *registerComponents* method.
      * */
-    fun setNewCircuit(circuit: Circuit) {
-        this.circuit = circuit
+    fun setNewCircuit(builder: CircuitBuilder) {
+        this.circuit = builder.circuit
 
-        addComponents(circuit)
+        addComponents(builder)
     }
 
     /**
@@ -212,23 +208,17 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
      * Called when the solver is being built, and the components need to be re-created (or refreshed)
      * The connections are not available at this stage.
      * */
-    protected abstract fun clearComponents()
+    protected open fun clearComponents() { }
 
     /**
      * Called when the circuit must be updated with the components owned by this object.
      * This is called before build.
      * By default, offers for all [connections] are gathered using [offerComponent], and the offered components are all added to the [circuit]
      * */
-    protected open fun addComponents(circuit: Circuit) {
-        val components = HashSet<Component>(2)
-
+    protected open fun addComponents(circuit: ElectricalComponentSet) {
         connections.forEach { connection ->
             val offer = offerComponent(connection)
-            components.add(offer.component)
-        }
-
-        components.forEach { component ->
-            circuit.add(component)
+            circuit.add(offer.component)
         }
     }
 
@@ -236,12 +226,12 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
      * Builds the connections, after the circuit was acquired in [setNewCircuit] and the components were added in [addComponents].
      * By default, offers for all [connections] are gathered using [offerComponent], and the components are connected using the pins indicated in the offers.
      * */
-    override fun build() {
+    open fun build(map: ElectricalConnectivityMap) {
         // Suggested by Grissess (and should have crossed my mind too, shame on me):
         connections.forEach { remote ->
             val localInfo = offerComponent(remote)
             val remoteInfo = remote.offerComponent(this)
-            localInfo.component.connect(localInfo.index, remoteInfo.component, remoteInfo.index)
+            map.connect(localInfo.component, localInfo.index, remoteInfo.component, remoteInfo.index)
         }
     }
 }

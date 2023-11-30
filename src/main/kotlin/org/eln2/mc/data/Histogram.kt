@@ -1,5 +1,6 @@
 package org.eln2.mc.data
 
+// or multiset
 interface Histogram<K> {
     operator fun get(k: K): Int
     fun contains(k: K) = get(k) > 0
@@ -7,25 +8,28 @@ interface Histogram<K> {
 
 interface MutableHistogram<K> : Histogram<K> {
     operator fun set(k: K, n: Int)
-    fun add(k: K, n: Int = 1)
-    fun take(k: K, n: Int = 1)
-    operator fun plusAssign(k: K) = add(k)
-    operator fun minusAssign(k: K) = take(k)
+    fun add(k: K, n: Int = 1) : Int
+    fun take(k: K, n: Int = 1) : Int
+    operator fun plusAssign(k: K) { add(k) }
+    operator fun minusAssign(k: K) { take(k) }
     fun remove(k: K) = set(k, 0)
     fun clear()
 }
 
 class MutableMapHistogram<K>(val map: MutableMap<K, Int>) : MutableHistogram<K> {
+    constructor() : this(HashMap())
+
     override fun get(k: K) = map[k] ?: 0
-    override fun set(k: K, n: Int) {
-        map[k] = n
+
+    override fun set(k: K, n: Int) { map[k] = n }
+
+    override fun add(k: K, n: Int) : Int {
+        val result = get(k) + n
+        map[k] = result
+        return result
     }
 
-    override fun add(k: K, n: Int) {
-        map[k] = get(k) + n
-    }
-
-    override fun take(k: K, n: Int) {
+    override fun take(k: K, n: Int) : Int {
         val result = get(k) - n
 
         if (result < 0) {
@@ -33,6 +37,8 @@ class MutableMapHistogram<K>(val map: MutableMap<K, Int>) : MutableHistogram<K> 
         }
 
         this[k] = result
+
+        return result
     }
 
     override fun toString(): String {
@@ -49,6 +55,3 @@ class MutableMapHistogram<K>(val map: MutableMap<K, Int>) : MutableHistogram<K> 
 
     fun removeMapping(k: K) = map.remove(k)
 }
-
-fun <K> HashMapHistogram() = MutableMapHistogram<K>(HashMap())
-fun <K> LinkedHashMapHistogram() = MutableMapHistogram<K>(LinkedHashMap())

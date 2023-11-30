@@ -33,7 +33,6 @@ import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.sim.Material
-import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.thermal.*
 import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
@@ -109,11 +108,11 @@ class ThermalWireObject(cell: Cell, thermalDefinition: ThermalBodyDef) : Thermal
 }
 
 /**
- * Generalized electrical wire, created by joining the "internal" pins of a [ResistorBundle].
+ * Generalized electrical wire, created by joining the "internal" pins of a [ResistorLikeBundle].
  * The "external" pins are offered to other cells.
  * */
 class ElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
-    private val resistors = ResistorBundle(0.05, this)
+    private val resistors = resistorBundle(0.05)
 
     val totalPower get() = resistors.totalPower
 
@@ -121,26 +120,62 @@ class ElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
      * Gets or sets the resistance of the bundle.
      * Only applied when the circuit is re-built.
      * */
-    var resistance: Double
-        get() = resistors.resistance * 2.0
-        set(value) { resistors.resistance = value / 2.0 }
+    var resistance by resistors::crossResistance
 
     override fun offerComponent(neighbour: ElectricalObject<*>) = resistors.getOfferedResistor(neighbour)
 
     override fun clearComponents() = resistors.clear()
 
-    override fun addComponents(circuit: Circuit) = resistors.register(connections, circuit)
+    override fun addComponents(circuit: ElectricalComponentSet) = resistors.addComponents(connections, circuit)
 
-    override fun build() {
+    override fun build(map: ElectricalConnectivityMap) {
         // The Wire uses a bundle of 4 resistors. Every resistor's "Internal Pin" is connected to every
         // other resistor's internal pin. "External Pins" are offered to connection candidates:
 
-        resistors.connect(connections, this)
+        resistors.connect(connections, this, map)
 
         resistors.forEach { a ->
             resistors.forEach { b ->
                 if (a != b) {
-                    a.connect(INTERNAL_PIN, b, INTERNAL_PIN)
+                    map.connect(a, INTERNAL_PIN, b, INTERNAL_PIN)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Generalized electrical wire, created by joining the "internal" pins of a [ResistorLikeBundle].
+ * The "external" pins are offered to other cells.
+ * */
+class ElectricalWireObjectVirtual(cell: Cell) : ElectricalObject<Cell>(cell) {
+    // Optimization opportunity: make bundle create one resistor when possible. But it isn't that worthwhile because it is virtual.
+    private val resistors = resistorVirtualBundle(0.05)
+
+    val totalPower get() = resistors.totalPower
+
+    /**
+     * Gets or sets the resistance of the bundle.
+     * Only applied when the circuit is re-built.
+     * */
+    var resistance by resistors::crossResistance
+
+    override fun offerComponent(neighbour: ElectricalObject<*>) = resistors.getOfferedResistor(neighbour)
+
+    override fun clearComponents() = resistors.clear()
+
+    override fun addComponents(circuit: ElectricalComponentSet) = resistors.addComponents(connections, circuit)
+
+    override fun build(map: ElectricalConnectivityMap) {
+        // The Wire uses a bundle of 4 resistors. Every resistor's "Internal Pin" is connected to every
+        // other resistor's internal pin. "External Pins" are offered to connection candidates:
+
+        resistors.connect(connections, this, map)
+
+        resistors.forEach { a ->
+            resistors.forEach { b ->
+                if (a != b) {
+                    map.connect(a, INTERNAL_PIN, b, INTERNAL_PIN)
                 }
             }
         }
@@ -535,10 +570,9 @@ open class ThermalWireCell(ci: CellCreateInfo, connectionCrossSection: Double, v
         else null
 }
 
-
 open class ElectricalWireCell(ci: CellCreateInfo, contactCrossSection: Double, thermalProperties: WireThermalProperties, val electricalProperties: WireElectricalProperties) : ThermalWireCell(ci, contactCrossSection, thermalProperties) {
     @SimObject
-    val electricalWire = ElectricalWireObject(self()).also {
+    val electricalWire = ElectricalWireObjectVirtual(self()).also {
         it.resistance = electricalProperties.electricalResistance
     }
 

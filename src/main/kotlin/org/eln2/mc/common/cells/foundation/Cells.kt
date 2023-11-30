@@ -16,8 +16,11 @@ import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.ageseries.libage.sim.thermal.Simulator
 import org.eln2.mc.*
 import org.eln2.mc.common.cells.CellRegistry
+import org.eln2.mc.common.cells.foundation.SimulationObjectType.*
 import org.eln2.mc.data.*
 import org.eln2.mc.mathematics.approxEq
+import java.io.File
+import java.io.FileOutputStream
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -26,6 +29,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.collections.ArrayList
+import kotlin.collections.HashSet
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 
@@ -452,13 +456,13 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
                 // We can form a connection here.
 
                 when (localObj.type) {
-                    SimulationObjectType.Electrical -> {
+                    Electrical -> {
                         (localObj as ElectricalObject).addConnection(
                             remoteCell.objects.electricalObject
                         )
                     }
 
-                    SimulationObjectType.Thermal -> {
+                    Thermal -> {
                         (localObj as ThermalObject).addConnection(
                             remoteCell.objects.thermalObject
                         )
@@ -467,12 +471,6 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
             }
         }
     }
-
-    /**
-     * Called when the solver is being built, in order to finish setting up the underlying components in the
-     * simulation objects.
-     * */
-    fun build() = objects.forEachObject { it.build() }
 
     /**
      * Checks if this cell has the specified simulation object type.
@@ -1103,30 +1101,55 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         cells.forEach { it.clearObjectConnections() }
         cells.forEach { it.recordObjectConnections() }
 
-        realizeElectrical()
+        val circuitBuilders = realizeElectrical()
+
         realizeThermal()
 
-        cells.forEach { it.build() }
+        cells.forEach { cell ->
+            cell.objects.forEachObject {
+                when(it.type) {
+                    Electrical -> {
+                        (it as ElectricalObject<*>).build(circuitBuilders[it.circuit!!]!!)
+                    }
+                    Thermal -> {
+                        (it as ThermalObject<*>).build()
+                    }
+                }
+            }
+        }
+
+        circuitBuilders.values.forEach {
+            it.realizeVirtual()
+        }
+
         electricalSims.forEach { postProcessCircuit(it) }
     }
 
     /**
      * This method realizes the electrical circuits for all cells that have an electrical object.
      * */
-    private fun realizeElectrical() {
+    private fun realizeElectrical() : HashMap<Circuit, CircuitBuilder> {
         electricalSims.clear()
 
-        realizeComponents(SimulationObjectType.Electrical, factory = { set ->
+        val builders = HashMap<Circuit, CircuitBuilder>()
+
+        realizeComponents(Electrical, factory = { set ->
             val circuit = Circuit()
-            set.forEach { it.objects.electricalObject.setNewCircuit(circuit) }
+            val builder = CircuitBuilder(circuit)
+
+            set.forEach { it.objects.electricalObject.setNewCircuit(builder) }
             electricalSims.add(circuit)
+
+            builders[circuit] = builder
         })
+
+        return builders
     }
 
     private fun realizeThermal() {
         thermalSims.clear()
 
-        realizeComponents(SimulationObjectType.Thermal, factory = { set ->
+        realizeComponents(Thermal, factory = { set ->
             val simulation = Simulator()
             set.forEach { it.objects.thermalObject.setNewSimulation(simulation) }
             thermalSims.add(simulation)
@@ -1150,16 +1173,11 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
      * @param type The simulation type to search for.
      * @param factory A factory method to generate the subset from the discovered cells.
      * */
-    private fun <TComponent> realizeComponents(
-        type: SimulationObjectType,
-        factory: ((HashSet<Cell>) -> TComponent),
-        extraCondition: ((SimulationObject<*>, SimulationObject<*>) -> Boolean)? = null,
-    ) {
-        val pending = HashSet(cells.filter { it.hasObject(type) })
-        val queue = ArrayDeque<Cell>()
+    private fun <TComponent> realizeComponents(type: SimulationObjectType, factory: ((Set<Cell>) -> TComponent), predicate: ((SimulationObject<*>, SimulationObject<*>) -> Boolean)? = null, ) {
+        val pending = cells.asSequence().filter { it.hasObject(type) }.toHashSet()
 
-        // todo: can we use pending instead?
-        val visited = HashSet<Cell>()
+        val queue = ArrayDeque<Cell>()
+        val visited = HashSet<Cell>(pending.size)
 
         val results = ArrayList<TComponent>()
 
@@ -1179,14 +1197,10 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
 
                 pending.remove(cell)
 
-                cell.connections.forEach { connectedCell ->
+                for (connectedCell in cell.connections) {
                     if (connectedCell.hasObject(type)) {
-                        if (extraCondition != null && !extraCondition(
-                                cell.objects[type],
-                                connectedCell.objects[type]
-                            )
-                        ) {
-                            return@forEach
+                        if (predicate != null && !predicate(cell.objects[type], connectedCell.objects[type])) {
+                            continue
                         }
 
                         queue.add(connectedCell)
@@ -1655,11 +1669,15 @@ const val NEGATIVE_PIN = INTERNAL_PIN
  * */
 open class VRGeneratorObject<C : Cell>(cell: Cell, val map: PoleMap) : ElectricalObject<Cell>(cell) {
     private val resistor = ComponentHolder {
-        Resistor().also { it.resistance = resistanceExact }
+        val result = Resistor()
+        result.resistance = resistanceExact
+        result
     }
 
     private val source = ComponentHolder {
-        VoltageSource().also { it.potential = potentialExact }
+        val result = VoltageSource()
+        result.potential = potentialExact
+        result
     }
 
     /**
@@ -1736,14 +1754,14 @@ open class VRGeneratorObject<C : Cell>(cell: Cell, val map: PoleMap) : Electrica
         source.clear()
     }
 
-    override fun addComponents(circuit: Circuit) {
+    override fun addComponents(circuit: ElectricalComponentSet) {
         circuit.add(resistor)
         circuit.add(source)
     }
 
-    override fun build() {
-        resistor.connectInternal(source.offerPositive())
-        super.build()
+    override fun build(map: ElectricalConnectivityMap) {
+        resistor.connectInternal(source.offerPositive(), map)
+        super.build(map)
     }
 }
 

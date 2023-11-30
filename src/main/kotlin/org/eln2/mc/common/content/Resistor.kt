@@ -1,11 +1,8 @@
 package org.eln2.mc.common.content
 
 import mcp.mobius.waila.api.IPluginConfig
-import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
-import org.eln2.mc.LIBAGE_SET_EPS
-import org.eln2.mc.NoInj
-import org.eln2.mc.add
+import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
 import org.eln2.mc.common.cells.foundation.*
@@ -58,7 +55,43 @@ class ResistorObject(cell: Cell, val poleMap: PoleMap) : ElectricalObject<Cell>(
 
     override fun clearComponents() = resistor.clear()
 
-    override fun addComponents(circuit: Circuit) {
+    override fun addComponents(circuit: ElectricalComponentSet) {
+        circuit.add(resistor)
+    }
+}
+
+@NoInj
+class ResistorObjectVirtual(cell: Cell, val poleMap: PoleMap) : ElectricalObject<Cell>(cell) {
+    private val resistor = ResistorVirtual()
+
+    var resistanceExact by resistor::resistance
+
+    /**
+     * Updates the resistance if the deviation between the current resistance and [value] is larger than [eps].
+     * @return True if the resistance was updated. Otherwise, false.
+     * */
+    fun updateResistance(value: Double, eps: Double = LIBAGE_SET_EPS): Boolean {
+        if(resistanceExact.approxEq(value, eps)) {
+            return false
+        }
+
+        resistanceExact = value
+
+        return true
+    }
+
+    val current get() = Double.NaN
+    val power get() = resistor.power
+    val potential get() = Double.NaN
+
+    override val maxConnections = 2
+
+    override fun offerComponent(neighbour: ElectricalObject<*>) = ElectricalComponentInfo(
+        resistor,
+        poleMap.evaluate(cell.locator, neighbour.cell.locator).conventionalPin
+    )
+
+    override fun addComponents(circuit: ElectricalComponentSet) {
         circuit.add(resistor)
     }
 }
@@ -74,7 +107,7 @@ class ResistorCell(ci: CellCreateInfo) : Cell(ci) {
     }
 
     @SimObject @Inspect
-    val resistor = ResistorObject(this, directionPoleMapPlanar(A, B))
+    val resistor = ResistorObjectVirtual(this, directionPoleMapPlanar(A, B))
 
     @SimObject @Inspect
     val thermalWire = ThermalWireObject(this)
