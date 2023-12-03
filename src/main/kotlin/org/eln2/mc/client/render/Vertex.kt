@@ -2,7 +2,7 @@
 
 package org.eln2.mc.client.render
 
-import org.eln2.mc.mathematics.Vector3d
+import org.ageseries.libage.mathematics.Vector3d
 
 class PositionNormalVertexArray3d(val store: DoubleArray, val size: Int) {
     constructor(size: Int) : this(DoubleArray(size * 6), size)

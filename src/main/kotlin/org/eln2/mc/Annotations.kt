@@ -10,4 +10,3 @@ annotation class OnSimulationThread
  * Indicates that the code element is accessed from multiple threads.
  * */
 annotation class CrossThreadAccess
-annotation class RaceCondition

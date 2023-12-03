@@ -10,17 +10,12 @@ import net.minecraft.world.level.saveddata.SavedData
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.ageseries.libage.data.MutableMapPairBiMap
 import org.ageseries.libage.sim.electrical.mna.Circuit
-import org.ageseries.libage.sim.electrical.mna.component.PowerVoltageSource
-import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.ageseries.libage.sim.thermal.Simulator
 import org.eln2.mc.*
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.SimulationObjectType.*
 import org.eln2.mc.data.*
-import org.eln2.mc.mathematics.approxEq
-import java.io.File
-import java.io.FileOutputStream
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -28,8 +23,6 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
-import kotlin.collections.ArrayList
-import kotlin.collections.HashSet
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 
@@ -1663,166 +1656,3 @@ const val EXTERNAL_PIN: Int = 1
 const val INTERNAL_PIN: Int = 0
 const val POSITIVE_PIN = EXTERNAL_PIN
 const val NEGATIVE_PIN = INTERNAL_PIN
-
-/**
- * Generator model consisting of a Voltage Source + Resistor
- * */
-open class VRGeneratorObject<C : Cell>(cell: Cell, val map: PoleMap) : ElectricalObject<Cell>(cell) {
-    private val resistor = ComponentHolder {
-        val result = Resistor()
-        result.resistance = resistanceExact
-        result
-    }
-
-    private val source = ComponentHolder {
-        val result = VoltageSource()
-        result.potential = potentialExact
-        result
-    }
-
-    /**
-     * Gets the exact resistance of the [resistor].
-     * */
-    var resistanceExact: Double = 1.0
-        set(value) {
-            field = value
-            resistor.ifPresent { it.resistance = value }
-        }
-
-    /**
-     * Gets the exact potential of the [resistor].
-     * */
-    var potentialExact: Double = 1.0
-        set(value) {
-            field = value
-            source.ifPresent { it.potential = value }
-        }
-
-    /**
-     * Updates the resistance if the deviation between the current resistance and [value] is larger than [eps].
-     * This should be used instead of setting [resistanceExact] whenever possible, because setting the resistance is expensive.
-     * @return True if the resistance was updated. Otherwise, false.
-     * */
-    fun updateResistance(value: Double, eps: Double = LIBAGE_SET_EPS): Boolean {
-        if(resistanceExact.approxEq(value, eps)) {
-            return false
-        }
-
-        resistanceExact = value
-
-        return true
-    }
-
-    /**
-     * Updates the potential if the deviation between the current potential and [value] is larger than [eps].
-     * Using this instead of setting [potentialExact] doesn't have a large performance impact.
-     * @return True if the voltage was updated. Otherwise, false.
-     * */
-    fun updatePotential(value: Double, eps: Double = LIBAGE_SET_EPS): Boolean {
-        if(potentialExact.approxEq(value, eps)) {
-            return false
-        }
-
-        potentialExact = value
-
-        return true
-    }
-
-    val hasResistor get() = resistor.isPresent
-    val hasSource get() = source.isPresent
-
-    val resistorCurrent get() = if(resistor.isPresent) resistor.instance.current else 0.0
-    val sourceCurrent get() = if(source.isPresent) source.instance.current else 0.0
-
-    val resistorPower get() = if (resistor.isPresent) resistor.instance.power else 0.0
-    val sourcePower get() = if (source.isPresent) source.instance.power else 0.0
-
-    override val maxConnections = 2
-
-    /**
-     * Gets the offered component by evaluating the map.
-     * @return The resistor's external pin when the pole evaluates to *plus*. The source's negative pin when the pole evaluates to *minus*.
-     * */
-    override fun offerComponent(neighbour: ElectricalObject<*>): ElectricalComponentInfo =
-        when (map.evaluate(this.cell.locator, neighbour.cell.locator)) {
-            Pole.Plus -> resistor.offerExternal()
-            Pole.Minus -> source.offerNegative()
-        }
-
-    override fun clearComponents() {
-        resistor.clear()
-        source.clear()
-    }
-
-    override fun addComponents(circuit: ElectricalComponentSet) {
-        circuit.add(resistor)
-        circuit.add(source)
-    }
-
-    override fun build(map: ElectricalConnectivityMap) {
-        resistor.connectInternal(source.offerPositive(), map)
-        super.build(map)
-    }
-}
-
-open class PVSObject<C : Cell>(cell: Cell, val map: PoleMap) : ElectricalObject<Cell>(cell) {
-    private val source = ComponentHolder {
-        PowerVoltageSource().also {
-            it.potentialMax = potentialMaxExact
-            it.powerIdeal = powerIdealExact
-        }
-    }
-
-    var potentialMaxExact: Double = 0.0
-        set(value) {
-            field = value
-            source.ifPresent { it.potentialMax = value }
-        }
-
-    var powerIdealExact: Double = 0.0
-        set(value) {
-            field = value
-            source.ifPresent { it.powerIdeal = value }
-        }
-
-    fun updatePotentialMax(value: Double, eps: Double = LIBAGE_SET_EPS): Boolean {
-        if(potentialMaxExact.approxEq(value, eps)) {
-            return false
-        }
-
-        potentialMaxExact = value
-
-        return true
-    }
-
-    fun updatePowerIdeal(value: Double, eps: Double = LIBAGE_SET_EPS): Boolean {
-        if(powerIdealExact.approxEq(value, eps)) {
-            return false
-        }
-
-        powerIdealExact = value
-
-        return true
-    }
-
-    val hasSource get() = source.isPresent
-    val sourceCurrent get() = if(source.isPresent) source.instance.current else 0.0
-    val sourcePower get() = if (source.isPresent) source.instance.power else 0.0
-
-    override val maxConnections = 2
-
-    /**
-     * Gets the offered component by evaluating the map.
-     * @return The resistor's external pin when the pole evaluates to *plus*. The source's negative pin when the pole evaluates to *minus*.
-     * */
-    override fun offerComponent(neighbour: ElectricalObject<*>): ElectricalComponentInfo =
-        when (map.evaluate(this.cell.locator, neighbour.cell.locator)) {
-            Pole.Plus -> source.offerPositive()
-            Pole.Minus -> source.offerNegative()
-        }
-
-    override fun clearComponents() {
-        source.clear()
-    }
-}
-

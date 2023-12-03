@@ -3,9 +3,8 @@
 package org.eln2.mc.common.content
 
 import net.minecraft.client.gui.screens.MenuScreens
-import org.ageseries.libage.data.CELSIUS
-import org.ageseries.libage.data.M2
-import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.Vector3d
 import org.ageseries.libage.sim.Material
 import org.eln2.mc.LOG
 import org.eln2.mc.ThermalBodyDef
@@ -171,7 +170,7 @@ object Content {
                 ci,
                 Quantity(1.0, M2),
                 PhotovoltaicModel(
-                    Quantity(32.0, VOLT),
+                    Quantity(32.0, V),
                     7000.0,
                     0.1,
                     0.8,

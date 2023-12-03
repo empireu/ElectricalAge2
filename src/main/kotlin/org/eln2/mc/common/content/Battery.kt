@@ -2,11 +2,13 @@
 
 package org.eln2.mc.common.content
 
-import mcp.mobius.waila.api.IPluginConfig
 import net.minecraft.nbt.CompoundTag
 import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.evaluate
+import org.ageseries.libage.mathematics.lerp
+import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.Material
-import org.ageseries.libage.sim.thermal.Temperature
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
 import org.eln2.mc.client.render.foundation.PartRendererSupplier
@@ -14,9 +16,8 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.data.*
-import org.eln2.mc.data.abs
-import org.eln2.mc.integration.WailaNode
-import org.eln2.mc.integration.WailaTooltipBuilder
+import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.*
 import kotlin.math.abs
 import kotlin.math.pow
@@ -56,7 +57,7 @@ interface BatteryView {
     /**
      * Gets the temperature of the battery.
      * */
-    val temperature: Temperature
+    val temperature: Quantity<Temperature>
     /**
      * Gets the current power. If positive, this is power going out. Otherwise, this is power coming in.
      * */
@@ -72,7 +73,7 @@ interface BatteryView {
  * Computes the voltage of the battery based on the battery's state.
  * */
 fun interface BatteryVoltageFunction {
-    fun computeVoltage(battery: BatteryView): Quantity<Voltage>
+    fun computeVoltage(battery: BatteryView): Quantity<Potential>
 }
 
 /**
@@ -104,12 +105,12 @@ private val LEAD_ACID_12V_WET_VOLTAGE = loadCsvGrid2("lead_acid_12v/ds_wet.csv")
 object BatteryVoltageModels {
     val WET_CELL_12V = BatteryVoltageFunction { view ->
         val dataset = LEAD_ACID_12V_WET_VOLTAGE
-        val temperature = view.temperature.kelvin
+        val temperature = view.temperature
 
         if (view.charge > view.model.damageChargeThreshold) {
-            Quantity(dataset.evaluate(view.charge, temperature), VOLT)
+            Quantity(dataset.evaluate(view.charge, !temperature), VOLT)
         } else {
-            val datasetCeiling = dataset.evaluate(view.model.damageChargeThreshold, temperature)
+            val datasetCeiling = dataset.evaluate(view.model.damageChargeThreshold, !temperature)
 
             Quantity(lerp(
                 0.0,
@@ -149,7 +150,7 @@ object BatteryModels {
         energyCapacity = Quantity(2.2, kWh),
         0.5,
         BatteryMaterials.PB_ACID_TEST,
-        Quantity(10.0, KG),
+        Quantity(10.0, kg),
         Quantity(6.0, M2)
     )
 }
@@ -275,7 +276,7 @@ class BatteryCell(
             1.0
         )
 
-    override val temperature: Temperature get() = thermalWire.thermalBody.temperature
+    override val temperature get() = thermalWire.thermalBody.temperature
 
     val capacityCoefficient get() = model.capacityFunction.computeCapacity(this).coerceIn(0.0, 1.0)
     val adjustedEnergyCapacity get() = model.energyCapacity * capacityCoefficient
@@ -368,7 +369,7 @@ class BatteryPart(
     ci: PartCreateInfo,
     provider: CellProvider<BatteryCell>,
     private val rendererSupplier: PartRendererSupplier<BatteryPart, BasicPartRenderer>
-) : CellPart<BatteryCell, BasicPartRenderer>(ci, provider), ItemPersistentPart, WrenchRotatablePart, WailaNode {
+) : CellPart<BatteryCell, BasicPartRenderer>(ci, provider), ItemPersistentPart, WrenchRotatablePart, ComponentDisplay {
     companion object {
         private const val BATTERY = "battery"
     }
@@ -385,13 +386,13 @@ class BatteryPart(
 
     override val order get() = ItemPersistentPartLoadOrder.AfterSim
 
-    override fun appendWaila(builder: WailaTooltipBuilder, config: IPluginConfig?) {
+    override fun submitDisplay(builder: ComponentDisplayList) {
         runIfCell {
-            builder.voltage(cell.generator.potentialExact)
+            builder.potential(cell.generator.potentialExact)
             builder.current(cell.generator.sourceCurrent)
             builder.power(cell.generator.sourcePower)
-            builder.charge(cell.charge)
-            builder.life(cell.life)
+            builder.translatePercent("battery_charge", cell.charge)
+            builder.translatePercent("battery_life", cell.life)
         }
     }
 }

@@ -2,9 +2,7 @@ package org.eln2.mc
 
 import com.jozufozu.flywheel.core.materials.model.ModelData
 import com.jozufozu.flywheel.util.transform.Translate
-import com.mojang.math.*
 import it.unimi.dsi.fastutil.ints.IntSet
-import mcp.mobius.waila.api.IPluginConfig
 import net.minecraft.client.renderer.block.model.BakedQuad
 import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.client.resources.model.SimpleBakedModel
@@ -47,25 +45,21 @@ import net.minecraftforge.common.ForgeMod
 import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.network.NetworkHooks
 import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.*
 import org.ageseries.libage.sim.Material
-import org.ageseries.libage.sim.Scale
 import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.ageseries.libage.sim.thermal.ConnectionParameters
 import org.ageseries.libage.sim.thermal.Simulator
-import org.ageseries.libage.sim.thermal.Temperature
 import org.ageseries.libage.sim.thermal.ThermalMass
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.cells.foundation.ComponentHolder
-import org.eln2.mc.common.cells.foundation.ElectricalComponentInfo
 import org.eln2.mc.common.parts.foundation.CellPartConnectionMode
 import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.common.parts.foundation.PartUpdateType
 import org.eln2.mc.data.*
-import org.eln2.mc.integration.WailaTooltipBuilder
 import org.eln2.mc.mathematics.*
-import org.eln2.mc.mathematics.Vector3d
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import java.io.InputStream
@@ -81,10 +75,10 @@ fun Entity.getClipStartEnd() : Pair<Vec3, Vec3> {
     val start = Vec3(this.x, this.eyeY, this.z)
 
     val distance = if(this is Player) {
-        this.reachDistance
+        this.blockReach
     }
     else {
-        ForgeMod.REACH_DISTANCE.get().defaultValue
+        ForgeMod.BLOCK_REACH.get().defaultValue
     }
 
     val end = start + viewDirection * distance
@@ -185,9 +179,7 @@ fun BlockPos.toVec3(): Vec3 {
     return Vec3(this.x.toDouble(), this.y.toDouble(), this.z.toDouble())
 }
 
-fun BlockPos.directionTo(other: BlockPos): Direction? {
-    return Direction.fromNormal(other - this)
-}
+fun BlockPos.directionTo(other: BlockPos) = directionByNormal(other - this)
 
 fun Direction.isVertical(): Boolean {
     return this == Direction.UP || this == Direction.DOWN
@@ -702,53 +694,17 @@ fun CompoundTag.putThermalMass(id: String, thermalMass: ThermalMass) {
     }
 }
 
-fun CompoundTag.putThermalMassMapped(id: String, thermalMass: ThermalMass) {
-    this.putThermalMass(id, thermalMass) { key, material, tag ->
-        tag.putMaterialMapped(key, material)
-    }
-}
-
 fun CompoundTag.getThermalMass(id: String): ThermalMass {
     return this.getThermalMass(id) { key, tag ->
         tag.getMaterial(key)
     }
 }
 
-fun CompoundTag.getThermalMassMapped(id: String): ThermalMass {
-    return this.getThermalMass(id) { key, tag ->
-        tag.getMaterialMapped(key)
-    }
-}
-
-fun CompoundTag.putThermalBody(id: String, body: ThermalBody) {
-    this.putSubTag(id) {
-        it.putThermalMass("Mass", body.thermal)
-        it.putDouble("Area", body.area)
-    }
-}
-
-fun CompoundTag.getThermalBody(id: String): ThermalBody {
-    val tag = this.getCompound(id)
-
-    return ThermalBody(
-        tag.getThermalMass("Mass"),
-        tag.getDouble("Area")
-    )
-}
-
-fun CompoundTag.putTemperature(id: String, temperature: Temperature) {
-    this.putDouble(id, temperature.kelvin)
-}
-
-fun CompoundTag.getTemperature(id: String): Temperature {
-    return Temperature(this.getDouble(id))
-}
-
 fun Double.formatted(decimals: Int = 2): String {
     return "%.${decimals}f".format(this)
 }
 
-fun Double.formattedPercentN(decimals: Int = 2): String {
+fun Double.formattedPercentNormalized(decimals: Int = 2): String {
     return "${(this * 100.0).formatted(decimals)}%"
 }
 
@@ -766,37 +722,6 @@ fun rot(dir: Direction) = when (dir) {
     Direction.WEST -> Rotation.CLOCKWISE_180
     Direction.EAST -> Rotation.NONE
     else -> error("Invalid horizontal facing $dir")
-}
-
-fun ThermalMass.appendBody(builder: WailaTooltipBuilder, config: IPluginConfig?) {
-    builder.energy(this.energy)
-    builder.mass(this.mass)
-    builder.temperature(this.temperature.kelvin)
-}
-
-fun Simulator.subStep(dt: Double, steps: Int, consumer: ((Int, Double) -> Unit)? = null) {
-    val stepSize = dt / steps
-
-    repeat(steps) {
-        this.step(stepSize)
-        consumer?.invoke(it, stepSize)
-    }
-}
-
-fun WailaTooltipBuilder.resistor(resistor: Resistor): WailaTooltipBuilder {
-    this.resistance(resistor.resistance)
-    this.pinVoltages(resistor.pins)
-    this.current(resistor.current)
-    this.power(resistor.power)
-
-    return this
-}
-
-fun WailaTooltipBuilder.voltageSource(source: VoltageSource): WailaTooltipBuilder {
-    this.voltage(source.potential)
-    this.current(source.current)
-
-    return this
 }
 
 operator fun Vec3.plus(b: Vec3): Vec3 {
@@ -904,9 +829,6 @@ fun Direction.valueHashCode() = this.normal.hashCode()
 
 fun Vector3di.toBlockPos() = BlockPos(this.x, this.y, this.z)
 
-fun Scale.map(u: Dual) = factor * u + base
-fun Scale.unmap(u: Dual) = (u - base) / factor
-
 fun ChunkPos.toVector2d() = Vector2d(this.x.toDouble(), this.z.toDouble())
 
 fun <T> List<T>.averageOf(valueSelector: (T) -> Double): Double = this.sumOf(valueSelector) / this.size
@@ -1003,9 +925,6 @@ fun <T> InputStream.getList(deserialize: (InputStream) -> T) = this.getIntPacked
 
 fun InputStream.getFloatList() = this.getList { it.getFloat() }
 fun InputStream.getStringList() = this.getList { it.getString() }
-// I did this because right after 1.19.2 minecraft switched to JOML (good ending)
-fun Quaternion.toJoml() = Quaternionf(this.i(), this.j(), this.k(), this.r())
-fun Quaternionf.toMinecraft() = Quaternion(this.x, this.y, this.z, this.w)
 fun Vec3.toJoml() = Vector3f(this.x.toFloat(), this.y.toFloat(), this.z.toFloat())
 
 fun <Self : Translate<Self>> Self.translateNormal(normal: Vec3, distance: Double) : Self {

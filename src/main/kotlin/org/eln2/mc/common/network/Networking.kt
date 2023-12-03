@@ -82,7 +82,7 @@ object Networking {
      * @param player The player to send the message to.
      */
     fun send(message: Any?, player: ServerPlayer) {
-        channel.sendTo(message, player.connection.getConnection(), NetworkDirection.PLAY_TO_CLIENT)
+        channel.sendTo(message, player.connection.connection, NetworkDirection.PLAY_TO_CLIENT)
     }
 
     /**

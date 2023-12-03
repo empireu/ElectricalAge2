@@ -1,7 +1,5 @@
 package org.eln2.mc.common.content
 
-import mcp.mobius.waila.api.IPluginConfig
-import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.eln2.mc.ElectricalComponentSet
 import org.eln2.mc.ElectricalConnectivityMap
 import org.eln2.mc.client.render.PartialModels
@@ -10,8 +8,8 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.data.withDirectionRulePlanar
-import org.eln2.mc.integration.WailaNode
-import org.eln2.mc.integration.WailaTooltipBuilder
+import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.Base6Direction3dMask
 
 class GroundObject(cell: Cell) : ElectricalObject<Cell>(cell) {
@@ -53,10 +51,10 @@ class GroundCell(ci: CellCreateInfo) : Cell(ci) {
     }
 }
 
-class GroundPart(ci: PartCreateInfo) : CellPart<GroundCell, BasicPartRenderer>(ci, Content.GROUND_CELL.get()), WrenchRotatablePart, WailaNode {
+class GroundPart(ci: PartCreateInfo) : CellPart<GroundCell, BasicPartRenderer>(ci, Content.GROUND_CELL.get()), WrenchRotatablePart, ComponentDisplay {
     override fun createRenderer() = BasicPartRenderer(this, PartialModels.GROUND)
 
-    override fun appendWaila(builder: WailaTooltipBuilder, config: IPluginConfig?) {
+    override fun submitDisplay(builder: ComponentDisplayList) {
         runIfCell {
             builder.current(cell.ground.totalCurrent)
             builder.power(cell.ground.totalPower)

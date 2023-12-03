@@ -13,7 +13,6 @@ import it.unimi.dsi.fastutil.ints.Int2DoubleOpenHashMap
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet
 import kotlinx.serialization.Serializable
-import mcp.mobius.waila.api.IPluginConfig
 import net.minecraft.client.renderer.block.model.BakedQuad
 import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.core.Direction
@@ -32,6 +31,11 @@ import net.minecraft.world.phys.shapes.VoxelShape
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.registries.RegistryObject
+import org.ageseries.libage.data.ImmutableIntArrayView
+import org.ageseries.libage.data.KELVIN
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.mathematics.Vector3d
+import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.thermal.*
 import org.eln2.mc.*
@@ -44,8 +48,8 @@ import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.data.*
-import org.eln2.mc.integration.WailaNode
-import org.eln2.mc.integration.WailaTooltipBuilder
+import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.*
 import java.nio.ByteBuffer
 import java.nio.IntBuffer
@@ -77,7 +81,7 @@ class ThermalWireObject(cell: Cell, thermalDefinition: ThermalBodyDef) : Thermal
         }
     }
 
-    fun readTemperature(): Double = thermalBody.thermal.temperature.kelvin
+    fun readTemperature(): Double = !thermalBody.thermal.temperature
 
     override fun offerComponent(neighbour: ThermalObject<*>) = ThermalComponentInfo(thermalBody)
 
@@ -108,7 +112,7 @@ class ThermalWireObject(cell: Cell, thermalDefinition: ThermalBodyDef) : Thermal
 }
 
 /**
- * Generalized electrical wire, created by joining the "internal" pins of a [ResistorLikeBundle].
+ * Generalized electrical wire, created by joining the "internal" pins of a [ResistorBundle].
  * The "external" pins are offered to other cells.
  * */
 class ElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
@@ -145,7 +149,7 @@ class ElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
 }
 
 /**
- * Generalized electrical wire, created by joining the "internal" pins of a [ResistorLikeBundle].
+ * Generalized electrical wire, created by joining the "internal" pins of a [ResistorBundle].
  * The "external" pins are offered to other cells.
  * */
 class ElectricalWireObjectVirtual(cell: Cell) : ElectricalObject<Cell>(cell) {
@@ -599,7 +603,7 @@ class WirePart<C : WireCell>(
     ExternalTemperatureConsumer,
     AnimatedPart,
     WrenchInteractablePart,
-    WailaNode
+    ComponentDisplay
 {
     companion object {
         private const val DIRECTIONS = "directions"
@@ -908,7 +912,7 @@ class WirePart<C : WireCell>(
         }
     }
 
-    override fun appendWaila(builder: WailaTooltipBuilder, config: IPluginConfig?) {
+    override fun submitDisplay(builder: ComponentDisplayList) {
         runWithCell {
             if(it is ThermalWireCell) {
                 builder.temperature(it.thermalWire.readTemperature())
@@ -1204,7 +1208,7 @@ class IncandescentInstancedWireRenderer(
      * @return The tint color to be rendered.
      * */
     private fun evaluateRGBL(temperature: Double, light: Double = 0.0): Color {
-        val rgb = renderInfo.tintColor.evaluate(temperature)
+        val rgb = renderInfo.tintColor.evaluate(Quantity(temperature, KELVIN))
 
         return Color(
             rgb.red,
@@ -1220,8 +1224,8 @@ class IncandescentInstancedWireRenderer(
                 ),
                 map(
                     temperature,
-                    renderInfo.tintColor.coldTemperature.kelvin,
-                    renderInfo.tintColor.hotTemperature.kelvin,
+                    !renderInfo.tintColor.coldTemperature,
+                    !renderInfo.tintColor.hotTemperature,
                     0.0,
                     255.0
                 )

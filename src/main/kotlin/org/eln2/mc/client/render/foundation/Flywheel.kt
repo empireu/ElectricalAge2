@@ -15,25 +15,22 @@ import com.jozufozu.flywheel.core.materials.model.ModelType
 import com.jozufozu.flywheel.util.Color
 import com.jozufozu.flywheel.util.MatrixWrite
 import com.jozufozu.flywheel.util.transform.Transform
-import com.mojang.blaze3d.vertex.PoseStack
-import com.mojang.math.Matrix3f
-import com.mojang.math.Matrix4f
-import com.mojang.math.Quaternion
 import net.minecraft.client.renderer.LightTexture
 import net.minecraft.client.renderer.block.model.BakedQuad
 import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.util.Mth
+import org.ageseries.libage.mathematics.Vector3d
 import org.eln2.mc.bind
 import org.eln2.mc.common.blocks.BlockRegistry
-import org.eln2.mc.mathematics.Vector3d
 import org.eln2.mc.resource
+import org.joml.Matrix3f
+import org.joml.Matrix4f
+import org.joml.Quaternionf
 import org.lwjgl.system.MemoryUtil
 import java.nio.ByteBuffer
 import java.nio.IntBuffer
-
-//import org.eln2.mc.common.content.GridConnectionInstanceFlw
 
 object FlywheelRegistry {
     fun initialize() {
@@ -41,11 +38,6 @@ object FlywheelRegistry {
             .alwaysSkipRender()
             .factory { manager, entity -> MultipartBlockEntityInstance(manager, entity) }
             .apply()
-
-      /*  InstancedRenderRegistry.configure(Content.GRID_CONNECTION_ENTITY.get())
-            .alwaysSkipRender()
-            .factory { manager, entity -> GridConnectionInstanceFlw(manager, entity) }
-            .apply()*/
     }
 }
 
@@ -104,56 +96,50 @@ class PolarData : InstanceData(), FlatLit<PolarData>, Transform<PolarData> {
         return this
     }
 
-    fun setTransform(stack: PoseStack): PolarData {
-        markDirty()
-        model.load(stack.last().pose())
-        normal.load(stack.last().normal())
-        return this
-    }
 
     fun loadIdentity(): PolarData {
         markDirty()
-        model.setIdentity()
-        normal.setIdentity()
+        model.identity()
+        normal.identity()
         return this
     }
 
-    override fun multiply(quaternion: Quaternion): PolarData {
+    override fun multiply(quaternion: Quaternionf): PolarData {
         markDirty()
-        model.multiply(quaternion)
-        normal.mul(quaternion)
+        model.rotate(quaternion)
+        normal.rotate(quaternion)
         return this
     }
 
     override fun scale(pX: Float, pY: Float, pZ: Float): PolarData {
         markDirty()
-        model.multiply(Matrix4f.createScaleMatrix(pX, pY, pZ))
+        model.scale(pX, pY, pZ)
         if (pX == pY && pY == pZ) {
             if (pX > 0.0f) {
                 return this
             }
-            normal.mul(-1.0f)
+            normal.scale(-1.0f)
         }
         val f = 1.0f / pX
         val f1 = 1.0f / pY
         val f2 = 1.0f / pZ
         val f3 = Mth.fastInvCubeRoot(f * f1 * f2)
-        normal.mul(Matrix3f.createScaleMatrix(f3 * f, f3 * f1, f3 * f2))
+        normal.scale(f3 * f, f3 * f1, f3 * f2)
         return this
     }
 
     override fun translate(x: Double, y: Double, z: Double): PolarData {
         markDirty()
-        model.multiplyWithTranslation(x.toFloat(), y.toFloat(), z.toFloat())
+        model.translate(x.toFloat(), y.toFloat(), z.toFloat())
         return this
     }
 
-    override fun mulPose(pose: Matrix4f): PolarData {
-        model.multiply(pose)
+    override fun mulPose(pose: Matrix4f?): PolarData {
+        model.mul(pose)
         return this
     }
 
-    override fun mulNormal(normal: Matrix3f): PolarData {
+    override fun mulNormal(normal: Matrix3f?): PolarData {
         this.normal.mul(normal)
         return this
     }
@@ -176,8 +162,8 @@ class PolarWriterUnsafe(backingBuffer: VecBuffer, vertexType: StructType<PolarDa
         MemoryUtil.memPutByte(ptr + 8, s.color2.blue.toByte())
         MemoryUtil.memPutByte(ptr + 9, s.color2.alpha.toByte())
 
-        (s.model as MatrixWrite).`flywheel$writeUnsafe`(ptr + 10)
-        (s.normal as MatrixWrite).`flywheel$writeUnsafe`(ptr + 74)
+        MatrixWrite.writeUnsafe(s.model, ptr + 10)
+        MatrixWrite.writeUnsafe(s.normal, ptr + 74)
     }
 }
 
@@ -230,7 +216,7 @@ open class PolarModel(modelLocation: ResourceLocation) : PartialModel(modelLocat
             data class VertexNode(
                 val index: Int,
                 val position: Vector3d,
-                val next: Int
+                val next: Int,
             )
 
             val nodes = positions.mapIndexed { index, position ->

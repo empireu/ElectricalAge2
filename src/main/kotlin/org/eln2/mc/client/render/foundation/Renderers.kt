@@ -11,25 +11,32 @@ import com.jozufozu.flywheel.util.Color
 import com.jozufozu.flywheel.util.transform.Transform
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntArrayList
-import net.minecraft.client.renderer.RenderType
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.level.LightLayer
+import org.ageseries.libage.data.CELSIUS
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.Temperature
+import org.ageseries.libage.mathematics.Vector3d
+import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.thermal.STANDARD_TEMPERATURE
-import org.ageseries.libage.sim.thermal.Temperature
-import org.ageseries.libage.sim.thermal.ThermalUnits
-import org.eln2.mc.*
+import org.eln2.mc.ClientOnly
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.content.PartConnectionRenderInfo
 import org.eln2.mc.common.content.PartConnectionRenderInfoSetConsumer
-import org.eln2.mc.common.content.WirePolarPatchModel
 import org.eln2.mc.common.content.getPartConnectionAsContactSectionConnectionOrNull
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.parts.foundation.*
+import org.eln2.mc.index
 import org.eln2.mc.mathematics.Base6Direction3d
-import org.eln2.mc.mathematics.Base6Direction3dMask
-import org.eln2.mc.mathematics.Vector3d
-import org.eln2.mc.mathematics.map
+import org.eln2.mc.putUnique
+import kotlin.collections.HashSet
+import kotlin.collections.Iterable
+import kotlin.collections.Map
+import kotlin.collections.asIterable
+import kotlin.collections.forEach
+import kotlin.collections.mapOf
+import kotlin.collections.set
 
 fun createPartInstance(
     multipart: MultipartBlockEntityInstance,
@@ -216,7 +223,7 @@ class RadiantBodyColorBuilder {
     var coldTint = colorF(1f, 1f, 1f, 1f)
     var hotTint = colorF(1f, 0.2f, 0.1f, 1f)
     var coldTemperature = STANDARD_TEMPERATURE
-    var hotTemperature = Temperature.from(800.0, ThermalUnits.CELSIUS)
+    var hotTemperature = Quantity(800.0, CELSIUS)
 
     fun build(): ThermalTint {
         return ThermalTint(
@@ -235,26 +242,24 @@ fun defaultRadiantBodyColor(): ThermalTint {
 class ThermalTint(
     val coldTint: Color,
     val hotTint: Color,
-    val coldTemperature: Temperature,
-    val hotTemperature: Temperature,
+    val coldTemperature: Quantity<Temperature>,
+    val hotTemperature: Quantity<Temperature>,
 ) {
-    fun evaluate(temperature: Temperature) =
+    fun evaluate(temperature: Quantity<Temperature>) =
         colorLerp(
             from = coldTint,
             to = hotTint,
             blend = map(
-                temperature.kelvin.coerceIn(
-                    coldTemperature.kelvin,
-                    hotTemperature.kelvin
+                temperature.value.coerceIn(
+                    !coldTemperature,
+                    !hotTemperature
                 ),
-                coldTemperature.kelvin,
-                hotTemperature.kelvin,
+                !coldTemperature,
+                !hotTemperature,
                 0.0,
                 1.0
             ).toFloat()
         )
-
-    fun evaluate(t: Double) = evaluate(Temperature(t))
 }
 
 @ClientOnly

@@ -4,11 +4,10 @@
     "compatibilityLevel": "JAVA_17",
     "refmap": "eln2.refmap.json",
     "mixins": [
-        "MixinLayerLightEngine",
+        "MixinBlockPlaceContext",
+        "MixinLightEngine",
         "MixinRebuildTask",
-        "MixinRenderType",
-        "MixinRenderRegionCache",
-        "MixinBlockPlaceContext"
+        "MixinRenderRegionCache"
     ],
     "client": [
     ],

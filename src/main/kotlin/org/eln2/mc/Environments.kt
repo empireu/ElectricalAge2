@@ -2,8 +2,9 @@ package org.eln2.mc
 
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.biome.Biome
-import org.ageseries.libage.sim.thermal.Temperature
-import org.ageseries.libage.sim.thermal.ThermalUnits
+import org.ageseries.libage.data.CELSIUS
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.Temperature
 import org.eln2.mc.data.BlockLocator
 import org.eln2.mc.data.HashDataTable
 import org.eln2.mc.data.Locator
@@ -11,7 +12,7 @@ import org.eln2.mc.data.requireLocator
 import java.util.concurrent.ConcurrentHashMap
 
 fun interface EnvironmentalTemperatureField {
-    fun readTemperature(): Temperature
+    fun readTemperature(): Quantity<Temperature>
 }
 
 fun EnvironmentalTemperatureField.readInto(body: ThermalBody) {
@@ -23,7 +24,7 @@ fun interface EnvironmentalThermalConductivityField {
 }
 
 data class EnvironmentInformation(
-    val temperature: Temperature,
+    val temperature: Quantity<Temperature>,
     val airThermalConductivity: Double,
 ) {
     fun fieldMap() = HashDataTable()
@@ -46,7 +47,7 @@ object BiomeEnvironments {
 
         return biomes.computeIfAbsent(biome) {
             return@computeIfAbsent EnvironmentInformation(
-                Temperature.from(temperature, ThermalUnits.CELSIUS),
+                Quantity(temperature, CELSIUS),
                 AIR_THERMAL_CONDUCTIVITY.evaluate(temperature)
             )
         }

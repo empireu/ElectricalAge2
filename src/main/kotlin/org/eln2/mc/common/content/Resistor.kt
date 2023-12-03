@@ -1,6 +1,6 @@
 package org.eln2.mc.common.content
 
-import mcp.mobius.waila.api.IPluginConfig
+import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
@@ -9,10 +9,9 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.data.*
-import org.eln2.mc.integration.WailaNode
-import org.eln2.mc.integration.WailaTooltipBuilder
+import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.Base6Direction3d
-import org.eln2.mc.mathematics.approxEq
 
 @NoInj
 class ResistorObject(cell: Cell, val poleMap: PoleMap) : ElectricalObject<Cell>(cell) {
@@ -116,10 +115,10 @@ class ResistorCell(ci: CellCreateInfo) : Cell(ci) {
     val heating = PowerHeatingBehavior({ resistor.power }, thermalWire.thermalBody)
 }
 
-class ResistorPart(ci: PartCreateInfo) : CellPart<ResistorCell, BasicPartRenderer>(ci, Content.RESISTOR_CELL.get()), WailaNode {
+class ResistorPart(ci: PartCreateInfo) : CellPart<ResistorCell, BasicPartRenderer>(ci, Content.RESISTOR_CELL.get()), ComponentDisplay {
     override fun createRenderer() = BasicPartRenderer(this, PartialModels.RESISTOR)
 
-    override fun appendWaila(builder: WailaTooltipBuilder, config: IPluginConfig?) {
+    override fun submitDisplay(builder: ComponentDisplayList) {
         runIfCell {
             builder.power(cell.resistor.power)
         }

@@ -1,6 +1,7 @@
 package org.eln2.mc.common.containers
 
 import net.minecraft.world.entity.player.Inventory
+import net.minecraft.world.flag.FeatureFlagSet
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.inventory.MenuType
 import net.minecraftforge.eventbus.api.IEventBus
@@ -29,5 +30,10 @@ object ContainerRegistry {
         CONTAINER_REGISTRY.register(name) { supplier() }
 
     fun <T : AbstractContainerMenu> menu(name: String, supplier: (Int, Inventory) -> T): RegistryObject<MenuType<T>> =
-        registerMenuType(name) { MenuType(supplier) }
+        registerMenuType(name) {
+            MenuType(
+                supplier,
+                FeatureFlagSet.of() // TODO the frak is this?
+            )
+        }
 }

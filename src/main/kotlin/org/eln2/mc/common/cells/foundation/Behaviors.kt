@@ -1,20 +1,17 @@
 package org.eln2.mc.common.cells.foundation
 
-import mcp.mobius.waila.api.IPluginConfig
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
 import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.Temp
+import org.ageseries.libage.data.Temperature
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.events.schedulePre
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.data.*
-import org.eln2.mc.integration.WailaNode
-import org.eln2.mc.integration.WailaTooltipBuilder
 
 /**
  * *A cell behavior* manages routines ([Subscriber]) that run on the simulation thread.
@@ -142,7 +139,7 @@ data class TemperatureExplosionBehaviorOptions(
      * If the temperature is above this threshold, [increaseSpeed] will be used to increase the explosion score.
      * Otherwise, [decayRate] will be used to decrease it.
      * */
-    val temperatureThreshold: Quantity<Temp> = Quantity(350.0, KELVIN),
+    val temperatureThreshold: Quantity<Temperature> = Quantity(350.0, KELVIN),
 
     /**
      * The score increase speed.
@@ -170,7 +167,7 @@ class TemperatureExplosionBehavior(
     val temperatureAccessor: TemperatureAccessor,
     val options: TemperatureExplosionBehaviorOptions,
     val consumer: ExplosionConsumer,
-) : CellBehavior, WailaNode {
+) : CellBehavior {
     private var score = 0.0
     private var enqueued = false
 
@@ -213,10 +210,6 @@ class TemperatureExplosionBehavior(
                 consumer.explode()
             }
         }
-    }
-
-    override fun appendWaila(builder: WailaTooltipBuilder, config: IPluginConfig?) {
-        builder.text("Explode", score.formattedPercentN())
     }
 
     companion object {

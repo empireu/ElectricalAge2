@@ -21,6 +21,7 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResultHolder
 import net.minecraft.world.entity.player.Player
+import net.minecraft.world.inventory.InventoryMenu
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.ChunkPos
@@ -30,6 +31,7 @@ import net.minecraft.world.phys.HitResult
 import net.minecraftforge.network.NetworkEvent
 import org.ageseries.libage.data.MutableMapPairBiMap
 import org.ageseries.libage.data.MutableSetMapMultiMap
+import org.ageseries.libage.mathematics.*
 import org.ageseries.libage.sim.Material
 import org.eln2.mc.*
 import org.eln2.mc.client.render.*
@@ -54,23 +56,36 @@ import kotlin.math.min
 
 /**
  * Grid connection material.
- * @param spriteLazy Supplier for the texture. It must be in the block atlas.
+ * @param spriteSupplier Supplier for the texture. It must be in the block atlas.
  * @param vertexColor Per-vertex color, applied when rendering.
  * @param physicalMaterial The physical properties of the grid cable.
  * */
-class GridMaterial(private val spriteLazy: Lazy<TextureAtlasSprite>, val vertexColor: RGBFloat, val physicalMaterial: Material) {
+class GridMaterial(private val spriteSupplier: Supplier<TextureAtlasSprite>, val vertexColor: RGBFloat, val physicalMaterial: Material) {
     val id get() = GridMaterials.getId(this)
 
-    val sprite get() = spriteLazy.value
+    val sprite get() = spriteSupplier.get()
 }
 
 object GridMaterials {
+    private val atlas by lazy {
+        Minecraft.getInstance().getTextureAtlas(InventoryMenu.BLOCK_ATLAS)
+    }
+
     private val materials = MutableMapPairBiMap<GridMaterial, ResourceLocation>()
+
+    private fun gridAtlasSprite(name: String) = Supplier {
+        atlas.apply(resource("grid/$name")).requireNotNull {
+            "Did not find $name"
+        }
+    }
+
+    private val NEUTRAL = gridAtlasSprite("neutral_cable")
+    private val COPPER = gridAtlasSprite("copper_cable")
 
     val NEUTRAL_AS_RUBBER_COPPER = register(
         "neutral_rubber",
         GridMaterial(
-            Sprites.NEUTRAL_CABLE,
+            NEUTRAL,
             RGBFloat(0.2f, 0.2f, 0.2f),
             Material.COPPER
         )
@@ -79,7 +94,7 @@ object GridMaterials {
     val NEUTRAL_AS_STEEL_IRON = register(
         "neutral_steel",
         GridMaterial(
-            Sprites.NEUTRAL_CABLE,
+            NEUTRAL,
             RGBFloat(0.9f, 0.9f, 0.9f),
             Material.IRON
         )
@@ -88,13 +103,13 @@ object GridMaterials {
     val COPPER_AS_COPPER_COPPER = register(
         "copper",
         GridMaterial(
-            Sprites.COPPER_CABLE,
+            COPPER,
             RGBFloat(1f, 1f, 1f),
             Material.COPPER
         )
     )
 
-    fun register(id: ResourceLocation, material: GridMaterial) = material.also { materials.add(material, id) }
+    fun register(id: ResourceLocation, material: GridMaterial) = material.also { materials.add(it, id) }
     private fun register(id: String, material: GridMaterial) = register(resource(id), material)
     fun getId(material: GridMaterial) : ResourceLocation = materials.forward[material] ?: error("Failed to get grid material id $material")
     fun getMaterial(resourceLocation: ResourceLocation) : GridMaterial = materials.backward[resourceLocation] ?: error("Failed to get grid material $resourceLocation")
@@ -347,6 +362,7 @@ object GridConnectionManagerServer {
         removeEndpointById(endpointId)
     }
 
+    @JvmStatic
     fun clipsBlock(level: ServerLevel, blockPos: BlockPos) : Boolean = invoke(level) {
         clips(blockPos)
     }
@@ -668,6 +684,7 @@ object GridConnectionManagerClient {
         }
     }
 
+    @JvmStatic
     fun containsRange(pStart: BlockPos, pEnd: BlockPos) : Boolean {
         var result = false
 
@@ -690,6 +707,7 @@ object GridConnectionManagerClient {
         return result
     }
 
+    @JvmStatic
     fun clipsBlock(blockPos: BlockPos) : Boolean {
         var result = false
 
@@ -1124,6 +1142,7 @@ open class GridConnectItem(val material: GridMaterial) : Item(Properties()) {
 }
 
 object GridRenderer {
+    @JvmStatic
     fun submitForRenderSection(
         pRenderChunk: ChunkRenderDispatcher.RenderChunk,
         pChunkBufferBuilderPack: ChunkBufferBuilderPack,
@@ -1138,7 +1157,7 @@ object GridRenderer {
             pRenderChunk.beginLayer(builder)
         }
 
-        val lightReader = LightReader(pRenderChunkRegion)
+        val lightReader = CachingLightReader(pRenderChunkRegion)
         val neighborLights = NeighborLightReader(lightReader)
         val section = SectionPos.of(pRenderChunk.origin)
 

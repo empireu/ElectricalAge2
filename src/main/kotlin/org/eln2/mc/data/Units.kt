@@ -3,16 +3,9 @@
 package org.eln2.mc.data
 
 import org.ageseries.libage.data.*
-import org.ageseries.libage.sim.Scale
-import org.ageseries.libage.sim.thermal.ThermalUnits
-import org.eln2.mc.formatted
-import org.eln2.mc.map
-import org.eln2.mc.mathematics.Dual
-import org.eln2.mc.mathematics.approxEq
-import org.eln2.mc.unmap
 import kotlin.math.abs
-import kotlin.math.max
-import kotlin.math.min
+
+// TODO remove this crap
 
 /**
  * @param unit The unit type (eg, for amps, A)
@@ -109,48 +102,6 @@ fun valueText(value: Double, baseUnit: UnitType): String {
     } + baseUnit.unit
 }
 
-/**
- * Represents a physical quantity, characterised by a [Unit] and a dual number [values].
- * */
-data class QuantityDual<Unit>(val values: Dual) {
-    constructor(quantity: Dual, s: QuantityScale<Unit>) : this(s.scale.unmap(quantity))
-
-    val isReal get() = values.isReal
-
-    /**
-     * Gets the real component of the quantity.
-     * */
-    val value get() = values.value
-
-    fun head(n: Int = 1) = values.head(n)
-    fun tail(n: Int = 1) = values.tail(n)
-
-    /**
-     * Gets the dual value of this quantity.
-     * */
-    operator fun not() = values
-    operator fun plus(b: QuantityDual<Unit>) = QuantityDual<Unit>(this.values + b.values)
-    operator fun plus(b: Quantity<Unit>) = QuantityDual<Unit>(this.values + b.value)
-    operator fun minus(b: QuantityDual<Unit>) = QuantityDual<Unit>(this.values - b.values)
-    operator fun minus(b: Quantity<Unit>) = QuantityDual<Unit>(this.values - b.value)
-    operator fun times(scalar: Dual) = QuantityDual<Unit>(this.values * scalar)
-    operator fun times(scalar: Double) = QuantityDual<Unit>(this.values * scalar)
-    operator fun div(scalar: Dual) = QuantityDual<Unit>(this.values / scalar)
-    operator fun div(scalar: Double) = QuantityDual<Unit>(this.values / scalar)
-    operator fun div(b: QuantityDual<Unit>) = this.values / b.values
-    operator fun div(b: Quantity<Unit>) = this.values / b.value
-    operator fun rangeTo(s: QuantityScale<Unit>) = s.scale.map(values)
-
-    /**
-     * Gets the [n]th value.
-     * */
-    operator fun get(n: Int) = values[n]
-}
-
-fun <U> min(a: Quantity<U>, b: Quantity<U>) = Quantity<U>(min(!a, !b))
-fun <U> max(a: Quantity<U>, b: Quantity<U>) = Quantity<U>(max(!a, !b))
-fun <U> abs(q: Quantity<U>) = Quantity<U>(abs(!q))
-
 fun parseTimeUnitOrNull(unit: String) = when (unit) {
     "days" -> DAYS
     "day" -> DAYS
@@ -182,36 +133,3 @@ fun parseTempUnitOrNull(unit: String) = when (unit) {
 }
 
 fun parseTempUnit(unit: String) = parseTempUnitOrNull(unit) ?: error("Unrecognised temp unit $unit")
-
-interface Power
-val WATT = standardScale<Power>()
-val KILOWATT = +WATT
-
-interface Voltage
-val VOLT = standardScale<Voltage>()
-val KILOVOLT = +VOLT
-val MILLIVOLT = -VOLT
-
-interface Resistance
-val OHM = standardScale<Resistance>()
-val KILOOHM = +OHM
-val MEGAOHM = +KILOOHM
-val GIGAOHM = +MEGAOHM
-val MILLIOHM = -OHM
-
-interface Intensity
-val WATT_PER_M2 = standardScale<Intensity>()
-
-val kWh by ::KW_HOURS
-
-val KG by ::KILOGRAMS
-val eV by ::ELECTRON_VOLT
-val keV by ::KILO_ELECTRON_VOLT
-val MeV by ::MEGA_ELECTRON_VOLT
-val GeV by ::GIGA_ELECTRON_VOLT
-val TeV by ::TERA_ELECTRON_VOLT
-
-val Pa by ::PASCAL
-val Atm by ::ATMOSPHERES
-
-val kW by ::KILOWATT

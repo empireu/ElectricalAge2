@@ -5,64 +5,19 @@ import net.minecraft.world.level.LevelReader
 import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.level.BlockEvent
 import net.minecraftforge.event.level.ChunkWatchEvent
+import net.minecraftforge.event.level.LevelEvent
 import net.minecraftforge.event.server.ServerStoppingEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.server.ServerLifecycleHooks
-import net.minecraftforge.client.event.TextureStitchEvent
-import net.minecraftforge.event.entity.player.PlayerInteractEvent
-import net.minecraftforge.event.level.LevelEvent
 import org.eln2.mc.LOG
-import org.eln2.mc.celestialDeviation
-import org.eln2.mc.celestialPass
 import org.eln2.mc.common.blocks.foundation.GhostLightHackClient
 import org.eln2.mc.common.blocks.foundation.GhostLightServer
 import org.eln2.mc.common.cells.foundation.CellGraphManager
-import org.eln2.mc.common.content.*
+import org.eln2.mc.common.content.GridConnectionManagerClient
+import org.eln2.mc.common.content.GridConnectionManagerServer
 import org.eln2.mc.common.events.schedulePost
 import org.eln2.mc.data.AveragingList
-import org.eln2.mc.mathematics.Vector3d
-
-data class LevelDataStorage(val map: HashMap<Any, Any>) {
-    inline fun <K : Any, reified V : Any> read(key: K): V? {
-        val result = map[key] ?: return null
-        return result as? V ?: error("Invalid stored type $result for ${V::class}")
-    }
-
-    inline fun <K : Any, reified V : Any> remove(key: K): V? {
-        val result = read<K, V>(key)
-
-        if (result != null) {
-            map.remove(key)
-        }
-
-        return result
-    }
-
-    inline fun <K : Any, reified V : Any> store(key: K, value: V): V? {
-        val old = read<K, V>(key)
-        map[key] = value
-        return old
-    }
-
-    inline fun <reified K : Any, reified V : Any> storeNew(key: K, value: V) = require(store(key, value) == null) {
-        "Existing value for ${K::class}"
-    }
-}
-
-private val dataStorage = HashMap<LevelReader, LevelDataStorage>()
-
-fun getLevelDataStorage(level: LevelReader) = dataStorage.getOrPut(level) {
-    require(ServerLifecycleHooks.getCurrentServer().isSameThread) {
-        "Cannot access LDS outside the server thread"
-    }
-
-    require(!level.isClientSide) {
-        "Cannot access LDS outside a server level"
-    }
-
-    LevelDataStorage(HashMap())
-}
 
 @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.FORGE)
 object ForgeEvents {

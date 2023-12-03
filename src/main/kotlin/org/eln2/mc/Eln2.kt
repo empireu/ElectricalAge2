@@ -9,17 +9,16 @@ import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext
 import net.minecraftforge.fml.loading.FMLEnvironment
+import org.ageseries.libage.mathematics.Rotation2d
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import org.eln2.mc.client.render.foundation.FlywheelRegistry
 import org.eln2.mc.client.render.PartialModels
-import org.eln2.mc.client.render.RenderTypes
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.containers.ContainerRegistry
 import org.eln2.mc.common.content.Content
 import org.eln2.mc.common.entities.EntityRegistry
-import org.eln2.mc.common.fluids.FluidRegistry
 import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.parts.PartRegistry
@@ -41,13 +40,11 @@ class Eln2 {
         EntityRegistry.setup(modEventBus)
         ItemRegistry.setup(modEventBus)
         ContainerRegistry.setup(modEventBus)
-        FluidRegistry.setup(modEventBus)
 
         if (Dist.CLIENT == FMLEnvironment.dist) {
             modEventBus.addListener { event: FMLClientSetupEvent ->
                 event.enqueueWork {
                     FlywheelRegistry.initialize()
-                    RenderTypes.initialize()
                     Content.clientWork()
                 }
             }

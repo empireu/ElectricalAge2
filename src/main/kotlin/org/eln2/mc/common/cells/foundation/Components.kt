@@ -1,7 +1,9 @@
 package org.eln2.mc.common.cells.foundation
 
 import org.ageseries.libage.sim.electrical.mna.component.Component
+import org.ageseries.libage.sim.electrical.mna.component.IResistor
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
+import org.ageseries.libage.sim.electrical.mna.component.Term
 import org.eln2.mc.*
 import kotlin.math.abs
 
@@ -19,7 +21,7 @@ class ComponentHolder<T : Component>(private val factory: () -> T) {
             return value!!
         }
 
-    fun connect(pin: Int, component: Any, remotePin: Int, map: ElectricalConnectivityMap) {
+    fun connect(pin: Int, component: Term, remotePin: Int, map: ElectricalConnectivityMap) {
         map.connect(instance, pin, component, remotePin)
     }
 
@@ -27,7 +29,7 @@ class ComponentHolder<T : Component>(private val factory: () -> T) {
         map.connect(instance, pin, componentInfo.component, componentInfo.index)
     }
 
-    fun connectInternal(component: Any, remotePin: Int, map: ElectricalConnectivityMap) {
+    fun connectInternal(component: Term, remotePin: Int, map: ElectricalConnectivityMap) {
         connect(INTERNAL_PIN, component, remotePin, map)
     }
 
@@ -35,7 +37,7 @@ class ComponentHolder<T : Component>(private val factory: () -> T) {
         connectInternal(componentInfo.component, componentInfo.index, map)
     }
 
-    fun connectExternal(component: Any, remotePin: Int, map: ElectricalConnectivityMap) {
+    fun connectExternal(component: Term, remotePin: Int, map: ElectricalConnectivityMap) {
         connect(EXTERNAL_PIN, component, remotePin, map)
     }
 
@@ -47,7 +49,7 @@ class ComponentHolder<T : Component>(private val factory: () -> T) {
         connectExternal(connection.offerComponent(owner), map)
     }
 
-    fun connectPositive(component: Any, remotePin: Int, map: ElectricalConnectivityMap) {
+    fun connectPositive(component: Term, remotePin: Int, map: ElectricalConnectivityMap) {
         connect(POSITIVE_PIN, component, remotePin, map)
     }
 
@@ -59,7 +61,7 @@ class ComponentHolder<T : Component>(private val factory: () -> T) {
         connectPositive(connection.offerComponent(owner), map)
     }
 
-    fun connectNegative(component: Any, remotePin: Int, map: ElectricalConnectivityMap) {
+    fun connectNegative(component: Term, remotePin: Int, map: ElectricalConnectivityMap) {
         connect(NEGATIVE_PIN, component, remotePin, map)
     }
 
@@ -125,7 +127,7 @@ fun<T> ComponentHolder<T>.groundExternal() where T : Component  {
 /**
  * Utility class that holds a collection of resistors to be used as contact points for external components.
  * */
-open class ResistorLikeBundle<T : ResistorLike>(val factory: () -> T) {
+open class ResistorBundle<T>(val factory: () -> T) where T : IResistor, T : Term {
     constructor(resistance: Double, factory: () -> T) : this(factory) {
         this.resistance = resistance
     }
@@ -224,7 +226,7 @@ open class ResistorLikeBundle<T : ResistorLike>(val factory: () -> T) {
     val totalPower get() = resistors.values.sumOf { abs(it.power) }
 }
 
-fun resistorBundle() = ResistorLikeBundle { ResistorLikeResistor() }
-fun resistorVirtualBundle() = ResistorLikeBundle { ResistorVirtual() }
-fun resistorBundle(resistance: Double) = ResistorLikeBundle(resistance) { ResistorLikeResistor() }
-fun resistorVirtualBundle(resistance: Double) = ResistorLikeBundle(resistance) { ResistorVirtual() }
+fun resistorBundle() = ResistorBundle { Resistor() }
+fun resistorVirtualBundle() = ResistorBundle { ResistorVirtual() }
+fun resistorBundle(resistance: Double) = ResistorBundle(resistance) { Resistor() }
+fun resistorVirtualBundle(resistance: Double) = ResistorBundle(resistance) { ResistorVirtual() }

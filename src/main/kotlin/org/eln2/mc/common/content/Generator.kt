@@ -1,15 +1,11 @@
 package org.eln2.mc.common.content
 
-import com.mojang.blaze3d.vertex.PoseStack
 import kotlinx.serialization.Serializable
-import mcp.mobius.waila.api.IPluginConfig
+import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
-import net.minecraft.nbt.CompoundTag
-import net.minecraft.world.level.Level
-import net.minecraft.world.level.block.entity.BlockEntity
-import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.chat.Component
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
@@ -18,22 +14,24 @@ import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
+import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.entity.BlockEntityType
+import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.items.SlotItemHandler
-import org.ageseries.libage.data.CELSIUS
-import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.snzi
 import org.ageseries.libage.sim.thermal.ConnectionParameters
 import org.ageseries.libage.sim.thermal.MassConnection
-import org.ageseries.libage.sim.thermal.Temperature
 import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
-import org.eln2.mc.client.render.foundation.renderTextured
 import org.eln2.mc.common.blocks.foundation.CellBlock
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.cells.foundation.*
@@ -43,10 +41,9 @@ import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.control.PIDController
 import org.eln2.mc.data.*
-import org.eln2.mc.integration.WailaNode
-import org.eln2.mc.integration.WailaTooltipBuilder
+import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.*
-import org.joml.Vector4f
 import kotlin.math.*
 
 class HeatGeneratorFuelMass(var fuelAmount: Double, val energyDensity: Double) {
@@ -80,7 +77,7 @@ object FuelEnergyDensity {
     const val COAL = 24.0 * 1e6
 }
 
-class FuelBurnerBehavior(val cell: Cell, val body: ThermalBody) : CellBehavior, WailaNode {
+class FuelBurnerBehavior(val cell: Cell, val body: ThermalBody) : CellBehavior, ComponentDisplay {
     companion object {
         private const val FUEL = "fuel"
         private const val PID = "pid"
@@ -131,10 +128,10 @@ class FuelBurnerBehavior(val cell: Cell, val body: ThermalBody) : CellBehavior, 
         }
     }
 
-    override fun appendWaila(builder: WailaTooltipBuilder, config: IPluginConfig?) {
-        builder.text("Control Signal x1000", (signal * 1000).formatted(2))
-        builder.text("Thermal Power", valueText(thermalPower, UnitType.WATT))
-        builder.text("Fuel", valueText((fuel?.fuelAmount ?: 0.0) * 1000.0, UnitType.GRAM))
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        builder.debug("Control Signal ${(signal * 1000).formatted(2)}")
+        builder.power(thermalPower)
+        builder.debug("Fuel ${Quantity((fuel?.fuelAmount ?: 0.0), kg).classify()}")
     }
 
     fun saveNbt() = CompoundTag()
@@ -176,7 +173,7 @@ class HeatGeneratorCell(ci: CellCreateInfo, thermalDef: ThermalBodyDef) : Cell(c
     override fun getContactTemperature(other: Locator) = thermalWire.readTemperature()
 }
 
-class HeatGeneratorBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<HeatGeneratorCell>(pos, state, Content.HEAT_GENERATOR_BLOCK_ENTITY.get()), WailaNode {
+class HeatGeneratorBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<HeatGeneratorCell>(pos, state, Content.HEAT_GENERATOR_BLOCK_ENTITY.get()), ComponentDisplay {
     companion object {
         const val FUEL_SLOT = 0
 
@@ -198,7 +195,7 @@ class HeatGeneratorBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEnti
         }
     }
 
-    override fun appendWaila(builder: WailaTooltipBuilder, config: IPluginConfig?) {
+    override fun submitDisplay(builder: ComponentDisplayList) {
         val cell = this.cell
 
         if(cell != null) {
@@ -342,17 +339,8 @@ class HeatGeneratorScreen(menu: HeatGeneratorMenu, playerInventory: Inventory, t
         private val BACKGROUND_UV_SIZE = Vector2I(176, 166)
     }
 
-    override fun renderBg(pPoseStack: PoseStack, pPartialTick: Float, pMouseX: Int, pMouseY: Int) {
-        renderTextured(
-            texture = TEXTURE,
-            poseStack = pPoseStack,
-            blitOffset = 0,
-            color = Vector4f(1f, 1f, 1f, 1f),
-            position = Vector2I(leftPos, topPos),
-            uvSize = BACKGROUND_UV_SIZE,
-            uvPosition = Vector2F.zero(),
-            textureSize = TEX_SIZE
-        )
+    override fun renderBg(pGuiGraphics: GuiGraphics, pPartialTick: Float, pMouseX: Int, pMouseY: Int) {
+        pGuiGraphics.blit(TEXTURE, leftPos, topPos, 0, 0, imageWidth, imageHeight)
     }
 }
 
@@ -453,7 +441,7 @@ class HeatEngineElectricalCell(
     thermalMap: PoleMap,
     b1Def: ThermalBodyDef,
     b2Def: ThermalBodyDef,
-    model: HeatEngineElectricalModel
+    model: HeatEngineElectricalModel,
 ) : Cell(ci) {
     constructor(ci: CellCreateInfo, electricalMap: PoleMap, thermalMap: PoleMap, def: ThermalBodyDef, model: HeatEngineElectricalModel) : this(ci, electricalMap, thermalMap, def, def, model)
 
@@ -499,8 +487,8 @@ class HeatEngineElectricalPart(ci: PartCreateInfo) : CellPart<HeatEngineElectric
     @ClientOnly
     override fun registerPackets(builder: PacketHandlerBuilder) {
         builder.withHandler<SyncPacket> {
-            renderer.updateRightSideTemperature(Temperature(it.b1Temp))
-            renderer.updateLeftSideTemperature(Temperature(it.b2Temp))
+            renderer.updateRightSideTemperature(Quantity(it.b1Temp, KELVIN))
+            renderer.updateLeftSideTemperature(Quantity(it.b2Temp, KELVIN))
         }
     }
 

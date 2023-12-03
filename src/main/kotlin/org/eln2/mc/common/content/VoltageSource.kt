@@ -1,19 +1,16 @@
 package org.eln2.mc.common.content
 
-import mcp.mobius.waila.api.IPluginConfig
-import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.eln2.mc.ElectricalComponentSet
 import org.eln2.mc.ElectricalConnectivityMap
-import org.eln2.mc.add
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.data.withDirectionRulePlanar
-import org.eln2.mc.integration.WailaNode
-import org.eln2.mc.integration.WailaTooltipBuilder
+import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.Base6Direction3dMask
 
 /**
@@ -80,12 +77,12 @@ class VoltageSourceCell(ci: CellCreateInfo) : Cell(ci) {
     }
 }
 
-class VoltageSourcePart(ci: PartCreateInfo) : CellPart<VoltageSourceCell, BasicPartRenderer>(ci, Content.VOLTAGE_SOURCE_CELL.get()), WailaNode {
+class VoltageSourcePart(ci: PartCreateInfo) : CellPart<VoltageSourceCell, BasicPartRenderer>(ci, Content.VOLTAGE_SOURCE_CELL.get()), ComponentDisplay {
     override fun createRenderer() = BasicPartRenderer(this, PartialModels.VOLTAGE_SOURCE)
 
-    override fun appendWaila(builder: WailaTooltipBuilder, config: IPluginConfig?) {
+    override fun submitDisplay(builder: ComponentDisplayList) {
         runIfCell {
-            builder.voltage(cell.voltageSource.potential)
+            builder.potential(cell.voltageSource.potential)
             builder.current(cell.voltageSource.current)
         }
     }

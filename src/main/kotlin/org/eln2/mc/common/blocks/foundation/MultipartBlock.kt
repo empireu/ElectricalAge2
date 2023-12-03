@@ -1,6 +1,5 @@
 package org.eln2.mc.common.blocks.foundation
 
-import mcp.mobius.waila.api.IPluginConfig
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.core.BlockPos
@@ -13,6 +12,7 @@ import net.minecraft.network.protocol.game.ClientGamePacketListener
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.server.level.ServerPlayer
 import net.minecraft.util.RandomSource
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
@@ -25,12 +25,12 @@ import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.BaseEntityBlock
 import net.minecraft.world.level.block.Block
+import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.material.FluidState
-import net.minecraft.world.level.material.Material
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.shapes.*
@@ -41,16 +41,15 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.data.*
-import org.eln2.mc.integration.WailaNode
-import org.eln2.mc.integration.WailaTooltipBuilder
+import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import java.util.*
 import java.util.concurrent.ConcurrentLinkedQueue
-import kotlin.collections.HashSet
 import kotlin.collections.set
 
 class MultipartBlock : BaseEntityBlock(
-    Properties.of(Material.STONE)
+    Properties.copy(Blocks.STONE)
     .noOcclusion()
     .destroyTime(0.2f)) {
 
@@ -149,7 +148,11 @@ class MultipartBlock : BaseEntityBlock(
             }
             else {
                 // Force update packet:
-                chunk.broadcastBlockEntity(level, pos)
+                val list1: List<ServerPlayer> = chunk.playerProvider.getPlayers(
+                    ChunkPos(pos), false
+                )
+
+                chunk.broadcastBlockEntity(list1, level, pos)
                 level.destroyBlock(pos, false)
             }
         }
@@ -315,7 +318,7 @@ class MultipartBlock : BaseEntityBlock(
 class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     BlockEntity(BlockRegistry.MULTIPART_BLOCK_ENTITY.get(), pos, state),
     CellContainer,
-    WailaNode {
+    ComponentDisplay {
 
     // Interesting issue.
     // If we try to add tickers before the block receives the first tick,
@@ -428,11 +431,11 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             error("Invalid orientation $orientation")
         }
 
-        if (entity.level.isClientSide) {
+        if (entity.level().isClientSide) {
             return false
         }
 
-        val level = entity.level as ServerLevel
+        val level = entity.level() as ServerLevel
 
         if (parts.containsKey(face)) {
             return false
@@ -1250,10 +1253,10 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         }
     }
 
-    override fun appendWaila(builder: WailaTooltipBuilder, config: IPluginConfig?) {
+    override fun submitDisplay(builder: ComponentDisplayList) {
         parts.values.forEach { part ->
-            if (part is WailaNode) {
-                part.appendWaila(builder, config)
+            if (part is ComponentDisplay) {
+                part.submitDisplay(builder)
             }
         }
     }

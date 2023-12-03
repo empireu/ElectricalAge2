@@ -24,7 +24,6 @@ import net.minecraft.world.level.gameevent.BlockPositionSource
 import net.minecraft.world.level.gameevent.GameEvent
 import net.minecraft.world.level.gameevent.GameEventListener
 import net.minecraft.world.level.material.FluidState
-import net.minecraft.world.level.material.Material
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.minecraftforge.registries.ForgeRegistries
@@ -147,11 +146,7 @@ class MultiblockManager(
         }
     }
 
-    override fun handleGameEvent(pLevel: ServerLevel, pEventMessage: GameEvent.Message): Boolean {
-        return handleGameEvent(pLevel, pEventMessage.gameEvent(), pEventMessage.context(), pEventMessage.source())
-    }
-
-    private fun handleGameEvent(
+    override fun handleGameEvent(
         pLevel: ServerLevel,
         pGameEvent: GameEvent,
         pContext: GameEvent.Context,
@@ -162,7 +157,7 @@ class MultiblockManager(
             return false
         }
 
-        val targetPosWorld = BlockPos(pPos)
+        val targetPosWorld = BlockPos.containing(pPos)
         if (targetPosWorld == ctrlPosWorld) {
             // Event gets dispatched when the controller itself gets placed, we'll ignore it.
             return false
@@ -271,7 +266,7 @@ interface MultiblockControllerEntity : MultiblockUser {
 }
 
 abstract class MBControllerBlock<BE>(properties: Properties? = null) :
-    HorizontalDirectionalBlock(properties ?: Properties.of(Material.STONE)), EntityBlock
+    HorizontalDirectionalBlock(properties ?: Properties.of()), EntityBlock
     where BE : BlockEntity, BE : MultiblockControllerEntity {
     init {
         registerDefaultState(getStateDefinition().any().setValue(FACING, Direction.EAST))

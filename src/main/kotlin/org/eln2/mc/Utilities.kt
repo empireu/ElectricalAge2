@@ -4,6 +4,8 @@ import com.mojang.blaze3d.systems.RenderSystem
 import cpw.mods.modlauncher.Environment
 import net.minecraft.SharedConstants
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
+import net.minecraft.core.Vec3i
 import net.minecraft.sounds.SoundEvent
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
@@ -24,6 +26,7 @@ import net.minecraftforge.common.ForgeHooks
 import net.minecraftforge.fml.loading.FMLEnvironment
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.*
 import org.eln2.mc.data.CsvLoader
 import org.eln2.mc.mathematics.*
 import org.joml.Vector3f
@@ -316,3 +319,5 @@ inline fun<T> T?.requireNotNull(message: () -> String) : T {
     require(this != null, message)
     return this
 }
+
+fun directionByNormal(normal: Vec3i) = Direction.entries.firstOrNull { it.normal == normal }

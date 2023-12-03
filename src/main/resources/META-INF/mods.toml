@@ -1,5 +1,5 @@
 modLoader="javafml"
-loaderVersion="[43,)"
+loaderVersion="${loader_version_range}"
 license="Code - MIT, Content - CC0 (unless otherwise specified)"
 issueTrackerURL="https://github.com/age-series/ElectricalAge2/issues"
 
@@ -33,7 +33,7 @@ These are some Age Series mods in development!
 [[dependencies.eln2]]
     modId="forge"
     mandatory=true
-    versionRange="[41,)"
+    versionRange="[46,)"
     # An ordering relationship for the dependency - BEFORE or AFTER required if the relationship is not mandatory
     ordering="NONE"
     # Side this dependency is applied on - BOTH, CLIENT or SERVER
@@ -41,7 +41,7 @@ These are some Age Series mods in development!
 [[dependencies.eln2]]
     modId="minecraft"
     mandatory=true
-# This version range declares a minimum of the current minecraft version up to but not including the next major version
-    versionRange="[1.19,1.20)"
+    # This version range declares a minimum of the current minecraft version up to but not including the next major version
+    versionRange="1.20"
     ordering="NONE"
     side="BOTH"

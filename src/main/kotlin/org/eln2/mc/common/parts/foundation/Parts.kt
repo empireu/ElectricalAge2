@@ -30,17 +30,17 @@ import org.eln2.mc.common.network.serverToClient.PartMessage
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.data.*
 import org.eln2.mc.mathematics.Base6Direction3d
-import org.eln2.mc.mathematics.BlockPosInt
 import org.joml.AxisAngle4f
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import java.util.*
 import kotlin.math.PI
 import net.minecraft.world.level.block.Block
+import org.ageseries.libage.mathematics.Vector3d
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.cells.foundation.CellNeighborInfo
 import org.eln2.mc.mathematics.Base6Direction3dMask
-import org.eln2.mc.mathematics.Vector3d
+import org.eln2.mc.mathematics.BlockPosInt
 
 data class PartOrientation(
     val face: Direction,
@@ -87,12 +87,12 @@ data class PartUseInfo(val player: Player, val hand: InteractionHand)
 
 object PartGeometry {
     fun transform(aabb: AABB, faceWorld: Direction): AABB = aabb
-        .transformed(faceWorld.rotation.toJoml())
+        .transformed(faceWorld.rotation)
         .move(faceOffset(aabb.size3d(), faceWorld))
 
     fun transform(aabb: AABB, facing: Direction, faceWorld: Direction): AABB = aabb
         .transformed(facingRotation(facing))
-        .transformed(faceWorld.rotation.toJoml())
+        .transformed(faceWorld.rotation)
         .move(faceOffset(aabb.size3d(), faceWorld))
 
     fun modelBoundingBox(translation: Vector3d, sizeActual: Vector3d, facing: Direction, faceWorld: Direction): AABB {
@@ -864,7 +864,7 @@ private val INCREMENT_FROM_FORWARD_UP = Int2IntOpenHashMap().also { map ->
                 )
 
                 PartGeometry.facingRotation(facingWorld).transform(direction3d)
-                faceWorld.rotation.toJoml().transform(direction3d)
+                faceWorld.rotation.transform(direction3d)
 
                 val result = Direction.getNearest(direction3d.x, direction3d.y, direction3d.z)
 
@@ -1023,7 +1023,7 @@ fun getPartConnection(
                 direction
             }
         } else {
-            val direction = Direction.fromNormal(remotePosWorld + actualFaceWorld - actualPosWorld)
+            val direction = directionByNormal(remotePosWorld + actualFaceWorld - actualPosWorld)
 
             if (direction != null) {
                 // Solution was found, this is wrapped:

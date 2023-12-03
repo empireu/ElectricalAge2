@@ -1,6 +1,5 @@
 package org.eln2.mc.common.blocks.foundation
 
-import mcp.mobius.waila.api.IPluginConfig
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
@@ -19,19 +18,18 @@ import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.level.material.FluidState
-import net.minecraft.world.level.material.Material
 import org.eln2.mc.BiomeEnvironments
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.data.*
-import org.eln2.mc.integration.WailaNode
-import org.eln2.mc.integration.WailaTooltipBuilder
+import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.isHorizontal
 import java.util.*
 
-abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirectionalBlock(p ?: Properties.of(Material.STONE).noOcclusion()), EntityBlock {
+abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirectionalBlock(p ?: Properties.of().noOcclusion()), EntityBlock {
     init {
         @Suppress("LeakingThis")
         registerDefaultState(getStateDefinition().any().setValue(FACING, Direction.NORTH))
@@ -80,7 +78,7 @@ abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirection
 open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetType: BlockEntityType<*>) :
     BlockEntity(targetType, pos, state),
     CellContainer,
-    WailaNode {
+    ComponentDisplay {
 
     open val cellFace = Direction.UP
 
@@ -243,11 +241,11 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
     override val manager: CellGraphManager
         get() = CellGraphManager.getFor(level as ServerLevel)
 
-    override fun appendWaila(builder: WailaTooltipBuilder, config: IPluginConfig?) {
+    override fun submitDisplay(builder: ComponentDisplayList) {
         val cell = this.cell
 
-        if (cell is WailaNode) {
-            cell.appendWaila(builder, config)
+        if (cell is ComponentDisplay) {
+            cell.submitDisplay(builder)
         }
     }
 }

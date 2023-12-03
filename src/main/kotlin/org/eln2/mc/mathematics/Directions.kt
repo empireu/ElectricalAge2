@@ -4,11 +4,12 @@ package org.eln2.mc.mathematics
 
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
 import net.minecraft.core.Direction
+import org.ageseries.libage.data.ImmutableByteArrayView
 import org.eln2.mc.alias
-import org.eln2.mc.data.ImmutableByteArrayView
 import org.eln2.mc.index
 import org.eln2.mc.isHorizontal
 import org.eln2.mc.isVertical
+import org.joml.Matrix4f
 
 enum class Base6Direction3d(val id: Int) {
     Front(0),
@@ -48,13 +49,13 @@ enum class Base6Direction3d(val id: Int) {
         private val FROM_FORWARD_UP = let {
             val map = Int2IntOpenHashMap()
 
-            for (facing in Direction.values()) {
+            for (facing in Direction.entries) {
                 if(facing.isVertical()) {
                     continue
                 }
 
-                for (normal in Direction.values()) {
-                    for (direction in Direction.values()) {
+                for (normal in Direction.entries) {
+                    for (direction in Direction.entries) {
                         val result = when (direction) {
                             normal -> {
                                 Up
@@ -65,7 +66,7 @@ enum class Base6Direction3d(val id: Int) {
                             }
 
                             else -> {
-                                val adjustedFacing = Direction.rotate(com.mojang.math.Matrix4f(normal.rotation), facing)
+                                val adjustedFacing = Direction.rotate(Matrix4f().identity().rotate(normal.rotation), facing)
 
                                 var result = when (direction) {
                                     adjustedFacing -> Front

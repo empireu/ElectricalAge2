@@ -265,6 +265,7 @@ object GhostLightServer {
     /**
      * Gets the desired brightness in [level], at the specified [position].
      * */
+    @JvmStatic
     fun getBlockBrightness(level: Level, position: BlockPos): Int {
         validateUsage()
         return levels[level]?.getDesiredBrightness(position) ?: 0
@@ -522,6 +523,7 @@ object GhostLightHackClient {
     private val chunks = HashMap<ChunkPos, Int2ByteOpenHashMap>()
     private val lock = ReentrantReadWriteLock(false)
 
+    @JvmStatic
     fun getBlockBrightness(blockPos: BlockPos): Int {
         val chunkPos = ChunkPos(blockPos)
         val key = packKey(blockPos)

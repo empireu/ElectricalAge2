@@ -1,10 +1,13 @@
 package org.eln2.mc.common.content
 
-import mcp.mobius.waila.api.IPluginConfig
 import net.minecraft.world.level.Level
 import net.minecraft.core.BlockPos
 import org.ageseries.libage.data.Area
+import org.ageseries.libage.data.Potential
 import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.WATT_PER_M2
+import org.ageseries.libage.mathematics.Vector3d
+import org.ageseries.libage.mathematics.frac
 import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
@@ -12,8 +15,8 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.data.*
-import org.eln2.mc.integration.WailaNode
-import org.eln2.mc.integration.WailaTooltipBuilder
+import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.*
 import kotlin.math.PI
 import kotlin.math.cos
@@ -58,7 +61,7 @@ fun Level.evaluateDiffuseIrradianceFactor(normal: Vector3d, blockPos: BlockPos) 
 val LEVEL_INTENSITY = Quantity(1000.0, WATT_PER_M2) // evaluate from level
 
 data class PhotovoltaicModel(
-    val idealVoltage: Quantity<Voltage>,
+    val idealPotential: Quantity<Potential>,
     val b: Double,
     val p: Double,
     val d: Double,
@@ -86,7 +89,7 @@ class PhotovoltaicBehavior(
             cell.locator.requireLocator<BlockLocator>()
         )
 
-        source.updatePotentialMax(!model.idealVoltage * ((irradiance / model.b).pow(model.p) / model.d))
+        source.updatePotentialMax(!model.idealPotential * ((irradiance / model.b).pow(model.p) / model.d))
         source.updatePowerIdeal(irradiance * !surfaceArea * model.efficiency)
     }
 }
@@ -110,12 +113,12 @@ class PhotovoltaicGeneratorCell(
     }
 }
 
-class PhotovoltaicPanelPart(ci: PartCreateInfo, provider: CellProvider<PhotovoltaicGeneratorCell>) : CellPart<PhotovoltaicGeneratorCell, BasicPartRenderer>(ci, provider), WailaNode {
+class PhotovoltaicPanelPart(ci: PartCreateInfo, provider: CellProvider<PhotovoltaicGeneratorCell>) : CellPart<PhotovoltaicGeneratorCell, BasicPartRenderer>(ci, provider), ComponentDisplay {
     override fun createRenderer() =  BasicPartRenderer(this, PartialModels.SOLAR_PANEL_ONE_BLOCK)
 
-    override fun appendWaila(builder: WailaTooltipBuilder, config: IPluginConfig?) {
+    override fun submitDisplay(builder: ComponentDisplayList) {
         runIfCell {
-            builder.voltage(cell.generator.potentialMaxExact)
+            builder.potential(cell.generator.potentialMaxExact)
             builder.power(cell.generator.sourcePower)
         }
     }

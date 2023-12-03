@@ -1,6 +1,6 @@
 package org.eln2.mc.data
 
-import org.eln2.mc.mathematics.ArrayKDVectorD
+import org.ageseries.libage.mathematics.ArrayKDVectorD
 
 data class CsvNumeric(val headers: ArrayList<String>, val entries: ArrayList<ArrayKDVectorD>)
 

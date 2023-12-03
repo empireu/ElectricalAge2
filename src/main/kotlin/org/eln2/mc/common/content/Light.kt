@@ -5,7 +5,6 @@ import com.jozufozu.flywheel.core.PartialModel
 import com.jozufozu.flywheel.core.materials.model.ModelData
 import com.jozufozu.flywheel.util.Color
 import it.unimi.dsi.fastutil.ints.*
-import mcp.mobius.waila.api.IPluginConfig
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
@@ -22,6 +21,8 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.GlassBlock
 import net.minecraftforge.registries.ForgeRegistries
 import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.Resistance
+import org.ageseries.libage.mathematics.*
 import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.RenderTypeType
@@ -36,8 +37,8 @@ import org.eln2.mc.common.events.*
 import org.eln2.mc.common.network.serverToClient.with
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.data.*
-import org.eln2.mc.integration.WailaNode
-import org.eln2.mc.integration.WailaTooltipBuilder
+import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.*
 import java.nio.ByteBuffer
 import kotlin.math.*
@@ -839,7 +840,7 @@ class LightBulbItem(val model: LightModel) : Item(Properties()) {
 
         val life = getLife(pStack)
 
-        pTooltipComponents.add(Component.literal("Life: ${life.formattedPercentN()}"))
+        pTooltipComponents.add(Component.literal("Life: ${life.formattedPercentNormalized()}"))
     }
 }
 
@@ -1118,7 +1119,7 @@ private fun loadLightFromBulb(instance: LightVolumeInstance, emitter: LightBulbE
     return result
 }
 
-class PoweredLightPart(ci: PartCreateInfo, cellProvider: CellProvider<LightCell>) : CellPart<LightCell, LightFixtureRenderer>(ci, cellProvider), EventListener, WrenchRotatablePart, WailaNode {
+class PoweredLightPart(ci: PartCreateInfo, cellProvider: CellProvider<LightCell>) : CellPart<LightCell, LightFixtureRenderer>(ci, cellProvider), EventListener, WrenchRotatablePart, ComponentDisplay {
     val instance = serverOnlyHolder {
         LightVolumeInstance(
             placement.level as ServerLevel,
@@ -1231,11 +1232,11 @@ class PoweredLightPart(ci: PartCreateInfo, cellProvider: CellProvider<LightCell>
         }
     }
 
-    override fun appendWaila(builder: WailaTooltipBuilder, config: IPluginConfig?) {
+    override fun submitDisplay(builder: ComponentDisplayList) {
         runIfCell {
             builder.current(cell.current)
             builder.power(cell.power)
-            builder.life(cell.life)
+            builder.translatePercent("light_life", cell.life)
         }
     }
 }
@@ -1252,7 +1253,7 @@ class SolarLightPart<R : PartRenderer>(
     normalSupplier: (SolarLightPart<R>) -> Vector3d,
     val rendererSupplier: (SolarLightPart<R>) -> R,
     rendererClass: Class<R>,
-) : Part<R>(ci), TickablePart, WailaNode {
+) : Part<R>(ci), TickablePart, ComponentDisplay {
     val volume = model.volumeProvider.getVolume(placement.createLocator())
     val normal = normalSupplier(this)
 
@@ -1369,9 +1370,9 @@ class SolarLightPart<R : PartRenderer>(
         }
     }
 
-    override fun appendWaila(builder: WailaTooltipBuilder, config: IPluginConfig?) {
-        builder.charge(energy)
-        builder.text("Irradiance", placement.level.evaluateDiffuseIrradianceFactor(normal).formattedPercentN())
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        builder.translatePercent("solar_light_charge", energy)
+        builder.debug("Irradiance ${placement.level.evaluateDiffuseIrradianceFactor(normal).formattedPercentNormalized()}")
     }
 
     override fun onRemoved() {

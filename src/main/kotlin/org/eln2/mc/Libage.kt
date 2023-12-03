@@ -1,21 +1,14 @@
 package org.eln2.mc
 
-import mcp.mobius.waila.api.IPluginConfig
-import org.ageseries.libage.data.DisjointSet
-import org.ageseries.libage.data.MutableSetMapMultiMap
-import org.ageseries.libage.data.biMapOf
+import org.ageseries.libage.data.*
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.component.*
-import org.ageseries.libage.sim.thermal.Temperature
 import org.ageseries.libage.sim.thermal.ThermalMass
 import org.eln2.mc.common.cells.foundation.ComponentHolder
 import org.eln2.mc.common.cells.foundation.NEGATIVE_PIN
 import org.eln2.mc.common.cells.foundation.POSITIVE_PIN
 import org.eln2.mc.data.HashDataTable
-import org.eln2.mc.data.MutableMapHistogram
-import org.eln2.mc.integration.WailaNode
-import org.eln2.mc.integration.WailaTooltipBuilder
 
 const val LARGE_RESISTANCE = 1e9
 
@@ -62,17 +55,18 @@ fun Material.hash(): Int {
     return result
 }
 
-class ThermalBody(var thermal: ThermalMass, var area: Double) : WailaNode {
-    var temperature: Temperature
-        get() = thermal.temperature
-        set(value) {
-            thermal.temperature = value
-        }
+// FIXME FIXME FIXME
 
-    var temperatureKelvin: Double
-        get() = temperature.kelvin
+// Remove this or do something, it is no longer useful
+
+// FIXME FIXME FIXME
+
+class ThermalBody(var thermal: ThermalMass, var area: Double) {
+    var temperature: Quantity<Temperature> by thermal::temperature
+
+    var temperatureKelvin get() = !temperature
         set(value) {
-            thermal.temperature = Temperature(value)
+            temperature = Quantity(value, KELVIN)
         }
 
     var energy: Double
@@ -81,9 +75,6 @@ class ThermalBody(var thermal: ThermalMass, var area: Double) : WailaNode {
             thermal.energy = value
         }
 
-    override fun appendWaila(builder: WailaTooltipBuilder, config: IPluginConfig?) {
-        thermal.appendBody(builder, config)
-    }
 
     companion object {
         fun createDefault(): ThermalBody {
@@ -100,16 +91,13 @@ class ThermalBody(var thermal: ThermalMass, var area: Double) : WailaNode {
     }
 }
 
-interface ImaginaryComponent
-
-// marker interface for libage components to replace Any
+interface ImaginaryComponent : Term
 
 interface ElectricalComponentSet {
     fun add(component: Component) : Boolean
     fun add(component: ImaginaryComponent) : Boolean
-
     fun <T> add(holder: ComponentHolder<T>) : Boolean where T : Component
-    fun add(component: Any) : Boolean
+    fun add(component: Term) : Boolean
 }
 
 interface ElectricalConnectivityMap {
@@ -117,7 +105,7 @@ interface ElectricalConnectivityMap {
     fun connect(a: Component, aIdx: Int, b: ImaginaryComponent, bIdx: Int)
     fun connect(a: ImaginaryComponent, aIdx: Int, b: Component, bIdx: Int)
     fun connect(a: Component, aIdx: Int, b: Component, bIdx: Int)
-    fun connect(a: Any, aIdx: Int, b: Any, bIdx: Int)
+    fun connect(a: Term, aIdx: Int, b: Term, bIdx: Int)
 }
 
 class LineCompiler(private val circuitBuilder: CircuitBuilder) {
@@ -207,7 +195,12 @@ class LineCompiler(private val circuitBuilder: CircuitBuilder) {
         }
     }
 
-    private fun getCandidate(visited: HashSet<ResistorVirtual>, start: ResistorVirtual, pins: Pair<DisjointSet, DisjointSet>, nodes: MutableMapHistogram<DisjointSet>) : ResistorVirtual? {
+    private fun getCandidate(
+        visited: HashSet<ResistorVirtual>,
+        start: ResistorVirtual,
+        pins: Pair<DisjointSet, DisjointSet>,
+        nodes: MultiSet<DisjointSet>
+    ) : ResistorVirtual? {
         var hasRealP = false
         var hasRealN = false
 
@@ -281,7 +274,7 @@ class LineCompiler(private val circuitBuilder: CircuitBuilder) {
      * - Zero or multiple inner parts (inners) - these are virtual resistors that have 2 connections to other virtual resistors. These do not materialize into real Line resistors later on.
      * */
     private fun getLineGraphs() : List<LineGraph> {
-        val nodes = MutableMapHistogram<DisjointSet>()
+        val nodes = MutableMapMultiSet<DisjointSet>()
 
         lineResistors.values.forEach { (p, n) ->
             nodes += p.representative
@@ -485,15 +478,15 @@ class LineCompiler(private val circuitBuilder: CircuitBuilder) {
 }
 
 class CircuitBuilder(val circuit: Circuit): ElectricalComponentSet, ElectricalConnectivityMap {
-    val components = HashSet<Any>()
+    val components = HashSet<Term>()
 
     private val lineCompiler = LineCompiler(this)
     private var realized = false
 
     private fun checkRealized() = require(!realized) { "Tried to continue building after realized" }
-    private fun checkContains(component: Any) = require(components.contains(component)) { "Tried to use component $component which was not added" }
+    private fun checkContains(component: Term) = require(components.contains(component)) { "Tried to use component $component which was not added" }
 
-    private fun checkPair(a: Any, b: Any) {
+    private fun checkPair(a: Term, b: Term) {
         if(a === b) {
             error("Cannot connect $a to itself")
         }
@@ -532,7 +525,7 @@ class CircuitBuilder(val circuit: Circuit): ElectricalComponentSet, ElectricalCo
         }
     }
 
-    override fun add(component: Any) : Boolean {
+    override fun add(component: Term) : Boolean {
         checkRealized()
 
         return when (component) {
@@ -592,7 +585,7 @@ class CircuitBuilder(val circuit: Circuit): ElectricalComponentSet, ElectricalCo
         }
     }
 
-    override fun connect(a: Any, aIdx: Int, b: Any, bIdx: Int) {
+    override fun connect(a: Term, aIdx: Int, b: Term, bIdx: Int) {
         checkRealized()
 
         if(a is Component && b is Component) {
@@ -627,17 +620,11 @@ class CircuitBuilder(val circuit: Circuit): ElectricalComponentSet, ElectricalCo
     }
 }
 
-interface ResistorLike : IPower {
-    var resistance: Double
-    val potential: Double
-    val current: Double
-}
-
 /**
  * Resistor-like [ImaginaryComponent] that may or may not materialize into a real [Line] component.
  * These resistors are grouped into lines, which brings enormous optimizations to circuits that have large sections of virtual resistors in series.
  * */
-class ResistorVirtual : ResistorLike, ImaginaryComponent {
+class ResistorVirtual : IResistor, ImaginaryComponent {
     var part: Line.Part? = null
         private set
 
@@ -669,6 +656,3 @@ class ResistorVirtual : ResistorLike, ImaginaryComponent {
 
     override fun toString() = "Virtual[L=${part?.line?.hashCode()}, P=${part?.hashCode()}, R=$resistance]"
 }
-
-// Libage when?
-class ResistorLikeResistor : Resistor(), ResistorLike

@@ -1,9 +1,9 @@
 package org.eln2.mc.client.render.foundation
 
 import com.jozufozu.flywheel.util.Color
-import org.eln2.mc.mathematics.Vector3d
-import org.eln2.mc.mathematics.Vector4d
-import org.eln2.mc.mathematics.lerp
+import org.ageseries.libage.mathematics.Vector3d
+import org.ageseries.libage.mathematics.Vector4d
+import org.ageseries.libage.mathematics.lerp
 
 fun colorF(r: Float, g: Float, b: Float, a: Float): Color {
     return Color(r, g, b, a)

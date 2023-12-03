@@ -6,15 +6,17 @@ import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap
 import net.minecraft.client.renderer.LevelRenderer
 import net.minecraft.core.BlockPos
 import net.minecraft.world.level.BlockAndTintGetter
+import org.ageseries.libage.mathematics.Vector3d
+import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.avg
 import org.eln2.mc.mathematics.*
-import org.eln2.mc.noop
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 inline fun unpackBlockLight(value: Int) = value and 0xFF
 inline fun unpackSkyLight(value: Int) = value shr 16 and 0xFF
 
-class LightReader(val level: BlockAndTintGetter) {
+class CachingLightReader(val level: BlockAndTintGetter) {
     val cache = Long2IntOpenHashMap()
 
     inline fun getLightColor(blockPos: BlockPos): Int = cache.computeIfAbsent(blockPos.asLong()) {
@@ -22,7 +24,7 @@ class LightReader(val level: BlockAndTintGetter) {
     }
 }
 
-class NeighborLightReader(val reader: LightReader) {
+class NeighborLightReader(val reader: CachingLightReader) {
     val values = IntArray(12)
 
     private var lastBlockPos: BlockPos? = null
@@ -57,11 +59,6 @@ class NeighborLightReader(val reader: LightReader) {
     }
 }
 
-private inline fun normalizeLightComponentSqr(value: Int): Double {
-    val t = value.toDouble() / 255.0
-    return t * t
-}
-
 fun getDiffuseLight(layer: Int, neighborValues: NeighborLightReader, normal: Vector3d): Double {
     var light = 0.0
     var normSqr = 0.0
@@ -69,31 +66,31 @@ fun getDiffuseLight(layer: Int, neighborValues: NeighborLightReader, normal: Vec
     if (normal.x > 0) {
         val n5 = neighborValues.get(layer, 5)
         light += normal.x * n5
-        normSqr += normalizeLightComponentSqr(n5)
+        normSqr += (n5 * n5) / 65025.0
     } else {
         val n4 = neighborValues.get(layer, 4)
         light -= normal.x * n4
-        normSqr += normalizeLightComponentSqr(n4)
+        normSqr += (n4 * n4) / 65025.0
     }
 
     if (normal.y > 0) {
         val n1 = neighborValues.get(layer, 1)
         light += normal.y * n1
-        normSqr += normalizeLightComponentSqr(n1)
+        normSqr += (n1 * n1) / 65025.0
     } else {
         val n0 = neighborValues.get(layer, 0)
         light -= normal.y * n0
-        normSqr += normalizeLightComponentSqr(n0)
+        normSqr += (n0 * n0) / 65025.0
     }
 
     if (normal.z > 0) {
         val n3 = neighborValues.get(layer, 3)
         light += normal.z * n3
-        normSqr += normalizeLightComponentSqr(n3)
+        normSqr += (n3 * n3) / 65025.0
     } else {
         val n2 = neighborValues.get(layer, 2)
         light -= normal.z * n2
-        normSqr += normalizeLightComponentSqr(n2)
+        normSqr += (n2 * n2) / 65025.0
     }
 
     if(light.approxEq(0.0) || normSqr.approxEq(0.0)) {
