@@ -9,7 +9,6 @@
         "MixinRebuildTask",
         "MixinRenderRegionCache"
     ],
-    "client": [
-    ],
+    "client": [],
     "minVersion": "0.8"
 }

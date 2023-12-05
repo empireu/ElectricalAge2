@@ -149,6 +149,18 @@ repositories {
         name = 'Kotlin for Forge'
         url = 'https://thedarkcolour.github.io/KotlinForForge/'
     }
+
+    maven {
+        url "https://maven.blamejared.com"
+    }
+
+    maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+        content {
+            includeGroup "maven.modrinth"
+        }
+    }
 }
 
 configurations {
@@ -192,6 +204,9 @@ dependencies {
     implementation fg.deobf("curse.maven:jade-324717:4801177")
     implementation fg.deobf("com.jozufozu.flywheel:flywheel-forge-1.20.1:0.6.10-7")
 
+    // TODO Not tested outside of devenv
+    implementation /* compileOnly */ fg.deobf("org.embeddedt:embeddium-1.20.1:0.2.11-git.23aedfb+mc1.20.1")
+
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
 
@@ -218,7 +233,9 @@ shadowJar {
 
 mixin {
     add sourceSets.main, "eln2.refmap.json"
+
     config "eln2.mixins.json"
+    config "eln2.mixins.sodium.json"
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.
