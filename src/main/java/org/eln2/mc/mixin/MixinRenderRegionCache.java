@@ -23,7 +23,7 @@ public abstract class MixinRenderRegionCache {
         RenderRegionCache.ChunkInfo[][] pArrInfo,
         CallbackInfoReturnable<Boolean> cir
     ) {
-        if(GridConnectionManagerClient.containsRange(pStart, pEnd)) {
+        if(GridConnectionManagerClient.containsRangeVisual(pStart, pEnd)) {
             cir.setReturnValue(false);
         }
     }

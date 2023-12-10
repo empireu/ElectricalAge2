@@ -1,9 +1,6 @@
 package org.eln2.mc.mixin.sodium;
 
-import com.jozufozu.flywheel.util.Color;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import me.jellysquid.mods.sodium.client.model.quad.properties.ModelQuadFacing;
-import me.jellysquid.mods.sodium.client.render.chunk.compile.buffers.ChunkModelBuilder;
 import me.jellysquid.mods.sodium.client.render.chunk.terrain.material.DefaultMaterials;
 import me.jellysquid.mods.sodium.client.render.chunk.vertex.builder.ChunkMeshBufferBuilder;
 import me.jellysquid.mods.sodium.client.render.chunk.vertex.format.ChunkVertexEncoder;
@@ -37,7 +34,7 @@ public abstract class MixinEmbeddiumCompat {
 
     @Unique
     private static void eln2GridRenderer$handleEvent(ChunkMeshEvent event) {
-        if(GridConnectionManagerClient.containsRange(event.getSectionOrigin())) {
+        if(GridConnectionManagerClient.containsRangeVisual(event.getSectionOrigin())) {
             event.addMeshAppender(MixinEmbeddiumCompat::eln2GridRenderer$append);
         }
     }

@@ -1,80 +1,155 @@
 package org.eln2.mc
 
-import org.ageseries.libage.data.DisjointSet
-import org.ageseries.libage.data.MultiSet
-import org.ageseries.libage.data.MutableMapMultiSet
 import org.ageseries.libage.data.MutableSetMapMultiMap
 import org.ageseries.libage.sim.electrical.mna.Circuit
-import org.ageseries.libage.sim.electrical.mna.component.Component
-import org.ageseries.libage.sim.electrical.mna.component.IResistor
-import org.ageseries.libage.sim.electrical.mna.component.Line
-import org.ageseries.libage.sim.electrical.mna.component.Term
+import org.ageseries.libage.sim.electrical.mna.component.*
 import org.eln2.mc.common.cells.foundation.ComponentHolder
 import org.eln2.mc.common.cells.foundation.NEGATIVE_PIN
 import org.eln2.mc.common.cells.foundation.POSITIVE_PIN
+import org.eln2.mc.data.SuperDisjointSet
 
 const val LARGE_RESISTANCE = 1e9
 
-interface ImaginaryComponent : Term
+/**
+ * Represents a virtual electrical component, where the term "virtual" denotes the possibility that it may or may not manifest as an actual [Component] incorporated into the circuit.
+ * */
+interface VirtualComponent : Term
 
+/**
+ * Represents a set of electrical components. The components are either real [Component]s or [VirtualComponent]s.
+ * */
 interface ElectricalComponentSet {
+    /**
+     * Adds the real component to the underlying circuit.
+     * @return True if the component was added. Otherwise, false (the component was already added).
+     * */
     fun add(component: Component) : Boolean
-    fun add(component: ImaginaryComponent) : Boolean
+
+    /**
+     * Adds the virtual component to the underlying compiler.
+     * @return True if the component was added. Otherwise, false (the component was already added).
+     * */
+    fun add(component: VirtualComponent) : Boolean
+
+    // To remove
     fun <T> add(holder: ComponentHolder<T>) : Boolean where T : Component
+
+    /**
+     * Adds the [Term] ([Component] or [VirtualComponent]) to the underlying data structure.
+     * @return True if the term was added. Otherwise, false (the term was already added).
+     * */
     fun add(component: Term) : Boolean
 }
 
+/**
+ * Represent a set of edges (connections) between [Component]s and other [Component]s, [VirtualComponent]s and other [VirtualComponent]s and [Component]s and [VirtualComponent]s.
+ * */
 interface ElectricalConnectivityMap {
-    fun connect(a: ImaginaryComponent, aIdx: Int, b: ImaginaryComponent, bIdx: Int)
-    fun connect(a: Component, aIdx: Int, b: ImaginaryComponent, bIdx: Int)
-    fun connect(a: ImaginaryComponent, aIdx: Int, b: Component, bIdx: Int)
+    /**
+     * Connects the *[aIdx]ᵗʰ* pin of virtual component [a] to the *[bIdx]ᵗʰ* pin of virtual component [b].
+     * This connection shall be denoted as *virtual-to-virtual* connection.
+     * */
+    fun connect(a: VirtualComponent, aIdx: Int, b: VirtualComponent, bIdx: Int)
+
+    /**
+     * Connects the *[aIdx]ᵗʰ* pin of real component [a] to the *[bIdx]ᵗʰ* pin of virtual component [b].
+     * This connection shall be denoted as *virtual-to-real* connection.
+     * */
+    fun connect(a: Component, aIdx: Int, b: VirtualComponent, bIdx: Int)
+
+    /**
+     * Connects the *[aIdx]ᵗʰ* pin of virtual component [a] to the *[bIdx]ᵗʰ* pin of real component [b].
+     * This connection is denoted as a *virtual-to-real* connection.
+     * */
+    fun connect(a: VirtualComponent, aIdx: Int, b: Component, bIdx: Int)
+
+    /**
+     * Connects the *[aIdx]ᵗʰ* pin of real component [a] to the *[bIdx]ᵗʰ* pin of real component [b].
+     * This connection isn't indicated differently in the documentation.
+     * The final outcome is the same as using **libage's** connection API, except that validation is performed (take notes, Grissess, don't just return if the component is not added, **throw an exception!**)
+     * */
     fun connect(a: Component, aIdx: Int, b: Component, bIdx: Int)
+
+    /**
+     * Connects the *[aIdx]ᵗʰ* pin of underlying component of [a] to the *[bIdx]ᵗʰ* pin of underlying component of [b].
+     * This is equivalent to calling the other connection methods if the concrete types of [a] and [b] were known.
+     * */
     fun connect(a: Term, aIdx: Int, b: Term, bIdx: Int)
 }
 
 class LineCompiler(private val circuitBuilder: CircuitBuilder) {
-    private val lineResistors = HashMap<ResistorVirtual, Pair<DisjointSet, DisjointSet>>()
-    private val lineToRealConnections = MutableSetMapMultiMap<ResistorVirtual, RealLineConnectionInfo>()
-    private val lineToLineConnections = MutableSetMapMultiMap<ResistorVirtual, LineLineConnectionInfo>()
+    private class Pin : SuperDisjointSet<Pin>() {
+        private var hasReals = false
 
-    fun addResistor(resistorVirtual: ResistorVirtual) : Boolean {
-        if(lineResistors.containsKey(resistorVirtual)) {
+        /**
+         * Indicates veracity when considering whether this pin functions as a "break-point," signifying its shared status with real components or its failure to precisely connect two components.
+         * We shall consider all virtual resistors that share this pin to be **outer**s.
+         * */
+        val isBreakPoint: Boolean get() {
+            val representative = representative
+
+            return representative.hasReals || representative.size != 2
+        }
+
+        fun markReal() {
+            representative.hasReals = true
+        }
+
+        override fun unite(other: Pin) {
+            val hasReals = this.representative.hasReals || other.representative.hasReals
+
+            super.unite(other)
+
+            if(hasReals) {
+                markReal()
+            }
+        }
+    }
+
+    private val virtualResistors = HashMap<VirtualResistor, Pair<Pin, Pin>>()
+    private val virtualToRealConnections = MutableSetMapMultiMap<VirtualResistor, VirtualToRealInfo>()
+    private val virtualToVirtualConnections = MutableSetMapMultiMap<VirtualResistor, VirtualToVirtualInfo>()
+
+    fun addResistor(resistor: VirtualResistor) : Boolean {
+        if(virtualResistors.containsKey(resistor)) {
             return false
         }
 
-        lineResistors.putUnique(resistorVirtual, Pair(DisjointSet(), DisjointSet()))
+        virtualResistors.putUnique(resistor, Pair(Pin(), Pin()))
 
         return true
     }
 
-    fun connect(a: Component, aIdx: Int, b: ResistorVirtual, bIdx: Int) {
-        if(bIdx != POSITIVE_PIN && bIdx != NEGATIVE_PIN) {
-            error("Invalid line pin $bIdx")
-        }
-
-        check(lineResistors.contains(b))
-
-        lineToRealConnections[b].add(RealLineConnectionInfo(a, aIdx, bIdx))
-
-        if(lineToLineConnections[b].any { it.localPin == bIdx }) {
-            error("Fused line and real connection on same pin is not allowed")
+    private fun validatePinIndex(pin: Int) {
+        require(pin == POSITIVE_PIN || pin == NEGATIVE_PIN) {
+            "Pin $pin is not valid"
         }
     }
 
-    fun connect(a: ResistorVirtual, aIdx: Int, b: ResistorVirtual, bIdx: Int) {
-        val (aP, aN) = lineResistors[a].requireNotNull { "$a is not added" }
-        val (bP, bN) = lineResistors[b].requireNotNull { "$b is not added" }
+    fun connect(a: Component, aIdx: Int, b: VirtualResistor, bIdx: Int) {
+        validatePinIndex(bIdx)
 
-        if(lineToRealConnections[a].any { it.localPin == aIdx }) {
-            error("Fused line and real connection on same pin is not allowed")
+        val (p, n) = virtualResistors[b].requireNotNull { "$b is not added" }
+
+        virtualToRealConnections[b].add(VirtualToRealInfo(a, aIdx, bIdx))
+
+        if(bIdx == POSITIVE_PIN) {
+            p.markReal()
         }
-
-        if(lineToRealConnections[b].any { it.localPin == bIdx }) {
-            error("Fused line and real connection on same pin is not allowed")
+        else {
+            n.markReal()
         }
+    }
 
-        lineToLineConnections[a].add(LineLineConnectionInfo(b, bIdx, aIdx))
-        lineToLineConnections[b].add(LineLineConnectionInfo(a, aIdx, bIdx))
+    fun connect(a: VirtualResistor, aIdx: Int, b: VirtualResistor, bIdx: Int) {
+        validatePinIndex(aIdx)
+        validatePinIndex(bIdx)
+
+        val (aP, aN) = virtualResistors[a].requireNotNull { "$a is not added" }
+        val (bP, bN) = virtualResistors[b].requireNotNull { "$b is not added" }
+
+        virtualToVirtualConnections[a].add(VirtualToVirtualInfo(b, bIdx, aIdx))
+        virtualToVirtualConnections[b].add(VirtualToVirtualInfo(a, aIdx, bIdx))
 
         if(aIdx == POSITIVE_PIN && bIdx == POSITIVE_PIN) {
             aP.unite(bP)
@@ -90,7 +165,48 @@ class LineCompiler(private val circuitBuilder: CircuitBuilder) {
         }
     }
 
-    private fun closeLine(start: ResistorVirtual, queue: ArrayDeque<ResistorVirtual>, visited: HashSet<ResistorVirtual>, outers: HashSet<ResistorVirtual>, graph: LineGraph) {
+    private fun getCandidate(visited: HashSet<VirtualResistor>, start: VirtualResistor, pins: Pair<Pin, Pin>) : VirtualResistor? {
+        val pBreak = pins.first.isBreakPoint
+        val nBreak = pins.second.isBreakPoint
+
+        if(pBreak && nBreak) {
+            // We conclude that there are no candidates.
+            return null
+        }
+
+        // If both pins are valid, then [start] is playing hide and seek as a valid endpoint,
+        // and we've accidentally stumbled into the comedy section of the algorithm.
+        require(pBreak || nBreak) {
+            "Catastrophic blunder: both candidates are valid"
+        }
+
+        val connections = virtualToVirtualConnections[start]
+
+        val candidate = if(!pBreak) {
+            connections.firstOrNull { it.localPin == POSITIVE_PIN }?.remote
+        }
+        else {
+            connections.firstOrNull { it.localPin == NEGATIVE_PIN }?.remote
+        }
+
+        require(candidate != null) {
+            "Candidate expected"
+        }
+
+        require(!visited.contains(candidate)) {
+            "Candidate is already visited"
+        }
+
+        return candidate
+    }
+
+    /**
+     * Closes the line. The next resistor (could be inner or endpoint) is expected to be present in [queue].
+     *
+     * The algorithm employs a basic graph search. It terminates early under a specific condition:
+     * If a resistor from the [outers] set is encountered, it signifies the discovery of the other endpoint, concluding the search.
+     * */
+    private fun closeLine(queue: ArrayDeque<VirtualResistor>, visited: HashSet<VirtualResistor>, outers: HashSet<VirtualResistor>, graph: LineGraph) {
         while (queue.isNotEmpty()) {
             val front = queue.removeFirst()
 
@@ -105,148 +221,55 @@ class LineCompiler(private val circuitBuilder: CircuitBuilder) {
 
             graph.addInner(front)
 
-            val lineConnections = lineToLineConnections[front]
+            val lineConnections = virtualToVirtualConnections[front]
 
             require(lineConnections.size == 2) {
                 "Invalid inner"
             }
 
+            // Validation:
+
+            require(!virtualToRealConnections.contains(front))
+
             lineConnections.forEach {
-                if(it.remote != start) {
-                    queue.add(it.remote)
-                }
+                queue.add(it.remote)
             }
         }
-    }
-
-    private fun getCandidate(
-        visited: HashSet<ResistorVirtual>,
-        start: ResistorVirtual,
-        pins: Pair<DisjointSet, DisjointSet>,
-        nodes: MultiSet<DisjointSet>
-    ) : ResistorVirtual? {
-        var hasRealP = false
-        var hasRealN = false
-
-        val realConnections = lineToRealConnections.map[start]
-
-        if(realConnections != null) {
-            for(connection in realConnections) {
-                when(connection.localPin) {
-                    POSITIVE_PIN -> {
-                        hasRealP = true
-                    }
-                    NEGATIVE_PIN -> {
-                        hasRealN = true
-                    }
-                }
-
-                if(hasRealP && hasRealN) {
-                    break
-                }
-            }
-        }
-
-        var nImagP = 0
-        var nImagN = 0
-        var candidateP: ResistorVirtual? = null
-        var candidateN: ResistorVirtual? = null
-
-        val lineConnections = lineToLineConnections.map[start]
-
-        if(lineConnections != null) {
-            for (connection in lineConnections) {
-                when(connection.localPin) {
-                    POSITIVE_PIN -> {
-                        nImagP++
-                        candidateP = connection.remote
-                    }
-                    NEGATIVE_PIN -> {
-                        nImagN++
-                        candidateN = connection.remote
-                    }
-                }
-            }
-        }
-        else {
-            return null
-        }
-
-        if(hasRealP || nImagP != 1 || visited.contains(candidateP!!) || nodes[pins.first.representative] != 2) {
-            candidateP = null
-        }
-
-        if(hasRealN || nImagN != 1 || visited.contains(candidateN!!) || nodes[pins.second.representative] != 2) {
-            candidateN = null
-        }
-
-        require(candidateP == null || candidateN == null) {
-            "Invalid exterior"
-        }
-
-        if(candidateP != null) {
-            return candidateP
-        }
-
-        return candidateN
     }
 
     /**
-     * Gets all line graphs.
-     * A line graph has:
-     * - One or two end points (outers) - these are virtual resistors that will "become the two ends" of the real Line resistor, because they have connections to other non-line resistors, and/or are the first/last resistors in a line (they have 0 or 1 connections)
-     * - Zero or multiple inner parts (inners) - these are virtual resistors that have 2 connections to other virtual resistors. These do not materialize into real Line resistors later on.
+     * Retrieves all line graphs. A line graph consists of:
+     *  - One or two end points (outers): Virtual resistors that serve as the two ends of the actual [Line] resistor. They connect to other non-line components and may be the first or last resistors in a line (with 0 or 1 connections).
+     *  - Zero or multiple inner parts (inners): Virtual resistors with two connections to other virtual resistors in their line graph. These do not transform into real [Line] resistors later on.
      * */
     private fun getLineGraphs() : List<LineGraph> {
-        val nodes = MutableMapMultiSet<DisjointSet>()
+        val outers = HashSet<VirtualResistor>()
 
-        lineResistors.values.forEach { (p, n) ->
-            nodes += p.representative
-            nodes += n.representative
-        }
-
-        val outers = HashSet<ResistorVirtual>()
-
-        lineResistors.forEach { (resistor, pins) ->
-            val isOuter = lineToRealConnections.contains(resistor) ||
-                nodes[pins.first.representative] > 2 || nodes[pins.second.representative] > 2 ||
-                let {
-                    val lineConnections = lineToLineConnections[resistor]
-
-                    if(lineConnections.size != 2) {
-                        true
-                    }
-                    else {
-                        val iterator = lineConnections.iterator()
-                        val a = iterator.next()
-                        val b = iterator.next()
-                        a.localPin == b.localPin
-                    }
-                }
-
-            if(isOuter) {
+        virtualResistors.forEach { (resistor, pins) ->
+            if(pins.first.isBreakPoint || pins.second.isBreakPoint) {
                 outers.add(resistor)
             }
         }
 
         val results = ArrayList<LineGraph>()
-        val visited = HashSet<ResistorVirtual>()
-        val queue = ArrayDeque<ResistorVirtual>()
+        val visited = HashSet<VirtualResistor>()
+        val queue = ArrayDeque<VirtualResistor>()
 
         while (outers.isNotEmpty()) {
             val graph = LineGraph()
 
             val start = outers.removeFirst()
-            val pins = lineResistors[start]!!
+            val pins = virtualResistors[start]!!
 
             graph.addOuter(start)
-            check(visited.add(start))
+            visited.addUnique(start)
 
-            val candidate = getCandidate(visited, start, pins, nodes)
+            val candidate = getCandidate(visited, start, pins)
 
             if(candidate != null) {
+                graph.anchor = candidate
                 queue.add(candidate)
-                closeLine(start, queue, visited, outers, graph)
+                closeLine(queue, visited, outers, graph)
                 queue.clear()
             }
 
@@ -256,18 +279,27 @@ class LineCompiler(private val circuitBuilder: CircuitBuilder) {
         return results
     }
 
+    /**
+     * Compiles all lines.
+     * - Line graphs are retrieved by [getLineGraphs]
+     * - Connections between endpoints are resolved as connections between the [Line]s that were generated
+     * - Connections between endpoints and real components are also resolved in the same manner
+     * */
     fun compile() {
-        if(lineResistors.isEmpty()) {
+        if(virtualResistors.isEmpty()) {
             return
         }
 
         val graphs = getLineGraphs()
 
         /**
-         * Maps an endpoint virtual resistor (R1) to its graph's connectivity map, at that endpoint.
-         * The connectivity map maps a remote virtual resistor (R2) that is connected via [lineToLineConnections] to R1 to the pin of the real Line component (owned by R1's line graph) assigned for the real connection between R1's line and R2's line.
+         * Keys represent endpoint virtual resistors (denoted as K).
+         * The values consist of maps ("connectivityMap") corresponding to remote virtual resistors (all connected to K, referred to as R).
+         * Each map indicates the [Line] K is part of (for quick retrieval), and the specific pin of that [Line] where R is to connect with K.
          * */
-        val connections = HashMap<ResistorVirtual, HashMap<ResistorVirtual, Pair<Line, Int>>>()
+        val connections = HashMap<VirtualResistor, HashMap<VirtualResistor, Pair<Line, Int>>>()
+
+        // An arbitrary pin number:
         var pin = 0
 
         graphs.forEach { graph ->
@@ -275,84 +307,96 @@ class LineCompiler(private val circuitBuilder: CircuitBuilder) {
 
             circuitBuilder.add(line)
 
-            graph.forEach { resistor ->
-                resistor.setHandle(line.add(line.size))
+            graph.forEachOrdered { resistor ->
+                val part = line.add(line.size);
+
+                resistor.setHandle(part)
             }
 
             if(graph.size == 1) {
-                // Single resistor. The imaginary pins will be the same as the pins used by the real pins:
+                // Single resistor. The virtual pins will be the same as the pins used by the real pins:
                 require(graph.outers.size == 1)
                 require(graph.inners.size == 0)
 
                 val outer = graph.outers.first()
 
-                lineToRealConnections[outer].forEach { (remote, remoteIdx, localIdx) ->
+                virtualToRealConnections[outer].forEach { (remote, remoteIdx, localIdx) ->
                     circuitBuilder.connect(line, localIdx, remote, remoteIdx)
                 }
 
-                val connectivityMap = HashMap<ResistorVirtual, Pair<Line, Int>>(2)
-                connections.putUnique(outer, connectivityMap)
+                val connectivityMap = HashMap<VirtualResistor, Pair<Line, Int>>(2)
 
                 // There may be some imaginary resistors connected - they just didn't fit the line graph invariant, so they are not included in this graph
-                lineToLineConnections[outer].forEach { (remote, remoteIdx, localIdx) ->
+                virtualToVirtualConnections[outer].forEach { (remote, remoteIdx, localIdx) ->
                     connectivityMap.putUnique(remote, Pair(line, localIdx))
                 }
+
+                connections.putUnique(outer, connectivityMap)
             }
             else {
-                // A line of resistors. We will assign arbitrary pins to the (at most) 2 outers:
+                // A line of resistors. We will assign the pins arbitrarily.
+
+                check(graph.outers.size == 2) { "Expected 2 outers " }
+
                 graph.outers.forEach { outer ->
-                    val connectivityMap = HashMap<ResistorVirtual, Pair<Line, Int>>(2)
-                    connections.putUnique(outer, connectivityMap)
+                    val connectivityMap = HashMap<VirtualResistor, Pair<Line, Int>>(2)
 
                     val arbitraryPin = (pin++) % 2
 
                     // This time, the outer resistor's real connections will all receive the same arbitrary pin of the Line.
-                    lineToRealConnections[outer].forEach { (remote, remoteIdx, localIdx) ->
+                    virtualToRealConnections[outer].forEach { (remote, remoteIdx, localIdx) ->
                         circuitBuilder.connect(line, arbitraryPin, remote, remoteIdx)
                     }
 
                     // Other imaginary connections will use the arbitrary pin to connect to our Line:
-                    lineToLineConnections[outer].forEach { (remote, remoteIdx, localIdx) ->
+                    virtualToVirtualConnections[outer].forEach { (remote, remoteIdx, localIdx) ->
                         connectivityMap.putUnique(remote, Pair(line, arbitraryPin))
                     }
+
+                    connections.putUnique(outer, connectivityMap)
                 }
             }
         }
 
-        // Resolve imaginary connections.
-        // These will materialize into connections between real Line components.
-        // These Line components are all generated here; they result from clusters of virtual resistors that need multiple Line resistors to be represented.
-        // We do have some residual lineToLineConnections. Those are from the connections between elements from the same lines (inner to inner and inner to end point).
-        // Only some of those will be between the end points (outers) of different lines, and those are the ones we need to tackle.
+        /**
+         * Resolve virtual connections, which will become real connections between Line components.
+         * These Line components are generated here; they stem from connected components of virtual resistors that require multiple real [Line] resistors for representation.
+         * There are some remaining line-to-line connections, originating from connections between elements within the same lines (inner to inner and inner to end point).
+         * We only need to address the subset of these connections occurring between the endpoints (outers) of different lines.
+         * */
         graphs.forEach { graph ->
             graph.outers.forEach { outer ->
-                for (connection in lineToLineConnections[outer]) {
+                for (connection in virtualToVirtualConnections[outer]) {
                     if(graph.contains(connection.remote)) {
                         // Residual connection to a component in the graph
                         // Those will not materialize into real connections.
                         continue
                     }
 
-                    // This will contain the pin of the remote line that we need to connect to:
+                    // This will contain the pin of the remote line that we need to connect to.
+                    // *[connection.remote] is K
                     val remoteEdgeMap = connections[connection.remote].requireNotNull {
                         "Did not have remote edge map"
                     }
 
+                    // *[outer] is R
                     val (remoteLine, remotePin) = remoteEdgeMap[outer].requireNotNull {
-                        "Did not have remote imaginary edge"
+                        "Did not have remote virtual edge"
                     }
 
                     // This will contain the pin of our line that we need to connect with the remote line.
+                    // *[outer] is K
                     val localEdgeMap = connections[outer].requireNotNull {
                         "Did not have local edge map"
                     }
 
+                    // *[connection.remote] is R
                     val (localLine, localPin) = localEdgeMap[connection.remote].requireNotNull {
                         "Did not have local imaginary edge"
                     }
 
-                    check(graph.line == localLine)
-                    check(localLine != remoteLine)
+                    check(graph.line == localLine) { "Line was not expected one " }
+                    check(localLine != remoteLine) { "Local line is remote line" }
 
                     // Finally, this real connection will connect together the two Line components:
                     circuitBuilder.connect(localLine, localPin, remoteLine, remotePin)
@@ -361,68 +405,121 @@ class LineCompiler(private val circuitBuilder: CircuitBuilder) {
         }
     }
 
-    private data class RealLineConnectionInfo(
-        val remote: Component,
-        val remotePin: Int,
-        val localPin: Int
-    )
+    /**
+     * @param remote The other real [Component].
+     * @param remotePin The pin of [remote] where the connection will occur.
+     * @param localPin The pin of the virtual resistor to connect to [remote]'s [remotePin].
+     * */
+    private data class VirtualToRealInfo(val remote: Component, val remotePin: Int, val localPin: Int)
 
-    private data class LineLineConnectionInfo(
-        val remote: ResistorVirtual,
-        val remotePin: Int,
-        val localPin: Int
-    )
+    /**
+     * @param remote The other virtual resistor.
+     * @param remotePin The pin of [remote] where the connection will occur.
+     * @param localPin The pin of the virtual resistor to connect to [remote]'s [remotePin].
+     * */
+    private data class VirtualToVirtualInfo(val remote: VirtualResistor, val remotePin: Int, val localPin: Int)
 
     private class LineGraph {
         val line = Line()
 
         val size get() = inners.size + outers.size
 
-        fun contains(resistor: ResistorVirtual) = outers.contains(resistor) || inners.contains(resistor)
+        fun contains(resistor: VirtualResistor) = outers.contains(resistor) || inners.contains(resistor)
 
-        inline fun forEach(action: (ResistorVirtual) -> Unit) {
-            inners.forEach(action)
-            outers.forEach(action)
+        /**
+         * Iterates over the resistors in order:
+         *  1. First outer
+         *  2. Anchor and the rest of the inners
+         *  3. Second outer
+         * */
+        inline fun forEachOrdered(action: (VirtualResistor) -> Unit) {
+            if(outers.size == 1) {
+                // Single graph with one resistor
+                check(inners.isEmpty()) { "Outers size 1 had inners" }
+                check(anchor == null) { "Outers size 1 had anchor" }
+                action(outers.first())
+            }
+            else {
+                check(outers.size == 2) { "Outers size is ${outers.size}" }
+
+                val iterator = outers.iterator()
+
+                action(iterator.next())
+
+                if(inners.isNotEmpty()) {
+                    check(inners.first() == anchor) {
+                        "Expected first inner to be the anchor"
+                    }
+
+                    inners.forEach(action)
+                }
+
+                action(iterator.next())
+            }
         }
 
-        /**
-         * Gets all inner resistors in the cluster
-         * */
-        val inners = HashSet<ResistorVirtual>()
+        // Linked hash set - order is preserved:
 
         /**
-         * Gets all end point resistors in the cluster
+         * Gets all inner resistors in the cluster.
          * */
-        val outers = HashSet<ResistorVirtual>()
+        val inners = LinkedHashSet<VirtualResistor>()
 
-        fun addInner(remote: ResistorVirtual) = inners.addUnique(remote)
+        /**
+         * Gets all end point resistors in the graph.
+         * */
+        val outers = LinkedHashSet<VirtualResistor>()
 
-        fun addOuter(remote: ResistorVirtual) = outers.addUnique(remote)
+        /**
+         * Gets or sets the anchor - the resistor candidate that started the graph and is connected to the first outer.
+         * */
+        var anchor: VirtualResistor? = null
+
+        fun addInner(remote: VirtualResistor) = inners.addUnique(remote)
+
+        fun addOuter(remote: VirtualResistor) = outers.addUnique(remote)
     }
 }
 
+/**
+ * [CircuitBuilder]:
+ * This is a wrapper around [Circuit], designed to streamline the process of incorporating [VirtualComponent]s and establishing connections through these virtual entities. The ultimate outcome is the creation and integration of tangible (real) [Component]s into the [Circuit].
+ * Notably, it implements both [ElectricalComponentSet] and [ElectricalConnectivityMap].
+ *
+ * This [CircuitBuilder] is structured for use in multiple stages:
+ *  - Component Acquisition:
+ *      - During this phase, [Component]s and [VirtualComponent]s are added, typically by traversing game objects and providing them this as [ElectricalComponentSet].
+ *  - Connection Mapping:
+ *      - In this stage, connections between [Component]s, [VirtualComponent]s are established. This is also achieved by traversing game objects and presenting this as [ElectricalConnectivityMap].
+ *  - Compilation:
+ *      - The final step involves calling [realizeVirtual], which generates [Component]s from the existing [VirtualComponent]s and establishes the necessary connections.
+ * */
 class CircuitBuilder(val circuit: Circuit): ElectricalComponentSet, ElectricalConnectivityMap {
-    val components = HashSet<Term>()
-
+    private val terms = HashSet<Term>()
     private val lineCompiler = LineCompiler(this)
     private var realized = false
 
-    private fun checkRealized() = require(!realized) { "Tried to continue building after realized" }
-    private fun checkContains(component: Term) = require(components.contains(component)) { "Tried to use component $component which was not added" }
+    private fun validateUsage() = require(!realized) {
+        "Tried to continue building after realized"
+    }
+
+    private fun requireIsAdded(component: Term) = require(terms.contains(component)) {
+        "Tried to use component $component which was not added"
+    }
 
     private fun checkPair(a: Term, b: Term) {
         if(a === b) {
             error("Cannot connect $a to itself")
         }
 
-        checkContains(a)
-        checkContains(b)
+        requireIsAdded(a)
+        requireIsAdded(b)
     }
 
     override fun add(component: Component) : Boolean {
-        checkRealized()
+        validateUsage()
 
-        if(!components.add(component)) {
+        if(!terms.add(component)) {
             return false
         }
 
@@ -431,15 +528,15 @@ class CircuitBuilder(val circuit: Circuit): ElectricalComponentSet, ElectricalCo
         return true
     }
 
-    override fun add(component: ImaginaryComponent) : Boolean {
-        checkRealized()
+    override fun add(component: VirtualComponent) : Boolean {
+        validateUsage()
 
-        if(!components.add(component)) {
+        if(!terms.add(component)) {
             return false
         }
 
         when (component) {
-            is ResistorVirtual -> {
+            is VirtualResistor -> {
                 return lineCompiler.addResistor(component)
             }
 
@@ -450,18 +547,14 @@ class CircuitBuilder(val circuit: Circuit): ElectricalComponentSet, ElectricalCo
     }
 
     override fun add(component: Term) : Boolean {
-        checkRealized()
+        validateUsage()
 
         return when (component) {
             is Component -> {
                 add(component)
             }
 
-            is ComponentHolder<*> -> {
-                add(component.instance)
-            }
-
-            is ImaginaryComponent -> {
+            is VirtualComponent -> {
                 add(component)
             }
 
@@ -474,17 +567,16 @@ class CircuitBuilder(val circuit: Circuit): ElectricalComponentSet, ElectricalCo
     override fun <T> add(holder: ComponentHolder<T>) : Boolean where T : Component = add(holder.instance)
 
     override fun connect(a: Component, aIdx: Int, b: Component, bIdx: Int) {
-        checkRealized()
+        validateUsage()
         checkPair(a, b)
-        require(circuit.components.contains(a) && circuit.components.contains(b)) { "A, B not all in circuit" }
         a.connect(aIdx, b, bIdx)
     }
 
-    override fun connect(a: Component, aIdx: Int, b: ImaginaryComponent, bIdx: Int) {
-        checkRealized()
+    override fun connect(a: Component, aIdx: Int, b: VirtualComponent, bIdx: Int) {
+        validateUsage()
         checkPair(a, b)
 
-        if(b is ResistorVirtual) {
+        if(b is VirtualResistor) {
             lineCompiler.connect(a, aIdx, b, bIdx)
         }
         else {
@@ -492,16 +584,16 @@ class CircuitBuilder(val circuit: Circuit): ElectricalComponentSet, ElectricalCo
         }
     }
 
-    override fun connect(a: ImaginaryComponent, aIdx: Int, b: Component, bIdx: Int) {
-        checkRealized()
+    override fun connect(a: VirtualComponent, aIdx: Int, b: Component, bIdx: Int) {
+        validateUsage()
         connect(b, bIdx, a, aIdx)
     }
 
-    override fun connect(a: ImaginaryComponent, aIdx: Int, b: ImaginaryComponent, bIdx: Int) {
-        checkRealized()
+    override fun connect(a: VirtualComponent, aIdx: Int, b: VirtualComponent, bIdx: Int) {
+        validateUsage()
         checkPair(a, b)
 
-        if(a is ResistorVirtual && b is ResistorVirtual) {
+        if(a is VirtualResistor && b is VirtualResistor) {
             lineCompiler.connect(a, aIdx, b, bIdx)
         }
         else {
@@ -510,24 +602,24 @@ class CircuitBuilder(val circuit: Circuit): ElectricalComponentSet, ElectricalCo
     }
 
     override fun connect(a: Term, aIdx: Int, b: Term, bIdx: Int) {
-        checkRealized()
+        validateUsage()
 
         if(a is Component && b is Component) {
             connect(a, aIdx, b, bIdx)
         }
-        else if(a is Component && b is ImaginaryComponent) {
+        else if(a is Component && b is VirtualComponent) {
             connect(a, aIdx, b, bIdx)
         }
-        else if(a is ComponentHolder<*> && b is ImaginaryComponent) {
+        else if(a is ComponentHolder<*> && b is VirtualComponent) {
             connect(a.instance, aIdx, b, bIdx)
         }
-        else if(a is ImaginaryComponent && b is Component) {
+        else if(a is VirtualComponent && b is Component) {
             connect(a, aIdx, b, bIdx)
         }
-        else if(a is ImaginaryComponent && b is ComponentHolder<*>) {
+        else if(a is VirtualComponent && b is ComponentHolder<*>) {
             connect(a, aIdx, b.instance, bIdx)
         }
-        else if(a is ImaginaryComponent && b is ImaginaryComponent) {
+        else if(a is VirtualComponent && b is VirtualComponent) {
             connect(a, aIdx, b, bIdx)
         }
         else {
@@ -535,20 +627,23 @@ class CircuitBuilder(val circuit: Circuit): ElectricalComponentSet, ElectricalCo
         }
     }
 
+    /**
+     * Realizes all virtual components and connections, thereby finalizing [Circuit].
+     * */
     fun realizeVirtual() {
-        checkRealized()
-
+        validateUsage()
         lineCompiler.compile()
-
         realized = true
     }
 }
 
 /**
- * Resistor-like [ImaginaryComponent] that may or may not materialize into a real [Line] component.
- * These resistors are grouped into lines, which brings enormous optimizations to circuits that have large sections of virtual resistors in series.
+ * A [VirtualComponent] resembling a resistor, may or may not become an actual [Line] component.
+ * These are organized into lines, providing significant optimizations for circuits with extensive
+ * sections of virtual resistors in series, such as a straight wire or a power grid.
+ * **Polarity is not guaranteed to match that of a [Resistor]. Maybe fix?**
  * */
-class ResistorVirtual : IResistor, ImaginaryComponent {
+class VirtualResistor : IResistor, VirtualComponent {
     var part: Line.Part? = null
         private set
 

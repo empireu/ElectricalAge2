@@ -10,6 +10,7 @@ import net.minecraft.client.renderer.chunk.RenderChunkRegion
 import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.client.renderer.texture.TextureAtlasSprite
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
 import net.minecraft.core.SectionPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
@@ -27,6 +28,7 @@ import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.HitResult
 import net.minecraftforge.network.NetworkEvent
 import org.ageseries.libage.data.MutableMapPairBiMap
@@ -342,10 +344,6 @@ object GridConnectionManagerServer {
         return action.invoke(data)
     }
 
-    fun createHandle(level: ServerLevel, connection: GridConnectionCatenary) : GridConnectionHandle = invoke(level) {
-        createHandle(connection)
-    }
-
     fun playerWatch(level: ServerLevel, player: ServerPlayer, chunkPos: ChunkPos) = invoke(level) {
         watch(player, chunkPos)
     }
@@ -415,7 +413,7 @@ object GridConnectionManagerServer {
             return false
         }
 
-        fun createHandle(connection: GridConnectionCatenary) : GridConnectionHandle {
+        private fun createHandle(connection: GridConnectionCatenary) : GridConnectionHandle {
             val handle = Handle(connection)
 
             handles.add(handle)
@@ -627,10 +625,17 @@ object GridConnectionManagerClient {
             val v0 = sprite.v0.toDouble()
             val v1 = sprite.v1.toDouble()
 
-            val quadsBySection = HashMap<SectionPos, ConnectionSectionSlice>()
+            val slicesBySection = HashMap<SectionPos, ConnectionSectionSlice>()
+
+            fun getSlice(blockPos: BlockPos) : ConnectionSectionSlice {
+                val section = SectionPos.of(blockPos)
+
+                return slicesBySection.computeIfAbsent(section) {
+                    ConnectionSectionSlice(connection.material, section)
+                }
+            }
 
             quads.forEach { quad ->
-                val quadPos = quad.primitiveCenter.floorBlockPos()
                 val processedQuad = Quad()
 
                 quad.vertices.forEachIndexed { vertexIndex, vertex ->
@@ -645,19 +650,20 @@ object GridConnectionManagerClient {
                     processedQuad.uvs[vertexIndex] = Pair(u.toFloat(), v.toFloat())
                 }
 
-                val sectionPos = SectionPos.of(quadPos)
-
-                val sectionData = quadsBySection.computeIfAbsent(sectionPos) {
-                    ConnectionSectionSlice(connection.material, sectionPos)
-                }
+                val sectionData = getSlice(quad.principal)
 
                 sectionData.quads.add(processedQuad)
-                sectionData.blocks.add(quadPos)
             }
 
-            quadsBySection.forEach { (sectionPos, sectionSlice) ->
+            connection.wireCatenary.blocks.forEach { block ->
+                val slice = getSlice(block)
+
+                slice.blocks.add(block)
+            }
+
+            slicesBySection.forEach { (sectionPos, sectionSlice) ->
                 slicesByConnection[connection.id].add(sectionSlice)
-                slicesBySection[sectionPos].add(sectionSlice)
+                this.slicesBySection[sectionPos].add(sectionSlice)
                 sections.add(sectionPos)
             }
         }
@@ -678,6 +684,9 @@ object GridConnectionManagerClient {
         }
     }
     // Kind of waiting on this lock when parallel meshing, what to do?
+    // Maybe add a concurrent object pool (to libage), get a temporary array list,
+    // fill it on the lock, and then exit and call user with
+    // the stuff in the array list and then return to pool
     @JvmStatic
     fun read(sectionPos: SectionPos, user: (GridMaterial, Quad) -> Unit) {
         lock.read {
@@ -690,10 +699,20 @@ object GridConnectionManagerClient {
     }
 
     @JvmStatic
-    fun containsRange(sectionPos: SectionPos) = slicesBySection.contains(sectionPos)
+    fun containsRangeVisual(sectionPos: SectionPos) : Boolean {
+        var result = false
+
+        lock.read {
+            val slices = slicesBySection.map[sectionPos]
+
+            result = slices != null && slices.any { it.isVisual }
+        }
+
+        return result
+    }
 
     @JvmStatic
-    fun containsRange(pStart: BlockPos, pEnd: BlockPos) : Boolean {
+    fun containsRangeVisual(pStart: BlockPos, pEnd: BlockPos) : Boolean {
         var result = false
 
         val i = SectionPos.blockToSectionCoord(pStart.x)
@@ -703,9 +722,12 @@ object GridConnectionManagerClient {
         val m = SectionPos.blockToSectionCoord(pEnd.y)
         val n = SectionPos.blockToSectionCoord(pEnd.z)
         // ~8 sections per range
+
         lock.read {
             for(sectionPos in SectionPos.betweenClosedStream(i, j, k, l, m, n)) {
-                if(slicesBySection.contains(sectionPos)) {
+                val slices = slicesBySection.map[sectionPos]
+
+                if(slices != null && slices.any { it.isVisual }) {
                     result = true
                     break
                 }
@@ -742,6 +764,8 @@ object GridConnectionManagerClient {
     private class ConnectionSectionSlice(val material: GridMaterial, val sectionPos: SectionPos) {
         val quads = ArrayList<Quad>()
         val blocks = HashSet<BlockPos>()
+
+        val isVisual get() = quads.isNotEmpty()
     }
 }
 
@@ -750,15 +774,14 @@ object GridConnectionManagerClient {
  * @param tapResistance The resistance of the connection between the grid and the neighboring objects.
  * */
 class GridElectricalObject(cell: GridCell, val tapResistance: Double) : ElectricalObject<GridCell>(cell) {
-    private val gridResistors = HashMap<GridElectricalObject, ResistorVirtual>()
-    // FIXME one tap resistor -> fused line and real connections on same pin
-    // Maybe lift this limitation in circuitBuilder?
+    private val gridResistors = HashMap<GridElectricalObject, VirtualResistor>()
+
     val totalCurrent get() = gridResistors.values.sumOf { abs(it.current) }
     val totalPower get() = gridResistors.values.sumOf { abs(it.power) }
 
     // Reset on clear, isPresent -> Is connected
     private val tapResistor = UnsafeLazyResettable {
-        val result = ResistorVirtual()
+        val result = VirtualResistor()
         result.resistance = tapResistance
         result
     }
@@ -773,7 +796,7 @@ class GridElectricalObject(cell: GridCell, val tapResistance: Double) : Electric
                 // Part of grid:
                 ElectricalComponentInfo(
                     gridResistors.computeIfAbsent(neighbour) {
-                        val result = ResistorVirtual()
+                        val result = VirtualResistor()
                         result.resistance = contact / 2.0
                         result
                     },
@@ -1333,10 +1356,50 @@ class Cable3d(
     /**
      * Gets a set of blocks that are intersected by the spline.
      * */
-    val blocks = spline.intersectGrid3d(0.0, 1.0, 0.1, 1024 * 1024)
-        .requireNotNull { "Failed to intersect blocks $this" }
-        .map { it.toBlockPos() }
-        .toHashSet()
+    val blocks = run {
+        // Intersect with model:
+
+        val blocks = HashSet<BlockPos>()
+        val radiusSqr = radius * radius
+
+        require(
+            spline.intersectGrid3d(0.0, 1.0, 0.1, 1024 * 1024) {
+                val ordinate = spline.evaluate(it)
+                val block = ordinate.floorBlockPos()
+
+                if(blocks.add(block)) {
+                    for(i in -1..1) {
+                        val x = block.x + i
+
+                        for(j in -1..1) {
+                            val y = block.y + j
+
+                            for (k in -1..1) {
+                                if(i == 0 && j == 0 && k == 0) {
+                                    continue
+                                }
+
+                                val z = block.z + k
+
+                                val dx = ordinate.x - ordinate.x.coerceIn(x.toDouble(), x + 1.0)
+                                val dy = ordinate.y - ordinate.y.coerceIn(y.toDouble(), y + 1.0)
+                                val dz = ordinate.z - ordinate.z.coerceIn(z.toDouble(), z + 1.0)
+
+                                val distanceSqr = dx * dx + dy * dy + dz * dz
+
+                                if(distanceSqr < radiusSqr) {
+                                    blocks.add(BlockPos(x, y, z))
+                                }
+                            }
+                        }
+                    }
+                }
+
+            }
+        ) { "Failed to intersect $this" }
+
+        blocks
+    }
 
     /**
      * Gets a multimap of blocks intersected by the spline, and the chunks they belong to.
@@ -1397,7 +1460,8 @@ class Cable3d(
 
             val ptvCenter = avg(ptvVerticesPositions)
             val ptvParam = avg(ptvVerticesParametric.map { it.t })
-            val ptvNormal = (ptvCenter - spline.evaluate(ptvParam)).normalized()
+            val ordinate = spline.evaluate(ptvParam)
+            val ptvNormal = (ptvCenter - ordinate).normalized()
             val ptvNormalWinding = polygralScan(ptvCenter, ptvVerticesPositions).normalized()
 
             val ptv = if((ptvNormal o ptvNormalWinding) > 0.0) baseQuad
@@ -1413,7 +1477,7 @@ class Cable3d(
 
             val vertices = listOf(vert(ptv.a), vert(ptv.b), vert(ptv.c), vert(ptv.d))
 
-            quads.add(CatenaryCableQuad(ptvCenter, vertices))
+            quads.add(CatenaryCableQuad(ordinate.floorBlockPos(), vertices))
         }
 
         return CatenaryCableMesh(extrusion, quads)
@@ -1459,5 +1523,5 @@ class Cable3d(
 }
 
 data class CatenaryCableMesh(val extrusion: SketchExtrusion, val quads: ArrayList<CatenaryCableQuad>)
-data class CatenaryCableQuad(val primitiveCenter: Vector3d, val vertices: List<CatenaryCableVertex>)
+data class CatenaryCableQuad(val principal: BlockPos, val vertices: List<CatenaryCableVertex>)
 data class CatenaryCableVertex(val position: Vector3d, val normal: Vector3d, val param: Double)

@@ -59,7 +59,7 @@ class ResistorObject(cell: Cell, val poleMap: PoleMap) : ElectricalObject<Cell>(
 }
 
 class ResistorObjectVirtual(cell: Cell, val poleMap: PoleMap) : ElectricalObject<Cell>(cell) {
-    private val resistor = ResistorVirtual()
+    private val resistor = VirtualResistor()
 
     var resistanceExact by resistor::resistance
 
@@ -77,9 +77,9 @@ class ResistorObjectVirtual(cell: Cell, val poleMap: PoleMap) : ElectricalObject
         return true
     }
 
-    val current get() = Double.NaN
+    val current get() = resistor.current
     val power get() = resistor.power
-    val potential get() = Double.NaN
+    val potential get() = resistor.potential
 
     override val maxConnections = 2
 

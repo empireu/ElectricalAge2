@@ -227,6 +227,6 @@ open class ResistorBundle<T>(val factory: () -> T) where T : IResistor, T : Term
 }
 
 fun resistorBundle() = ResistorBundle { Resistor() }
-fun resistorVirtualBundle() = ResistorBundle { ResistorVirtual() }
+fun resistorVirtualBundle() = ResistorBundle { VirtualResistor() }
 fun resistorBundle(resistance: Double) = ResistorBundle(resistance) { Resistor() }
-fun resistorVirtualBundle(resistance: Double) = ResistorBundle(resistance) { ResistorVirtual() }
+fun resistorVirtualBundle(resistance: Double) = ResistorBundle(resistance) { VirtualResistor() }
