@@ -1,7 +1,9 @@
 package org.eln2.mc.common.cells.foundation
 
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.approxEq
-import org.eln2.mc.ThermalBody
+import org.ageseries.libage.sim.ThermalMass
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.KClass
 import kotlin.reflect.full.*
@@ -55,7 +57,7 @@ object Replicators {
 }
 
 fun interface InternalTemperatureConsumer {
-    fun onInternalTemperatureChanges(dirty: List<ThermalBody>)
+    fun onInternalTemperatureChanges(dirty: List<ThermalMass>)
 }
 
 fun interface ExternalTemperatureConsumer {
@@ -68,27 +70,27 @@ fun interface ExternalTemperatureConsumer {
  * @param consumer The consumer for the changes.
  * */
 class InternalTemperatureReplicatorBehavior(
-    val bodies: List<ThermalBody>,
+    val bodies: List<ThermalMass>,
     val consumer: InternalTemperatureConsumer
 ) : ReplicatorBehavior {
     var scanInterval: Int = 5
     var scanPhase: SubscriberPhase = SubscriberPhase.Pre
     var toleranceK: Double = 1.0
 
-    private val tracked = bodies.associateWith { it.temperatureKelvin }.toMutableMap()
+    private val tracked = bodies.associateWith { !it.temperature }.toMutableMap()
 
     override fun subscribe(subscribers: SubscriberCollection) {
         subscribers.addSubscriber(SubscriberOptions(scanInterval, scanPhase), this::scan)
     }
 
     private fun scan(dt: Double, phase: SubscriberPhase) {
-        val dirty = bodies.filter { !tracked[it]!!.approxEq(it.temperatureKelvin, toleranceK) }
+        val dirty = bodies.filter { !tracked[it]!!.approxEq(!it.temperature, toleranceK) }
 
         if (dirty.isEmpty()) {
             return
         }
 
-        dirty.forEach { tracked[it] = it.temperatureKelvin }
+        dirty.forEach { tracked[it] = !it.temperature }
 
         consumer.onInternalTemperatureChanges(dirty)
     }
@@ -125,9 +127,9 @@ class ExternalTemperatureReplicatorBehavior(
 
             val previousTemperature = tracked[remoteThermalObject]
 
-            if(previousTemperature == null || !previousTemperature.approxEq(actualTemperature, tolerance)) {
-                tracked[remoteThermalObject] = actualTemperature
-                dirty[remoteThermalObject] = actualTemperature
+            if(previousTemperature == null || !previousTemperature.approxEq(!actualTemperature, tolerance)) {
+                tracked[remoteThermalObject] = !actualTemperature
+                dirty[remoteThermalObject] = !actualTemperature
             }
         }
 
@@ -143,7 +145,7 @@ class ExternalTemperatureReplicatorBehavior(
     }
 
     companion object {
-        inline fun scanNeighbors(cell: Cell, crossinline consumer: (ThermalObject<*>, Double) -> Unit) {
+        inline fun scanNeighbors(cell: Cell, crossinline consumer: (ThermalObject<*>, Quantity<Temperature>) -> Unit) {
             for(remoteCell in cell.connections) {
                 val remoteThermalObject = remoteCell.objects.getObjectOrNull(SimulationObjectType.Thermal) as? ThermalObject
                     ?: continue

@@ -9,12 +9,13 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.level.saveddata.SavedData
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.ageseries.libage.data.MutableMapPairBiMap
+import org.ageseries.libage.sim.Simulator
 import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
-import org.ageseries.libage.sim.thermal.Simulator
 import org.eln2.mc.*
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.SimulationObjectType.*
+import org.eln2.mc.common.content.PhotovoltaicModel
 import org.eln2.mc.data.*
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
@@ -23,6 +24,7 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
+import java.util.function.Supplier
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 
@@ -101,42 +103,6 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
 
     val ruleSet by lazy {
         LocatorRelationRuleSet()
-    }
-
-    protected val services by lazy {
-        ServiceCollection()
-            .withSingleton { this }
-            .withSingleton(this.javaClass) { this }
-            .withSingleton { locator }
-            .also { registerServices(it) }
-    }
-
-    /**
-     * Called when the [services] is being initialized, in order to register user services.
-     * */
-    protected open fun registerServices(services: ServiceCollection) {}
-
-    /**
-     * Instantiates the specified class using dependency injection. Calling this method will initialize the [servicesLazy].
-     * By default, the following services are included:
-     * - this
-     * - [javaClass]
-     * - [locator]
-     * - [registerServices] (user-specified services)
-     * */
-    protected inline fun <reified T> activate(vararg extraParams: Any): T =
-        services.activate(extraParams.asList())
-
-    /**
-     * Instantiates the specified class using dependency injection, as per [activate].
-     * The result will also be added to the service collection.
-     * */
-    protected inline fun <reified T> activateService(vararg extraParams: Any): T = services.activate<T>(extraParams.asList()).also {
-        if(it is ReplicatorBehavior) {
-            error("Cannot activate service a replicator behavior!")
-        }
-
-        services.withService(T::class.java) { it }
     }
 
     fun allowsConnection(remote: Cell): Boolean {
@@ -225,7 +191,7 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
         createBehaviorContainer()
     }
 
-    open fun createBehaviorContainer() = CellBehaviorContainer(this).also { container ->
+    open fun createBehaviorContainer() = CellBehaviorContainer().also { container ->
         fieldScan(this.javaClass, CellBehavior::class, Behavior::class.java, BEHAVIOR_READERS)
             .mapNotNull { it.reader.get(this) as? CellBehavior }.forEach(container::addToCollection)
     }
@@ -1630,19 +1596,16 @@ abstract class CellProvider<T : Cell> {
     fun create(locator: Locator, environment: HashDataTable) = create(CellCreateInfo(locator, id, environment))
 }
 
-class BasicCellProvider<T : Cell>(val factory: (CellCreateInfo) -> T) : CellProvider<T>() {
-    override fun create(ci: CellCreateInfo) = factory(ci)
+fun interface CellFactory<T : Cell> {
+    operator fun invoke(ci: CellCreateInfo) : T
 }
 
-class InjectCellProvider<T : Cell>(val c: Class<T>, val extraParams: List<Any>) : CellProvider<T>() {
-    constructor(c: Class<T>) : this(c, listOf())
+class BasicCellProvider<T : Cell>(val factory: CellFactory<T>) : CellProvider<T>() {
+    override fun create(ci: CellCreateInfo) = factory(ci)
 
-    @Suppress("UNCHECKED_CAST")
-    override fun create(ci: CellCreateInfo) =
-        ServiceCollection()
-            .withSingleton { ci }
-            .withSingleton { this }
-            .activate(c, extraParams) as T
+    companion object {
+        fun<T : Cell> setup(block: () -> (CellFactory<T>)) = BasicCellProvider(block())
+    }
 }
 
 /**

@@ -19,7 +19,7 @@ import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.Vector3d
 import org.ageseries.libage.mathematics.map
-import org.ageseries.libage.sim.thermal.STANDARD_TEMPERATURE
+import org.ageseries.libage.sim.STANDARD_TEMPERATURE
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.content.PartConnectionRenderInfo
@@ -50,7 +50,7 @@ fun createPartInstance(
         .getModel(model)
         .createInstance()
         .loadIdentity()
-        .transformPart(part, yRotation)
+        .transformPart(multipart, part, yRotation)
 }
 
 /**
@@ -207,11 +207,11 @@ private val offsetTable = Int2ObjectOpenHashMap<Vector3d>(6).also {
     it[Direction.EAST.index()] = Vector3d(0.0, 0.5, 0.5)
 }
 
-fun<T : Transform<T>> T.transformPart(part: Part<*>, yRotation: Double = 0.0): T {
+fun<T : Transform<T>> T.transformPart(instance: MultipartBlockEntityInstance, part: Part<*>, yRotation: Double = 0.0): T {
     val (dx, dy, dz) = offsetTable.get(part.placement.face.index())!!
 
     return this
-        .translate(part.placement.position)
+        .translate(instance.instancePosition)
         .translate(dx, dy, dz)
         .multiply(part.placement.face.rotation)
         .rotateYRadians(PartGeometry.facingRotationLog(part.placement.horizontalFacing))

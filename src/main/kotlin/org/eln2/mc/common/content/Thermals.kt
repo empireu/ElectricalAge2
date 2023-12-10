@@ -6,8 +6,7 @@ import kotlinx.serialization.Serializable
 import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
-import org.eln2.mc.NoInj
-import org.eln2.mc.ThermalBody
+import org.ageseries.libage.sim.ThermalMass
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.ThermalTint
 import org.eln2.mc.client.render.foundation.createPartInstance
@@ -31,8 +30,8 @@ class RadiatorPart(
         }
     }
 
-    override fun onInternalTemperatureChanges(dirty: List<ThermalBody>) {
-        sendBulkPacket(Sync(dirty.first().temperatureKelvin))
+    override fun onInternalTemperatureChanges(dirty: List<ThermalMass>) {
+        sendBulkPacket(Sync(!dirty.first().temperature))
     }
 
     @Serializable
@@ -41,7 +40,7 @@ class RadiatorPart(
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         runIfCell {
-            builder.temperature(cell.thermalWire.readTemperature())
+            builder.quantity(cell.thermalWire.thermalBody.temperature)
         }
     }
 }
@@ -78,7 +77,6 @@ class RadiantBodyRenderer(
     }
 }
 
-@NoInj
 class RadiantBipoleRenderer(
     val part: Part<*>,
     val body: PartialModel,

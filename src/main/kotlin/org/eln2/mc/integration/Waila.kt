@@ -116,7 +116,7 @@ class ComponentDisplayList(private val entries: MutableList<Component>) {
         entries.add(component)
     }
 
-    fun key(identifier: String): String {
+    fun langId(identifier: String): String {
         return "waila.$MODID.$identifier"
     }
 
@@ -124,32 +124,42 @@ class ComponentDisplayList(private val entries: MutableList<Component>) {
         ReplaceWith("translate(...)")
     )
     fun debug(text: String) {
-        add(Component.literal(text))
+        add(Component.literal("*$text"))
     }
 
     fun translatePercent(key: String, percentage: Double) {
-        add(Component.translatable(key).apply {
+        add(Component.translatable(langId(key)).apply {
             append(": ")
             append(percentage.formattedPercentNormalized())
         })
     }
 
-    inline fun<reified T> quantity(quantity: Quantity<T>) {
-        add(
-            Component.translatable(
-                key(T::class.simpleName.requireNotNull {
-                    "Failed to get simple name of ${T::class.java}"
-                })
-            ).apply {
-                append(": ")
-                append(quantity.classify())
-            }
-        )
-    }
+    fun translateRow(key: String, text: String) = add(
+        Component.translatable(
+            langId(key)
+        ).apply {
+            append(": ")
+            append(text)
+        }
+    )
+
+    inline fun<reified T> quantity(quantity: Quantity<T>) = translateRow(
+        T::class.simpleName.requireNotNull {
+            "Failed to get simple name of ${T::class.java}"
+        },
+        quantity.classify()
+    )
+
+    inline fun<reified T1> translateQuantityRow(text: String, q1: Quantity<T1>) = translateRow(text, q1.classify())
+
+    fun fuelMass(mass: Quantity<Mass>) = translateRow("fuel_mass", mass.classify())
 
     fun current(value: Double) = quantity(Quantity(value, AMPERE))
     fun potential(value: Double) = quantity(Quantity(value, VOLT))
+    fun resistance(value: Double) = quantity(Quantity(value, OHM))
     fun power(value: Double) = quantity(Quantity(value, WATT))
     fun energy(value: Double) = quantity(Quantity(value, JOULE))
     fun temperature(value: Double) = quantity(Quantity(value, KELVIN))
+    fun charge(value: Double) = translatePercent("charge", value)
+    fun integrity(value: Double) = translatePercent("integrity", value)
 }

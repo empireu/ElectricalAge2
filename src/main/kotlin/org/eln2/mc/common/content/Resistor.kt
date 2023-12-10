@@ -13,7 +13,6 @@ import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.Base6Direction3d
 
-@NoInj
 class ResistorObject(cell: Cell, val poleMap: PoleMap) : ElectricalObject<Cell>(cell) {
     private val resistor = ComponentHolder {
         Resistor().also { it.resistance = resistanceExact }
@@ -59,7 +58,6 @@ class ResistorObject(cell: Cell, val poleMap: PoleMap) : ElectricalObject<Cell>(
     }
 }
 
-@NoInj
 class ResistorObjectVirtual(cell: Cell, val poleMap: PoleMap) : ElectricalObject<Cell>(cell) {
     private val resistor = ResistorVirtual()
 
@@ -120,7 +118,10 @@ class ResistorPart(ci: PartCreateInfo) : CellPart<ResistorCell, BasicPartRendere
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         runIfCell {
+            builder.quantity(cell.thermalWire.thermalBody.temperature)
+            builder.resistance(cell.resistor.resistanceExact)
             builder.power(cell.resistor.power)
+            builder.current(cell.resistor.current)
         }
     }
 }

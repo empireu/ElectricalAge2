@@ -174,7 +174,7 @@ object LightFieldPrimitives {
 
         var currentStep = 0
 
-        Direction.values().forEach { face ->
+        Direction.entries.forEach { face ->
             val baseVectors = let {
                 val results = ArrayList<Vector3d>()
 
@@ -668,7 +668,7 @@ class LightCell(ci: CellCreateInfo, poleMap: PoleMap) : Cell(ci), LightView, Lig
 
     @Behavior
     val explosion = TemperatureExplosionBehavior(
-        { thermalWire.thermalBody.temperatureKelvin },
+        { thermalWire.thermalBody.temperature },
         TemperatureExplosionBehaviorOptions(),
         this
     )
@@ -1234,9 +1234,10 @@ class PoweredLightPart(ci: PartCreateInfo, cellProvider: CellProvider<LightCell>
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         runIfCell {
+            builder.quantity(cell.thermalWire.thermalBody.temperature)
             builder.current(cell.current)
             builder.power(cell.power)
-            builder.translatePercent("light_life", cell.life)
+            builder.integrity(cell.life)
         }
     }
 }
@@ -1371,8 +1372,8 @@ class SolarLightPart<R : PartRenderer>(
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.translatePercent("solar_light_charge", energy)
-        builder.debug("Irradiance ${placement.level.evaluateDiffuseIrradianceFactor(normal).formattedPercentNormalized()}")
+        builder.charge(energy)
+        builder.translatePercent("Irradiance", placement.level.evaluateDiffuseIrradianceFactor(normal))
     }
 
     override fun onRemoved() {
@@ -1436,7 +1437,7 @@ class LightFixtureRenderer(
             .getModel(model)
             .createInstance()
             .loadIdentity()
-            .transformPart(part, yRotation)
+            .transformPart(multipart, part, yRotation)
     }
 
     private fun applyLightTint() {

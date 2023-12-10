@@ -36,8 +36,7 @@ import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.mathematics.Vector3d
 import org.ageseries.libage.mathematics.map
-import org.ageseries.libage.sim.Material
-import org.ageseries.libage.sim.thermal.*
+import org.ageseries.libage.sim.*
 import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.*
@@ -60,7 +59,7 @@ import kotlin.math.max
 /**
  * Generalized thermal conductor, in the form of a single thermal body that gets connected to all neighbor cells.
  * */
-class ThermalWireObject(cell: Cell, thermalDefinition: ThermalBodyDef) : ThermalObject<Cell>(cell), PersistentObject, ThermalContactInfo {
+class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass) : ThermalObject<Cell>(cell), PersistentObject, ThermalContactInfo {
     companion object {
         // Storing temperature. If I change the properties of the material, it will be the same temperature in game.
         private const val TEMPERATURE = "temperature"
@@ -68,20 +67,17 @@ class ThermalWireObject(cell: Cell, thermalDefinition: ThermalBodyDef) : Thermal
 
     constructor(cell: Cell) : this(
         cell,
-        ThermalBodyDef(
-            Material.COPPER,
-            mass = 1.0,
-            area = cylinderSurfaceArea(1.0, 0.05)
-        )
+        ThermalMass(ChemicalElement.Copper.asMaterial)
     )
 
-    var thermalBody = thermalDefinition.create().also { body ->
-        if (thermalDefinition.energy == null) {
-            cell.environmentData.getOrNull<EnvironmentalTemperatureField>()?.readInto(body)
-        }
-    }
+    constructor(cell: Cell, definition: ThermalMassDefinition) : this(
+        cell,
+        definition()
+    )
 
-    fun readTemperature(): Double = !thermalBody.thermal.temperature
+    init {
+        cell.environmentData.getOrNull<EnvironmentalTemperatureField>()?.readInto(thermalBody)
+    }
 
     override fun offerComponent(neighbour: ThermalObject<*>) = ThermalComponentInfo(thermalBody)
 
@@ -98,17 +94,17 @@ class ThermalWireObject(cell: Cell, thermalDefinition: ThermalBodyDef) : Thermal
 
     override fun saveObjectNbt(): CompoundTag {
         return CompoundTag().also {
-            it.putDouble(TEMPERATURE, thermalBody.temperatureKelvin)
+            it.putQuantity(TEMPERATURE, thermalBody.temperature)
         }
     }
 
     override fun loadObjectNbt(tag: CompoundTag) {
         if(tag.contains(TEMPERATURE)) {
-            thermalBody.temperatureKelvin = tag.getDouble(TEMPERATURE)
+            thermalBody.temperature = tag.getQuantity(TEMPERATURE)
         }
     }
 
-    override fun getContactTemperature(other: Locator) = readTemperature()
+    override fun getContactTemperature(other: Locator) = thermalBody.temperature
 }
 
 /**
@@ -156,6 +152,7 @@ class ElectricalWireObjectVirtual(cell: Cell) : ElectricalObject<Cell>(cell) {
     // Optimization opportunity: make bundle create one resistor when possible. But it isn't that worthwhile because it is virtual.
     private val resistors = resistorVirtualBundle(0.05)
 
+    val totalCurrent get() = resistors.totalCurrent
     val totalPower get() = resistors.totalPower
 
     /**
@@ -343,7 +340,7 @@ data class ElectricalWireRegistryObject(
 )
 
 abstract class WireBuilder<C : WireCell>(val id: String) {
-    var material = ThermalBodyDef(Material.COPPER, 1.0, cylinderSurfaceArea(1.0, 0.05))
+    var material = ThermalMassDefinition(ChemicalElement.Copper.asMaterial)
     var contactSurfaceArea = PI * (0.05 * 0.05)
     var damageOptions = TemperatureExplosionBehaviorOptions()
     var replicatesInternalTemperature = true
@@ -413,7 +410,7 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
 
         PartRegistry.part(
             id,
-            BasicPartProvider({ ci ->
+            BasicPartProvider(hubSize) { ci ->
                 WirePart(
                     ci,
                     cellProvider = provider.get(),
@@ -423,7 +420,7 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
                     connectionsFilled,
                     renderInfo = renderInfo
                 )
-            }, hubSize)
+            }
         )
     }
 }
@@ -452,7 +449,7 @@ class ThermalWireBuilder(id: String) : WireBuilder<ThermalWireCell>(id) {
     )
 }
 
-class ElectricalWireBuilder(id: String) : WireBuilder<ElectricalWireCell>(id) {
+class ElectricalWireBuilder(id: String) : WireBuilder<ElectrothermalWireCell>(id) {
     var resistance: Double = 2.14 * 1e-5
 
     fun register(): ElectricalWireRegistryObject {
@@ -461,7 +458,7 @@ class ElectricalWireBuilder(id: String) : WireBuilder<ElectricalWireCell>(id) {
         val cell = CellRegistry.cell(
             id,
             BasicCellProvider { ci ->
-                ElectricalWireCell(
+                ElectrothermalWireCell(
                     ci,
                     contactSurfaceArea,
                     material,
@@ -488,7 +485,7 @@ class ElectricalWireBuilder(id: String) : WireBuilder<ElectricalWireCell>(id) {
  * @param replicatesExternalTemperature Indicates if the wire should replicate the external temperatures (temperatures of connected thermal objects)
  * */
 data class WireThermalProperties(
-    val thermalDef: ThermalBodyDef,
+    val thermalDef: ThermalMassDefinition,
     val damageOptions: TemperatureExplosionBehaviorOptions,
     val replicatesInternalTemperature: Boolean,
     val replicatesExternalTemperature: Boolean
@@ -550,7 +547,7 @@ open class ThermalWireCell(ci: CellCreateInfo, connectionCrossSection: Double, v
 
     @Behavior
     val explosion = TemperatureExplosionBehavior(
-        thermalWire::readTemperature,
+        { thermalWire.thermalBody.temperature },
         thermalProperties.damageOptions,
         self()
     )
@@ -574,7 +571,7 @@ open class ThermalWireCell(ci: CellCreateInfo, connectionCrossSection: Double, v
         else null
 }
 
-open class ElectricalWireCell(ci: CellCreateInfo, contactCrossSection: Double, thermalProperties: WireThermalProperties, val electricalProperties: WireElectricalProperties) : ThermalWireCell(ci, contactCrossSection, thermalProperties) {
+open class ElectrothermalWireCell(ci: CellCreateInfo, contactCrossSection: Double, thermalProperties: WireThermalProperties, val electricalProperties: WireElectricalProperties) : ThermalWireCell(ci, contactCrossSection, thermalProperties) {
     @SimObject
     val electricalWire = ElectricalWireObjectVirtual(self()).also {
         it.resistance = electricalProperties.electricalResistance
@@ -837,8 +834,8 @@ class WirePart<C : WireCell>(
     }
 
     @ServerOnly
-    override fun onInternalTemperatureChanges(dirty: List<ThermalBody>) {
-        sendBulkPacket(InternalTemperaturePacket(dirty.first().temperatureKelvin))
+    override fun onInternalTemperatureChanges(dirty: List<ThermalMass>) {
+        sendBulkPacket(InternalTemperaturePacket(!dirty.first().temperature))
     }
 
     /**
@@ -869,7 +866,7 @@ class WirePart<C : WireCell>(
                 val cell = this.cell
 
                 if(cell is ThermalWireCell) {
-                    sendBulkPacket(InternalTemperaturePacket(cell.thermalWire.readTemperature()))
+                    sendBulkPacket(InternalTemperaturePacket(!cell.thermalWire.thermalBody.temperature))
                 }
 
                 val externalTemperatures = Int2DoubleOpenHashMap()
@@ -878,7 +875,7 @@ class WirePart<C : WireCell>(
                     val solution = getPartConnectionOrNull(this.cell.locator, remoteThermalObject.cell.locator)
                         ?: return@scanNeighbors
 
-                    externalTemperatures.put(solution.value, temperature)
+                    externalTemperatures.put(solution.value, !temperature)
                 }
 
                 if(externalTemperatures.isNotEmpty()) {
@@ -915,7 +912,13 @@ class WirePart<C : WireCell>(
     override fun submitDisplay(builder: ComponentDisplayList) {
         runWithCell {
             if(it is ThermalWireCell) {
-                builder.temperature(it.thermalWire.readTemperature())
+                builder.quantity(it.thermalWire.thermalBody.temperature)
+            }
+
+            if(it is ElectrothermalWireCell) {
+                builder.resistance(it.electricalWire.resistance)
+                builder.power(it.electricalWire.totalPower)
+                builder.current(it.electricalWire.totalCurrent)
             }
         }
     }
@@ -1040,12 +1043,14 @@ abstract class WireRenderer<I>(
 
     protected fun<T : Transform<T>> T.poseHub(): T =
         this.transformPart(
+            multipart,
             part,
             0.0
         )
 
     protected fun<T : Transform<T>> T.poseConnection(info: PartConnectionDirection): T =
         this.transformPart(
+            multipart,
             part,
             when (info.directionPart) {
                 Base6Direction3d.Front -> 0.0

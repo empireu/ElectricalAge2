@@ -2,9 +2,8 @@ package org.eln2.mc
 
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.biome.Biome
-import org.ageseries.libage.data.CELSIUS
-import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.Temperature
+import org.ageseries.libage.data.*
+import org.ageseries.libage.sim.ThermalMass
 import org.eln2.mc.data.BlockLocator
 import org.eln2.mc.data.HashDataTable
 import org.eln2.mc.data.Locator
@@ -15,17 +14,17 @@ fun interface EnvironmentalTemperatureField {
     fun readTemperature(): Quantity<Temperature>
 }
 
-fun EnvironmentalTemperatureField.readInto(body: ThermalBody) {
-    body.temperature = this.readTemperature()
+fun interface EnvironmentalThermalConductivityField {
+    fun readConductivity(): Quantity<ThermalConductivity>
 }
 
-fun interface EnvironmentalThermalConductivityField {
-    fun readConductivity(): Double
+fun EnvironmentalTemperatureField.readInto(body: ThermalMass) {
+    body.temperature = this.readTemperature()
 }
 
 data class EnvironmentInformation(
     val temperature: Quantity<Temperature>,
-    val airThermalConductivity: Double,
+    val airThermalConductivity: Quantity<ThermalConductivity>,
 ) {
     fun fieldMap() = HashDataTable()
         .withField { EnvironmentalTemperatureField { temperature } }
@@ -48,7 +47,7 @@ object BiomeEnvironments {
         return biomes.computeIfAbsent(biome) {
             return@computeIfAbsent EnvironmentInformation(
                 Quantity(temperature, CELSIUS),
-                AIR_THERMAL_CONDUCTIVITY.evaluate(temperature)
+                Quantity(AIR_THERMAL_CONDUCTIVITY.evaluate(temperature), WATT_PER_METER_KELVIN)
             )
         }
     }

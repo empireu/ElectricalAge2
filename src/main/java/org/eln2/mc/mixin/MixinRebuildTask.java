@@ -48,7 +48,7 @@ public abstract class MixinRebuildTask {
         PoseStack pPoseStack,
         Set<RenderType> pRenderTypeSet
     ) {
-        GridRenderer.submitForRenderSection(
+        GridRenderer.submitForRebuildSection(
             this$1,
             pChunkBufferBuilderPack,
             pRenderChunkRegion,

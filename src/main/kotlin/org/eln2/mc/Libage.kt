@@ -1,95 +1,19 @@
 package org.eln2.mc
 
-import org.ageseries.libage.data.*
-import org.ageseries.libage.sim.Material
+import org.ageseries.libage.data.DisjointSet
+import org.ageseries.libage.data.MultiSet
+import org.ageseries.libage.data.MutableMapMultiSet
+import org.ageseries.libage.data.MutableSetMapMultiMap
 import org.ageseries.libage.sim.electrical.mna.Circuit
-import org.ageseries.libage.sim.electrical.mna.component.*
-import org.ageseries.libage.sim.thermal.ThermalMass
+import org.ageseries.libage.sim.electrical.mna.component.Component
+import org.ageseries.libage.sim.electrical.mna.component.IResistor
+import org.ageseries.libage.sim.electrical.mna.component.Line
+import org.ageseries.libage.sim.electrical.mna.component.Term
 import org.eln2.mc.common.cells.foundation.ComponentHolder
 import org.eln2.mc.common.cells.foundation.NEGATIVE_PIN
 import org.eln2.mc.common.cells.foundation.POSITIVE_PIN
-import org.eln2.mc.data.HashDataTable
 
 const val LARGE_RESISTANCE = 1e9
-
-object MaterialMapping {
-    private val map = biMapOf(
-        "iron" to Material.IRON,
-        "copper" to Material.COPPER
-    )
-
-    fun getMaterial(name: String): Material {
-        return map.forward[name] ?: error("Name $name does not correspond to any material.")
-    }
-
-    fun getName(material: Material): String {
-        return map.backward[material] ?: error("Material $material does not have a mapping!")
-    }
-}
-
-data class ThermalBodyDef(val material: Material, val mass: Double, val area: Double, val energy: Double? = null) {
-    fun create() = ThermalBody(
-        ThermalMass(
-            material,
-            energy,
-            mass,
-        ),
-        area
-    )
-}
-
-val nullMaterial = Material(0.0, 0.0, 0.0, 0.0)
-fun nullThermalMass() = ThermalMass(nullMaterial, 0.0, 0.0)
-fun nullThermalBody() = ThermalBody(nullThermalMass(), 0.0)
-
-fun Material.hash(): Int {
-    val a = this.electricalResistivity
-    val b = this.thermalConductivity
-    val c = this.specificHeat
-    val d = this.density
-
-    var result = a.hashCode()
-    result = 31 * result + b.hashCode()
-    result = 31 * result + c.hashCode()
-    result = 31 * result + d.hashCode()
-    return result
-}
-
-// FIXME FIXME FIXME
-
-// Remove this or do something, it is no longer useful
-
-// FIXME FIXME FIXME
-
-class ThermalBody(var thermal: ThermalMass, var area: Double) {
-    var temperature: Quantity<Temperature> by thermal::temperature
-
-    var temperatureKelvin get() = !temperature
-        set(value) {
-            temperature = Quantity(value, KELVIN)
-        }
-
-    var energy: Double
-        get() = thermal.energy
-        set(value) {
-            thermal.energy = value
-        }
-
-
-    companion object {
-        fun createDefault(): ThermalBody {
-            return ThermalBody(ThermalMass(Material.COPPER), 0.5)
-        }
-
-        fun createDefault(env: HashDataTable): ThermalBody {
-            return createDefault().also { b ->
-                env.getOrNull<EnvironmentalTemperatureField>()?.readTemperature()?.also {
-                    b.temperature = it
-                }
-            }
-        }
-    }
-}
 
 interface ImaginaryComponent : Term
 

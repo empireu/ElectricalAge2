@@ -513,8 +513,8 @@ abstract class PartProvider {
  * Often, the part's constructor can be passed in as factory.
  * */
 open class BasicPartProvider(
-    val factory: ((ci: PartCreateInfo) -> Part<*>),
     final override val placementCollisionSize: Vector3d,
+    val factory: ((ci: PartCreateInfo) -> Part<*>),
 ) : PartProvider() {
     override fun create(context: PartPlacementInfo) = factory(PartCreateInfo(id, context))
 }
@@ -1108,6 +1108,14 @@ abstract class PartRenderer {
         private set
 
     val hasMultipart get() = this::multipart.isInitialized
+
+    val instancePosition : BlockPos get() {
+        if(!hasMultipart) {
+            error("Tried to get instance position before init")
+        }
+
+        return multipart.instancePosition
+    }
 
     fun isSetupWith(multipartBlockEntityInstance: MultipartBlockEntityInstance): Boolean {
         return this::multipart.isInitialized && multipart == multipartBlockEntityInstance

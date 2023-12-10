@@ -9,6 +9,7 @@ import org.ageseries.libage.mathematics.evaluate
 import org.ageseries.libage.mathematics.lerp
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.Material
+import org.ageseries.libage.sim.ThermalMass
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
 import org.eln2.mc.client.render.foundation.PartRendererSupplier
@@ -130,7 +131,7 @@ object BatteryVoltageModels {
 object BatteryModels {
     val LEAD_ACID_12V = BatteryModel(
         voltageFunction = BatteryVoltageModels.WET_CELL_12V,
-        resistanceFunction = { _ -> Quantity(20.0, MILLIOHM)},
+        resistanceFunction = { _ -> Quantity(20.0, MILLI * OHM)},
         damageFunction = { battery, dt ->
             var damage = 0.0
 
@@ -147,11 +148,11 @@ object BatteryModels {
         capacityFunction = { battery ->
             battery.life.pow(0.5)
         },
-        energyCapacity = Quantity(2.2, kWh),
+        energyCapacity = Quantity(2.2, KILO * WATT_HOUR),
         0.5,
-        BatteryMaterials.PB_ACID_TEST,
-        Quantity(10.0, kg),
-        Quantity(6.0, M2)
+        BatteryMaterials.LEAD_ACID_BATTERY,
+        Quantity(10.0, KILOGRAM),
+        Quantity(6.0, METER2)
     )
 }
 
@@ -166,11 +167,13 @@ object BatterySpecificHeats {
 }
 
 object BatteryMaterials {
-    val PB_ACID_TEST = Material(
-        0.0,
+    val LEAD_ACID_BATTERY = Material(
+        "LEAD ACID TEST",
+        Quantity(Double.POSITIVE_INFINITY),
         Material.LATEX_RUBBER.thermalConductivity,
-        BatterySpecificHeats.PB_ACID_VENTED_FLOODED,
-        0.0
+        Quantity(BatterySpecificHeats.PB_ACID_VENTED_FLOODED, JOULE_PER_KILOGRAM_KELVIN),
+        // https://www.measuringknowhow.com/12v-car-batteries-sizes-weight/
+        Quantity(22.7 / (0.26 * 0.173 * 0.225), KILOGRAM_PER_METER3)
     )
 }
 
@@ -236,7 +239,7 @@ class BatteryCell(
     val generator = VRGeneratorObject<Cell>(this, directionPoleMapPlanar(plusDir, minusDir))
 
     @SimObject
-    val thermalWire = ThermalWireObject(this, ThermalBodyDef(model.material, !model.mass, !model.surfaceArea, null))
+    val thermalWire = ThermalWireObject(this, ThermalMass(model.material, mass = model.mass))
 
     @Behavior
     val heater = PowerHeatingBehavior(
@@ -337,7 +340,7 @@ class BatteryCell(
             val extraEnergy = energy - capacity
             energy -= extraEnergy
             // Conserve energy by increasing temperature:
-            thermalWire.thermalBody.energy += !extraEnergy
+            thermalWire.thermalBody.energy += extraEnergy
         }
 
         return true
@@ -388,11 +391,12 @@ class BatteryPart(
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         runIfCell {
+            builder.quantity(cell.thermalWire.thermalBody.temperature)
             builder.potential(cell.generator.potentialExact)
             builder.current(cell.generator.sourceCurrent)
             builder.power(cell.generator.sourcePower)
-            builder.translatePercent("battery_charge", cell.charge)
-            builder.translatePercent("battery_life", cell.life)
+            builder.charge(cell.charge)
+            builder.integrity(cell.life)
         }
     }
 }

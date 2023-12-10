@@ -56,6 +56,7 @@ class GroundPart(ci: PartCreateInfo) : CellPart<GroundCell, BasicPartRenderer>(c
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         runIfCell {
+            builder.resistance(cell.ground.resistance)
             builder.current(cell.ground.totalCurrent)
             builder.power(cell.ground.totalPower)
         }

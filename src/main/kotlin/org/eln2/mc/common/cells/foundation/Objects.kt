@@ -1,14 +1,18 @@
 package org.eln2.mc.common.cells.foundation
 
 import net.minecraft.nbt.CompoundTag
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.sim.ConnectionParameters
+import org.ageseries.libage.sim.Simulator
+import org.ageseries.libage.sim.ThermalMass
+import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.component.PowerVoltageSource
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.electrical.mna.component.Term
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
-import org.ageseries.libage.sim.thermal.ConnectionParameters
-import org.ageseries.libage.sim.thermal.Simulator
 import org.eln2.mc.*
 import org.eln2.mc.data.*
 
@@ -45,10 +49,10 @@ abstract class SimulationObject<C : Cell>(val cell: C) {
     }
 }
 
-data class ThermalComponentInfo(val body: ThermalBody)
+data class ThermalComponentInfo(val body: ThermalMass)
 
 interface ThermalContactInfo {
-    fun getContactTemperature(other: Locator) : Double?
+    fun getContactTemperature(other: Locator) : Quantity<Temperature>?
 }
 
 abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
@@ -120,8 +124,8 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
             assert(remote.simulation == simulation)
 
             simulation!!.connect(
-                this.offerComponent(remote).body.thermal,
-                remote.offerComponent(this).body.thermal,
+                this.offerComponent(remote).body,
+                remote.offerComponent(this).body,
                 ConnectionParameters.DEFAULT
             )
         }
@@ -297,22 +301,21 @@ enum class SimulationObjectType(val index: Int, val id: Int, val domain: String)
 }
 
 interface ThermalBipole {
-    val b1: ThermalBody
-    val b2: ThermalBody
+    val b1: ThermalMass
+    val b2: ThermalMass
 }
 
 /**
  * Thermal object with two connection sides.
  * */
-@NoInj
 class ThermalBipoleObject<C : Cell>(
     cell: C,
     val map: PoleMap,
-    b1Def: ThermalBodyDef,
-    b2Def: ThermalBodyDef
+    override val b1: ThermalMass,
+    override val b2: ThermalMass
 ) : ThermalObject<C>(cell), ThermalBipole, ThermalContactInfo {
-    override var b1 = b1Def.create()
-    override var b2 = b2Def.create()
+
+    constructor(cell: C, map: PoleMap, d1: ThermalMassDefinition, d2: ThermalMassDefinition) : this(cell, map, d1(), d2())
 
     init {
         cell.environmentData.getOrNull<EnvironmentalTemperatureField>()?.readTemperature()?.also {
@@ -333,13 +336,13 @@ class ThermalBipoleObject<C : Cell>(
         simulator.add(b2)
     }
 
-    override fun getContactTemperature(other: Locator): Double? {
+    override fun getContactTemperature(other: Locator): Quantity<Temperature>? {
         val direction = map.evaluateOrNull(this.cell.locator, other)
             ?: return null
 
         return when(direction) {
-            Pole.Plus -> b1.temperatureKelvin
-            Pole.Minus -> b2.temperatureKelvin
+            Pole.Plus -> b1.temperature
+            Pole.Minus -> b2.temperature
         }
     }
 }

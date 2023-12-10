@@ -37,6 +37,8 @@ class VoltageSourceObject(cell: Cell) : ElectricalObject<Cell>(cell) {
             }
         }
 
+    val power get() = if(source.isPresent) source.instance.power else 0.0
+
     val current get() = if(source.isPresent) source.instance.current else 0.0
 
     /**
@@ -82,6 +84,8 @@ class VoltageSourcePart(ci: PartCreateInfo) : CellPart<VoltageSourceCell, BasicP
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         runIfCell {
+            builder.resistance(cell.voltageSource.resistance)
+            builder.power(cell.voltageSource.power)
             builder.potential(cell.voltageSource.potential)
             builder.current(cell.voltageSource.current)
         }

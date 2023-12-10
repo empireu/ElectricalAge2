@@ -28,8 +28,8 @@ import net.minecraftforge.items.SlotItemHandler
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.snzi
-import org.ageseries.libage.sim.thermal.ConnectionParameters
-import org.ageseries.libage.sim.thermal.MassConnection
+import org.ageseries.libage.sim.ThermalMass
+import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.common.blocks.foundation.CellBlock
@@ -46,58 +46,64 @@ import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.*
 import kotlin.math.*
 
-class HeatGeneratorFuelMass(var fuelAmount: Double, val energyDensity: Double) {
+/**
+ * Represents a mass of fuel which is mutable (the amount of fuel can be changed).
+ * @param fuelAmount The initial amount of fuel.
+ * @param energyDensity The energy density (quantity of energy per unit mass).
+ * */
+class FuelBurnState(var fuelAmount: Quantity<Mass>, val energyDensity: Quantity<MassEnergyDensity>) {
     companion object {
         private const val AMOUNT = "amount"
-        private const val ENERGY_CAPACITY = "energyCapacity"
+        private const val ENERGY_DENSITY = "energyDensity"
 
-        fun fromNbt(tag: CompoundTag): HeatGeneratorFuelMass {
-            return HeatGeneratorFuelMass(
-                tag.getDouble(AMOUNT),
-                tag.getDouble(ENERGY_CAPACITY)
+        fun fromNbt(tag: CompoundTag): FuelBurnState {
+            return FuelBurnState(
+                tag.getQuantity(AMOUNT),
+                tag.getQuantity(ENERGY_DENSITY)
             )
         }
     }
 
-    val availableEnergy get() = fuelAmount * energyDensity
+    /**
+     * Gets the amount of available energy, based on the remaining [fuelAmount].
+     * */
+    val availableEnergy get() = Quantity<Energy>(!fuelAmount * !energyDensity)
 
-    fun removeEnergy(energy: Double) {
-        fuelAmount -= energy / energyDensity
+    /**
+     * Removes a mass of fuel corresponding to [energy] amount of energy.
+     * */
+    fun removeEnergy(energy: Quantity<Energy>) {
+        fuelAmount -= !energy / !energyDensity
     }
 
     fun toNbt(): CompoundTag {
         return CompoundTag().also {
-            it.putDouble(AMOUNT, fuelAmount)
-            it.putDouble(ENERGY_CAPACITY, energyDensity)
+            it.putQuantity(AMOUNT, fuelAmount)
+            it.putQuantity(ENERGY_DENSITY, energyDensity)
         }
     }
 }
 
-object FuelEnergyDensity {
-    const val COAL = 24.0 * 1e6
-}
-
-class FuelBurnerBehavior(val cell: Cell, val body: ThermalBody) : CellBehavior, ComponentDisplay {
+class FuelBurnerBehavior(val cell: Cell, val body: ThermalMass) : CellBehavior {
     companion object {
         private const val FUEL = "fuel"
         private const val PID = "pid"
         private val DESIRED_TEMPERATURE = Quantity(700.0, CELSIUS)
-        private val MAX_POWER = Quantity(10.0, kW)
-
+        private val MAX_POWER = Quantity(100.0, KILO * WATT)
     }
 
-    private var fuel: HeatGeneratorFuelMass? = null
-    private val updates = AtomicUpdate<HeatGeneratorFuelMass>()
+    private var fuel: FuelBurnState? = null
+    private val updates = AtomicUpdate<FuelBurnState>()
 
-    private val pid = PIDController(1.0, 0.0, 0.0).also {
+    private val pid = PIDController(10.0, 0.0, 0.0).also {
         it.setPoint = 1.0
         it.minControl = 0.0
         it.maxControl = 1.0
     }
 
-    fun updateFuel(mass: HeatGeneratorFuelMass) = updates.setLatest(mass)
+    fun updateFuel(mass: FuelBurnState) = updates.setLatest(mass)
 
-    val availableEnergy get() = fuel?.availableEnergy ?: 0.0
+    val availableEnergy get() = fuel?.availableEnergy ?: Quantity(0.0)
 
     private var signal = 0.0
     private var thermalPower = 0.0
@@ -113,37 +119,36 @@ class FuelBurnerBehavior(val cell: Cell, val body: ThermalBody) : CellBehavior, 
 
         val fuel = this.fuel ?: return
 
-        val t = (!DESIRED_TEMPERATURE - body.temperatureKelvin) / !DESIRED_TEMPERATURE
-        signal = pid.update(t, dt)
+        signal = pid.update(body.temperature / DESIRED_TEMPERATURE, dt)
 
-        val heat = min(fuel.availableEnergy, signal * !MAX_POWER * dt)
+        val heat = min(!fuel.availableEnergy, signal * !MAX_POWER * dt)
 
         thermalPower = heat / dt
-        // todo fixme frakme
-        body.temperatureKelvin = 1200.0
+
         if(!heat.approxEq(0.0)) {
-            fuel.removeEnergy(heat)
-            body.energy += heat
+            fuel.removeEnergy(Quantity(heat))
+            body.energy += Quantity(heat)
             cell.setChanged()
         }
     }
 
-    override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.debug("Control Signal ${(signal * 1000).formatted(2)}")
+    fun submitDisplay(builder: ComponentDisplayList) {
+        builder.debug("*Control Signal ${(signal * 1000).formatted(2)}")
         builder.power(thermalPower)
-        builder.debug("Fuel ${Quantity((fuel?.fuelAmount ?: 0.0), kg).classify()}")
+        builder.translateQuantityRow("fuel_remaining", (fuel?.fuelAmount ?: Quantity(0.0)))
+        builder.translateQuantityRow("energy_remaining", availableEnergy)
     }
 
     fun saveNbt() = CompoundTag()
         .withSubTagOptional(FUEL, fuel?.toNbt())
-        .withSubTag(PID, pid.saveToNbt())
+        .withSubTag(PID, pid.stateToNbt())
 
     fun loadNbt(tag: CompoundTag) = tag
-        .useSubTagIfPreset(FUEL) { fuel = HeatGeneratorFuelMass.fromNbt(it) }
-        .useSubTagIfPreset(PID) { pid.loadFromNbt(it) }
+        .useSubTagIfPreset(FUEL) { fuel = FuelBurnState.fromNbt(it) }
+        .useSubTagIfPreset(PID) { pid.stateFromNbt(it) }
 }
 
-class HeatGeneratorCell(ci: CellCreateInfo, thermalDef: ThermalBodyDef) : Cell(ci), ThermalContactInfo {
+class HeatGeneratorCell(ci: CellCreateInfo, thermalDef: ThermalMassDefinition) : Cell(ci), ThermalContactInfo {
     companion object {
         private const val BURNER_BEHAVIOR = "burner"
     }
@@ -158,9 +163,9 @@ class HeatGeneratorCell(ci: CellCreateInfo, thermalDef: ThermalBodyDef) : Cell(c
         ruleSet.withDirectionRulePlanar(Base6Direction3dMask.HORIZONTALS)
     }
 
-    val needsFuel get() = burner.availableEnergy approxEq 0.0
+    val needsFuel get() = burner.availableEnergy.value approxEq 0.0
 
-    fun replaceFuel(mass: HeatGeneratorFuelMass) = burner.updateFuel(mass)
+    fun replaceFuel(mass: FuelBurnState) = burner.updateFuel(mass)
 
     override fun loadCellData(tag: CompoundTag) {
         tag.useSubTagIfPreset(BURNER_BEHAVIOR, burner::loadNbt)
@@ -170,7 +175,7 @@ class HeatGeneratorCell(ci: CellCreateInfo, thermalDef: ThermalBodyDef) : Cell(c
         return CompoundTag().withSubTag(BURNER_BEHAVIOR, burner.saveNbt())
     }
 
-    override fun getContactTemperature(other: Locator) = thermalWire.readTemperature()
+    override fun getContactTemperature(other: Locator) = thermalWire.thermalBody.temperature
 }
 
 class HeatGeneratorBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<HeatGeneratorCell>(pos, state, Content.HEAT_GENERATOR_BLOCK_ENTITY.get()), ComponentDisplay {
@@ -199,8 +204,8 @@ class HeatGeneratorBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEnti
         val cell = this.cell
 
         if(cell != null) {
-            builder.temperature(cell.thermalWire.readTemperature())
-            builder.energy(cell.burner.availableEnergy)
+            builder.quantity(cell.thermalWire.thermalBody.temperature)
+            cell.burner.submitDisplay(builder)
         }
     }
 
@@ -250,7 +255,12 @@ class HeatGeneratorBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEnti
             return
         }
 
-        cell.replaceFuel(HeatGeneratorFuelMass(1.0, FuelEnergyDensity.COAL))
+        cell.replaceFuel(
+            FuelBurnState(
+                Quantity(1.0, KILOGRAM),
+                Quantity(24.0, MEGA * JOULE_PER_KILOGRAM)
+            )
+        )
 
         // Inventory changed:
         setChanged()
@@ -374,40 +384,32 @@ class HeatGeneratorBlock : CellBlock<HeatGeneratorCell>() {
 
 data class HeatEngineElectricalModel(
     val efficiency: Double,
-    val power: Double,
-    val leakageRate: Double,
-    val desiredVoltage: Double = 100.0,
+    val power: Quantity<Power>,
+    val desiredPotential: Quantity<Potential>,
 )
 
 class HeatEngineElectricalBehavior(
     val generator: PVSObject<*>,
-    val cold: ThermalBody,
-    val hot: ThermalBody,
+    val cold: ThermalMass,
+    val hot: ThermalMass,
     val efficiency: Double,
-    val maxPower: Double,
-    leakageRate: Double,
+    val maxPower: Quantity<Power>,
 ) : CellBehavior {
-    val leakageConnection = MassConnection(hot.thermal, cold.thermal, ConnectionParameters(area = leakageRate))
-
     override fun subscribe(subscribers: SubscriberCollection) {
         subscribers.addPre(this::preTick)
         subscribers.addPost(this::postTick)
     }
 
     private fun preTick(dt: Double, phase: SubscriberPhase) {
-        val (leakA, leakB) = leakageConnection.transfer(dt)
-        //hot.energy += leakA
-        //cold.energy += leakB
-
-        val thermalPower = abs(((hot.energy - cold.energy) / dt).coerceIn(-maxPower, maxPower))
-        generator.updatePowerIdeal(thermalPower * efficiency)
+        val dE = !hot.energy - !cold.energy
+        generator.updatePowerIdeal(efficiency * (dE / dt).coerceIn(-!maxPower, !maxPower))
     }
 
     private fun postTick(dt: Double, phase: SubscriberPhase) {
-        val electricalEnergy = generator.sourcePower * dt
+        val electricalEnergy = Quantity(generator.sourcePower * dt, JOULE)
 
-        val electricalDirection = snzi(electricalEnergy)
-        val thermalDirection = snzi((hot.temperatureKelvin - cold.temperatureKelvin))
+        val electricalDirection = snzi(!electricalEnergy)
+        val thermalDirection = snzi((!hot.temperature - !cold.temperature))
 
         if (electricalDirection == thermalDirection) {
             val thermalEnergy = electricalEnergy / efficiency
@@ -439,17 +441,17 @@ class HeatEngineElectricalCell(
     ci: CellCreateInfo,
     electricalMap: PoleMap,
     thermalMap: PoleMap,
-    b1Def: ThermalBodyDef,
-    b2Def: ThermalBodyDef,
+    b1Def: ThermalMassDefinition,
+    b2Def: ThermalMassDefinition,
     model: HeatEngineElectricalModel,
 ) : Cell(ci) {
-    constructor(ci: CellCreateInfo, electricalMap: PoleMap, thermalMap: PoleMap, def: ThermalBodyDef, model: HeatEngineElectricalModel) : this(ci, electricalMap, thermalMap, def, def, model)
+    constructor(ci: CellCreateInfo, electricalMap: PoleMap, thermalMap: PoleMap, def: ThermalMassDefinition, model: HeatEngineElectricalModel) : this(ci, electricalMap, thermalMap, def, def, model)
 
     @SimObject
     val generator = PVSObject<HeatEngineElectricalCell>(
         this,
         electricalMap
-    ).also { it.potentialMaxExact = model.desiredVoltage }
+    ).also { it.potentialMaxExact = !model.desiredPotential }
 
     @SimObject @Inspect
     val thermalBipole = ThermalBipoleObject(
@@ -466,7 +468,6 @@ class HeatEngineElectricalCell(
         thermalBipole.b2,
         model.efficiency,
         model.power,
-        model.leakageRate
     )
 
     @Replicator
@@ -493,11 +494,11 @@ class HeatEngineElectricalPart(ci: PartCreateInfo) : CellPart<HeatEngineElectric
     }
 
     @ServerOnly
-    override fun onInternalTemperatureChanges(dirty: List<ThermalBody>) {
+    override fun onInternalTemperatureChanges(dirty: List<ThermalMass>) {
         sendBulkPacket(
             SyncPacket(
-                cell.thermalBipole.b1.temperatureKelvin,
-                cell.thermalBipole.b2.temperatureKelvin
+                !cell.thermalBipole.b1.temperature,
+                !cell.thermalBipole.b2.temperature
             )
         )
     }

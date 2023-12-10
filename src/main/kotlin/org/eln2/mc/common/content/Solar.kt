@@ -5,7 +5,7 @@ import net.minecraft.core.BlockPos
 import org.ageseries.libage.data.Area
 import org.ageseries.libage.data.Potential
 import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.WATT_PER_M2
+import org.ageseries.libage.data.WATT_PER_METER2
 import org.ageseries.libage.mathematics.Vector3d
 import org.ageseries.libage.mathematics.frac
 import org.eln2.mc.*
@@ -58,7 +58,7 @@ fun Level.evaluateDiffuseIrradianceFactor(normal: Vector3d, blockPos: BlockPos) 
     return this.evaluateDiffuseIrradianceFactor(normal)
 }
 
-val LEVEL_INTENSITY = Quantity(1000.0, WATT_PER_M2) // evaluate from level
+val LEVEL_INTENSITY = Quantity(1000.0, WATT_PER_METER2) // evaluate from level
 
 data class PhotovoltaicModel(
     val idealPotential: Quantity<Potential>,
@@ -83,11 +83,13 @@ class PhotovoltaicBehavior(
         subscribers.addPre(::update)
     }
 
+    fun irradianceFactor() = cell.graph.level.evaluateDiffuseIrradianceFactor(
+        normalSupplier(),
+        cell.locator.requireLocator<BlockLocator>()
+    )
+
     private fun update(dt: Double, phase: SubscriberPhase) {
-        val irradiance = !LEVEL_INTENSITY * cell.graph.level.evaluateDiffuseIrradianceFactor(
-            normalSupplier(),
-            cell.locator.requireLocator<BlockLocator>()
-        )
+        val irradiance = !LEVEL_INTENSITY * irradianceFactor()
 
         source.updatePotentialMax(!model.idealPotential * ((irradiance / model.b).pow(model.p) / model.d))
         source.updatePowerIdeal(irradiance * !surfaceArea * model.efficiency)
@@ -120,6 +122,8 @@ class PhotovoltaicPanelPart(ci: PartCreateInfo, provider: CellProvider<Photovolt
         runIfCell {
             builder.potential(cell.generator.potentialMaxExact)
             builder.power(cell.generator.sourcePower)
+            builder.current(cell.generator.sourceCurrent)
+            builder.translatePercent("Irradiance", cell.photovoltaic.irradianceFactor())
         }
     }
 }

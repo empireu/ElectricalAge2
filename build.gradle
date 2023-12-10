@@ -197,7 +197,7 @@ dependencies {
     shade minecraftLibrary("org.jetbrains.kotlinx:kotlinx-serialization-core:${kotlinx_serialization_version}")
     shade minecraftLibrary("org.jetbrains.kotlinx:kotlinx-serialization-cbor:${kotlinx_serialization_version}")
 
-    shade minecraftLibrary("com.github.age-series:LibAge:1.0.0")
+    shade minecraftLibrary("com.github.age-series:LibAge:007d6e794d")
     shade minecraftLibrary("org.apache.commons:commons-math3:3.6.1")
     shade minecraftLibrary("com.charleskorn.kaml:kaml:0.50.0")
 
@@ -229,6 +229,7 @@ shadowJar {
     relocate "kotlinx", "${domain}.kotlinx"
     relocate "org.apache", "${domain}.apache"
     relocate "com.charleskorn", "${domain}.charleskorn"
+    relocate "org.intellij", "${domain}.intellij"
 }
 
 mixin {

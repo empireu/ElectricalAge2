@@ -5,9 +5,9 @@ package org.eln2.mc.common.content
 import net.minecraft.client.gui.screens.MenuScreens
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.Vector3d
-import org.ageseries.libage.sim.Material
+import org.ageseries.libage.sim.ChemicalElement
+import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.LOG
-import org.eln2.mc.ThermalBodyDef
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.cutout
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
@@ -16,15 +16,13 @@ import org.eln2.mc.client.render.solid
 import org.eln2.mc.common.blocks.BlockRegistry.block
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntity
 import org.eln2.mc.common.cells.CellRegistry.cell
-import org.eln2.mc.common.cells.CellRegistry.injCell
 import org.eln2.mc.common.cells.foundation.BasicCellProvider
+import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.cells.foundation.TemperatureExplosionBehaviorOptions
 import org.eln2.mc.common.containers.ContainerRegistry.menu
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.part
-import org.eln2.mc.common.parts.foundation.BasicCellPart
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
-import org.eln2.mc.common.parts.foundation.basicPartRenderer
 import org.eln2.mc.data.*
 import org.eln2.mc.mathematics.*
 import org.eln2.mc.toVector3d
@@ -65,8 +63,8 @@ object Content {
     val VOLTAGE_SOURCE_PART = part(
         "voltage_source",
         BasicPartProvider(
-            ::VoltageSourcePart,
-            Vector3d(6.0 / 16.0, 2.5 / 16.0, 6.0 / 16.0)
+            Vector3d(6.0 / 16.0, 2.5 / 16.0, 6.0 / 16.0),
+            ::VoltageSourcePart
         )
     )
 
@@ -78,8 +76,8 @@ object Content {
     val GROUND_PART = part(
         "ground",
         BasicPartProvider(
-            ::GroundPart,
-            Vector3d(4.0 / 16.0, 4.0 / 16.0, 4.0 / 16.0)
+            Vector3d(4.0 / 16.0, 4.0 / 16.0, 4.0 / 16.0),
+            ::GroundPart
         )
     )
 
@@ -93,11 +91,11 @@ object Content {
 
     val BATTERY_PART_12V = part(
         "lead_acid_battery_12v",
-        BasicPartProvider({ ci ->
+        BasicPartProvider(Vector3d(6.0 / 16.0, 7.0 / 16.0, 10.0 / 16.0)) { ci ->
             BatteryPart(ci, BATTERY_CELL_12V.get()) { part ->
                 BasicPartRenderer(part, PartialModels.BATTERY)
             }
-        }, Vector3d(6.0 / 16.0, 7.0 / 16.0, 10.0 / 16.0))
+        }
     )
 
     val RESISTOR_CELL = cell(
@@ -108,46 +106,50 @@ object Content {
     val RESISTOR_PART = part(
         "resistor",
         BasicPartProvider(
-            ::ResistorPart,
-            Vector3d(3.5 / 16.0, 2.25 / 16.0, 5.0 / 16.0)
+            Vector3d(3.5 / 16.0, 2.25 / 16.0, 5.0 / 16.0),
+            ::ResistorPart
         )
     )
 
     val THERMAL_RADIATOR_CELL = cell(
         "thermal_radiator",
-        BasicCellProvider { ci ->
-            ThermalWireCell(
-                ci,
-                Double.POSITIVE_INFINITY,
-                WireThermalProperties(
-                    ThermalBodyDef(
-                        Material.COPPER,
-                        10.0,
-                        50.0
-                    ),
-                    TemperatureExplosionBehaviorOptions(
-                        temperatureThreshold = Quantity(1000.0, CELSIUS)
-                    ),
-                    replicatesInternalTemperature = true,
-                    replicatesExternalTemperature = true
-                )
+        BasicCellProvider.setup {
+            val thermalProperties = WireThermalProperties(
+                ThermalMassDefinition(
+                    ChemicalElement.Copper.asMaterial,
+                    mass = Quantity(50.0, KILOGRAM)
+                ),
+                TemperatureExplosionBehaviorOptions(
+                    temperatureThreshold = Quantity(1000.0, CELSIUS)
+                ),
+                replicatesInternalTemperature = true,
+                replicatesExternalTemperature = true
             )
+
+            CellFactory {
+                ThermalWireCell(it, Double.POSITIVE_INFINITY, thermalProperties)
+            }
         }
     )
     val THERMAL_RADIATOR_PART = part(
         "thermal_radiator",
-        BasicPartProvider({ ci ->
+        BasicPartProvider(Vector3d(1.0, 3.0 / 16.0, 1.0)) { ci ->
             RadiatorPart(ci, defaultRadiantBodyColor())
-        }, Vector3d(1.0, 3.0 / 16.0, 1.0))
+        }
     )
 
-    val HEAT_GENERATOR_CELL = injCell<HeatGeneratorCell>(
+    val HEAT_GENERATOR_CELL = cell(
         "heat_generator",
-        ThermalBodyDef(
-            Material.COPPER,
-            10.0,
-            6.0
-        )
+        BasicCellProvider.setup {
+            val thermalDefinition = ThermalMassDefinition(
+                ChemicalElement.Copper.asMaterial,
+                mass = Quantity(10.0, KILOGRAM)
+            )
+
+            CellFactory {
+                HeatGeneratorCell(it, thermalDefinition)
+            }
+        }
     )
     val HEAT_GENERATOR_BLOCK = block("heat_generator", tab = null) {
         HeatGeneratorBlock()
@@ -165,29 +167,33 @@ object Content {
 
     val PHOTOVOLTAIC_GENERATOR_CELL = cell(
         "photovoltaic_generator",
-        BasicCellProvider { ci ->
-            PhotovoltaicGeneratorCell(
-                ci,
-                Quantity(1.0, M2),
-                PhotovoltaicModel(
-                    Quantity(32.0, V),
-                    7000.0,
-                    0.1,
-                    0.8,
-                    1.0,
-                )
-            ) { it.locator.requireLocator<FaceLocator>().toVector3d() }
+        BasicCellProvider.setup {
+            val model = PhotovoltaicModel(
+                Quantity(32.0, VOLT),
+                7000.0,
+                0.1,
+                0.8,
+                0.35,
+            )
+
+            val surface = Quantity(1.0, METER2)
+
+            CellFactory {
+                PhotovoltaicGeneratorCell(it, surface, model) { cell ->
+                    cell.locator.requireLocator<FaceLocator>().toVector3d()
+                }
+            }
         }
     )
 
     val PHOTOVOLTAIC_PANEL_PART = part(
         "photovoltaic_panel",
-        BasicPartProvider({ ci ->
+        BasicPartProvider(Vector3d(1.0, 2.0 / 16.0, 1.0)) { ci ->
             PhotovoltaicPanelPart(
                 ci,
                 PHOTOVOLTAIC_GENERATOR_CELL.get()
             )
-        }, Vector3d(1.0, 2.0 / 16.0, 1.0))
+        }
     )
 
     val LIGHT_CELL = cell(
@@ -201,16 +207,10 @@ object Content {
 
     val LIGHT_PART = part(
         "light_part",
-        BasicPartProvider({ ci ->
+        BasicPartProvider(Vector3d(8.0 / 16.0, (1.0 + 2.302) / 16.0, 5.0 / 16.0)) { ci ->
             PoweredLightPart(ci, LIGHT_CELL.get())
-        }, Vector3d(8.0 / 16.0, (1.0 + 2.302) / 16.0, 5.0 / 16.0))
+        }
     )
-
-    val OSCILLATOR_CELL = injCell<OscillatorCell>("oscillator")
-
-    val OSCILLATOR_PART = part("oscillator", BasicPartProvider( { ci ->
-        OscillatorPart(ci)
-    }, Vector3d(1.0, 1.0, 1.0)))
 
     val LIGHT_BULB_12V_100W = item("light_bulb_12v_100w") {
         LightBulbItem(
@@ -234,13 +234,15 @@ object Content {
         )
     }
 
-    val GRID_CELL = injCell<GridCell>("grid")
+    val GRID_CELL = cell(
+        "grid",
+        BasicCellProvider { GridCell(it) })
 
     val GRID_TAP_PART = part(
         "grid_tap",
-        BasicPartProvider( { ci ->
+        BasicPartProvider(Vector3d(4.0 / 16.0, 0.5, 4.0 / 16.0)) { ci ->
             GridTapPart(ci, GRID_CELL.get())
-        }, Vector3d(4.0 / 16.0, 0.5, 4.0 / 16.0))
+        }
     )
 
     val GRID_CONNECT_COPPER = item("grid_connect_copper") {
@@ -259,8 +261,9 @@ object Content {
 
     val SMALL_GARDEN_LIGHT = part(
         "small_garden_light",
-        BasicPartProvider( { ci ->
-            SolarLightPart(ci,
+        BasicPartProvider(Vector3d(4.0 / 16.0, 6.0 / 16.0, 4.0 / 16.0)) { ci ->
+            SolarLightPart(
+                ci,
                 SMALL_GARDEN_LIGHT_MODEL,
                 { it.placement.face.toVector3d() },
                 {
@@ -271,15 +274,16 @@ object Content {
                 },
                 BasicPartRenderer::class.java
             ).also { it.energy = GARDEN_LIGHT_INITIAL_CHARGE }
-        }, Vector3d(4.0 / 16.0, 6.0 / 16.0, 4.0 / 16.0))
+        }
     )
 
     private val TALL_GARDEN_LIGHT_MODEL = gardenLightModel(7.0)
 
     val TALL_GARDEN_LIGHT = part(
         "tall_garden_light",
-        BasicPartProvider( { ci ->
-            SolarLightPart(ci,
+        BasicPartProvider(Vector3d(3.0 / 16.0, 15.5 / 16.0, 3.0 / 16.0)) { ci ->
+            SolarLightPart(
+                ci,
                 SMALL_GARDEN_LIGHT_MODEL,
                 { it.placement.face.toVector3d() },
                 {
@@ -291,45 +295,56 @@ object Content {
                 },
                 LightFixtureRenderer::class.java
             ).also { it.energy = GARDEN_LIGHT_INITIAL_CHARGE }
-        }, Vector3d(3.0 / 16.0, 15.5 / 16.0, 3.0 / 16.0))
+        }
     )
 
     val HEAT_ENGINE_ELECTRICAL_CELL = cell(
         "heat_engine_electrical",
-        BasicCellProvider { ci ->
-            HeatEngineElectricalCell(
-                ci,
-                directionPoleMapPlanar(
-                    plusDir = Base6Direction3d.Front,
-                    minusDir = Base6Direction3d.Back
-                ),
-                directionPoleMapPlanar(
-                    plusDir = Base6Direction3d.Left,
-                    minusDir = Base6Direction3d.Right
-                ),
-                ThermalBodyDef(
-                    Material.COPPER,
-                    25.0,
-                    2.0
-                ),
-                HeatEngineElectricalModel(
-                    efficiency = 0.9,
-                    power = 1000.0,
-                    leakageRate = 1e-3,
-                    desiredVoltage = 100.0
+        BasicCellProvider.setup {
+            // The electrical plus and minus:
+            val electricalA = Base6Direction3d.Front
+            val electricalB = Base6Direction3d.Back
+
+            // The hot and cold side:
+            val thermalA = Base6Direction3d.Left
+            val thermalB = Base6Direction3d.Right
+
+            val electricalMap = directionPoleMapPlanar(plusDir = electricalA, minusDir = electricalB)
+            val thermalMap = directionPoleMapPlanar(plusDir = thermalA, minusDir = thermalB)
+
+            val thermalDefinition = ThermalMassDefinition(
+                ChemicalElement.Copper.asMaterial,
+                mass = Quantity(5.0, KILOGRAM)
+            )
+
+            val model = HeatEngineElectricalModel(
+                efficiency = 0.9,
+                power = Quantity(5.0, KILO * WATT),
+                desiredPotential = Quantity(220.0, VOLT)
+            )
+
+            CellFactory {
+                val cell = HeatEngineElectricalCell(
+                    it,
+                    electricalMap,
+                    thermalMap,
+                    thermalDefinition,
+                    model
                 )
-            ).also {
-                it.generator.ruleSet.withDirectionRulePlanar(Base6Direction3dMask.FRONT + Base6Direction3dMask.BACK)
-                it.thermalBipole.ruleSet.withDirectionRulePlanar(Base6Direction3dMask.LEFT + Base6Direction3dMask.RIGHT)
+
+                cell.generator.ruleSet.withDirectionRulePlanar(electricalA + electricalB)
+                cell.thermalBipole.ruleSet.withDirectionRulePlanar(thermalA + thermalB)
+
+                cell
             }
         }
     )
 
     val HEAT_ENGINE_ELECTRICAL_PART = part(
         "heat_engine_electrical",
-        BasicPartProvider({
-        HeatEngineElectricalPart(it)
-    }, Vector3d(0.5, 15.0 / 16.0, 0.5)))
+        BasicPartProvider(Vector3d(0.5, 15.0 / 16.0, 0.5)) {
+            HeatEngineElectricalPart(it)
+        })
 
     fun clientWork() {
         MenuScreens.register(HEAT_GENERATOR_MENU.get(), ::HeatGeneratorScreen)

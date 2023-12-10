@@ -6,7 +6,8 @@
     "plugin": "org.eln2.mc.integration.sodium.SodiumPlugin",
     "mixins": [],
     "client": [
-        "MixinEmbeddiumWorldSlice"
+        "MixinEmbeddiumWorldSlice",
+        "MixinEmbeddiumCompat"
     ],
     "minVersion": "0.8"
 }

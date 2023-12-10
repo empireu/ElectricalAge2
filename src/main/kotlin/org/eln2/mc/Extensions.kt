@@ -46,18 +46,19 @@ import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.network.NetworkHooks
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.*
+import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Material
+import org.ageseries.libage.sim.Simulator
+import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
-import org.ageseries.libage.sim.thermal.ConnectionParameters
-import org.ageseries.libage.sim.thermal.Simulator
-import org.ageseries.libage.sim.thermal.ThermalMass
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.cells.foundation.ComponentHolder
 import org.eln2.mc.common.parts.foundation.CellPartConnectionMode
 import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.common.parts.foundation.PartUpdateType
+import org.eln2.mc.control.PIDController
 import org.eln2.mc.data.*
 import org.eln2.mc.mathematics.*
 import org.joml.Quaternionf
@@ -402,28 +403,8 @@ fun VoltageSource.setPotentialEpsilon(potential: Double, epsilon: Double = LIBAG
     return true
 }
 
-fun Simulator.add(body: ThermalBody) {
-    this.add(body.thermal)
-}
-
-fun Simulator.remove(body: ThermalBody) {
-    this.remove(body.thermal)
-}
-
-fun Simulator.connect(a: ThermalBody, b: ThermalBody, parameters: ConnectionParameters) {
-    this.connect(a.thermal, b.thermal, parameters)
-}
-
 fun Simulator.connect(a: ThermalMass, environmentInformation: EnvironmentInformation) {
-    val connectionInfo = ConnectionParameters(
-        conductance = environmentInformation.airThermalConductivity
-    )
-
-    this.connect(a, environmentInformation.temperature, connectionInfo)
-}
-
-fun Simulator.connect(a: ThermalBody, environmentInformation: EnvironmentInformation) {
-    this.connect(a.thermal, environmentInformation)
+    this.connect(a, environmentInformation.temperature)
 }
 
 /**
@@ -632,72 +613,6 @@ fun CompoundTag.useSubTagIfPreset(key: String, consumer: ((CompoundTag) -> Unit)
     consumer(tag)
 
     return this
-}
-
-fun CompoundTag.putMaterial(id: String, material: Material) {
-    this.putSubTag(id) {
-        it.putDouble(NBT_ELECTRICAL_RESISTIVITY, material.electricalResistivity)
-        it.putDouble(NBT_THERMAL_CONDUCTIVITY, material.thermalConductivity)
-        it.putDouble(NBT_SPECIFIC_HEAT, material.specificHeat)
-        it.putDouble(NBT_DENSITY, material.density)
-    }
-}
-
-fun CompoundTag.getMaterial(id: String): Material {
-    val tag = this.getCompound(id)
-
-    return Material(
-        tag.getDouble(NBT_ELECTRICAL_RESISTIVITY),
-        tag.getDouble(NBT_THERMAL_CONDUCTIVITY),
-        tag.getDouble(NBT_SPECIFIC_HEAT),
-        tag.getDouble(NBT_DENSITY)
-    )
-}
-
-fun CompoundTag.putMaterialMapped(id: String, material: Material) {
-    this.putSubTag(id) {
-        it.putString(NBT_MATERIAL_NAME, MaterialMapping.getName(material))
-    }
-}
-
-fun CompoundTag.getMaterialMapped(id: String): Material {
-    val tag = this.getCompound(id)
-
-    return MaterialMapping.getMaterial(tag.getString(NBT_MATERIAL_NAME))
-}
-
-fun CompoundTag.putThermalMass(
-    id: String,
-    thermalMass: ThermalMass,
-    materialSerializer: ((String, Material, CompoundTag) -> Unit),
-) {
-    this.putSubTag(id) {
-        materialSerializer(NBT_MATERIAL, thermalMass.material, it)
-        it.putDouble(NBT_ENERGY, thermalMass.energy)
-        it.putDouble(NBT_MASS, thermalMass.mass)
-    }
-}
-
-fun CompoundTag.getThermalMass(id: String, materialDeserializer: ((String, CompoundTag) -> Material)): ThermalMass {
-    val tag = this.getCompound(id)
-
-    return ThermalMass(
-        materialDeserializer(NBT_MATERIAL, tag),
-        tag.getDouble(NBT_ENERGY),
-        tag.getDouble(NBT_MASS)
-    )
-}
-
-fun CompoundTag.putThermalMass(id: String, thermalMass: ThermalMass) {
-    this.putThermalMass(id, thermalMass) { key, material, tag ->
-        tag.putMaterial(key, material)
-    }
-}
-
-fun CompoundTag.getThermalMass(id: String): ThermalMass {
-    return this.getThermalMass(id) { key, tag ->
-        tag.getMaterial(key)
-    }
 }
 
 fun Double.formatted(decimals: Int = 2): String {
@@ -1077,4 +992,16 @@ fun<T> MutableSet<T>.removeFirst() : T {
     val value = this.first()
     this.remove(value)
     return value
+}
+
+fun PIDController.stateToNbt() : CompoundTag {
+    val tag = CompoundTag()
+    tag.putDouble("errorSum", this.errorSum)
+    tag.putDouble("lastError", this.lastError)
+    return tag
+}
+
+fun PIDController.stateFromNbt(tag: CompoundTag) {
+    this.errorSum = tag.getDouble("errorSum")
+    this.lastError = tag.getDouble("lastError")
 }

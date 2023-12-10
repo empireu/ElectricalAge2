@@ -37,9 +37,6 @@ object CellRegistry {
         return result
     }
 
-    inline fun <reified T : Cell> injCell(id: String, vararg extraParams: Any): RegistryObject<CellProvider<T>> =
-        cell(id, InjectCellProvider(T::class.java, extraParams.asList()))
-
     fun getCellProvider(id: ResourceLocation): CellProvider<*> {
         return cellRegistry.get().getValue(id) ?: error("Could not get cell provider with id $id")
     }

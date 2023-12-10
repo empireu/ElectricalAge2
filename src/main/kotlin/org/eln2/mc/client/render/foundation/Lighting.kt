@@ -22,6 +22,8 @@ class CachingLightReader(val level: BlockAndTintGetter) {
     inline fun getLightColor(blockPos: BlockPos): Int = cache.computeIfAbsent(blockPos.asLong()) {
         LevelRenderer.getLightColor(level, blockPos)
     }
+
+    fun getLightColorWrapper(blockPos: BlockPos) = getLightColor(blockPos)
 }
 
 class NeighborLightReader(val reader: CachingLightReader) {

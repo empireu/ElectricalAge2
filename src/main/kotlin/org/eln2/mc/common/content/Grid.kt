@@ -32,6 +32,7 @@ import net.minecraftforge.network.NetworkEvent
 import org.ageseries.libage.data.MutableMapPairBiMap
 import org.ageseries.libage.data.MutableSetMapMultiMap
 import org.ageseries.libage.mathematics.*
+import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.Material
 import org.eln2.mc.*
 import org.eln2.mc.client.render.*
@@ -43,6 +44,8 @@ import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.common.parts.foundation.PartRenderer
 import org.eln2.mc.data.*
+import org.eln2.mc.integration.ComponentDisplay
+import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.*
 import java.util.*
 import java.util.concurrent.locks.ReentrantReadWriteLock
@@ -52,6 +55,7 @@ import kotlin.collections.HashSet
 import kotlin.concurrent.read
 import kotlin.concurrent.write
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.min
 
 /**
@@ -87,7 +91,7 @@ object GridMaterials {
         GridMaterial(
             NEUTRAL,
             RGBFloat(0.2f, 0.2f, 0.2f),
-            Material.COPPER
+            ChemicalElement.Copper.asMaterial
         )
     )
 
@@ -96,7 +100,7 @@ object GridMaterials {
         GridMaterial(
             NEUTRAL,
             RGBFloat(0.9f, 0.9f, 0.9f),
-            Material.IRON
+            ChemicalElement.Iron.asMaterial
         )
     )
 
@@ -105,7 +109,7 @@ object GridMaterials {
         GridMaterial(
             COPPER,
             RGBFloat(1f, 1f, 1f),
-            Material.COPPER
+            ChemicalElement.Copper.asMaterial
         )
     )
 
@@ -127,7 +131,7 @@ data class GridConnectionCatenary(val id: Int, val wireCatenary: Cable3d, val ma
     /**
      * Gets the electrical resistance over the entire length of the cable.
      * */
-    val resistance get() = material.physicalMaterial.electricalResistivity * (wireCatenary.arcLength / wireCatenary.crossSectionArea)
+    val resistance get() = !material.physicalMaterial.electricalResistivity * (wireCatenary.arcLength / wireCatenary.crossSectionArea)
 
     fun toNbt() = CompoundTag().also {
         it.putInt(ID, id)
@@ -673,7 +677,8 @@ object GridConnectionManagerClient {
             slicesByConnection.clear(id)
         }
     }
-
+    // Kind of waiting on this lock when parallel meshing, what to do?
+    @JvmStatic
     fun read(sectionPos: SectionPos, user: (GridMaterial, Quad) -> Unit) {
         lock.read {
             slicesBySection[sectionPos].forEach { slice ->
@@ -683,6 +688,9 @@ object GridConnectionManagerClient {
             }
         }
     }
+
+    @JvmStatic
+    fun containsRange(sectionPos: SectionPos) = slicesBySection.contains(sectionPos)
 
     @JvmStatic
     fun containsRange(pStart: BlockPos, pEnd: BlockPos) : Boolean {
@@ -743,6 +751,10 @@ object GridConnectionManagerClient {
  * */
 class GridElectricalObject(cell: GridCell, val tapResistance: Double) : ElectricalObject<GridCell>(cell) {
     private val gridResistors = HashMap<GridElectricalObject, ResistorVirtual>()
+    // FIXME one tap resistor -> fused line and real connections on same pin
+    // Maybe lift this limitation in circuitBuilder?
+    val totalCurrent get() = gridResistors.values.sumOf { abs(it.current) }
+    val totalPower get() = gridResistors.values.sumOf { abs(it.power) }
 
     // Reset on clear, isPresent -> Is connected
     private val tapResistor = UnsafeLazyResettable {
@@ -938,7 +950,7 @@ class GridCell(ci: CellCreateInfo) : Cell(ci) {
 abstract class GridCellPart<R : PartRenderer>(
     ci: PartCreateInfo,
     provider: CellProvider<GridCell>
-) : CellPart<GridCell, R>(ci, provider) {
+) : CellPart<GridCell, R>(ci, provider), ComponentDisplay {
     // Attachment in the fixed frame:
     open val attachment: Vector3d = placement.position.toVector3d() + Vector3d(0.5)
 
@@ -1000,6 +1012,14 @@ abstract class GridCellPart<R : PartRenderer>(
                     remoteEndPointInfo.material
                 )
             }
+        }
+    }
+
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        runIfCell {
+            builder.resistance(cell.electricalObject.tapResistance)
+            builder.current(cell.electricalObject.totalCurrent)
+            builder.power(cell.electricalObject.totalPower)
         }
     }
 }
@@ -1141,29 +1161,52 @@ open class GridConnectItem(val material: GridMaterial) : Item(Properties()) {
     }
 }
 
+@FunctionalInterface
+fun interface GridRendererVertexConsumer {
+    fun vertex(
+        pX: Float, pY: Float, pZ: Float,
+        pRed: Float, pGreen: Float, pBlue: Float,
+        pTexU: Float, pTexV: Float,
+        pOverlayUV: Int, pLightmapUV: Int,
+        pNormalX: Float, pNormalY: Float, pNormalZ: Float
+    )
+}
+
 object GridRenderer {
     @JvmStatic
-    fun submitForRenderSection(
+    fun submitForRebuildSection(
         pRenderChunk: ChunkRenderDispatcher.RenderChunk,
         pChunkBufferBuilderPack: ChunkBufferBuilderPack,
         pRenderChunkRegion: RenderChunkRegion,
         pRenderTypeSet: MutableSet<RenderType>,
     ) {
         val renderType = RenderType.solid()
-
-        val builder = pChunkBufferBuilderPack.builder(renderType)
+        val vertexConsumer = pChunkBufferBuilderPack.builder(renderType)
 
         if(pRenderTypeSet.add(renderType)) {
-            pRenderChunk.beginLayer(builder)
+            pRenderChunk.beginLayer(vertexConsumer)
         }
 
         val lightReader = CachingLightReader(pRenderChunkRegion)
         val neighborLights = NeighborLightReader(lightReader)
         val section = SectionPos.of(pRenderChunk.origin)
 
-        val originX = pRenderChunk.origin.x.toDouble()
-        val originY = pRenderChunk.origin.y.toDouble()
-        val originZ = pRenderChunk.origin.z.toDouble()
+        submitSection(section, lightReader, neighborLights) { pX, pY, pZ, pRed, pGreen, pBlue, pTexU, pTexV, pOverlayUV, pLightmapUV, pNormalX, pNormalY, pNormalZ ->
+            vertexConsumer.vertex(
+                pX, pY, pZ,
+                pRed, pGreen, pBlue, 1.0f,
+                pTexU, pTexV,
+                pOverlayUV, pLightmapUV,
+                pNormalX, pNormalY, pNormalZ
+            )
+        }
+    }
+
+    @JvmStatic
+    fun submitSection(section: SectionPos, lightReader: CachingLightReader, neighborLights: NeighborLightReader, consumer: GridRendererVertexConsumer) {
+        val originX = section.minBlockX()
+        val originY = section.minBlockY()
+        val originZ = section.minBlockZ()
 
         GridConnectionManagerClient.read(section) { material, quad ->
             for (i in 0 until 4) {
@@ -1194,9 +1237,9 @@ object GridRenderer {
 
                 val (r, g, b) = material.vertexColor
 
-                builder.vertex(
+                consumer.vertex(
                     xSection, ySection, zSection,
-                    r, g, b, 1f,
+                    r, g, b,
                     u, v,
                     OverlayTexture.NO_OVERLAY, light,
                     normalX, normalY, normalZ

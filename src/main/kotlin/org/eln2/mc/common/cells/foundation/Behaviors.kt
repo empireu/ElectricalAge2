@@ -3,9 +3,11 @@ package org.eln2.mc.common.cells.foundation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
+import org.ageseries.libage.data.JOULE
 import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
+import org.ageseries.libage.sim.ThermalMass
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.events.Scheduler
@@ -75,7 +77,7 @@ operator fun CellBehaviorSource.times(b: CellBehavior) = this.add(b)
 /**
  * Container for multiple [CellBehavior]s. It is a Set. As such, there may be one instance of each behavior type.
  * */
-class CellBehaviorContainer(private val cell: Cell) {
+class CellBehaviorContainer {
     val behaviors = ArrayList<CellBehavior>()
 
     fun addToCollection(b: CellBehavior) {
@@ -101,33 +103,17 @@ class CellBehaviorContainer(private val cell: Cell) {
     }
 }
 
-fun interface ElectricalPowerAccessor {
-    fun get(): Double
-}
-
-fun interface ThermalBodyAccessor {
-    fun get(): ThermalBody
-}
-
-fun ThermalBodyAccessor.temperature(): TemperatureAccessor = TemperatureAccessor {
-    this.get().temperatureKelvin
-}
-
 /**
  * Converts dissipated electrical energy to thermal energy.
  * */
-class PowerHeatingBehavior @Inj constructor(private val accessor: ElectricalPowerAccessor, private val body: ThermalBody) : CellBehavior {
+class PowerHeatingBehavior(private val power: () -> Double, val body: ThermalMass) : CellBehavior {
     override fun subscribe(subscribers: SubscriberCollection) {
         subscribers.addPre(this::simulationTick)
     }
 
     private fun simulationTick(dt: Double, p: SubscriberPhase) {
-        body.energy += accessor.get() * dt
+        body.energy += Quantity(power() * dt, JOULE)
     }
-}
-
-fun interface TemperatureAccessor {
-    fun get(): Double
 }
 
 fun interface ExplosionConsumer {
@@ -164,20 +150,15 @@ data class TemperatureExplosionBehaviorOptions(
  * Injection is supported using [TemperatureAccessor], [TemperatureField]
  * */
 class TemperatureExplosionBehavior(
-    val temperatureAccessor: TemperatureAccessor,
+    val temperatureAccessor: () -> Quantity<Temperature>,
     val options: TemperatureExplosionBehaviorOptions,
     val consumer: ExplosionConsumer,
 ) : CellBehavior {
     private var score = 0.0
     private var enqueued = false
 
-    @Inj
-    constructor(temperatureAccessor: TemperatureAccessor, options: TemperatureExplosionBehaviorOptions, cell: Cell) :
+    constructor(temperatureAccessor: () -> Quantity<Temperature> , options: TemperatureExplosionBehaviorOptions, cell: Cell) :
         this(temperatureAccessor, options, { defaultNotifier(cell) })
-
-    @Inj
-    constructor(temperatureAccessor: TemperatureAccessor, consumer: ExplosionConsumer) :
-        this(temperatureAccessor, TemperatureExplosionBehaviorOptions(), consumer)
 
     override fun onAdded(container: CellBehaviorContainer) {}
 
@@ -186,11 +167,11 @@ class TemperatureExplosionBehavior(
     }
 
     private fun simulationTick(dt: Double, phase: SubscriberPhase) {
-        val temperature = temperatureAccessor.get()
+        val temperature = temperatureAccessor()
 
-        if (temperature > !options.temperatureThreshold) {
-            val difference = temperature - !options.temperatureThreshold
-            score += options.increaseSpeed * difference * dt
+        if (temperature > options.temperatureThreshold) {
+            val difference = temperature - options.temperatureThreshold
+            score += options.increaseSpeed * !difference * dt
         } else {
             score -= options.decayRate * dt
         }

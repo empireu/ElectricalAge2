@@ -52,7 +52,7 @@ fun measureDuration(block: () -> Unit) : Quantity<Time> {
 
     val result = measureNanoTime(block)
 
-    return Quantity(result.toDouble(), NANOSECONDS)
+    return Quantity(result.toDouble(), NANO * SECOND)
 }
 
 val digitRange = '0'..'9'
@@ -162,10 +162,10 @@ class Stopwatch {
         val elapsedNanoseconds = current - lastTimeStamp
         lastTimeStamp = current
 
-        return Quantity(elapsedNanoseconds.toDouble(), NANOSECONDS)
+        return Quantity(elapsedNanoseconds.toDouble(), NANO * SECOND)
     }
 
-    val total get() = Quantity((System.nanoTime() - initialTimeStamp).toDouble(), NANOSECONDS)
+    val total get() = Quantity((System.nanoTime() - initialTimeStamp).toDouble(), NANO * SECOND)
 
     fun resetTotal() {
         initialTimeStamp = System.nanoTime()
