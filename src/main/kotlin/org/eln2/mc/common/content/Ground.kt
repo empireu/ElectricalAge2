@@ -1,7 +1,7 @@
 package org.eln2.mc.common.content
 
-import org.eln2.mc.ElectricalComponentSet
-import org.eln2.mc.ElectricalConnectivityMap
+import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
+import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
 import org.eln2.mc.common.cells.foundation.*
@@ -37,8 +37,10 @@ class GroundObject(cell: Cell) : ElectricalObject<Cell>(cell) {
     }
 
     override fun build(map: ElectricalConnectivityMap) {
-        resistors.connect(connections, this, map)
-        resistors.forEach { it.ground(INTERNAL_PIN) }
+        resistors.build(connections, this, map)
+        resistors.forEach {
+            it.ground(INTERNAL_PIN)
+        }
     }
 }
 

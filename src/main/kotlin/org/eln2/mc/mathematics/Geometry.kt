@@ -5,7 +5,6 @@ package org.eln2.mc.mathematics
 import net.minecraft.core.BlockPos
 import org.ageseries.libage.mathematics.Vector3d
 import org.ageseries.libage.mathematics.Vector3di
-import org.eln2.mc.formatted
 import kotlin.math.*
 
 

@@ -11,12 +11,17 @@ import net.minecraftforge.server.ServerLifecycleHooks
 import org.ageseries.libage.data.MutableMapPairBiMap
 import org.ageseries.libage.sim.Simulator
 import org.ageseries.libage.sim.electrical.mna.Circuit
+import org.ageseries.libage.sim.electrical.mna.CircuitBuilder
+import org.ageseries.libage.sim.electrical.mna.NEGATIVE
+import org.ageseries.libage.sim.electrical.mna.POSITIVE
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
+import org.ageseries.libage.utils.Stopwatch
+import org.ageseries.libage.utils.measureDuration
 import org.eln2.mc.*
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.SimulationObjectType.*
-import org.eln2.mc.common.content.PhotovoltaicModel
 import org.eln2.mc.data.*
+import org.eln2.mc.extensions.*
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -24,7 +29,6 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
-import java.util.function.Supplier
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 
@@ -1078,7 +1082,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         }
 
         circuitBuilders.values.forEach {
-            it.realizeVirtual()
+            it.build()
         }
 
         electricalSims.forEach { postProcessCircuit(it) }
@@ -1609,13 +1613,11 @@ class BasicCellProvider<T : Cell>(val factory: CellFactory<T>) : CellProvider<T>
 }
 
 /**
- * Describes the pin exported to other Electrical Objects.
+ * Convention for the pin "exported" to other Electrical Objects.
  * */
-const val EXTERNAL_PIN: Int = 1
+const val EXTERNAL_PIN: Int = POSITIVE
 
 /**
- * Describes the pin used internally by Electrical Objects.
+ * Convention for the pin used "internally" by Electrical Objects.
  * */
-const val INTERNAL_PIN: Int = 0
-const val POSITIVE_PIN = EXTERNAL_PIN
-const val NEGATIVE_PIN = INTERNAL_PIN
+const val INTERNAL_PIN: Int = NEGATIVE

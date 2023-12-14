@@ -20,6 +20,7 @@ import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
+import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.content.PartConnectionRenderInfo
@@ -27,9 +28,8 @@ import org.eln2.mc.common.content.PartConnectionRenderInfoSetConsumer
 import org.eln2.mc.common.content.getPartConnectionAsContactSectionConnectionOrNull
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.parts.foundation.*
-import org.eln2.mc.index
+import org.eln2.mc.extensions.index
 import org.eln2.mc.mathematics.Base6Direction3d
-import org.eln2.mc.putUnique
 import kotlin.collections.HashSet
 import kotlin.collections.Iterable
 import kotlin.collections.Map

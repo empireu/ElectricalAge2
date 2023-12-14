@@ -8,10 +8,11 @@ import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import org.ageseries.libage.data.ImmutableBiMapView
 import org.ageseries.libage.data.biMapOf
+import org.ageseries.libage.sim.electrical.mna.NEGATIVE
+import org.ageseries.libage.sim.electrical.mna.POSITIVE
 import org.eln2.mc.*
-import org.eln2.mc.common.cells.foundation.NEGATIVE_PIN
-import org.eln2.mc.common.cells.foundation.POSITIVE_PIN
 import org.eln2.mc.common.parts.foundation.getPartConnectionOrNull
+import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 
@@ -250,8 +251,8 @@ fun Locator.findDirActualPart(other: Locator): Base6Direction3d {
 }
 
 enum class Pole(val conventionalPin: Int) {
-    Plus(POSITIVE_PIN),
-    Minus(NEGATIVE_PIN)
+    Plus(POSITIVE),
+    Minus(NEGATIVE)
 }
 
 fun interface PoleMap {
@@ -265,7 +266,7 @@ fun interface PoleMap {
  * @return The pole [targetLocator] corresponds to.
  * */
 fun PoleMap.evaluate(sourceLocator: Locator, targetLocator: Locator): Pole =
-    evaluateOrNull(sourceLocator, targetLocator).requireNotNull {
+    checkNotNull(evaluateOrNull(sourceLocator, targetLocator)) {
         "Unhandled pole map direction $sourceLocator $targetLocator $this"
     }
 

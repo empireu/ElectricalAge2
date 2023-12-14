@@ -34,20 +34,17 @@ data class EnvironmentInformation(
 object BiomeEnvironments {
     private val biomes = ConcurrentHashMap<Biome, EnvironmentInformation>()
 
-    private val AIR_THERMAL_CONDUCTIVITY = loadCsvSpline("air_thermal_conductivity/ds.csv", 0, 2)
-    private val MINECRAFT_TEMPERATURE_CELSIUS = loadCsvSpline("minecraft_temperature/ds.csv", 0, 1)
-
     fun getInformationForBlock(level: Level, pos: Locator): EnvironmentInformation {
         val biome = level.getBiome(pos.requireLocator<BlockLocator> {
             "Biome Environments need a block pos locator"
         }).value()
 
-        val temperature = MINECRAFT_TEMPERATURE_CELSIUS.evaluate(biome.baseTemperature.toDouble())
+        val temperature = Datasets.MINECRAFT_TEMPERATURE_CELSIUS.evaluate(biome.baseTemperature.toDouble())
 
         return biomes.computeIfAbsent(biome) {
             return@computeIfAbsent EnvironmentInformation(
                 Quantity(temperature, CELSIUS),
-                Quantity(AIR_THERMAL_CONDUCTIVITY.evaluate(temperature), WATT_PER_METER_KELVIN)
+                Quantity(Datasets.AIR_THERMAL_CONDUCTIVITY.evaluate(temperature), WATT_PER_METER_KELVIN)
             )
         }
     }

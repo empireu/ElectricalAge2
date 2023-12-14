@@ -5,10 +5,10 @@ package org.eln2.mc.mathematics
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
 import net.minecraft.core.Direction
 import org.ageseries.libage.data.ImmutableByteArrayView
-import org.eln2.mc.alias
-import org.eln2.mc.index
-import org.eln2.mc.isHorizontal
-import org.eln2.mc.isVertical
+import org.eln2.mc.extensions.alias
+import org.eln2.mc.extensions.index
+import org.eln2.mc.extensions.isHorizontal
+import org.eln2.mc.extensions.isVertical
 import org.joml.Matrix4f
 
 enum class Base6Direction3d(val id: Int) {

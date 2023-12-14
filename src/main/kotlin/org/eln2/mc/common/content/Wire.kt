@@ -37,6 +37,8 @@ import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.mathematics.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.*
+import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
+import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
 import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.*
@@ -47,6 +49,7 @@ import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.data.*
+import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.*
@@ -132,7 +135,7 @@ class ElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
         // The Wire uses a bundle of 4 resistors. Every resistor's "Internal Pin" is connected to every
         // other resistor's internal pin. "External Pins" are offered to connection candidates:
 
-        resistors.connect(connections, this, map)
+        resistors.build(connections, this, map)
 
         resistors.forEach { a ->
             resistors.forEach { b ->
@@ -171,7 +174,7 @@ class ElectricalWireObjectVirtual(cell: Cell) : ElectricalObject<Cell>(cell) {
         // The Wire uses a bundle of 4 resistors. Every resistor's "Internal Pin" is connected to every
         // other resistor's internal pin. "External Pins" are offered to connection candidates:
 
-        resistors.connect(connections, this, map)
+        resistors.build(connections, this, map)
 
         resistors.forEach { a ->
             resistors.forEach { b ->

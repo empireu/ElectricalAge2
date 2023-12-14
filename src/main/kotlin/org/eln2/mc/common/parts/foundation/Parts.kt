@@ -39,6 +39,7 @@ import net.minecraft.world.level.block.Block
 import org.ageseries.libage.mathematics.Vector3d
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.cells.foundation.CellNeighborInfo
+import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.BlockPosInt
 
@@ -615,7 +616,7 @@ abstract class CellPart<C: Cell, R : PartRenderer>(
      * */
     @ServerOnly
     final override var cell: C
-        get() = cellField.requireNotNull {
+        get() = checkNotNull(cellField) {
             "Tried to get cell before it is set"
         }
         set(value) {

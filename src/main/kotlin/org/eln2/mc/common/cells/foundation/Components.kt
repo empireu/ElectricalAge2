@@ -1,139 +1,19 @@
 package org.eln2.mc.common.cells.foundation
 
-import org.ageseries.libage.sim.electrical.mna.component.Component
+import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
+import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
+import org.ageseries.libage.sim.electrical.mna.VirtualResistor
 import org.ageseries.libage.sim.electrical.mna.component.IResistor
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.electrical.mna.component.Term
-import org.eln2.mc.*
 import kotlin.math.abs
 
-// TODO Please remove
-class ComponentHolder<T : Component>(private val factory: () -> T) {
-    var value: T? = null
-        private set
-
-    val instance: T
-        get() {
-            if (value == null) {
-                value = factory()
-            }
-
-            return value!!
-        }
-
-    fun connect(pin: Int, component: Term, remotePin: Int, map: ElectricalConnectivityMap) {
-        map.connect(instance, pin, component, remotePin)
-    }
-
-    fun connect(pin: Int, componentInfo: ElectricalComponentInfo, map: ElectricalConnectivityMap) {
-        map.connect(instance, pin, componentInfo.component, componentInfo.index)
-    }
-
-    fun connectInternal(component: Term, remotePin: Int, map: ElectricalConnectivityMap) {
-        connect(INTERNAL_PIN, component, remotePin, map)
-    }
-
-    fun connectInternal(componentInfo: ElectricalComponentInfo, map: ElectricalConnectivityMap) {
-        connectInternal(componentInfo.component, componentInfo.index, map)
-    }
-
-    fun connectExternal(component: Term, remotePin: Int, map: ElectricalConnectivityMap) {
-        connect(EXTERNAL_PIN, component, remotePin, map)
-    }
-
-    fun connectExternal(componentInfo: ElectricalComponentInfo, map: ElectricalConnectivityMap) {
-        connectExternal(componentInfo.component, componentInfo.index, map)
-    }
-
-    fun connectExternal(owner: ElectricalObject<*>, connection: ElectricalObject<*>, map: ElectricalConnectivityMap) {
-        connectExternal(connection.offerComponent(owner), map)
-    }
-
-    fun connectPositive(component: Term, remotePin: Int, map: ElectricalConnectivityMap) {
-        connect(POSITIVE_PIN, component, remotePin, map)
-    }
-
-    fun connectPositive(componentInfo: ElectricalComponentInfo, map: ElectricalConnectivityMap) {
-        connectPositive(componentInfo.component, componentInfo.index, map)
-    }
-
-    fun connectPositive(owner: ElectricalObject<*>, connection: ElectricalObject<*>, map: ElectricalConnectivityMap) {
-        connectPositive(connection.offerComponent(owner), map)
-    }
-
-    fun connectNegative(component: Term, remotePin: Int, map: ElectricalConnectivityMap) {
-        connect(NEGATIVE_PIN, component, remotePin, map)
-    }
-
-    fun connectNegative(componentInfo: ElectricalComponentInfo, map: ElectricalConnectivityMap) {
-        connectNegative(componentInfo.component, componentInfo.index, map)
-    }
-
-    fun connectNegative(owner: ElectricalObject<*>, connection: ElectricalObject<*>, map: ElectricalConnectivityMap) {
-        connectNegative(connection.offerComponent(owner), map)
-    }
-
-    fun offerInternal(): ElectricalComponentInfo {
-        return ElectricalComponentInfo(instance, INTERNAL_PIN)
-    }
-
-    fun offerExternal(): ElectricalComponentInfo {
-        return ElectricalComponentInfo(instance, EXTERNAL_PIN)
-    }
-
-    fun offerPositive(): ElectricalComponentInfo {
-        return ElectricalComponentInfo(instance, POSITIVE_PIN)
-    }
-
-    fun offerNegative(): ElectricalComponentInfo {
-        return ElectricalComponentInfo(instance, NEGATIVE_PIN)
-    }
-
-    fun clear() {
-        value = null
-    }
-
-    val isPresent get() = value != null
-
-    val isNotPresent get() = value == null
-
-    inline fun ifPresent(action: ((T) -> Unit)): Boolean {
-        if (value == null) {
-            return false
-        }
-
-        action(value!!)
-
-        return true
-    }
-}
-
-fun<T> ComponentHolder<T>.ground(pin: Int) where T : Component {
-    this.instance.ground(pin)
-}
-
-fun<T> ComponentHolder<T>.groundInternal() where T : Component {
-    this.ground(INTERNAL_PIN)
-}
-
-fun<T> ComponentHolder<T>.groundNegative() where T : Component  {
-    this.ground(NEGATIVE_PIN)
-}
-
-fun<T> ComponentHolder<T>.groundExternal() where T : Component  {
-    this.ground(EXTERNAL_PIN)
-}
-
-/**
- * Utility class that holds a collection of resistors to be used as contact points for external components.
- * */
 open class ResistorBundle<T>(val factory: () -> T) where T : IResistor, T : Term {
     constructor(resistance: Double, factory: () -> T) : this(factory) {
         this.resistance = resistance
     }
 
     private val resistors = HashMap<ElectricalObject<*>, T>()
-
     private var prepared = false
 
     var resistance: Double = 1.0
@@ -172,7 +52,7 @@ open class ResistorBundle<T>(val factory: () -> T) where T : IResistor, T : Term
      * This must be called after "prepare", to finalize connections.
      * @see ElectricalObject.build
      * */
-    fun connect(connections: List<ElectricalObject<*>>, sender: ElectricalObject<*>, map: ElectricalConnectivityMap) {
+    fun build(connections: List<ElectricalObject<*>>, sender: ElectricalObject<*>, map: ElectricalConnectivityMap) {
         if (!prepared) {
             error("Not prepared")
         }
@@ -184,16 +64,14 @@ open class ResistorBundle<T>(val factory: () -> T) where T : IResistor, T : Term
         }
     }
 
-    private fun getResistor(remote: ElectricalObject<*>): T {
-        return resistors.computeIfAbsent(remote) {
-            if (prepared) {
-                error("Tried to create resistors after bundle was prepared")
-            }
-
-            val result = factory()
-            result.resistance = resistance
-            result
+    private fun getResistor(remote: ElectricalObject<*>) = resistors.computeIfAbsent(remote) {
+        if (prepared) {
+            error("Tried to create resistors after bundle was prepared")
         }
+
+        val result = factory()
+        result.resistance = resistance
+        result
     }
 
     /**

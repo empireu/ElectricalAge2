@@ -10,6 +10,7 @@ import org.ageseries.libage.mathematics.lerp
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.ThermalMass
+import org.ageseries.libage.sim.electrical.mna.component.updateResistance
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
 import org.eln2.mc.client.render.foundation.PartRendererSupplier
@@ -17,6 +18,8 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.data.*
+import org.eln2.mc.extensions.getQuantity
+import org.eln2.mc.extensions.useSubTagIfPreset
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.*
@@ -101,61 +104,6 @@ fun interface BatteryEnergyCapacityFunction {
     fun computeCapacity(battery: BatteryView): Double
 }
 
-private val LEAD_ACID_12V_WET_VOLTAGE = loadCsvGrid2("lead_acid_12v/ds_wet.csv")
-
-object BatteryVoltageModels {
-    val WET_CELL_12V = BatteryVoltageFunction { view ->
-        val dataset = LEAD_ACID_12V_WET_VOLTAGE
-        val temperature = view.temperature
-
-        if (view.charge > view.model.damageChargeThreshold) {
-            Quantity(dataset.evaluate(view.charge, !temperature), VOLT)
-        } else {
-            val datasetCeiling = dataset.evaluate(view.model.damageChargeThreshold, !temperature)
-
-            Quantity(lerp(
-                0.0,
-                datasetCeiling,
-                map(
-                    view.charge,
-                    0.0,
-                    view.model.damageChargeThreshold,
-                    0.0,
-                    1.0
-                )
-            ), VOLT)
-        }
-    }
-}
-
-object BatteryModels {
-    val LEAD_ACID_12V = BatteryModel(
-        voltageFunction = BatteryVoltageModels.WET_CELL_12V,
-        resistanceFunction = { _ -> Quantity(20.0, MILLI * OHM)},
-        damageFunction = { battery, dt ->
-            var damage = 0.0
-
-            damage += dt * (1.0 / 3.0) * 1e-6 // 1 month
-            damage += !(abs(battery.energyIncrement) / (!battery.model.energyCapacity * 50.0))
-            damage += dt * abs(battery.current).pow(1.12783256261) * 1e-7 *
-                if(battery.safeCharge > 0.0) 1.0
-                else map(battery.charge, 0.0, battery.model.damageChargeThreshold, 1.0, 5.0)
-
-            //println("T: ${battery.life / (damage / dt)}")
-
-            damage
-        },
-        capacityFunction = { battery ->
-            battery.life.pow(0.5)
-        },
-        energyCapacity = Quantity(2.2, KILO * WATT_HOUR),
-        0.5,
-        BatteryMaterials.LEAD_ACID_BATTERY,
-        Quantity(10.0, KILOGRAM),
-        Quantity(6.0, METER2)
-    )
-}
-
 object BatterySpecificHeats {
     // https://www.batterydesign.net/thermal/
     val PB_ACID_VENTED_FLOODED = 1080.0
@@ -230,8 +178,6 @@ class BatteryCell(
         private const val ENERGY = "energy"
         private const val LIFE = "life"
         private const val ENERGY_IO = "energyIo"
-        private const val VOLTAGE_EPS = 1e-4
-        private const val RESISTANCE_EPS = 1e-2
         private const val LIFE_EPS = 1e-3
     }
 
@@ -242,10 +188,7 @@ class BatteryCell(
     val thermalWire = ThermalWireObject(this, ThermalMass(model.material, mass = model.mass))
 
     @Behavior
-    val heater = PowerHeatingBehavior(
-        { generator.resistorPower },
-        thermalWire.thermalBody
-    )
+    val heater = PowerHeatingBehavior(generator.resistor::power, thermalWire.thermalBody)
 
     override var energy = Quantity<Energy>(0.0)
 
@@ -262,9 +205,9 @@ class BatteryCell(
     private var savedLife = life
 
     override val cycles get() = totalEnergyTransferred / model.energyCapacity
-    override val current get() = generator.resistorCurrent
+    override val current get() = generator.resistor.current
     override val charge get() = energy / model.energyCapacity
-    override val sourcePower get() = Quantity(generator.sourcePower, WATT)
+    override val sourcePower get() = Quantity(generator.source.power, WATT)
 
     override var energyIncrement = Quantity(0.0, JOULE)
 
@@ -314,12 +257,11 @@ class BatteryCell(
         energy = it.energy
         life = it.life
         totalEnergyTransferred = it.totalEnergyTransferred
-        graph.setChanged()
     }
 
     private fun transfersEnergy(elapsed: Double): Boolean {
         // Get energy transfer:
-        energyIncrement = Quantity(generator.sourcePower * elapsed)
+        energyIncrement = Quantity(generator.source.power * elapsed)
 
         if(energyIncrement.value.approxEq(0.0)) {
             return false
@@ -348,16 +290,11 @@ class BatteryCell(
 
     private fun simulationTick(elapsed: Double, phase: SubscriberPhase) {
         setChangedIf(appliesExternalUpdates())
-
-        if (!generator.hasResistor) {
-            return
-        }
-
         setChangedIf(transfersEnergy(elapsed))
 
         // Update with tolerance (likely, the resistance is ~constant and the voltage will update sparsely):
-        generator.updatePotential(!model.voltageFunction.computeVoltage(this), VOLTAGE_EPS)
-        generator.updateResistance(!model.resistanceFunction.computeResistance(this), RESISTANCE_EPS)
+        generator.source.potential = !model.voltageFunction.computeVoltage(this)
+        generator.resistor.updateResistance(!model.resistanceFunction.computeResistance(this))
 
         life -= model.damageFunction.computeDamage(this, elapsed)
         life = life.coerceIn(0.0, 1.0)
@@ -392,9 +329,9 @@ class BatteryPart(
     override fun submitDisplay(builder: ComponentDisplayList) {
         runIfCell {
             builder.quantity(cell.thermalWire.thermalBody.temperature)
-            builder.potential(cell.generator.potentialExact)
-            builder.current(cell.generator.sourceCurrent)
-            builder.power(cell.generator.sourcePower)
+            builder.potential(cell.generator.source.potential)
+            builder.current(cell.generator.source.current)
+            builder.power(cell.generator.source.power)
             builder.charge(cell.charge)
             builder.integrity(cell.life)
         }

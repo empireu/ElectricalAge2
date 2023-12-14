@@ -8,7 +8,10 @@ import net.minecraftforge.event.level.ChunkWatchEvent
 import net.minecraftforge.event.level.LevelEvent
 import net.minecraftforge.event.server.ServerStoppingEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
+import net.minecraftforge.fml.ModLoadingStage
 import net.minecraftforge.fml.common.Mod
+import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent
+import net.minecraftforge.fml.event.lifecycle.FMLLoadCompleteEvent
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.eln2.mc.LOG
 import org.eln2.mc.common.blocks.foundation.GhostLightHackClient
@@ -18,6 +21,17 @@ import org.eln2.mc.common.content.GridConnectionManagerClient
 import org.eln2.mc.common.content.GridConnectionManagerServer
 import org.eln2.mc.common.events.schedulePost
 import org.eln2.mc.data.AveragingList
+
+@Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.MOD)
+object ModEvents {
+    var isFullyLoaded = false
+        private set
+
+    @SubscribeEvent @JvmStatic
+    fun loadCompletedEvent(event: FMLLoadCompleteEvent) {
+        isFullyLoaded = true
+    }
+}
 
 @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.FORGE)
 object ForgeEvents {

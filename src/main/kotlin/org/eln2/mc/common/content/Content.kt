@@ -5,8 +5,12 @@ package org.eln2.mc.common.content
 import net.minecraft.client.gui.screens.MenuScreens
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.Vector3d
+import org.ageseries.libage.mathematics.evaluate
+import org.ageseries.libage.mathematics.lerp
+import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ThermalMassDefinition
+import org.eln2.mc.Datasets
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.cutout
@@ -25,8 +29,9 @@ import org.eln2.mc.common.parts.PartRegistry.part
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.data.*
 import org.eln2.mc.mathematics.*
-import org.eln2.mc.toVector3d
+import org.eln2.mc.extensions.toVector3d
 import kotlin.math.PI
+import kotlin.math.pow
 
 /**
  * Joint registry for content classes.
@@ -83,11 +88,64 @@ object Content {
 
     val BATTERY_CELL_12V = cell(
         "lead_acid_battery_12v",
-        BasicCellProvider { ci ->
-            BatteryCell(ci, BatteryModels.LEAD_ACID_12V).also {
-                it.energy = it.model.energyCapacity * 0.9
+        BasicCellProvider.setup {
+            val model =  BatteryModel(
+                voltageFunction = {
+                    val voltageDataset = Datasets.LEAD_ACID_VOLTAGE
+                    val temperature = it.temperature
+
+                    if (it.charge > it.model.damageChargeThreshold) {
+                        Quantity(voltageDataset.evaluate(it.charge, !temperature), VOLT)
+                    } else {
+                        val datasetCeiling = voltageDataset.evaluate(it.model.damageChargeThreshold, !temperature)
+
+                        Quantity(
+                            lerp(
+                                0.0,
+                                datasetCeiling,
+                                map(
+                                    it.charge,
+                                    0.0,
+                                    it.model.damageChargeThreshold,
+                                    0.0,
+                                    1.0
+                                )
+                            ), VOLT)
+                    }
+                },
+                resistanceFunction = {
+                    Quantity(20.0, MILLI * OHM)
+                },
+                damageFunction = { battery, dt ->
+                    var damage = 0.0
+
+                    damage += dt * (1.0 / 3.0) * 1e-6 // 1 month
+                    damage += !(abs(battery.energyIncrement) / (!battery.model.energyCapacity * 50.0))
+                    damage += dt * kotlin.math.abs(battery.current).pow(1.12783256261) * 1e-7 *
+                        if(battery.safeCharge > 0.0) 1.0
+                        else map(battery.charge, 0.0, battery.model.damageChargeThreshold, 1.0, 5.0)
+
+                    //println("T: ${battery.life / (damage / dt)}")
+
+                    damage
+                },
+                capacityFunction = { battery ->
+                    battery.life.pow(0.5)
+                },
+                energyCapacity = Quantity(2.2, KILO * WATT_HOUR),
+                0.5,
+                BatteryMaterials.LEAD_ACID_BATTERY,
+                Quantity(10.0, KILOGRAM),
+                Quantity(6.0, METER2)
+            )
+
+            CellFactory {
+                val cell = BatteryCell(it, model)
+                cell.energy = cell.model.energyCapacity * 0.9
+                cell
             }
-    })
+        }
+    )
 
     val BATTERY_PART_12V = part(
         "lead_acid_battery_12v",

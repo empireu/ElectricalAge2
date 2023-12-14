@@ -197,7 +197,7 @@ dependencies {
     shade minecraftLibrary("org.jetbrains.kotlinx:kotlinx-serialization-core:${kotlinx_serialization_version}")
     shade minecraftLibrary("org.jetbrains.kotlinx:kotlinx-serialization-cbor:${kotlinx_serialization_version}")
 
-    shade minecraftLibrary("com.github.age-series:LibAge:c75368f277")
+    shade minecraftLibrary("com.github.age-series:LibAge:next-SNAPSHOT")
     shade minecraftLibrary("org.apache.commons:commons-math3:3.6.1")
     shade minecraftLibrary("com.charleskorn.kaml:kaml:0.50.0")
 

@@ -8,13 +8,14 @@ import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.WATT_PER_METER2
 import org.ageseries.libage.mathematics.Vector3d
 import org.ageseries.libage.mathematics.frac
-import org.eln2.mc.*
+import org.ageseries.libage.sim.electrical.mna.component.PowerVoltageSource
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.data.*
+import org.eln2.mc.extensions.celestialPass
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.*
@@ -70,7 +71,7 @@ data class PhotovoltaicModel(
 
 class PhotovoltaicBehavior(
     val cell: Cell,
-    val source: PVSObject<*>,
+    val source: PolarTermObject<*, PowerVoltageSource>,
     val surfaceArea: Quantity<Area>,
     val model: PhotovoltaicModel,
     val normalSupplier: () -> Vector3d
@@ -91,8 +92,8 @@ class PhotovoltaicBehavior(
     private fun update(dt: Double, phase: SubscriberPhase) {
         val irradiance = !LEVEL_INTENSITY * irradianceFactor()
 
-        source.updatePotentialMax(!model.idealPotential * ((irradiance / model.b).pow(model.p) / model.d))
-        source.updatePowerIdeal(irradiance * !surfaceArea * model.efficiency)
+        source.term.potentialMax = !model.idealPotential * ((irradiance / model.b).pow(model.p) / model.d)
+        source.term.powerIdeal = irradiance * !surfaceArea * model.efficiency
     }
 }
 
@@ -105,7 +106,7 @@ class PhotovoltaicGeneratorCell(
     val normal get() = normalSupplier(this)
 
     @SimObject @Inspect
-    val generator = PVSObject<Cell>(this, directionPoleMapPlanar())
+    val generator = PolarTermObject(this, directionPoleMapPlanar(), PowerVoltageSource())
 
     @Behavior
     val photovoltaic = PhotovoltaicBehavior(this, generator, surfaceArea, model, this::normal)
@@ -120,9 +121,9 @@ class PhotovoltaicPanelPart(ci: PartCreateInfo, provider: CellProvider<Photovolt
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         runIfCell {
-            builder.potential(cell.generator.potentialMaxExact)
-            builder.power(cell.generator.sourcePower)
-            builder.current(cell.generator.sourceCurrent)
+            builder.potential(cell.generator.term.potential)
+            builder.power(cell.generator.term.power)
+            builder.current(cell.generator.term.current)
             builder.translatePercent("Irradiance", cell.photovoltaic.irradianceFactor())
         }
     }

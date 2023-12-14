@@ -23,6 +23,8 @@ import net.minecraftforge.registries.ForgeRegistries
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Resistance
 import org.ageseries.libage.mathematics.*
+import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
+import org.ageseries.libage.sim.electrical.mna.component.updateResistance
 import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.RenderTypeType
@@ -37,6 +39,7 @@ import org.eln2.mc.common.events.*
 import org.eln2.mc.common.network.serverToClient.with
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.data.*
+import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.*
@@ -645,7 +648,6 @@ interface LightBulbEmitterView {
 class LightCell(ci: CellCreateInfo, poleMap: PoleMap) : Cell(ci), LightView, LightBulbEmitterView {
     companion object {
         private const val RENDER_EPS = 1e-4
-        private const val OPEN_CIRCUIT_RESISTANCE = LARGE_RESISTANCE
         private const val RESISTANCE_EPS = 0.1
     }
 
@@ -659,8 +661,8 @@ class LightCell(ci: CellCreateInfo, poleMap: PoleMap) : Cell(ci), LightView, Lig
     private var serverThreadReceiver: EventQueue? = null
 
     @SimObject @Inspect
-    val resistor = ResistorObject(this, poleMap).also {
-        it.resistanceExact = OPEN_CIRCUIT_RESISTANCE
+    val resistor = ResistorObjectVirtual(this, poleMap).also {
+        it.resistance = LARGE_RESISTANCE
     }
 
     @SimObject @Inspect
@@ -688,7 +690,7 @@ class LightCell(ci: CellCreateInfo, poleMap: PoleMap) : Cell(ci), LightView, Lig
     var volume: LightVolume? = null
 
     override fun resetValues() {
-        resistor.updateResistance(OPEN_CIRCUIT_RESISTANCE)
+        resistor.updateResistance(LARGE_RESISTANCE)
         modelTemperature = 0.0
         trackedRenderBrightness = 0.0
         volumeState = 0

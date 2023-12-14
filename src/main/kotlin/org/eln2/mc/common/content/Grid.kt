@@ -10,7 +10,6 @@ import net.minecraft.client.renderer.chunk.RenderChunkRegion
 import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.client.renderer.texture.TextureAtlasSprite
 import net.minecraft.core.BlockPos
-import net.minecraft.core.Direction
 import net.minecraft.core.SectionPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
@@ -28,14 +27,17 @@ import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.Level
-import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.HitResult
 import net.minecraftforge.network.NetworkEvent
 import org.ageseries.libage.data.MutableMapPairBiMap
 import org.ageseries.libage.data.MutableSetMapMultiMap
+import org.ageseries.libage.data.associateByMulti
 import org.ageseries.libage.mathematics.*
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.Material
+import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
+import org.ageseries.libage.sim.electrical.mna.VirtualResistor
+import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.*
 import org.eln2.mc.client.render.foundation.*
@@ -46,6 +48,7 @@ import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.common.parts.foundation.PartRenderer
 import org.eln2.mc.data.*
+import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.*
@@ -80,7 +83,7 @@ object GridMaterials {
     private val materials = MutableMapPairBiMap<GridMaterial, ResourceLocation>()
 
     private fun gridAtlasSprite(name: String) = Supplier {
-        atlas.apply(resource("grid/$name")).requireNotNull {
+        checkNotNull(atlas.apply(resource("grid/$name"))) {
             "Did not find $name"
         }
     }
@@ -450,7 +453,7 @@ object GridConnectionManagerServer {
 
         fun createPairIfAbsent(pair: GridConnectionPair, material: GridMaterial) : GridConnectionCatenary {
             if(pairMap.hasPair(pair)) {
-                return handlesByPair[pair].requireNotNull { "Lingering pair in pair map" }.connection
+                return checkNotNull(handlesByPair[pair]) { "Lingering pair in pair map" }.connection
             }
 
             val result = createGridCatenary(pair, material)
@@ -916,8 +919,9 @@ class GridCell(ci: CellCreateInfo) : Cell(ci) {
 
             remoteCell as GridCell
 
-            val localEndPoint = remoteCell.endPoints.keys.firstOrNull { it.id == this.endpointId }
-                .requireNotNull { "Failed to solve grid ${this.endPoints} $this" }
+            val localEndPoint = checkNotNull(remoteCell.endPoints.keys.firstOrNull { it.id == this.endpointId }) {
+                "Failed to solve grid ${this.endPoints} $this"
+            }
 
             check(remoteCell.endPoints.remove(localEndPoint) != null)
         }
@@ -1410,16 +1414,18 @@ class Cable3d(
      * Creates a mesh of the wire.
      * */
     fun mesh() : CatenaryCableMesh {
-        val samples = spline.adaptscan(
-            0.0,
-            1.0,
-            0.1,
-            condition = differenceCondition3d(
-                distMax = min(splitDistanceHint, circumference),
-                rotIncrMax = splitRotIncrementMax
-            ),
-            iMax = 1024 * 32 // way too generous...
-        ).requireNotNull { "Failed to mesh $this" }
+        val samples = checkNotNull(
+            spline.adaptscan(
+                0.0,
+                1.0,
+                0.1,
+                condition = differenceCondition3d(
+                    distMax = min(splitDistanceHint, circumference),
+                    rotIncrMax = splitRotIncrementMax
+                ),
+                iMax = 1024 * 32 // way too generous...
+            )
+        ) { "Failed to mesh $this" }
 
         val crossSectionSketch = sketchCircle(circleVertices, radius)
 

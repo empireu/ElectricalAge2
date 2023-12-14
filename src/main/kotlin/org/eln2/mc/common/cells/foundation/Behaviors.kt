@@ -14,6 +14,7 @@ import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.events.schedulePre
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.data.*
+import org.eln2.mc.extensions.destroyPart
 
 /**
  * *A cell behavior* manages routines ([Subscriber]) that run on the simulation thread.

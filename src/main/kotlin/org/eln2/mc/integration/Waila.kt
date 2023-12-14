@@ -8,6 +8,8 @@ import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.*
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
+import org.eln2.mc.extensions.forEachCompound
+import org.eln2.mc.extensions.formattedPercentNormalized
 import snownee.jade.api.*
 import snownee.jade.api.config.IPluginConfig
 
@@ -144,7 +146,7 @@ class ComponentDisplayList(private val entries: MutableList<Component>) {
     )
 
     inline fun<reified T> quantity(quantity: Quantity<T>) = translateRow(
-        T::class.simpleName.requireNotNull {
+        checkNotNull(T::class.simpleName) {
             "Failed to get simple name of ${T::class.java}"
         },
         quantity.classify()

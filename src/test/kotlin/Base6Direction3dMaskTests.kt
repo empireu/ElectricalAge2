@@ -1,7 +1,7 @@
 import net.minecraft.core.Direction
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.Base6Direction3d
-import org.eln2.mc.isHorizontal
+import org.eln2.mc.extensions.isHorizontal
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.fail
 

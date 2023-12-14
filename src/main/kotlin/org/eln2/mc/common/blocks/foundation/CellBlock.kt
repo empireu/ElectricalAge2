@@ -26,7 +26,7 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.data.*
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
-import org.eln2.mc.isHorizontal
+import org.eln2.mc.extensions.isHorizontal
 import java.util.*
 
 abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirectionalBlock(p ?: Properties.of().noOcclusion()), EntityBlock {

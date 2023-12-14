@@ -30,6 +30,7 @@ import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.snzi
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.ThermalMassDefinition
+import org.ageseries.libage.sim.electrical.mna.component.PowerVoltageSource
 import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.common.blocks.foundation.CellBlock
@@ -41,6 +42,7 @@ import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.control.PIDController
 import org.eln2.mc.data.*
+import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.*
@@ -389,7 +391,7 @@ data class HeatEngineElectricalModel(
 )
 
 class HeatEngineElectricalBehavior(
-    val generator: PVSObject<*>,
+    val generator: PolarTermObject<*, PowerVoltageSource>,
     val cold: ThermalMass,
     val hot: ThermalMass,
     val efficiency: Double,
@@ -402,11 +404,11 @@ class HeatEngineElectricalBehavior(
 
     private fun preTick(dt: Double, phase: SubscriberPhase) {
         val dE = !hot.energy - !cold.energy
-        generator.updatePowerIdeal(efficiency * (dE / dt).coerceIn(-!maxPower, !maxPower))
+        generator.term.powerIdeal = efficiency * (dE / dt).coerceIn(-!maxPower, !maxPower)
     }
 
     private fun postTick(dt: Double, phase: SubscriberPhase) {
-        val electricalEnergy = Quantity(generator.sourcePower * dt, JOULE)
+        val electricalEnergy = Quantity(generator.term.power * dt, JOULE)
 
         val electricalDirection = snzi(!electricalEnergy)
         val thermalDirection = snzi((!hot.temperature - !cold.temperature))
@@ -448,10 +450,9 @@ class HeatEngineElectricalCell(
     constructor(ci: CellCreateInfo, electricalMap: PoleMap, thermalMap: PoleMap, def: ThermalMassDefinition, model: HeatEngineElectricalModel) : this(ci, electricalMap, thermalMap, def, def, model)
 
     @SimObject
-    val generator = PVSObject<HeatEngineElectricalCell>(
-        this,
-        electricalMap
-    ).also { it.potentialMaxExact = !model.desiredPotential }
+    val generator = PolarTermObject(this, electricalMap, PowerVoltageSource().also {
+        it.potentialMax = !model.desiredPotential
+    })
 
     @SimObject @Inspect
     val thermalBipole = ThermalBipoleObject(

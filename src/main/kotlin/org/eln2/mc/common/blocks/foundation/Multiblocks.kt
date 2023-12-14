@@ -29,6 +29,7 @@ import net.minecraft.world.phys.Vec3
 import net.minecraftforge.registries.ForgeRegistries
 import org.eln2.mc.*
 import org.eln2.mc.common.events.runPost
+import org.eln2.mc.extensions.*
 import kotlin.math.ceil
 
 data class MultiblockDefinition(val requiredBlocksId: Map<BlockPos, ResourceLocation>) {

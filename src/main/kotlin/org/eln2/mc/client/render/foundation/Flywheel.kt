@@ -22,7 +22,7 @@ import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.util.Mth
 import org.ageseries.libage.mathematics.Vector3d
-import org.eln2.mc.bind
+import org.eln2.mc.extensions.bind
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.resource
 import org.joml.Matrix3f
