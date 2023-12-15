@@ -284,7 +284,7 @@ object Content {
                 },
                 volumeProvider = LightFieldPrimitives.cone(
                     32,
-                    24.0,
+                    28.0,
                     PI / 4.0,
                     1
                 )

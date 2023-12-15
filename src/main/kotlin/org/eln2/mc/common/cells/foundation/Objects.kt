@@ -154,12 +154,6 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
 
     final override val type = SimulationObjectType.Electrical
 
-    /**
-     * This is used to validate new connections.
-     * If more connections than what is specified are created, an error will occur.
-     * */
-    open val maxConnections = Int.MAX_VALUE
-
     protected fun indexOf(obj: ElectricalObject<*>): Int {
         val index = connections.indexOf(obj)
 
@@ -193,10 +187,6 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
         require(!connections.contains(remoteObj)) { "Duplicate connection" }
 
         connections.add(remoteObj)
-
-        if (connections.size > maxConnections) {
-            error("Electrical object received more connections than were allowed")
-        }
     }
 
     /**
@@ -254,8 +244,6 @@ interface PersistentObject {
 }
 
 class SimulationObjectSet(objects: List<SimulationObject<*>>) {
-    constructor(vararg objects: SimulationObject<*>) : this(objects.asList())
-
     private val objects = HashMap<SimulationObjectType, SimulationObject<*>>()
 
     init {
@@ -294,10 +282,6 @@ class SimulationObjectSet(objects: List<SimulationObject<*>>) {
 enum class SimulationObjectType(val index: Int, val id: Int, val domain: String) {
     Electrical(0, 1, "electrical"),
     Thermal(1, 2, "thermal");
-
-    companion object {
-        val values: List<SimulationObjectType> = values().toList()
-    }
 }
 
 interface ThermalBipole {
@@ -306,7 +290,10 @@ interface ThermalBipole {
 }
 
 /**
- * Thermal object with two connection sides.
+ * Thermal object made of two thermal masses.
+ * @param map A map that maps the remote object to one of the two bodies.
+ * @param b1 The body that maps to [Pole.Plus]
+ * @param b2 The body that maps to [Pole.Minus]
  * */
 class ThermalBipoleObject<C : Cell>(
     cell: C,
@@ -318,10 +305,7 @@ class ThermalBipoleObject<C : Cell>(
     constructor(cell: C, map: PoleMap, d1: ThermalMassDefinition, d2: ThermalMassDefinition) : this(cell, map, d1(), d2())
 
     init {
-        cell.environmentData.getOrNull<EnvironmentalTemperatureField>()?.readTemperature()?.also {
-            b1.temperature = it
-            b2.temperature = it
-        }
+        cell.environmentData.getOrNull<EnvironmentalTemperatureField>()?.readInto(b1, b2)
     }
 
     override fun offerComponent(neighbour: ThermalObject<*>) = ThermalComponentInfo(
@@ -348,13 +332,11 @@ class ThermalBipoleObject<C : Cell>(
 }
 
 /**
- * Generator model consisting of a Voltage Source + Resistor
+ * Generator model consisting of a [VoltageSource] + [Resistor].
  * */
 open class VRGeneratorObject<C : Cell>(cell: C, val map: PoleMap) : ElectricalObject<Cell>(cell) {
     val resistor = Resistor()
     val source = VoltageSource()
-
-    override val maxConnections = 2
 
     /**
      * Gets the offered component by evaluating the map.
@@ -377,9 +359,12 @@ open class VRGeneratorObject<C : Cell>(cell: C, val map: PoleMap) : ElectricalOb
     }
 }
 
+/**
+ * [ElectricalObject] that wraps a single [Term] meant to connect via two poles, plus and minus.
+ * @param poleMap A map that maps remote cells to the pin of the term.
+ * @param term The term to wrap.
+ * */
 open class PolarTermObject<C: Cell, T : Term>(cell: C, val poleMap: PoleMap, val term: T) : ElectricalObject<C>(cell) {
-    override val maxConnections: Int = 2
-
     override fun offerComponent(neighbour: ElectricalObject<*>) = ElectricalComponentInfo(
         term,
         poleMap.evaluate(cell.locator, neighbour.cell.locator).conventionalPin

@@ -45,7 +45,7 @@ class VoltageSourceObject(cell: Cell) : ElectricalObject<Cell>(cell) {
 }
 
 class VoltageSourceCell(ci: CellCreateInfo) : Cell(ci) {
-    @SimObject @Inspect
+    @SimObject
     val voltageSource = VoltageSourceObject(this)
 
     init {

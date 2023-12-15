@@ -48,16 +48,6 @@ fun <T> ArrayList<T>.bind() = ArrayList<T>(this.size).also { it.addAll(this) }
 @Suppress("UNCHECKED_CAST")
 fun <K, V> HashMap<K, V>.bind() = this.clone() as HashMap<K, V>
 
-inline fun <K, V> Iterable<K>.associateWithBi(valueSelector: (K) -> V): BiMap<K, V> {
-    val result = mutableBiMapOf<K, V>()
-
-    this.forEach { k ->
-        result.add(k, valueSelector(k))
-    }
-
-    return result
-}
-
 fun <Self : Translate<Self>> Self.translateNormal(normal: Vec3, distance: Double) : Self {
     this.translate(normal * distance)
     return this

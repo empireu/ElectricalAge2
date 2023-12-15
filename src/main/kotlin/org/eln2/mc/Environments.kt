@@ -18,8 +18,12 @@ fun interface EnvironmentalThermalConductivityField {
     fun readConductivity(): Quantity<ThermalConductivity>
 }
 
-fun EnvironmentalTemperatureField.readInto(body: ThermalMass) {
-    body.temperature = this.readTemperature()
+fun EnvironmentalTemperatureField.readInto(vararg bodies: ThermalMass) {
+    val temperature = this.readTemperature()
+
+    bodies.forEach {
+        it.temperature = temperature
+    }
 }
 
 data class EnvironmentInformation(

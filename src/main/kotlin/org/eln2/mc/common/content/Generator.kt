@@ -346,9 +346,7 @@ class HeatGeneratorMenu(pContainerId: Int, playerInventory: Inventory, handler: 
 class HeatGeneratorScreen(menu: HeatGeneratorMenu, playerInventory: Inventory, title: Component) :
     AbstractContainerScreen<HeatGeneratorMenu>(menu, playerInventory, title) {
     companion object {
-        private val TEXTURE = resource("textures/gui/container/furnace_test.png")
-        private val TEX_SIZE = Vector2I(256, 256)
-        private val BACKGROUND_UV_SIZE = Vector2I(176, 166)
+        private val TEXTURE = resource("textures/gui/container/heat_generator.png")
     }
 
     override fun renderBg(pGuiGraphics: GuiGraphics, pPartialTick: Float, pMouseX: Int, pMouseY: Int) {
@@ -454,7 +452,7 @@ class HeatEngineElectricalCell(
         it.potentialMax = !model.desiredPotential
     })
 
-    @SimObject @Inspect
+    @SimObject
     val thermalBipole = ThermalBipoleObject(
         this,
         thermalMap,
@@ -477,7 +475,7 @@ class HeatEngineElectricalCell(
     )
 }
 
-class HeatEngineElectricalPart(ci: PartCreateInfo) : CellPart<HeatEngineElectricalCell, RadiantBipoleRenderer>(ci, Content.HEAT_ENGINE_ELECTRICAL_CELL.get()), InternalTemperatureConsumer {
+class HeatEngineElectricalPart(ci: PartCreateInfo) : CellPart<HeatEngineElectricalCell, RadiantBipoleRenderer>(ci, Content.HEAT_ENGINE_ELECTRICAL_CELL.get()), InternalTemperatureConsumer, ComponentDisplay {
     override fun createRenderer() = RadiantBipoleRenderer(
         this,
         PartialModels.PELTIER_BODY,
@@ -504,6 +502,15 @@ class HeatEngineElectricalPart(ci: PartCreateInfo) : CellPart<HeatEngineElectric
         )
     }
 
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        runIfCell {
+            builder.temperature(!abs(cell.thermalBipole.b1.temperature - cell.thermalBipole.b2.temperature))
+            builder.power(cell.generator.term.power)
+            builder.potential(cell.generator.term.potential)
+            builder.current(cell.generator.term.current)
+        }
+    }
+
     @Serializable
-    data class SyncPacket(val b1Temp: Double, val b2Temp: Double)
+    private data class SyncPacket(val b1Temp: Double, val b2Temp: Double)
 }

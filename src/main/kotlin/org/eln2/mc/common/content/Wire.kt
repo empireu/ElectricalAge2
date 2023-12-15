@@ -543,14 +543,14 @@ open class WireCell(ci: CellCreateInfo, val connectionCrossSection: Double) : Ce
 }
 
 open class ThermalWireCell(ci: CellCreateInfo, connectionCrossSection: Double, val thermalProperties: WireThermalProperties) : WireCell(ci, connectionCrossSection) {
-    @SimObject @Inspect
+    @SimObject
     val thermalWire = ThermalWireObject(
         self()
     )
 
     @Behavior
     val explosion = TemperatureExplosionBehavior(
-        { thermalWire.thermalBody.temperature },
+        thermalWire.thermalBody::temperature,
         thermalProperties.damageOptions,
         self()
     )

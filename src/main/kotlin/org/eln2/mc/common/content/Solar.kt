@@ -105,7 +105,7 @@ class PhotovoltaicGeneratorCell(
 ) : Cell(ci) {
     val normal get() = normalSupplier(this)
 
-    @SimObject @Inspect
+    @SimObject
     val generator = PolarTermObject(this, directionPoleMapPlanar(), PowerVoltageSource())
 
     @Behavior

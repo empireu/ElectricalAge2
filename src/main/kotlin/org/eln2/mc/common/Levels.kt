@@ -10,10 +10,10 @@ import net.minecraftforge.event.level.BlockEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.server.ServerLifecycleHooks
+import org.ageseries.libage.data.Event
+import org.ageseries.libage.data.EventBus
+import org.ageseries.libage.data.EventSource
 import org.ageseries.libage.data.MutableSetMapMultiMap
-import org.eln2.mc.common.events.Event
-import org.eln2.mc.common.events.EventHandlerManager
-import org.eln2.mc.common.events.EventManager
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
@@ -22,7 +22,7 @@ data class LocatedBlockState(val position: BlockPos, val state: BlockState)
 data class BlockEventFrame(val set: List<LocatedBlockState>)
 
 interface BlockEventSource {
-    val gtEvents: EventHandlerManager
+    val gtEvents: EventSource
     val chunkPos: ChunkPos
     fun dispose()
 }
@@ -135,7 +135,7 @@ class BlockStreamProvider(val level: LevelReader) {
         BlockEventSource {
         private val destroyed = AtomicBoolean()
 
-        override val gtEvents = EventManager(
+        override val gtEvents = EventBus(
             setOf(
                 GTBSInitialSyncEvent::class,
                 GTBSUpdateEvent::class

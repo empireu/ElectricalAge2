@@ -28,10 +28,10 @@ class ResistorCell(ci: CellCreateInfo) : Cell(ci) {
         ruleSet.withDirectionRulePlanar(A + B)
     }
 
-    @SimObject @Inspect
+    @SimObject
     val resistor = ResistorObjectVirtual(this, directionPoleMapPlanar(A, B))
 
-    @SimObject @Inspect
+    @SimObject
     val thermalWire = ThermalWireObject(this)
 
     @Behavior

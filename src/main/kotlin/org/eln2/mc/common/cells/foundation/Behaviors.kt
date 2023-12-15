@@ -40,41 +40,6 @@ interface CellBehavior {
     fun destroy() {}
 }
 
-// to remove
-/**
- * Temporary staging storage for behaviors.
- * */
-class CellBehaviorSource : CellBehavior {
-    private val behaviors = ArrayList<CellBehavior>()
-
-    fun add(behavior: CellBehavior): CellBehaviorSource {
-        if (behavior is CellBehaviorSource) {
-            behaviors.addAll(behavior.behaviors)
-        } else {
-            behaviors.add(behavior)
-        }
-
-        return this
-    }
-
-    override fun onAdded(container: CellBehaviorContainer) {
-        behaviors.forEach { behavior ->
-            if (container.behaviors.any { it.javaClass == behavior.javaClass }) {
-                error("Duplicate behavior")
-            }
-
-            container.behaviors.add(behavior)
-            behavior.onAdded(container)
-        }
-
-        require(container.behaviors.remove(this)) { "Failed to clean up behavior source" }
-    }
-}
-
-operator fun CellBehavior.times(b: CellBehavior) = CellBehaviorSource().also { it.add(this).add(b) }
-
-operator fun CellBehaviorSource.times(b: CellBehavior) = this.add(b)
-
 /**
  * Container for multiple [CellBehavior]s. It is a Set. As such, there may be one instance of each behavior type.
  * */

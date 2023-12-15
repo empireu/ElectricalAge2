@@ -20,8 +20,10 @@ import net.minecraft.world.item.TooltipFlag
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.GlassBlock
 import net.minecraftforge.registries.ForgeRegistries
+import org.ageseries.libage.data.Event
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Resistance
+import org.ageseries.libage.data.registerHandler
 import org.ageseries.libage.mathematics.*
 import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
 import org.ageseries.libage.sim.electrical.mna.component.updateResistance
@@ -47,15 +49,16 @@ import java.nio.ByteBuffer
 import kotlin.math.*
 
 // Unfortunately, vanilla rendering has a problem which causes some smooth lighting to break
-// Nothing I can do
+// I have added that baseRadius thing which fluffs the light field therefore reducing the jaggedyness
+// it does make the final shape less nice though
 
-private val originPositionLz = Vector3d(0.5, 0.5, 0.5)
+private val originPositionField = Vector3d(0.5, 0.5, 0.5)
 
 /**
  * Traverses the light ray from [x], [y], [z] to the origin (0.5, 0.5, 0.5), and calls [user] with the voxel cell coordinates (minimal coordinates)
  * The origin is not included in the traversal.
  * */
-private inline fun traverseLightRay(x: Int, y: Int, z: Int, crossinline user: (Int, Int, Int) -> Boolean) {
+private inline fun traverseLightRay(x: Int, y: Int, z: Int, user: (Int, Int, Int) -> Boolean) {
     if(x == 0 && y == 0 && z == 0) {
         error("Cannot traverse from origin to origin")
     }
@@ -66,7 +69,7 @@ private inline fun traverseLightRay(x: Int, y: Int, z: Int, crossinline user: (I
         z + 0.5
     )
 
-    val ray = Ray3d.fromSourceAndDestination(sourcePositionLz, originPositionLz)
+    val ray = Ray3d.fromSourceAndDestination(sourcePositionLz, originPositionField)
 
     dda(ray, withSource = true) { i, j, k ->
         if (i == 0 && j == 0 && k == 0) {
@@ -78,11 +81,11 @@ private inline fun traverseLightRay(x: Int, y: Int, z: Int, crossinline user: (I
     }
 }
 
-private inline fun traverseLightRay(pos: Int, crossinline user: (Int, Int, Int) -> Boolean) {
+private inline fun traverseLightRay(pos: Int, user: (Int, Int, Int) -> Boolean) {
     traverseLightRay(BlockPosInt.unpackX(pos), BlockPosInt.unpackY(pos), BlockPosInt.unpackZ(pos), user)
 }
 
-private inline fun rayIntersectionAnalyzer(voxel: Int, crossinline predicate: (Int) -> Boolean) : IntOpenHashSet {
+private inline fun rayIntersectionAnalyzer(voxel: Int, predicate: (Int) -> Boolean) : IntOpenHashSet {
     val minX = BlockPosInt.unpackX(voxel).toDouble()
     val minY = BlockPosInt.unpackY(voxel).toDouble()
     val minZ = BlockPosInt.unpackZ(voxel).toDouble()
@@ -240,7 +243,7 @@ object LightFieldPrimitives {
                         val distance = cell distanceTo baseVector
 
                         if(!distance.approxEq(0.0)) {
-                            if(((cell - baseVector).normalized() cosAngle normal) < cosDeviationMax) {
+                            if((((cell - baseVector) / distance) cosAngle normal) < cosDeviationMax) {
                                 continue
                             }
                         }
@@ -660,17 +663,17 @@ class LightCell(ci: CellCreateInfo, poleMap: PoleMap) : Cell(ci), LightView, Lig
     // An event queue hooked into the game object:
     private var serverThreadReceiver: EventQueue? = null
 
-    @SimObject @Inspect
+    @SimObject
     val resistor = ResistorObjectVirtual(this, poleMap).also {
         it.resistance = LARGE_RESISTANCE
     }
 
-    @SimObject @Inspect
+    @SimObject
     val thermalWire = ThermalWireObject(this)
 
     @Behavior
     val explosion = TemperatureExplosionBehavior(
-        { thermalWire.thermalBody.temperature },
+        thermalWire.thermalBody::temperature,
         TemperatureExplosionBehaviorOptions(),
         this
     )

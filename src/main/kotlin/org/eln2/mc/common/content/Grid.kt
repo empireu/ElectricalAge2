@@ -868,7 +868,7 @@ data class GridStagingInfo(val remoteCell: GridCell, val properties: GridEndpoin
  * Electrical-thermal cell that links power grids with standalone electrical circuits.
  * */
 class GridCell(ci: CellCreateInfo) : Cell(ci) {
-    @SimObject @Inspect
+    @SimObject
     val electricalObject = GridElectricalObject(this, 1e-5)
 
     /**

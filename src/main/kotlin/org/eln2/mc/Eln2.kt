@@ -5,15 +5,17 @@ import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.packs.resources.Resource
 import net.minecraftforge.api.distmarker.Dist
+import net.minecraftforge.common.MinecraftForge
+import net.minecraftforge.eventbus.api.IEventBus
+import net.minecraftforge.fml.DistExecutor
+import net.minecraftforge.fml.ModLoadingContext
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext
-import net.minecraftforge.fml.loading.FMLEnvironment
-import org.ageseries.libage.mathematics.Rotation2d
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
-import org.eln2.mc.client.render.foundation.FlywheelRegistry
 import org.eln2.mc.client.render.PartialModels
+import org.eln2.mc.client.render.foundation.FlywheelRegistry
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.containers.ContainerRegistry
@@ -34,24 +36,22 @@ const val MODID = "eln2"
 @Mod(MODID)
 class Eln2 {
     init {
+        val context = ModLoadingContext.get()
+
+        Eln2Config.registerSpecs(context)
+
         val modEventBus = FMLJavaModLoadingContext.get().modEventBus
+        val forgeEventBus = MinecraftForge.EVENT_BUS
 
         BlockRegistry.setup(modEventBus)
         EntityRegistry.setup(modEventBus)
         ItemRegistry.setup(modEventBus)
         ContainerRegistry.setup(modEventBus)
 
-        if (Dist.CLIENT == FMLEnvironment.dist) {
-            modEventBus.addListener { event: FMLClientSetupEvent ->
-                event.enqueueWork {
-                    FlywheelRegistry.initialize()
-                    Content.clientWork()
-                }
+        DistExecutor.unsafeRunWhenOn(Dist.CLIENT) {
+            Runnable {
+                clientSetup(forgeEventBus, modEventBus)
             }
-
-            PartialModels.initialize()
-
-            LOG.info("Prepared client-side")
         }
 
         Networking.setup()
@@ -61,6 +61,21 @@ class Eln2 {
         Content.initialize()
 
         LOG.info("Prepared registries.")
+    }
+
+    private fun clientSetup(forgeEventBus: IEventBus, modEventBus: IEventBus) {
+        modEventBus.addListener { event: FMLClientSetupEvent ->
+            event.enqueueWork {
+                FlywheelRegistry.initialize()
+                Content.clientWork()
+            }
+        }
+
+        forgeEventBus.addListener(Eln2Config::registerClientCommands);
+
+        PartialModels.initialize()
+
+        LOG.info("Prepared client-side")
     }
 }
 

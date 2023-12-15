@@ -4,6 +4,8 @@ import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.TickEvent.Phase
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import net.minecraftforge.fml.common.Mod
+import org.ageseries.libage.data.Event
+import org.ageseries.libage.data.EventBus
 import org.eln2.mc.CrossThreadAccess
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.atomicRemoveIf
@@ -85,7 +87,7 @@ object Scheduler {
      * Only one queue can exist per listener.
      * This queue can be subsequently accessed, and events can be enqueued for the next tick.
      * */
-    fun register(listener: EventListener): EventManager {
+    fun register(listener: EventListener): EventBus {
         val result = EventQueueImplementation()
 
         lock.write {
@@ -229,7 +231,7 @@ object Scheduler {
     }
 
     private class EventQueueImplementation : EventQueue {
-        val manager = EventManager()
+        val manager = EventBus()
         val eventStream = ConcurrentLinkedQueue<Pair<Event, Runnable?>>()
         val eventsUnique = ConcurrentHashMap<Class<*>, Event>()
         var valid = true
@@ -284,3 +286,9 @@ fun periodicPre(interval: Int, item: () -> Boolean) = Scheduler.scheduleWorkPeri
 
 @ServerOnly
 fun periodicPost(interval: Int, item: () -> Boolean) = Scheduler.scheduleWorkPeriodic(interval, item, Phase.END)
+
+/**
+ * Event Listeners are implemented by game objects.
+ * @see Scheduler.register
+ * */
+interface EventListener

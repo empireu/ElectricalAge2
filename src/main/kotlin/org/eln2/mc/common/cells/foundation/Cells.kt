@@ -71,10 +71,6 @@ annotation class SimObject
 @Target(AnnotationTarget.FIELD)
 annotation class Behavior
 
-@Retention(AnnotationRetention.RUNTIME)
-@Target(AnnotationTarget.FIELD)
-annotation class Inspect
-
 /**
  * The cell is a physical unit, that may participate in multiple simulations. Each simulation will
  * have a Simulation Object associated with it.
@@ -1318,33 +1314,36 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         private const val NBT_POSITION = "pos"
         private const val NBT_CONNECTIONS = "connections"
 
-        init {
-            // We do get an exception from thread pool creation, but explicit handling is better here.
-            if (Configuration.instance.simulationThreads == 0) {
-                error("Simulation threads is 0")
-            }
-
-            LOG.info("Using ${Configuration.instance.simulationThreads} simulation threads")
-        }
-
         private val threadNumber = AtomicInteger()
 
         private fun createThread(r: Runnable): Thread {
-            val t = Thread(r, "cell-graph-${threadNumber.getAndIncrement()}")
+            val thread = Thread(r, "cell-graph-${threadNumber.getAndIncrement()}")
 
-            if (t.isDaemon) {
-                t.isDaemon = false
+            if (thread.isDaemon) {
+                thread.isDaemon = false
             }
 
-            if (t.priority != Thread.NORM_PRIORITY) {
-                t.priority = Thread.NORM_PRIORITY
+            if (thread.priority != Thread.NORM_PRIORITY) {
+                thread.priority = Thread.NORM_PRIORITY
             }
 
-            return t
+            return thread
         }
 
         private val pool = Executors.newScheduledThreadPool(
-            Configuration.instance.simulationThreads, ::createThread
+            run {
+                val threadCount = Eln2Config.serverConfig.simulationThreadCount.get()
+
+                // We do get an exception from thread pool creation, but explicit handling is better here.
+                if (threadCount <= 0) {
+                    error("Simulation threads is $threadCount")
+                }
+
+                LOG.info("Using $threadCount simulation threads")
+
+                threadCount
+            },
+            ::createThread
         )
 
         fun fromNbt(graphCompound: CompoundTag, manager: CellGraphManager, level: ServerLevel): CellGraph {
