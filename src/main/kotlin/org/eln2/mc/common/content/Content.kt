@@ -404,7 +404,15 @@ object Content {
             HeatEngineElectricalPart(it)
         })
 
+    val FURNACE_BLOCK_ENTITY = blockEntity("furnace", ::FurnaceBlockEntity) { FURNACE_BLOCK.block.get() }
+    val FURNACE_CELL = cell("furnace_cell", BasicCellProvider {
+        FurnaceCell(it, Base6Direction3d.Left, Base6Direction3d.Right)
+    })
+    val FURNACE_BLOCK = block("furnace", tab = null) { FurnaceBlock() }
+    val FURNACE_MENU = menu("furnace_menu", ::FurnaceMenu)
+
     fun clientWork() {
+        MenuScreens.register(FURNACE_MENU.get(), ::FurnaceScreen)
         MenuScreens.register(HEAT_GENERATOR_MENU.get(), ::HeatGeneratorScreen)
         LOG.info("Content client work completed")
     }

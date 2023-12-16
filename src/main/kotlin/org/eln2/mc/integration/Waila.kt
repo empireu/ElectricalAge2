@@ -15,6 +15,7 @@ import org.eln2.mc.extensions.formattedPercentNormalized
 import snownee.jade.api.*
 import snownee.jade.api.config.IPluginConfig
 import java.util.*
+import kotlin.math.absoluteValue
 
 @WailaPlugin
 class Eln2WailaPlugin : IWailaPlugin {
@@ -189,7 +190,7 @@ class ComponentDisplayList(private val entries: MutableList<Component>) {
     // serialization for contents, so we can't just make QuantityContents or something like that without some involved
     // mixin (there's no easy place to attach to) so I rather just do it like this
 
-    inline fun<reified T> translateQuantityRow(key: String, quantity: Quantity<T>) {
+    inline fun<reified T> translateQuantityRow(key: String, quantity: Quantity<T>, eps: Double = 1e-6) {
         val name = DIMENSION_TYPES.forward[T::class.java]
 
         checkNotNull(name) {
@@ -198,12 +199,12 @@ class ComponentDisplayList(private val entries: MutableList<Component>) {
 
         translateRow(
             key,
-            "${QUANTITY_PREFIX}${name}${QUANTITY_SUFFIX}${quantity.value}"
+            "${QUANTITY_PREFIX}${name}${QUANTITY_SUFFIX}${if(quantity.value.absoluteValue < eps) 0.0 else quantity.value}"
         )
     }
 
-    inline fun<reified T> quantity(quantity: Quantity<T>) {
-        translateQuantityRow(T::class.java.sourceName(), quantity)
+    inline fun<reified T> quantity(quantity: Quantity<T>, eps: Double = 1e-6) {
+        translateQuantityRow(T::class.java.sourceName(), quantity, eps)
     }
 
     fun current(value: Double) = quantity(Quantity(value, AMPERE))

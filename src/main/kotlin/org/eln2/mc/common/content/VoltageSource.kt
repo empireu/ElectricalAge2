@@ -46,7 +46,9 @@ class VoltageSourceObject(cell: Cell) : ElectricalObject<Cell>(cell) {
 
 class VoltageSourceCell(ci: CellCreateInfo) : Cell(ci) {
     @SimObject
-    val voltageSource = VoltageSourceObject(this)
+    val voltageSource = VoltageSourceObject(this).also {
+        it.source.potential = 1200.0
+    }
 
     init {
         ruleSet.withDirectionRulePlanar(Base6Direction3dMask.FRONT)
