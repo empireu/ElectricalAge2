@@ -1238,12 +1238,10 @@ class PoweredLightPart(ci: PartCreateInfo, cellProvider: CellProvider<LightCell>
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        runIfCell {
-            builder.quantity(cell.thermalWire.thermalBody.temperature)
-            builder.current(cell.current)
-            builder.power(cell.power)
-            builder.integrity(cell.life)
-        }
+        builder.quantity(cell.thermalWire.thermalBody.temperature)
+        builder.current(cell.current)
+        builder.power(cell.power)
+        builder.integrity(cell.life)
     }
 }
 

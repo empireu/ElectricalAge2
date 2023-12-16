@@ -38,7 +38,6 @@ import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.Vec3
 import net.minecraft.world.phys.shapes.VoxelShape
 import net.minecraftforge.common.ForgeMod
-import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.network.NetworkHooks
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.mathematics.Rotation2d
@@ -183,27 +182,6 @@ fun Direction.toVector3d(): Vector3d {
     return Vector3d(this.stepX.toDouble(), this.stepY.toDouble(), this.stepZ.toDouble())
 }
 
-fun AbstractContainerMenu.addPlayerGrid(playerInventory: Inventory, addSlot: ((Slot) -> Unit)): Int {
-    var slots = 0
-
-    for (i in 0..2) {
-        for (j in 0..8) {
-            addSlot(Slot(playerInventory, j + i * 9 + 9, 8 + j * 18, 84 + i * 18))
-            slots++
-        }
-    }
-    for (k in 0..8) {
-        addSlot(Slot(playerInventory, k, 8 + k * 18, 142))
-        slots++
-    }
-
-    return slots
-}
-
-fun interface ContainerFactory<T : BlockEntity> {
-    fun create(id: Int, inventory: Inventory, player: Player, entity: T): AbstractContainerMenu
-}
-
 fun Level.playLocalSound(
     pos: Vec3,
     pSound: SoundEvent,
@@ -281,57 +259,60 @@ fun ServerLevel.destroyPart(part: Part<*>, dropPart: Boolean) {
     }
 }
 
-inline fun <reified TEntity : BlockEntity> Level.constructMenu(
+inline fun <reified TBlockEntity : BlockEntity> Level.constructMenuHelper(
     pos: BlockPos,
     player: Player,
-    crossinline title: (() -> Component),
-    factory: ContainerFactory<TEntity>,
+    title: Component,
+    crossinline factory: (
+        pBlockEntity: TBlockEntity,
+        pContainerId: Int,
+        pPlayerInventory: Inventory,
+        pPlayer: Player
+    ) -> AbstractContainerMenu,
 ): InteractionResult {
 
-    if (!this.isClientSide) {
-        val entity = this.getBlockEntity(pos) as? TEntity
-            ?: return InteractionResult.FAIL
-
-        val containerProvider = object : MenuProvider {
-            override fun getDisplayName(): Component {
-                return title()
-            }
-
-            override fun createMenu(
-                pContainerId: Int,
-                pInventory: Inventory,
-                pPlayer: Player,
-            ): AbstractContainerMenu {
-                return factory.create(
-                    pContainerId,
-                    pInventory,
-                    pPlayer,
-                    entity
-                )
-            }
-        }
-
-        NetworkHooks.openScreen(player as ServerPlayer, containerProvider, entity.blockPos)
+    if (this.isClientSide) {
         return InteractionResult.SUCCESS
     }
+
+    val entity = this.getBlockEntity(pos) as? TBlockEntity
+        ?: return InteractionResult.FAIL
+
+    val containerProvider = object : MenuProvider {
+        override fun getDisplayName() = title
+
+        override fun createMenu(
+            pContainerId: Int,
+            pInventory: Inventory,
+            pPlayer: Player,
+        ): AbstractContainerMenu = factory(
+            entity,
+            pContainerId,
+            pInventory,
+            pPlayer
+        )
+    }
+
+    NetworkHooks.openScreen(player as ServerPlayer, containerProvider, entity.blockPos)
 
     return InteractionResult.SUCCESS
 }
 
-inline fun <reified TEntity : BlockEntity> Level.constructMenu(
+inline fun <reified TBlockEntity : BlockEntity> Level.constructMenuHelper2(
     pos: BlockPos,
     player: Player,
-    crossinline title: (() -> Component),
-    crossinline factory: ((Int, Inventory, ItemStackHandler) -> AbstractContainerMenu),
-    crossinline accessor: ((TEntity) -> ItemStackHandler),
-): InteractionResult {
-
-    return this.constructMenu<TEntity>(pos, player, title) { id, inventory, _, entity ->
-        factory(id, inventory, accessor(entity))
-    }
+    title: Component,
+    crossinline factory: (
+        pBlockEntity: TBlockEntity,
+        pContainerId: Int,
+        pPlayerInventory: Inventory,
+    ) -> AbstractContainerMenu,
+) = this.constructMenuHelper<TBlockEntity>(pos, player, title) { pBlockEntity: TBlockEntity, pContainerId: Int, pPlayerInventory: Inventory, _: Player ->
+    factory(pBlockEntity, pContainerId, pPlayerInventory)
 }
 
 fun Vector3f.toVec3() = Vec3(this.x.toDouble(), this.y.toDouble(), this.z.toDouble())
+
 val Base6Direction3d.alias: Direction
     get() = when (this) {
         Base6Direction3d.Front -> Direction.NORTH

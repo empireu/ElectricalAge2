@@ -2,7 +2,6 @@ package org.eln2.mc.common.content
 
 import kotlinx.serialization.Serializable
 import net.minecraft.client.gui.GuiGraphics
-import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
@@ -12,41 +11,50 @@ import net.minecraft.world.InteractionResult
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.AbstractContainerMenu
+import net.minecraft.world.inventory.ContainerLevelAccess
 import net.minecraft.world.item.ItemStack
-import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.BlockHitResult
+import net.minecraftforge.common.ForgeHooks
 import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.items.ItemStackHandler
-import net.minecraftforge.items.SlotItemHandler
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.snzi
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.mna.component.PowerVoltageSource
-import org.eln2.mc.*
+import org.eln2.mc.ClientOnly
+import org.eln2.mc.LOG
+import org.eln2.mc.ServerOnly
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.common.blocks.foundation.CellBlock
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.containers.foundation.ContainerHelper
+import org.eln2.mc.common.containers.foundation.MyAbstractContainerScreen
+import org.eln2.mc.common.containers.foundation.SlotItemHandlerWithPlacePredicate
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.control.PIDController
-import org.eln2.mc.data.*
+import org.eln2.mc.data.Locator
+import org.eln2.mc.data.PoleMap
+import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.extensions.*
-import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
-import org.eln2.mc.mathematics.*
-import kotlin.math.*
+import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.mathematics.Base6Direction3dMask
+import org.eln2.mc.resource
+import kotlin.math.min
+
 
 /**
  * Represents a mass of fuel which is mutable (the amount of fuel can be changed).
@@ -62,6 +70,26 @@ class FuelBurnState(var fuelAmount: Quantity<Mass>, val energyDensity: Quantity<
             return FuelBurnState(
                 tag.getQuantity(AMOUNT),
                 tag.getQuantity(ENERGY_DENSITY)
+            )
+        }
+
+        fun canBurn(itemStack: ItemStack) = ForgeHooks.getBurnTime(itemStack, null) > 0
+
+        /**
+         * Creates a [FuelBurnState] from the item. Precondition: [canBurn]
+         * Assumes that the item is mostly carbon, similar to the allotrope Coal.
+         * Based on the [ForgeHooks.getBurnTime] of the item, the mass of "coal" is adjusted.
+         * Example: If the burn time is equal to coal, the fuel will be 1kg of Coal. If the burn time is half, the result will be 0.5kg of Coal.
+         * */
+        fun createFromStack(itemStack: ItemStack) : FuelBurnState {
+            val burnTime = ForgeHooks.getBurnTime(itemStack, null)
+
+            val coalBurnTime = 1600.0
+            val amount = burnTime / coalBurnTime
+
+            return FuelBurnState(
+                Quantity(amount, KILOGRAM),
+                Quantity(24.0, MEGA * JOULE_PER_KILOGRAM)
             )
         }
     }
@@ -203,32 +231,29 @@ class HeatGeneratorBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEnti
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        val cell = this.cell
-
-        if(cell != null) {
-            builder.quantity(cell.thermalWire.thermalBody.temperature)
-            cell.burner.submitDisplay(builder)
-        }
+        builder.quantity(cell.thermalWire.thermalBody.temperature)
+        cell.burner.submitDisplay(builder)
     }
 
-    class InventoryHandler(val entity: HeatGeneratorBlockEntity) : ItemStackHandler(1) {
+    class InventoryHandler(private val blockEntity: HeatGeneratorBlockEntity) : ItemStackHandler(1) {
         override fun insertItem(slot: Int, stack: ItemStack, simulate: Boolean): ItemStack {
-            if (stack.item != Items.COAL) {
+            if (!FuelBurnState.canBurn(stack)) {
                 return ItemStack.EMPTY
             }
 
-            return super.insertItem(slot, stack, simulate).also {
-                entity.inputChanged()
-            }
+            return super.insertItem(slot, stack, simulate)
+        }
+
+        override fun onContentsChanged(slot: Int) {
+            blockEntity.setChanged()
         }
     }
 
     val inventoryHandler = InventoryHandler(this)
-    private val inventoryHandlerLazy = LazyOptional.of { inventoryHandler }
 
     override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
         if (cap == ForgeCapabilities.ITEM_HANDLER) {
-            return inventoryHandlerLazy.cast()
+            return LazyOptional.of { inventoryHandler }.cast()
         }
 
         return super.getCapability(cap, side)
@@ -245,9 +270,7 @@ class HeatGeneratorBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEnti
     }
 
     fun serverTick() {
-        val cell = cell ?: return
-
-        if (!cell.needsFuel) {
+        if (!cell!!.needsFuel) {
             return
         }
 
@@ -257,100 +280,47 @@ class HeatGeneratorBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEnti
             return
         }
 
-        cell.replaceFuel(
-            FuelBurnState(
-                Quantity(1.0, KILOGRAM),
-                Quantity(24.0, MEGA * JOULE_PER_KILOGRAM)
-            )
-        )
-
-        // Inventory changed:
-        setChanged()
-    }
-
-    fun inputChanged() {
-        setChanged()
+        cell!!.replaceFuel(FuelBurnState.createFromStack(stack))
     }
 }
 
 // FRAK YOU MINECRAFT!!
 
-class HeatGeneratorMenu(pContainerId: Int, playerInventory: Inventory, handler: ItemStackHandler) :
-    AbstractContainerMenu(Content.HEAT_GENERATOR_MENU.get(), pContainerId) {
+class HeatGeneratorMenu(pContainerId: Int, playerInventory: Inventory, handler: ItemStackHandler, private val access: ContainerLevelAccess) : AbstractContainerMenu(Content.HEAT_GENERATOR_MENU.get(), pContainerId) {
+    @ServerOnly
+    constructor(pBlockEntity: HeatGeneratorBlockEntity, pContainerId: Int, pPlayerInventory: Inventory) : this(
+        pContainerId,
+        pPlayerInventory,
+        pBlockEntity.inventoryHandler,
+        ContainerLevelAccess.create(pBlockEntity.level!!, pBlockEntity.blockPos)
+    )
 
-    companion object {
-        fun create(id: Int, inventory: Inventory, player: Player, entity: HeatGeneratorBlockEntity): HeatGeneratorMenu {
-            return HeatGeneratorMenu(
-                id,
-                inventory,
-                entity.inventoryHandler
-            )
-        }
-    }
-
+    @ClientOnly
     constructor(pContainerId: Int, playerInventory: Inventory) : this(
         pContainerId,
         playerInventory,
         ItemStackHandler(1),
+        ContainerLevelAccess.NULL
     )
 
-    private val playerGridStart: Int
-    private val playerGridEnd: Int
-
     init {
-        addSlot(SlotItemHandler(handler, HeatGeneratorBlockEntity.FUEL_SLOT, 56, 35))
-
-        playerGridStart = 1
-        playerGridEnd = playerGridStart + this.addPlayerGrid(playerInventory, this::addSlot)
-    }
-
-    override fun quickMoveStack(pPlayer: Player, pIndex: Int): ItemStack {
-        val slot = slots[pIndex]
-
-        if (!slot.hasItem()) {
-            return ItemStack.EMPTY
-        }
-
-        val stack = slot.item
-
-        if (pIndex == HeatGeneratorBlockEntity.FUEL_SLOT) {
-            // Quick move from input to player
-
-            if (!moveItemStackTo(stack, playerGridStart, playerGridEnd, true)) {
-                return ItemStack.EMPTY
+        addSlot(
+            SlotItemHandlerWithPlacePredicate(handler, HeatGeneratorBlockEntity.FUEL_SLOT, 56, 35) {
+                FuelBurnState.canBurn(it)
             }
-        } else {
-            // Only move into input slot
+        )
 
-            if (!moveItemStackTo(
-                    stack,
-                    HeatGeneratorBlockEntity.FUEL_SLOT,
-                    HeatGeneratorBlockEntity.FUEL_SLOT + 1,
-                    true
-                )
-            ) {
-                return ItemStack.EMPTY
-            }
-        }
-
-        slot.setChanged()
-
-        return stack
+        ContainerHelper.addPlayerGrid(playerInventory, this::addSlot)
     }
 
-    override fun stillValid(pPlayer: Player): Boolean {
-        return true
-    }
+    override fun quickMoveStack(pPlayer: Player, pIndex: Int) = ContainerHelper.quickMove(slots, pPlayer, pIndex)
+
+    override fun stillValid(pPlayer: Player) = stillValid(access, pPlayer, Content.HEAT_GENERATOR_BLOCK.block.get())
 }
 
-class HeatGeneratorScreen(menu: HeatGeneratorMenu, playerInventory: Inventory, title: Component) :
-    AbstractContainerScreen<HeatGeneratorMenu>(menu, playerInventory, title) {
-    companion object {
-        private val TEXTURE = resource("textures/gui/container/heat_generator.png")
-    }
-
+class HeatGeneratorScreen(menu: HeatGeneratorMenu, playerInventory: Inventory, title: Component) : MyAbstractContainerScreen<HeatGeneratorMenu>(menu, playerInventory, title) {
     override fun renderBg(pGuiGraphics: GuiGraphics, pPartialTick: Float, pMouseX: Int, pMouseY: Int) {
-        pGuiGraphics.blit(TEXTURE, leftPos, topPos, 0, 0, imageWidth, imageHeight)
+        blitHelper(pGuiGraphics, resource("textures/gui/container/heat_generator.png"))
     }
 }
 
@@ -378,7 +348,12 @@ class HeatGeneratorBlock : CellBlock<HeatGeneratorCell>() {
         pHand: InteractionHand,
         pHit: BlockHitResult,
     ): InteractionResult {
-        return pLevel.constructMenu(pPos, pPlayer, { Component.literal("Test") }, HeatGeneratorMenu::create)
+        return pLevel.constructMenuHelper2<HeatGeneratorBlockEntity>(
+            pPos,
+            pPlayer,
+            Component.literal("Test"),
+            ::HeatGeneratorMenu
+        )
     }
 }
 
@@ -437,7 +412,7 @@ class HeatEngineElectricalBehavior(
     }
 }
 
-class HeatEngineElectricalCell(
+class ElectricalHeatEngineCell(
     ci: CellCreateInfo,
     electricalMap: PoleMap,
     thermalMap: PoleMap,
@@ -475,7 +450,7 @@ class HeatEngineElectricalCell(
     )
 }
 
-class HeatEngineElectricalPart(ci: PartCreateInfo) : CellPart<HeatEngineElectricalCell, RadiantBipoleRenderer>(ci, Content.HEAT_ENGINE_ELECTRICAL_CELL.get()), InternalTemperatureConsumer, ComponentDisplay {
+class ElectricalHeatEnginePart(ci: PartCreateInfo) : CellPart<ElectricalHeatEngineCell, RadiantBipoleRenderer>(ci, Content.ELECTRICAL_HEAT_ENGINE_CELL.get()), InternalTemperatureConsumer, ComponentDisplay {
     override fun createRenderer() = RadiantBipoleRenderer(
         this,
         PartialModels.PELTIER_BODY,
@@ -503,12 +478,10 @@ class HeatEngineElectricalPart(ci: PartCreateInfo) : CellPart<HeatEngineElectric
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        runIfCell {
-            builder.temperature(!abs(cell.thermalBipole.b1.temperature - cell.thermalBipole.b2.temperature))
-            builder.power(cell.generator.term.power)
-            builder.potential(cell.generator.term.potential)
-            builder.current(cell.generator.term.current)
-        }
+        builder.temperature(!abs(cell.thermalBipole.b1.temperature - cell.thermalBipole.b2.temperature))
+        builder.power(cell.generator.term.power)
+        builder.potential(cell.generator.term.potential)
+        builder.current(cell.generator.term.current)
     }
 
     @Serializable

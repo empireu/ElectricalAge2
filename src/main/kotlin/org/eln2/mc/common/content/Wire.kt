@@ -79,7 +79,7 @@ class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass) : ThermalObjec
     )
 
     init {
-        cell.environmentData.getOrNull<EnvironmentalTemperatureField>()?.readInto(thermalBody)
+        cell.environmentData.loadTemperature(thermalBody)
     }
 
     override fun offerComponent(neighbour: ThermalObject<*>) = ThermalComponentInfo(thermalBody)
@@ -87,12 +87,7 @@ class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass) : ThermalObjec
     override fun addComponents(simulator: Simulator) {
         simulator.add(thermalBody)
 
-        // Connect to environment if it has a temperature and thermal conductivity:
-
-        val temperature = cell.environmentData.getOrNull<EnvironmentalTemperatureField>()?.readTemperature() ?: return
-        val thermalConductivity = cell.environmentData.getOrNull<EnvironmentalThermalConductivityField>()?.readConductivity() ?: return
-
-        simulator.connect(thermalBody, EnvironmentInformation(temperature, thermalConductivity))
+        cell.environmentData.connect(simulator, thermalBody)
     }
 
     override fun saveObjectNbt(): CompoundTag {
@@ -913,16 +908,16 @@ class WirePart<C : WireCell>(
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        runWithCell {
-            if(it is ThermalWireCell) {
-                builder.quantity(it.thermalWire.thermalBody.temperature)
-            }
+        val cell = this.cell
 
-            if(it is ElectrothermalWireCell) {
-                builder.resistance(it.electricalWire.resistance)
-                builder.power(it.electricalWire.totalPower)
-                builder.current(it.electricalWire.totalCurrent)
-            }
+        if(cell is ThermalWireCell) {
+            builder.quantity(cell.thermalWire.thermalBody.temperature)
+        }
+
+        if(cell is ElectrothermalWireCell) {
+            builder.resistance(cell.electricalWire.resistance)
+            builder.power(cell.electricalWire.totalPower)
+            builder.current(cell.electricalWire.totalCurrent)
         }
     }
 }
@@ -1250,7 +1245,7 @@ class IncandescentInstancedWireRenderer(
             .loadIdentity()
             .poseHub()
             .also {
-                it.setColor(colorF(1.0f, 1.0f, 1.0f, 0.0f))
+                it.setColor(Color(1.0f, 1.0f, 1.0f, 0.0f))
             }
 
     private fun createConnectionInstance(info: PartConnectionDirection, model: PolarModel) =
@@ -1262,8 +1257,8 @@ class IncandescentInstancedWireRenderer(
             .loadIdentity()
             .poseConnection(info)
             .also {
-                it.setColor1(colorF(1.0f, 1.0f, 1.0f, 0.0f))
-                it.setColor2(colorF(1.0f, 1.0f, 1.0f, 0.0f))
+                it.setColor1(Color(1.0f, 1.0f, 1.0f, 0.0f))
+                it.setColor2(Color(1.0f, 1.0f, 1.0f, 0.0f))
             }
 
     /**

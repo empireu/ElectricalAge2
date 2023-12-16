@@ -42,11 +42,9 @@ class ResistorPart(ci: PartCreateInfo) : CellPart<ResistorCell, BasicPartRendere
     override fun createRenderer() = BasicPartRenderer(this, PartialModels.RESISTOR)
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        runIfCell {
-            builder.quantity(cell.thermalWire.thermalBody.temperature)
-            builder.resistance(cell.resistor.resistance)
-            builder.power(cell.resistor.power)
-                builder.current(cell.resistor.current)
-        }
+        builder.quantity(cell.thermalWire.thermalBody.temperature)
+        builder.resistance(cell.resistor.resistance)
+        builder.power(cell.resistor.power)
+        builder.current(cell.resistor.current)
     }
 }

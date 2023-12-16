@@ -2,12 +2,7 @@ package org.eln2.mc.client.render.foundation
 
 import com.jozufozu.flywheel.util.Color
 import org.ageseries.libage.mathematics.Vector3d
-import org.ageseries.libage.mathematics.Vector4d
 import org.ageseries.libage.mathematics.lerp
-
-fun colorF(r: Float, g: Float, b: Float, a: Float): Color {
-    return Color(r, g, b, a)
-}
 
 fun colorLerp(from: Color, to: Color, blend: Float): Color =
     Color(
@@ -15,6 +10,20 @@ fun colorLerp(from: Color, to: Color, blend: Float): Color =
         lerp(from.greenAsFloat, to.greenAsFloat, blend),
         lerp(from.blueAsFloat, to.blueAsFloat, blend),
         lerp(from.alphaAsFloat, to.alphaAsFloat, blend)
+    )
+
+fun color(r: Int, g: Int, b: Int, a: Int = 255) =
+    (a and 0xff shl 24) or
+    (r and 0xff shl 16) or
+    (g and 0xff shl 8) or
+    (b and 0xff shl 0)
+
+fun color(r: Float, g: Float, b: Float, a: Float = 1.0f) =
+    color(
+        (r * 255).toInt(),
+        (g * 255).toInt(),
+        (b * 255).toInt(),
+        (a * 255).toInt()
     )
 
 data class RGBFloat(val r: Float, val g: Float, val b: Float) {
@@ -31,37 +40,4 @@ data class RGBFloat(val r: Float, val g: Float, val b: Float) {
         val zero = RGBFloat(0f, 0f, 0f)
         val one = RGBFloat(1f, 1f, 1f)
     }
-}
-
-data class RGBAFloat(val r: Float, val g: Float, val b: Float, val a: Float) {
-    operator fun times(scalar: Float) = RGBAFloat(r * scalar, g * scalar, b * scalar, a * scalar)
-    operator fun div(scalar: Float) = RGBAFloat(r / scalar, g / scalar, b / scalar, a / scalar)
-    operator fun times(other: RGBAFloat) = RGBAFloat(r * other.r, g * other.g, b * other.b, a * other.a)
-    operator fun div(other: RGBAFloat) = RGBAFloat(r / other.r, g / other.g, b / other.b, a / other.a)
-    operator fun plus(other: RGBAFloat) = RGBAFloat(r + other.r, g + other.g, b + other.b, a + other.a)
-    operator fun minus(other: RGBAFloat) = RGBAFloat(r - other.r, g - other.g, b - other.b, a - other.a)
-
-    fun toVector4d() = Vector4d(r.toDouble(), g.toDouble(), b.toDouble(), a.toDouble())
-
-    companion object {
-        val zero = RGBAFloat(0f, 0f, 0f, 0f)
-        val one = RGBAFloat(1f, 1f, 1f, 1f)
-    }
-}
-
-class MutableRGBA {
-    var r: Double = 0.0
-    var g: Double = 0.0
-    var b: Double = 0.0
-    var a: Double = 0.0
-
-    fun clear(value: Double = 0.0) : MutableRGBA {
-        r = value
-        g = value
-        b = value
-        a = value
-        return this
-    }
-
-    fun clearOne() = clear(1.0)
 }

@@ -215,4 +215,5 @@ class ComponentDisplayList(private val entries: MutableList<Component>) {
     fun temperature(value: Double) = quantity(Quantity(value, KELVIN))
     fun charge(value: Double) = translatePercent("charge", value)
     fun integrity(value: Double) = translatePercent("integrity", value)
+    fun progress(value: Double) = translatePercent("progress", value)
 }

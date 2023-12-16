@@ -18,7 +18,6 @@ import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.level.material.FluidState
-import org.eln2.mc.BiomeEnvironments
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.common.cells.CellRegistry
@@ -27,6 +26,7 @@ import org.eln2.mc.data.*
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.extensions.isHorizontal
+import org.eln2.mc.mathematics.Base6Direction3dMask
 import java.util.*
 
 abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirectionalBlock(p ?: Properties.of().noOcclusion()), EntityBlock {
@@ -36,7 +36,7 @@ abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirection
     }
 
     override fun getStateForPlacement(pContext: BlockPlaceContext): BlockState? {
-        return super.defaultBlockState().setValue(FACING, pContext.horizontalDirection.opposite.counterClockWise)
+        return super.defaultBlockState().setValue(FACING, pContext.horizontalDirection.opposite)
     }
 
     override fun createBlockStateDefinition(pBuilder: StateDefinition.Builder<Block, BlockState>) {
@@ -75,20 +75,17 @@ abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirection
     abstract fun getCellProvider(): CellProvider<C>
 }
 
-open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetType: BlockEntityType<*>) :
-    BlockEntity(targetType, pos, state),
-    CellContainer,
-    ComponentDisplay {
-
+open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetType: BlockEntityType<*>) : BlockEntity(targetType, pos, state), CellContainer {
     open val cellFace = Direction.UP
 
     private lateinit var graphManager: CellGraphManager
     private lateinit var cellProvider: CellProvider<C>
     private lateinit var savedGraphID: UUID
 
+    private var cellField: C? = null
+
     @ServerOnly
-    var cell: C? = null
-        private set
+    val cell: C get() = cellField ?: error("Tried to get cell too early! $this")
 
     fun setPlacedBy(level: Level, cellProvider: CellProvider<C>) {
         this.cellProvider = cellProvider
@@ -101,21 +98,25 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
 
         val cellPos = createCellLocator()
 
-        cell = cellProvider.create(cellPos, BiomeEnvironments.getInformationForBlock(level, cellPos).fieldMap())
-        cell!!.container = this
+        cellField = cellProvider.create(
+            cellPos,
+            CellEnvironment.evaluate(level, cellPos)
+        )
+
+        cell.container = this
 
         CellConnections.insertFresh(this, cell!!)
         setChanged()
 
-        cell!!.bindGameObjects(createObjectList())
+        cell.bindGameObjects(createObjectList())
     }
 
     fun disconnect() {
-        CellConnections.disconnectCell(cell!!, this, false)
+        CellConnections.disconnectCell(cell, this, false)
     }
 
     fun reconnect() {
-        CellConnections.connectCell(cell!!, this)
+        CellConnections.connectCell(cell, this)
     }
 
     protected open fun createObjectList() = listOf(this)
@@ -124,11 +125,14 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
         val level = this.level ?: error("Level is null in setDestroyed")
         val cell = this.cell
 
-        if (cell == null) {
+        if (cellField == null) {
             // This means we are on the client.
             // Otherwise, something is going on here.
 
-            require(level.isClientSide) { "Cell is null in setDestroyed" }
+            require(level.isClientSide) {
+                "Cell is null in setDestroyed"
+            }
+
             return
         }
 
@@ -142,10 +146,10 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
             return
         }
 
-        if (cell!!.hasGraph) {
-            pTag.putString("GraphID", cell!!.graph.id.toString())
+        if (cell.hasGraph) {
+            pTag.putString("GraphID", cell.graph.id.toString())
         } else {
-            LOG.info("Save additional: graph null")
+            LOG.error("Save additional: graph null")
         }
     }
 
@@ -164,10 +168,10 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
         super.onChunkUnloaded()
 
         if (!level!!.isClientSide) {
-            cell!!.onContainerUnloading()
-            cell!!.container = null
-            cell!!.onContainerUnloaded()
-            cell!!.unbindGameObjects()
+            cell.onContainerUnloading()
+            cell.container = null
+            cell.onContainerUnloaded()
+            cell.unbindGameObjects()
         }
     }
 
@@ -190,12 +194,12 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
             // fetch cell instance
             println("Loading cell at location $blockPos")
 
-            cell = graph.getCellByLocator(createCellLocator()) as C
+            cellField = graph.getCellByLocator(createCellLocator()) as C
 
-            cellProvider = CellRegistry.getCellProvider(cell!!.id) as CellProvider<C>
-            cell!!.container = this
-            cell!!.onContainerLoaded()
-            cell!!.bindGameObjects(createObjectList())
+            cellProvider = CellRegistry.getCellProvider(cell.id) as CellProvider<C>
+            cell.container = this
+            cell.onContainerLoaded()
+            cell.bindGameObjects(createObjectList())
         }
     }
 
@@ -208,30 +212,27 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
     }.build()
 
     override fun getCells(): ArrayList<Cell> {
-        return arrayListOf(cell ?: error("Cell is null in getCells"))
+        return arrayListOf(cell)
     }
 
     override fun neighborScan(actualCell: Cell): List<CellNeighborInfo> {
-        val cell = this.cell ?: error("Cell is null in queryNeighbors")
         val level = this.level ?: error("Level is null in queryNeighbors")
 
         val results = ArrayList<CellNeighborInfo>()
 
-        Direction.values()
-            .filter { it.isHorizontal() }
-            .forEach { searchDir ->
-                planarCellScan(level, cell, searchDir, results::add)
-            }
+        Base6Direction3dMask.HORIZONTALS.directionList.forEach { searchDir ->
+            planarCellScan(level, cell, searchDir, results::add)
+        }
 
         return results
     }
 
     override fun onCellConnected(actualCell: Cell, remoteCell: Cell) {
-        LOG.info("Cell Block recorded connection from $actualCell to $remoteCell")
+        LOG.debug("Cell Block recorded connection from {} to {}", actualCell, remoteCell)
     }
 
     override fun onCellDisconnected(actualCell: Cell, remoteCell: Cell) {
-        LOG.info("Cell Block recorded deleted connection from $actualCell to $remoteCell")
+        LOG.debug("Cell Block recorded deleted connection from {} to {}", actualCell, remoteCell)
     }
 
     override fun onTopologyChanged() {
@@ -240,12 +241,4 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
 
     override val manager: CellGraphManager
         get() = CellGraphManager.getFor(level as ServerLevel)
-
-    override fun submitDisplay(builder: ComponentDisplayList) {
-        val cell = this.cell
-
-        if (cell is ComponentDisplay) {
-            cell.submitDisplay(builder)
-        }
-    }
 }

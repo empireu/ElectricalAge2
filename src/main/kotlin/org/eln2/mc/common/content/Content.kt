@@ -209,19 +209,11 @@ object Content {
             }
         }
     )
-    val HEAT_GENERATOR_BLOCK = block("heat_generator", tab = null) {
-        HeatGeneratorBlock()
-    }
+    val HEAT_GENERATOR_BLOCK = block("heat_generator", tab = null) { HeatGeneratorBlock() }
 
-    val HEAT_GENERATOR_BLOCK_ENTITY = blockEntity(
-        "heat_generator",
-        ::HeatGeneratorBlockEntity
-    ) { HEAT_GENERATOR_BLOCK.block.get() }
+    val HEAT_GENERATOR_BLOCK_ENTITY = blockEntity("heat_generator", ::HeatGeneratorBlockEntity) { HEAT_GENERATOR_BLOCK.block.get() }
 
-    val HEAT_GENERATOR_MENU = menu(
-        "heat_generator",
-        ::HeatGeneratorMenu
-    )
+    val HEAT_GENERATOR_MENU = menu("heat_generator", ::HeatGeneratorMenu)
 
     val PHOTOVOLTAIC_GENERATOR_CELL = cell(
         "photovoltaic_generator",
@@ -356,8 +348,8 @@ object Content {
         }
     )
 
-    val HEAT_ENGINE_ELECTRICAL_CELL = cell(
-        "heat_engine_electrical",
+    val ELECTRICAL_HEAT_ENGINE_CELL = cell(
+        "electrical_heat_engine",
         BasicCellProvider.setup {
             // The electrical plus and minus:
             val electricalA = Base6Direction3d.Front
@@ -382,7 +374,7 @@ object Content {
             )
 
             CellFactory {
-                val cell = HeatEngineElectricalCell(
+                val cell = ElectricalHeatEngineCell(
                     it,
                     electricalMap,
                     thermalMap,
@@ -398,16 +390,18 @@ object Content {
         }
     )
 
-    val HEAT_ENGINE_ELECTRICAL_PART = part(
-        "heat_engine_electrical",
+    val ELECTRICAL_HEAT_ENGINE_PART = part(
+        "electrical_heat_engine",
         BasicPartProvider(Vector3d(0.5, 15.0 / 16.0, 0.5)) {
-            HeatEngineElectricalPart(it)
+            ElectricalHeatEnginePart(it)
         })
 
     val FURNACE_BLOCK_ENTITY = blockEntity("furnace", ::FurnaceBlockEntity) { FURNACE_BLOCK.block.get() }
+
     val FURNACE_CELL = cell("furnace_cell", BasicCellProvider {
         FurnaceCell(it, Base6Direction3d.Left, Base6Direction3d.Right)
     })
+
     val FURNACE_BLOCK = block("furnace", tab = null) { FurnaceBlock() }
     val FURNACE_MENU = menu("furnace_menu", ::FurnaceMenu)
 

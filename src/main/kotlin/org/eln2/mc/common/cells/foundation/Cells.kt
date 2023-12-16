@@ -8,8 +8,11 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.saveddata.SavedData
 import net.minecraftforge.server.ServerLifecycleHooks
-import org.ageseries.libage.data.MutableMapPairBiMap
+import org.ageseries.libage.data.*
+import org.ageseries.libage.sim.ConnectionParameters
+import org.ageseries.libage.sim.EnvironmentConnection
 import org.ageseries.libage.sim.Simulator
+import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.CircuitBuilder
 import org.ageseries.libage.sim.electrical.mna.NEGATIVE
@@ -55,7 +58,53 @@ class TrackedSubscriberCollection(private val underlyingCollection: SubscriberCo
     }
 }
 
-data class CellCreateInfo(val locator: Locator, val id: ResourceLocation, val environment: HashDataTable)
+/**
+ * Describes the environment the cell sits in.
+ * @param ambientTemperature The temperature of the environment.
+ * @param ambientThermalParameters Connection info for thermal interaction with the environment.
+ * @param substrateMaterial The material of the face in contact with the cell.
+ * */
+data class CellEnvironment(val ambientTemperature: Quantity<Temperature>, val ambientThermalParameters: ConnectionParameters) {
+    companion object {
+        fun evaluate(level: Level, pos: Locator): CellEnvironment {
+            val position = pos.requireLocator<BlockLocator> {
+                "Biome Environments need a block pos locator"
+            }
+
+            val biome = level.getBiome(position).value()
+
+            val temperature = Datasets
+                .MINECRAFT_TEMPERATURE_CELSIUS
+                .evaluate(biome.baseTemperature.toDouble())
+
+            return CellEnvironment(
+                Quantity(temperature, CELSIUS),
+                ConnectionParameters.DEFAULT
+            )
+        }
+    }
+}
+
+/**
+ * Sets the temperature of the [bodies] to the [CellEnvironment.ambientTemperature].
+ * */
+fun CellEnvironment.loadTemperature(vararg bodies: ThermalMass) {
+    bodies.forEach {
+        it.temperature = this.ambientTemperature
+    }
+}
+
+/**
+ * Adds [EnvironmentConnection]s for the bodies based on the [CellEnvironment.ambientTemperature] and [CellEnvironment.ambientThermalParameters].
+ * */
+fun CellEnvironment.connect(simulator: Simulator, vararg bodies: ThermalMass) {
+    bodies.forEach {
+        simulator.connect(it, this.ambientTemperature, this.ambientThermalParameters)
+    }
+}
+
+
+data class CellCreateInfo(val locator: Locator, val id: ResourceLocation, val environment: CellEnvironment)
 
 /**
  * Marks a field in a [Cell] as [SimulationObject]. The object will be registered automatically.
@@ -77,7 +126,7 @@ annotation class Behavior
  * Cells create connections with other cells, and objects create connections with other objects of the same simulation type.
  * */
 @ServerOnly
-abstract class Cell(val locator: Locator, val id: ResourceLocation, val environmentData: HashDataTable) {
+abstract class Cell(val locator: Locator, val id: ResourceLocation, val environmentData: CellEnvironment) {
     companion object {
         private val OBJECT_READERS = ConcurrentHashMap<Class<*>, List<FieldInfo<Cell>>>()
         private val BEHAVIOR_READERS = ConcurrentHashMap<Class<*>, List<FieldInfo<Cell>>>()
@@ -1376,10 +1425,9 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
                     connectionPositions.add(connectionPos)
                 }
 
-                val cell = CellRegistry.getCellProvider(cellId).create(
-                    pos,
-                    BiomeEnvironments.getInformationForBlock(level, pos).fieldMap()
-                )
+                val cell = CellRegistry
+                    .getCellProvider(cellId)
+                    .create(pos, CellEnvironment.evaluate(level, pos))
 
                 cellConnections[cell] = connectionPositions
 
@@ -1596,7 +1644,7 @@ abstract class CellProvider<T : Cell> {
      * */
     abstract fun create(ci: CellCreateInfo): T
 
-    fun create(locator: Locator, environment: HashDataTable) = create(CellCreateInfo(locator, id, environment))
+    fun create(locator: Locator, environment: CellEnvironment) = create(CellCreateInfo(locator, id, environment))
 }
 
 fun interface CellFactory<T : Cell> {

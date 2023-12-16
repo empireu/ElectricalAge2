@@ -1043,11 +1043,9 @@ abstract class GridCellPart<R : PartRenderer>(
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        runIfCell {
-            builder.resistance(cell.electricalObject.tapResistance)
-            builder.current(cell.electricalObject.totalCurrent)
-            builder.power(cell.electricalObject.totalPower)
-        }
+        builder.resistance(cell.electricalObject.tapResistance)
+        builder.current(cell.electricalObject.totalCurrent)
+        builder.power(cell.electricalObject.totalPower)
     }
 }
 

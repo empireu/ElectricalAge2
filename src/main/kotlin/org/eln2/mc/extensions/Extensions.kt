@@ -9,6 +9,7 @@ import org.ageseries.libage.data.*
 import org.ageseries.libage.sim.Simulator
 import org.ageseries.libage.sim.ThermalMass
 import org.eln2.mc.*
+import org.eln2.mc.common.cells.foundation.CellEnvironment
 import org.eln2.mc.control.PIDController
 import java.util.*
 
@@ -24,10 +25,6 @@ inline fun <reified T : Cell> Level.getCellOrNull(mb: MultiblockManager, cellPos
 inline fun <reified T : Cell> Level.getCell(mb: MultiblockManager, cellPosId: BlockPos): T =
     getCellOrNull(mb, cellPosId) ?: error("Cell was not present")
 */
-
-fun Simulator.connect(a: ThermalMass, environmentInformation: EnvironmentInformation) {
-    this.connect(a, environmentInformation.temperature)
-}
 
 fun Double.formattedPercentNormalized(decimals: Int = 2): String {
     return "${(this * 100.0).formatted(decimals)}%"

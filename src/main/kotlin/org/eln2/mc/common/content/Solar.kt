@@ -120,12 +120,10 @@ class PhotovoltaicPanelPart(ci: PartCreateInfo, provider: CellProvider<Photovolt
     override fun createRenderer() =  BasicPartRenderer(this, PartialModels.SOLAR_PANEL_ONE_BLOCK)
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        runIfCell {
-            builder.potential(cell.generator.term.potential)
-            builder.power(cell.generator.term.power)
-            builder.current(cell.generator.term.current)
-            builder.translatePercent("Irradiance", cell.photovoltaic.irradianceFactor())
-        }
+        builder.potential(cell.generator.term.potential)
+        builder.power(cell.generator.term.power)
+        builder.current(cell.generator.term.current)
+        builder.translatePercent("Irradiance", cell.photovoltaic.irradianceFactor())
     }
 }
 

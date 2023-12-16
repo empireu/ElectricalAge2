@@ -23,10 +23,9 @@ object PartialModels {
     val VOLTAGE_SOURCE = partialBlock("voltage_source")
     val RESISTOR = partialBlock("resistor")
     val GROUND = partialBlock("ground_pin")
-    val SMALL_WALL_LAMP_EMITTER = partialBlock("small_wall_lamp_emitter")
-    val SMALL_WALL_LAMP_CAGE = partialBlock("small_wall_lamp_cage")
+    val SMALL_WALL_LAMP_EMITTER = partialBlock("small_wall_lamp/emitter")
+    val SMALL_WALL_LAMP_CAGE = partialBlock("small_wall_lamp/cage")
 
-    val PELTIER_ELEMENT = partialBlock("peltier_element")
     val PELTIER_BODY = partialBlock("peltier/body")
     val PELTIER_LEFT = partialBlock("peltier/left")
     val PELTIER_RIGHT = partialBlock("peltier/right")
@@ -38,9 +37,9 @@ object PartialModels {
     val GRID_TAP_BODY = partialBlock("grid_tap_body")
     val GRID_TAP_CONNECTION = patchPartial("grid_tap_connection")
 
-    val SMALL_GARDEN_LIGHT = partialBlock("small_garden_light")
-    val TALL_GARDEN_LIGHT_EMITTER = partialBlock("tall_garden_light_emitter")
-    val TALL_GARDEN_LIGHT_CAGE = partialBlock("tall_garden_light_cage")
+    val SMALL_GARDEN_LIGHT = partialBlock("small_garden_light/full")
+    val TALL_GARDEN_LIGHT_EMITTER = partialBlock("tall_garden_light/emitter")
+    val TALL_GARDEN_LIGHT_CAGE = partialBlock("tall_garden_light/cage")
 
     private fun partial(path: String) = PartialModel(resource(path))
 

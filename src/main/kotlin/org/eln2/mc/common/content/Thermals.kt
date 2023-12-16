@@ -39,9 +39,7 @@ class RadiatorPart(
 
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        runIfCell {
-            builder.quantity(cell.thermalWire.thermalBody.temperature)
-        }
+        builder.quantity(cell.thermalWire.thermalBody.temperature)
     }
 }
 
@@ -115,8 +113,7 @@ class RadiantBipoleRenderer(
         left: PartialModel,
         right: PartialModel,
         rotation: Double,
-    ) :
-        this(part, body, left, right, rotation, defaultRadiantBodyColor(), defaultRadiantBodyColor())
+    ) : this(part, body, left, right, rotation, defaultRadiantBodyColor(), defaultRadiantBodyColor())
 
     private var bodyInstance: ModelData? = null
     private var leftInstance: ModelData? = null

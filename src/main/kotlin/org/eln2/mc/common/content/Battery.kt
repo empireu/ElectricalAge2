@@ -327,13 +327,11 @@ class BatteryPart(
     override val order get() = ItemPersistentPartLoadOrder.AfterSim
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        runIfCell {
-            builder.quantity(cell.thermalWire.thermalBody.temperature)
-            builder.potential(cell.generator.source.potential)
-            builder.current(cell.generator.source.current)
-            builder.power(cell.generator.source.power)
-            builder.charge(cell.charge)
-            builder.integrity(cell.life)
-        }
+        builder.quantity(cell.thermalWire.thermalBody.temperature)
+        builder.potential(cell.generator.source.potential)
+        builder.current(cell.generator.source.current)
+        builder.power(cell.generator.source.power)
+        builder.charge(cell.charge)
+        builder.integrity(cell.life)
     }
 }

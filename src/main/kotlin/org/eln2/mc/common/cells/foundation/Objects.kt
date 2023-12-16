@@ -3,7 +3,6 @@ package org.eln2.mc.common.cells.foundation
 import net.minecraft.nbt.CompoundTag
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
-import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Simulator
 import org.ageseries.libage.sim.ThermalMass
@@ -12,7 +11,9 @@ import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.CircuitBuilder
 import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
-import org.ageseries.libage.sim.electrical.mna.component.*
+import org.ageseries.libage.sim.electrical.mna.component.Resistor
+import org.ageseries.libage.sim.electrical.mna.component.Term
+import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.eln2.mc.*
 import org.eln2.mc.data.*
 
@@ -305,7 +306,7 @@ class ThermalBipoleObject<C : Cell>(
     constructor(cell: C, map: PoleMap, d1: ThermalMassDefinition, d2: ThermalMassDefinition) : this(cell, map, d1(), d2())
 
     init {
-        cell.environmentData.getOrNull<EnvironmentalTemperatureField>()?.readInto(b1, b2)
+        cell.environmentData.loadTemperature(b1, b2)
     }
 
     override fun offerComponent(neighbour: ThermalObject<*>) = ThermalComponentInfo(

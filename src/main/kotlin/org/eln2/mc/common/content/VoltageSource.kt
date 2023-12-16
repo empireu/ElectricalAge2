@@ -59,11 +59,9 @@ class VoltageSourcePart(ci: PartCreateInfo) : CellPart<VoltageSourceCell, BasicP
     override fun createRenderer() = BasicPartRenderer(this, PartialModels.VOLTAGE_SOURCE)
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        runIfCell {
-            builder.resistance(cell.voltageSource.resistors.crossResistance)
-            builder.power(cell.voltageSource.source.power)
-            builder.potential(cell.voltageSource.source.potential)
-            builder.current(cell.voltageSource.source.current)
-        }
+        builder.resistance(cell.voltageSource.resistors.crossResistance)
+        builder.power(cell.voltageSource.source.power)
+        builder.potential(cell.voltageSource.source.potential)
+        builder.current(cell.voltageSource.source.current)
     }
 }

@@ -20,9 +20,6 @@ import net.minecraft.world.phys.shapes.Shapes
 import net.minecraft.world.phys.shapes.VoxelShape
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
-import org.eln2.mc.common.cells.foundation.Cell
-import org.eln2.mc.common.cells.foundation.CellGraphManager
-import org.eln2.mc.common.cells.foundation.CellProvider
 import org.eln2.mc.common.network.serverToClient.BulkMessages
 import org.eln2.mc.common.network.serverToClient.PacketHandler
 import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
@@ -38,7 +35,7 @@ import kotlin.math.PI
 import net.minecraft.world.level.block.Block
 import org.ageseries.libage.mathematics.Vector3d
 import org.eln2.mc.client.render.foundation.*
-import org.eln2.mc.common.cells.foundation.CellNeighborInfo
+import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.BlockPosInt
@@ -589,39 +586,12 @@ abstract class CellPart<C: Cell, R : PartRenderer>(
 
     private var cellField: C? = null
 
-    fun runIfCell(action: () -> Unit) : Boolean {
-        if(hasCell) {
-            action()
-            return true
-        }
-
-        return false
-    }
-
-    fun runWithCell(action: (C) -> Unit) : Boolean {
-        val cell = this.cellField
-
-        if(cell != null) {
-            action(cell)
-            return true
-        }
-
-        return false
-    }
-
-
     /**
      * The actual cell contained within this part.
      * It only exists on the server (it is a simulation-only item)
      * */
     @ServerOnly
-    final override var cell: C
-        get() = checkNotNull(cellField) {
-            "Tried to get cell before it is set"
-        }
-        set(value) {
-            this.cellField = value
-        }
+    final override val cell: C get() = cellField ?: error("Tried to get cell before it is set $this")
 
     final override val hasCell: Boolean
         get() = cellField != null
@@ -644,7 +614,7 @@ abstract class CellPart<C: Cell, R : PartRenderer>(
      * Notifies the cell of the new container.
      * */
     override fun onPlaced() {
-        cell = provider.create(locator, BiomeEnvironments.getInformationForBlock(placement.level, locator).fieldMap())
+        cellField = provider.create(locator, CellEnvironment.evaluate(placement.level, locator))
         cell.container = placement.multipart
         isAlive = true
         onCellAcquired()
@@ -717,10 +687,10 @@ abstract class CellPart<C: Cell, R : PartRenderer>(
             return
         }
 
-        cell = if (!this::loadGraphId.isInitialized) {
+        cellField = if (!this::loadGraphId.isInitialized) {
             LOG.error("Part cell not initialized!")
             // Should we blow up the game?
-            provider.create(locator, BiomeEnvironments.getInformationForBlock(placement.level, locator).fieldMap())
+            provider.create(locator, CellEnvironment.evaluate(placement.level, locator))
         } else {
             CellGraphManager.getFor(placement.level as ServerLevel)
                 .getGraph(loadGraphId)
@@ -844,11 +814,11 @@ enum class CellPartConnectionMode(val index: Int) {
     Wrapped(3);
 
     companion object {
-        val byId = values().toList()
+        val byId = entries.toList()
     }
 }
 
-private val DIRECTIONS = Direction.values()
+private val DIRECTIONS = Direction.entries.toTypedArray()
 
 private val INCREMENT_FROM_FORWARD_UP = Int2IntOpenHashMap().also { map ->
     for (facingWorld in DIRECTIONS) {
@@ -910,7 +880,7 @@ value class PartConnectionDirection(val value: Int) {
         return tag
     }
 
-    fun getIncrement(facingWorld: Direction, faceWorld: Direction) = when(mode) {
+    fun getIncrement(facingWorld: Direction, faceWorld: Direction): Vec3i = when(mode) {
         CellPartConnectionMode.Unknown -> {
             error("Undefined part connection")
         }

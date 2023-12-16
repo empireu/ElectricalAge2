@@ -220,8 +220,8 @@ fun<T : Transform<T>> T.transformPart(instance: MultipartBlockEntityInstance, pa
 }
 
 class RadiantBodyColorBuilder {
-    var coldTint = colorF(1f, 1f, 1f, 1f)
-    var hotTint = colorF(1f, 0.2f, 0.1f, 1f)
+    var coldTint = Color(1f, 1f, 1f, 1f)
+    var hotTint = Color(1f, 0.2f, 0.1f, 1f)
     var coldTemperature = STANDARD_TEMPERATURE
     var hotTemperature = Quantity(800.0, CELSIUS)
 
