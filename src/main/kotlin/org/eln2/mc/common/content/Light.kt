@@ -723,8 +723,8 @@ class LightCell(ci: CellCreateInfo, poleMap: PoleMap) : Cell(ci), LightView, Lig
         renderBrightnessConsumer = null
     }
 
-    override fun subscribe(subs: SubscriberCollection) {
-        subs.addPre(this::simulationTick) // maybe reduce interval
+    override fun subscribe(subscribers: SubscriberCollection) {
+        subscribers.addPre(this::simulationTick) // maybe reduce interval
     }
 
     private fun simulationTick(dt: Double, phase: SubscriberPhase) {

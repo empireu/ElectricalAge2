@@ -368,9 +368,12 @@ object Content {
             )
 
             val model = HeatEngineElectricalModel(
-                efficiency = 0.9,
-                power = Quantity(5.0, KILO * WATT),
-                desiredPotential = Quantity(220.0, VOLT)
+                maxPower = Quantity(5.0, KILO * WATT),
+                desiredPotential = Quantity(220.0, VOLT),
+                p = 0.425014,
+                t = 280.0,
+                m = 124.0,
+                n = 400.0
             )
 
             CellFactory {
@@ -392,9 +395,10 @@ object Content {
 
     val ELECTRICAL_HEAT_ENGINE_PART = part(
         "electrical_heat_engine",
-        BasicPartProvider(Vector3d(0.5, 15.0 / 16.0, 0.5)) {
+        BasicPartProvider(Vector3d(4.0 / 16.0, 15.0 / 16.0, 14.0 / 16.0)) {
             ElectricalHeatEnginePart(it)
-        })
+        }
+    )
 
     val FURNACE_BLOCK_ENTITY = blockEntity("furnace", ::FurnaceBlockEntity) { FURNACE_BLOCK.block.get() }
 

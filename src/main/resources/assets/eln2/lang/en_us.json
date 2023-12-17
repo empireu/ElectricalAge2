@@ -1,5 +1,5 @@
 {
-    "itemGroup.Electrical_Age": "Electrical Age",
+    "item_group.eln2.all": "Electrical Age",
 
     "block.eln2.voltage_source": "Voltage Source",
     "block.eln2.resistor": "Resistor",

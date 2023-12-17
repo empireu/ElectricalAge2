@@ -1,3 +1,5 @@
+@file:Suppress("MemberVisibilityCanBePrivate")
+
 package org.eln2.mc.common.parts
 
 import net.minecraft.resources.ResourceLocation
@@ -12,8 +14,8 @@ import org.eln2.mc.resource
 import java.util.function.Supplier
 
 object PartRegistry {
-    private val PARTS = DeferredRegister.create<PartProvider>(resource("parts"), MODID)
-    private val PART_ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, MODID)!!
+    val PARTS: DeferredRegister<PartProvider> = DeferredRegister.create(resource("parts"), MODID)
+    val PART_ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, MODID)!!
 
     private lateinit var partRegistry: Supplier<IForgeRegistry<PartProvider>>
 

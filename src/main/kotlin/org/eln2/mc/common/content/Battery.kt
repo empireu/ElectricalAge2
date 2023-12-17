@@ -251,7 +251,7 @@ class BatteryCell(
 
     override fun loadCellData(tag: CompoundTag) = deserializeNbt(tag)
 
-    override fun subscribe(subs: SubscriberCollection) = graph.simulationSubscribers.addPre(this::simulationTick)
+    override fun subscribe(subscribers: SubscriberCollection) = graph.simulationSubscribers.addPre(this::simulationTick)
 
     private fun appliesExternalUpdates() = stateUpdate.consume {
         energy = it.energy

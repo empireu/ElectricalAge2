@@ -132,8 +132,8 @@ class FurnaceCell(ci: CellCreateInfo, dir1: Base6Direction3d, dir2: Base6Directi
      * */
     var isActive = false
 
-    override fun subscribe(subs: SubscriberCollection) {
-        subs.addPre(this::simulationTick)
+    override fun subscribe(subscribers: SubscriberCollection) {
+        subscribers.addPre(this::simulationTick)
     }
 
     private fun simulationTick(elapsed: Double, phase: SubscriberPhase) {

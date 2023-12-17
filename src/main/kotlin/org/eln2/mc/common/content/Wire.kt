@@ -1204,38 +1204,6 @@ class IncandescentInstancedWireRenderer(
         instance.delete()
     }
 
-    /**
-     * Evaluates the color as R, G, B and light override.
-     * @param temperature The temperature of the material.
-     * @param light The lower bound of the light value [[0, 15]]
-     * @return The tint color to be rendered.
-     * */
-    private fun evaluateRGBL(temperature: Double, light: Double = 0.0): Color {
-        val rgb = renderInfo.tintColor.evaluate(Quantity(temperature, KELVIN))
-
-        return Color(
-            rgb.red,
-            rgb.green,
-            rgb.blue,
-            max(
-                map(
-                    light,
-                    0.0,
-                    15.0,
-                    0.0,
-                    255.0
-                ),
-                map(
-                    temperature,
-                    !renderInfo.tintColor.coldTemperature,
-                    !renderInfo.tintColor.hotTemperature,
-                    0.0,
-                    255.0
-                )
-            ).toInt().coerceIn(0, 255)
-        )
-    }
-
     private fun createHubInstance(): ModelData =
         multipart.materialManager
             .defaultSolid()
@@ -1345,7 +1313,7 @@ class IncandescentInstancedWireRenderer(
     private fun evaluateCoreColor() : Color {
         val coreLightLevel = multipart.readBlockBrightness().toDouble()
 
-        return evaluateRGBL(internalTemperature, coreLightLevel)
+        return renderInfo.tintColor.evaluateRGBL(Quantity(internalTemperature), coreLightLevel)
     }
 
     /**
@@ -1362,7 +1330,7 @@ class IncandescentInstancedWireRenderer(
             remotePositionWorld
         )
 
-        return evaluateRGBL(remoteTemperature, remoteLightLevel.toDouble())
+        return renderInfo.tintColor.evaluateRGBL(Quantity(remoteTemperature), remoteLightLevel.toDouble())
     }
 
     /**

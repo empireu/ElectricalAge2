@@ -12,11 +12,10 @@ import org.eln2.mc.MODID
 import org.eln2.mc.common.blocks.foundation.MultiblockScanTool
 
 object ItemRegistry {
-    @Suppress("MemberVisibilityCanBePrivate") // Used for item registration and fetching
-    val REGISTRY = DeferredRegister.create(ForgeRegistries.ITEMS, MODID)!! // Yeah, if this fails blow up the game
+    val ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, MODID)!! // Yeah, if this fails blow up the game
 
     fun setup(bus: IEventBus) {
-        REGISTRY.register(bus)
+        ITEMS.register(bus)
         LOG.info("Prepared item registry.")
     }
 
@@ -26,7 +25,7 @@ object ItemRegistry {
     )
 
     fun item(name: String, supplier: () -> Item): ItemRegistryItem {
-        val item = REGISTRY.register(name) { supplier() }
+        val item = ITEMS.register(name) { supplier() }
         return ItemRegistryItem(name, item)
     }
 

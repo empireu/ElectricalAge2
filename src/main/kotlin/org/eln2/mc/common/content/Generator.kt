@@ -1,3 +1,5 @@
+@file:Suppress("UNUSED_VARIABLE", "LocalVariableName")
+
 package org.eln2.mc.common.content
 
 import kotlinx.serialization.Serializable
@@ -26,7 +28,9 @@ import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.items.ItemStackHandler
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.nz
 import org.ageseries.libage.mathematics.snzi
+import org.ageseries.libage.sim.MassConnection
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.mna.component.PowerVoltageSource
@@ -53,7 +57,7 @@ import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.resource
-import kotlin.math.min
+import kotlin.math.*
 
 
 /**
@@ -358,26 +362,70 @@ class HeatGeneratorBlock : CellBlock<HeatGeneratorCell>() {
 }
 
 data class HeatEngineElectricalModel(
-    val efficiency: Double,
-    val power: Quantity<Power>,
+    val maxPower: Quantity<Power>,
     val desiredPotential: Quantity<Potential>,
+    val p: Double,
+    val t: Double,
+    val m: Double,
+    val n: Double
 )
 
-class HeatEngineElectricalBehavior(
-    val generator: PolarTermObject<*, PowerVoltageSource>,
-    val cold: ThermalMass,
-    val hot: ThermalMass,
-    val efficiency: Double,
-    val maxPower: Quantity<Power>,
-) : CellBehavior {
+class ElectricalHeatEngineCell(
+    ci: CellCreateInfo,
+    electricalMap: PoleMap,
+    thermalMap: PoleMap,
+    b1Def: ThermalMassDefinition,
+    b2Def: ThermalMassDefinition,
+    val model: HeatEngineElectricalModel,
+) : Cell(ci) {
+    constructor(ci: CellCreateInfo, electricalMap: PoleMap, thermalMap: PoleMap, def: ThermalMassDefinition, model: HeatEngineElectricalModel) : this(ci, electricalMap, thermalMap, def, def, model)
+
+    @SimObject
+    val generator = PolarTermObject(this, electricalMap, PowerVoltageSource().also {
+        it.potentialMax = !model.desiredPotential
+    })
+
+    @SimObject
+    val thermalBipole = ThermalBipoleObject(
+        this,
+        thermalMap,
+        b1Def,
+        b2Def
+    )
+
+    val cold by thermalBipole::b1
+    val hot by thermalBipole::b2
+
+    @Replicator
+    fun replicator(target: InternalTemperatureConsumer) = InternalTemperatureReplicatorBehavior(
+        listOf(thermalBipole.b1, thermalBipole.b2), target
+    )
+
     override fun subscribe(subscribers: SubscriberCollection) {
         subscribers.addPre(this::preTick)
         subscribers.addPost(this::postTick)
     }
 
+    var efficiency = 0.0
+
     private fun preTick(dt: Double, phase: SubscriberPhase) {
-        val dE = !hot.energy - !cold.energy
-        generator.term.powerIdeal = efficiency * (dE / dt).coerceIn(-!maxPower, !maxPower)
+        val Th: Double
+        val Tc: Double
+
+        if(cold.temperature < hot.temperature) {
+            Th = !hot.temperature
+            Tc = !cold.temperature
+        }
+        else {
+            Th = !cold.temperature
+            Tc = !hot.temperature
+        }
+
+        efficiency = (Th - Tc) / Th
+
+        val power = efficiency * sign(!hot.temperature - !cold.temperature) * (0.5 * abs(!hot.energy - !cold.energy) / dt)
+
+        generator.term.powerIdeal = power.coerceIn(-!model.maxPower, +!model.maxPower)
     }
 
     private fun postTick(dt: Double, phase: SubscriberPhase) {
@@ -387,7 +435,7 @@ class HeatEngineElectricalBehavior(
         val thermalDirection = snzi((!hot.temperature - !cold.temperature))
 
         if (electricalDirection == thermalDirection) {
-            val thermalEnergy = electricalEnergy / efficiency
+            val thermalEnergy = electricalEnergy / efficiency.nz()
             val wastedEnergy = thermalEnergy * (1.0 - efficiency)
 
             if (electricalDirection == 1) {
@@ -412,51 +460,12 @@ class HeatEngineElectricalBehavior(
     }
 }
 
-class ElectricalHeatEngineCell(
-    ci: CellCreateInfo,
-    electricalMap: PoleMap,
-    thermalMap: PoleMap,
-    b1Def: ThermalMassDefinition,
-    b2Def: ThermalMassDefinition,
-    model: HeatEngineElectricalModel,
-) : Cell(ci) {
-    constructor(ci: CellCreateInfo, electricalMap: PoleMap, thermalMap: PoleMap, def: ThermalMassDefinition, model: HeatEngineElectricalModel) : this(ci, electricalMap, thermalMap, def, def, model)
-
-    @SimObject
-    val generator = PolarTermObject(this, electricalMap, PowerVoltageSource().also {
-        it.potentialMax = !model.desiredPotential
-    })
-
-    @SimObject
-    val thermalBipole = ThermalBipoleObject(
-        this,
-        thermalMap,
-        b1Def,
-        b2Def
-    )
-
-    @Behavior
-    val heatEngine = HeatEngineElectricalBehavior(
-        generator,
-        thermalBipole.b1,
-        thermalBipole.b2,
-        model.efficiency,
-        model.power,
-    )
-
-    @Replicator
-    fun replicator(target: InternalTemperatureConsumer) = InternalTemperatureReplicatorBehavior(
-        listOf(thermalBipole.b1, thermalBipole.b2), target
-    )
-}
-
 class ElectricalHeatEnginePart(ci: PartCreateInfo) : CellPart<ElectricalHeatEngineCell, RadiantBipoleRenderer>(ci, Content.ELECTRICAL_HEAT_ENGINE_CELL.get()), InternalTemperatureConsumer, ComponentDisplay {
     override fun createRenderer() = RadiantBipoleRenderer(
         this,
         PartialModels.PELTIER_BODY,
         PartialModels.PELTIER_LEFT,
         PartialModels.PELTIER_RIGHT,
-        0.0
     )
 
     @ClientOnly
@@ -478,10 +487,13 @@ class ElectricalHeatEnginePart(ci: PartCreateInfo) : CellPart<ElectricalHeatEngi
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.temperature(!abs(cell.thermalBipole.b1.temperature - cell.thermalBipole.b2.temperature))
+        builder.quantity(cell.thermalBipole.b1.temperature)
+        builder.quantity(cell.thermalBipole.b2.temperature)
         builder.power(cell.generator.term.power)
         builder.potential(cell.generator.term.potential)
         builder.current(cell.generator.term.current)
+        builder.debug("Eff: ${cell.efficiency.formattedPercentNormalized()}")
+        builder.debug("Pow: ${Quantity(cell.generator.term.powerIdeal, WATT).classify()}")
     }
 
     @Serializable

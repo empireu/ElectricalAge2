@@ -15,6 +15,7 @@ import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.level.LightLayer
 import org.ageseries.libage.data.CELSIUS
+import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.Vector3d
@@ -37,6 +38,7 @@ import kotlin.collections.asIterable
 import kotlin.collections.forEach
 import kotlin.collections.mapOf
 import kotlin.collections.set
+import kotlin.math.max
 
 fun createPartInstance(
     multipart: MultipartBlockEntityInstance,
@@ -260,6 +262,38 @@ class ThermalTint(
                 1.0
             ).toFloat()
         )
+
+    /**
+     * Evaluates the color as R, G, B and light override.
+     * @param temperature The temperature of the material.
+     * @param light The lower bound of the light value [[0, 15]]
+     * @return The tint color to be rendered.
+     * */
+    fun evaluateRGBL(temperature: Quantity<Temperature>, light: Double = 0.0): Color {
+        val rgb = evaluate(temperature)
+
+        return Color(
+            rgb.red,
+            rgb.green,
+            rgb.blue,
+            max(
+                map(
+                    light,
+                    0.0,
+                    15.0,
+                    0.0,
+                    255.0
+                ),
+                map(
+                    !temperature,
+                    !coldTemperature,
+                    !hotTemperature,
+                    0.0,
+                    255.0
+                )
+            ).toInt().coerceIn(0, 255)
+        )
+    }
 }
 
 @ClientOnly

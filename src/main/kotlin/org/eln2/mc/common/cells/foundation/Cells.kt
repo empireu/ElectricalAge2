@@ -428,7 +428,7 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
      * */
     protected open fun onGraphChanged() {}
 
-    protected open fun subscribe(subs: SubscriberCollection) {}
+    protected open fun subscribe(subscribers: SubscriberCollection) {}
 
     /**
      * Called when the solver is being built, in order to clear and prepare the objects.

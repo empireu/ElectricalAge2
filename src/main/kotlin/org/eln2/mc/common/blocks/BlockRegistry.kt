@@ -1,4 +1,4 @@
-@file:Suppress("unused") // Because block variables here would be suggested for deletion.
+@file:Suppress("unused", "MemberVisibilityCanBePrivate") // Because block variables here would be suggested for deletion.
 
 package org.eln2.mc.common.blocks
 
@@ -14,9 +14,9 @@ import org.eln2.mc.MODID
 import org.eln2.mc.common.blocks.foundation.*
 
 object BlockRegistry {
-    private val BLOCK_REGISTRY = DeferredRegister.create(ForgeRegistries.BLOCKS, MODID)!!
-    private val BLOCK_ITEM_REGISTRY = DeferredRegister.create(ForgeRegistries.ITEMS, MODID)!!
-    private val BLOCK_ENTITY_REGISTRY = DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, MODID)!!
+    val BLOCKS = DeferredRegister.create(ForgeRegistries.BLOCKS, MODID)!!
+    val BLOCK_ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, MODID)!!
+    val BLOCK_ENTITIES = DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, MODID)!!
 
     fun <T : BlockEntity> blockEntity(
         name: String,
@@ -24,7 +24,7 @@ object BlockRegistry {
         blockSupplier: (() -> Block),
     ): RegistryObject<BlockEntityType<T>> {
 
-        return BLOCK_ENTITY_REGISTRY.register(name) {
+        return BLOCK_ENTITIES.register(name) {
             @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS") // Thanks, Minecraft for the high quality code.
             BlockEntityType.Builder.of(
                 blockEntitySupplier,
@@ -35,9 +35,9 @@ object BlockRegistry {
     }
 
     fun setup(bus: IEventBus) {
-        BLOCK_REGISTRY.register(bus)
-        BLOCK_ITEM_REGISTRY.register(bus)
-        BLOCK_ENTITY_REGISTRY.register(bus)
+        BLOCKS.register(bus)
+        BLOCK_ITEMS.register(bus)
+        BLOCK_ENTITIES.register(bus)
     }
 
     /*val CELL_BLOCK_ENTITY: RegistryObject<BlockEntityType<CellBlockEntity>> = BLOCK_ENTITY_REGISTRY.register("cell") {
@@ -46,7 +46,7 @@ object BlockRegistry {
     }*/
 
     val MULTIPART_BLOCK_ENTITY: RegistryObject<BlockEntityType<MultipartBlockEntity>> =
-        BLOCK_ENTITY_REGISTRY.register("multipart") {
+        BLOCK_ENTITIES.register("multipart") {
             @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS") // Thanks, Minecraft for the high quality code.
             BlockEntityType.Builder.of(::MultipartBlockEntity, MULTIPART_BLOCK.block.get()).build(null)
         }
@@ -85,8 +85,8 @@ object BlockRegistry {
         tab: CreativeModeTab? = null,
         supplier: () -> Block,
     ): BlockRegistryItem {
-        val block = BLOCK_REGISTRY.register(name) { supplier() }
-        val item = BLOCK_ITEM_REGISTRY.register(name) {
+        val block = BLOCKS.register(name) { supplier() }
+        val item = BLOCK_ITEMS.register(name) {
             BlockItem(
                 block.get(),
                 Item.Properties().also { /* TODO where did tabs go? */ }

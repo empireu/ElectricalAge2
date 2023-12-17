@@ -2,15 +2,14 @@ package org.eln2.mc.common.content
 
 import com.jozufozu.flywheel.core.PartialModel
 import com.jozufozu.flywheel.core.materials.model.ModelData
+import com.jozufozu.flywheel.util.Color
 import kotlinx.serialization.Serializable
 import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.sim.ThermalMass
 import org.eln2.mc.client.render.PartialModels
-import org.eln2.mc.client.render.foundation.ThermalTint
-import org.eln2.mc.client.render.foundation.createPartInstance
-import org.eln2.mc.client.render.foundation.defaultRadiantBodyColor
+import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.cells.foundation.InternalTemperatureConsumer
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
@@ -80,9 +79,6 @@ class RadiantBipoleRenderer(
     val body: PartialModel,
     val left: PartialModel,
     val right: PartialModel,
-    val bodyRotation: Double,
-    val leftRotation: Double,
-    val rightRotation: Double,
     val leftColor: ThermalTint,
     val rightColor: ThermalTint,
 ) : PartRenderer() {
@@ -91,29 +87,7 @@ class RadiantBipoleRenderer(
         body: PartialModel,
         left: PartialModel,
         right: PartialModel,
-        rotation: Double,
-        leftColor: ThermalTint,
-        rightColor: ThermalTint,
-    ) :
-        this(
-            part,
-            body,
-            left,
-            right,
-            rotation,
-            rotation,
-            rotation,
-            leftColor,
-            rightColor
-        )
-
-    constructor(
-        part: Part<*>,
-        body: PartialModel,
-        left: PartialModel,
-        right: PartialModel,
-        rotation: Double,
-    ) : this(part, body, left, right, rotation, defaultRadiantBodyColor(), defaultRadiantBodyColor())
+    ) : this(part, body, left, right, defaultRadiantBodyColor(), defaultRadiantBodyColor())
 
     private var bodyInstance: ModelData? = null
     private var leftInstance: ModelData? = null
@@ -126,18 +100,45 @@ class RadiantBipoleRenderer(
 
     fun updateRightSideTemperature(value: Quantity<Temperature>) = rightSideUpdate.setLatest(value)
 
+    private fun createPoleInstance(model: PartialModel) =
+        multipart.materialManager
+            .defaultSolid()
+            .material(ModelLightOverrideType)
+            .getModel(model)
+            .createInstance()
+            .loadIdentity()
+            .transformPart(multipart, part)
+            .also {
+                it.setColor(Color(1.0f, 1.0f, 1.0f, 0.0f))
+            }
+
     override fun setupRendering() {
         bodyInstance?.delete()
         leftInstance?.delete()
         rightInstance?.delete()
-        bodyInstance = createPartInstance(multipart, body, part, bodyRotation)
-        leftInstance = createPartInstance(multipart, left, part, leftRotation)
-        rightInstance = createPartInstance(multipart, right, part, rightRotation)
+        bodyInstance = createPartInstance(multipart, body, part)
+        leftInstance = createPoleInstance(left)
+        rightInstance = createPoleInstance(right)
+    }
+
+    private fun applyTemperature(tint: ThermalTint, model: ModelData?, temperature: Quantity<Temperature>) {
+        if(model == null) {
+            return
+        }
+
+        val coreLightLevel = multipart.readBlockBrightness().toDouble()
+
+        model.setColor(tint.evaluateRGBL(temperature, coreLightLevel))
     }
 
     override fun beginFrame() {
-        leftSideUpdate.consume { leftInstance?.setColor(leftColor.evaluate(it)) }
-        rightSideUpdate.consume { rightInstance?.setColor(rightColor.evaluate(it)) }
+        leftSideUpdate.consume {
+            applyTemperature(leftColor, leftInstance, it)
+        }
+
+        rightSideUpdate.consume {
+            applyTemperature(rightColor, rightInstance, it)
+        }
     }
 
     override fun relight(source: RelightSource) {

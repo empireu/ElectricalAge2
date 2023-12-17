@@ -6,6 +6,7 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.packs.resources.Resource
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.common.MinecraftForge
+import net.minecraftforge.data.event.GatherDataEvent
 import net.minecraftforge.eventbus.api.IEventBus
 import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.fml.ModLoadingContext
@@ -21,6 +22,7 @@ import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.containers.ContainerRegistry
 import org.eln2.mc.common.content.Content
 import org.eln2.mc.common.entities.EntityRegistry
+import org.eln2.mc.common.items.CreativeTabRegistry
 import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.parts.PartRegistry
@@ -46,6 +48,7 @@ class Eln2 {
         BlockRegistry.setup(modEventBus)
         EntityRegistry.setup(modEventBus)
         ItemRegistry.setup(modEventBus)
+        CreativeTabRegistry.setup(modEventBus)
         ContainerRegistry.setup(modEventBus)
 
         DistExecutor.unsafeRunWhenOn(Dist.CLIENT) {
