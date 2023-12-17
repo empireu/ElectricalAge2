@@ -21,6 +21,8 @@ import org.eln2.mc.CrossThreadAccess
 import org.eln2.mc.LOG
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.network.Networking
+import org.eln2.mc.data.AveragingList
+import org.eln2.mc.extensions.formatted
 import org.eln2.mc.reflectId
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
@@ -205,6 +207,9 @@ fun ResourceLocation.id(): Int = this.hashCode()
 
 @Mod.EventBusSubscriber
 object BulkMessages {
+    private val messagesPerTickAverage = AveragingList(100)
+    private var lastLog = 0
+
     @CrossThreadAccess
     private val bulkPartMessages = ConcurrentHashMap<ServerLevel, ConcurrentLinkedDeque<PartMessage>>()
     fun enqueuePartMessage(level: ServerLevel, msg: PartMessage) = bulkPartMessages.getOrPut(level, ::ConcurrentLinkedDeque).add(msg)
@@ -214,10 +219,17 @@ object BulkMessages {
     fun onServerTick(event: TickEvent.ServerTickEvent) {
         if (event.phase == TickEvent.Phase.END) {
             flushPartData()
+
+            if(++lastLog == 100) {
+                lastLog = 0
+                LOG.debug("Bulk messages per tick: ${messagesPerTickAverage.calculate().formatted()}")
+            }
         }
     }
 
     private fun flushPartData() {
+        var total = 0
+
         bulkPartMessages.forEach { (level, messageQueue) ->
             val perChunkMessages = HashMap<ChunkPos, ArrayList<PartMessage>>()
 
@@ -237,6 +249,8 @@ object BulkMessages {
             val chunkMap = level.chunkSource.chunkMap
 
             perChunkMessages.forEach { (chunkPos, messages) ->
+                total += messages.size
+
                 val message = BulkPartMessage(
                     level.dimension().registry().id(),
                     messages
@@ -247,6 +261,8 @@ object BulkMessages {
                 }
             }
         }
+
+        messagesPerTickAverage.addSample(total.toDouble())
     }
 }
 

@@ -1286,7 +1286,7 @@ object GridRenderer {
 class Cable3d(
     val a: Vector3d,
     val b: Vector3d,
-    val slack: Double = 0.05,
+    val slack: Double = 0.01,
     val splitDistanceHint: Double = 0.5,
     val splitRotIncrementMax: Double = PI / 16.0,
     val circleVertices: Int = 8,

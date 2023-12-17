@@ -2,6 +2,7 @@ package org.eln2.mc
 
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Minecraft
+import net.minecraft.client.server.IntegratedServer
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.Vec3i
@@ -14,9 +15,11 @@ import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.minecraftforge.api.distmarker.Dist
+import net.minecraftforge.common.ForgeHooks
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.*
+import org.eln2.mc.common.ForgeEvents
 import org.eln2.mc.extensions.minus
 import org.eln2.mc.extensions.viewClip
 import org.joml.Vector3f
@@ -146,3 +149,25 @@ private val UNIQUE_ID_ATOMIC = AtomicInteger()
 fun getUniqueId() = UNIQUE_ID_ATOMIC.getAndIncrement()
 
 fun directionByNormal(normal: Vec3i) = Direction.entries.firstOrNull { it.normal == normal }
+
+fun isServerPaused() : Boolean {
+    val server = ServerLifecycleHooks.getCurrentServer()
+
+    if(server == null) {
+        LOG.fatal("ELN2: SERVER NULL")
+        return true
+    }
+
+    if(server is IntegratedServer) {
+        return server.paused
+    }
+
+    val time = ForgeEvents.timeSinceLastTick
+
+    if(time > 1.0) {
+        LOG.fatal("ELN2: FOUND ${time.classify()} SINCE LAST SERVER TICK")
+        return true
+    }
+
+    return false
+}

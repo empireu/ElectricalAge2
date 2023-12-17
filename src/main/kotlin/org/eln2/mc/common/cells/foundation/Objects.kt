@@ -3,6 +3,7 @@ package org.eln2.mc.common.cells.foundation
 import net.minecraft.nbt.CompoundTag
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
+import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Simulator
 import org.ageseries.libage.sim.ThermalMass
@@ -16,6 +17,8 @@ import org.ageseries.libage.sim.electrical.mna.component.Term
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.eln2.mc.*
 import org.eln2.mc.data.*
+import org.eln2.mc.extensions.getQuantity
+import org.eln2.mc.extensions.putQuantity
 
 /**
  * Represents a discrete simulation unit that participates in one simulation type.
@@ -31,7 +34,17 @@ abstract class SimulationObject<C : Cell>(val cell: C) {
     /**
      * Called when the connections and/or graph changes.
      * */
-    abstract fun update(connectionsChanged: Boolean, graphChanged: Boolean)
+    open fun update(connectionsChanged: Boolean, graphChanged: Boolean) {
+        if(graphChanged) {
+            subscribe(cell.persistentPool)
+        }
+    }
+
+    /**
+     * Called when subscribers should be added, after the graph changes.
+     * This is called after [Cell.subscribe]
+     * */
+    protected open fun subscribe(subscribers: SubscriberCollection) { }
 
     /**
      * Called when the solver is being built.
@@ -109,8 +122,6 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     override fun destroy() {
         connections.forEach { it.connections.remove(this) }
     }
-
-    override fun update(connectionsChanged: Boolean, graphChanged: Boolean) {}
 
     override fun clear() {
         connections.clear()
@@ -196,8 +207,6 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     override fun destroy() {
         connections.forEach { it.connections.remove(this) }
     }
-
-    override fun update(connectionsChanged: Boolean, graphChanged: Boolean) {}
 
     override fun clear() {
         connections.clear()
@@ -301,12 +310,21 @@ class ThermalBipoleObject<C : Cell>(
     val map: PoleMap,
     override val b1: ThermalMass,
     override val b2: ThermalMass
-) : ThermalObject<C>(cell), ThermalBipole, ThermalContactInfo {
+) : ThermalObject<C>(cell), PersistentObject, ThermalBipole, ThermalContactInfo {
+    companion object {
+        private const val B1 = "b1"
+        private const val B2 = "b2"
+    }
 
     constructor(cell: C, map: PoleMap, d1: ThermalMassDefinition, d2: ThermalMassDefinition) : this(cell, map, d1(), d2())
 
+    private var lastTemperatureB1: Double
+    private var lastTemperatureB2: Double
+
     init {
         cell.environmentData.loadTemperature(b1, b2)
+        lastTemperatureB1 = !b1.temperature
+        lastTemperatureB2 = !b2.temperature
     }
 
     override fun offerComponent(neighbour: ThermalObject<*>) = ThermalComponentInfo(
@@ -328,6 +346,36 @@ class ThermalBipoleObject<C : Cell>(
         return when(direction) {
             Pole.Plus -> b1.temperature
             Pole.Minus -> b2.temperature
+        }
+    }
+
+    override fun saveObjectNbt(): CompoundTag {
+        val tag = CompoundTag()
+
+        tag.putQuantity(B1, b1.temperature)
+        tag.putQuantity(B2, b2.temperature)
+
+        return tag
+    }
+
+    override fun loadObjectNbt(tag: CompoundTag) {
+        b1.temperature = tag.getQuantity(B1)
+        b2.temperature = tag.getQuantity(B2)
+    }
+
+    override fun subscribe(subscribers: SubscriberCollection) {
+        subscribers.addSubscriber(
+            SubscriberOptions(100, SubscriberPhase.Post),
+            this::simulationTick
+        )
+    }
+
+    private fun simulationTick(dt: Double, phase: SubscriberPhase) {
+        val flag = !b1.temperature.value.approxEq(lastTemperatureB1) || !b2.temperature.value.approxEq(lastTemperatureB2)
+
+        cell.setChangedIf(flag) {
+            lastTemperatureB1 = !b1.temperature
+            lastTemperatureB2 = !b2.temperature
         }
     }
 }

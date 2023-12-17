@@ -123,7 +123,7 @@ class ConnectedPartRenderer(
     val part: Part<*>,
     val body: PartialModel,
     val connections: Map<Base6Direction3d, WireConnectionModelPartial>
-) : PartRenderer(), PartConnectionRenderInfoSetConsumer {
+) : PartRenderer(), PartConnectionRenderInfoSetConsumer, PartRendererStateStorage {
     constructor(part: Part<*>, body: PartialModel, connection: WireConnectionModelPartial) : this(
         part,
         body,
@@ -138,6 +138,14 @@ class ConnectedPartRenderer(
     private var bodyInstance: ModelData? = null
     private val connectionDirectionsUpdate = AtomicUpdate<IntArray>()
     private val connectionInstances = Int2ObjectOpenHashMap<ModelData>()
+
+    private var connectionsRestore = IntArray(0)
+
+    override fun restoreSnapshot(renderer: PartRenderer) {
+        if(renderer is ConnectedPartRenderer) {
+            this.acceptConnections(renderer.connectionsRestore)
+        }
+    }
 
     override fun acceptConnections(connections: IntArray) {
         connectionDirectionsUpdate.setLatest(connections)
@@ -195,6 +203,8 @@ class ConnectedPartRenderer(
     }
 
     override fun remove() {
+        connectionsRestore = connectionInstances.keys.toIntArray()
+
         bodyInstance?.delete()
         connectionInstances.values.forEach { it.delete() }
     }

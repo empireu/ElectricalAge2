@@ -73,8 +73,7 @@ data class FurnaceOptions(
     var runningResistance: Quantity<Resistance>,
     var temperatureThreshold: Quantity<Temperature>,
     var targetTemperature: Quantity<Temperature>,
-    var surfaceArea: Quantity<Area>,
-    var connectionParameters: ConnectionParameters,
+    var leakageParameters: ConnectionParameters,
 )
 
 class FurnaceCell(ci: CellCreateInfo, dir1: Base6Direction3d, dir2: Base6Direction3d) : Cell(ci) {
@@ -103,8 +102,7 @@ class FurnaceCell(ci: CellCreateInfo, dir1: Base6Direction3d, dir2: Base6Directi
         runningResistance = Quantity(100.0),
         temperatureThreshold = Quantity(600.0, CELSIUS),
         targetTemperature = Quantity(800.0, CELSIUS),
-        surfaceArea = Quantity(1.0, METER2),
-        ConnectionParameters.DEFAULT
+        ConnectionParameters.DEFAULT.copy(conductance = ConnectionParameters.DEFAULT.conductance * 0.25)
     )
 
     // Move to heating element item or something

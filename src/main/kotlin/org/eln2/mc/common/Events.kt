@@ -1,18 +1,19 @@
 package org.eln2.mc.common
 
 import net.minecraft.server.level.ServerLevel
-import net.minecraft.world.level.LevelReader
 import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.level.BlockEvent
 import net.minecraftforge.event.level.ChunkWatchEvent
 import net.minecraftforge.event.level.LevelEvent
 import net.minecraftforge.event.server.ServerStoppingEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
-import net.minecraftforge.fml.ModLoadingStage
 import net.minecraftforge.fml.common.Mod
-import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent
 import net.minecraftforge.fml.event.lifecycle.FMLLoadCompleteEvent
 import net.minecraftforge.server.ServerLifecycleHooks
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.SECOND
+import org.ageseries.libage.data.classify
+import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.LOG
 import org.eln2.mc.common.blocks.foundation.GhostLightHackClient
 import org.eln2.mc.common.blocks.foundation.GhostLightServer
@@ -21,6 +22,7 @@ import org.eln2.mc.common.content.GridConnectionManagerClient
 import org.eln2.mc.common.content.GridConnectionManagerServer
 import org.eln2.mc.common.events.schedulePost
 import org.eln2.mc.data.AveragingList
+import org.eln2.mc.extensions.formatted
 
 @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.MOD)
 object ModEvents {
@@ -35,10 +37,15 @@ object ModEvents {
 
 @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.FORGE)
 object ForgeEvents {
+    // To remove these and add better inst
     private val upsAveragingList = AveragingList(100)
     private val tickTimeAveragingList = AveragingList(100)
-    private var logCountdown = 0
-    private const val logInterval = 100
+    private var lastLog = 0
+
+    // total reset every tick
+    private val lastTickStopwatch = Stopwatch()
+
+    val timeSinceLastTick get() = lastTickStopwatch.total
 
     private fun forEachGraphManager(user: (CellGraphManager) -> Unit) {
         ServerLifecycleHooks.getCurrentServer().allLevels.forEach {
@@ -61,14 +68,16 @@ object ForgeEvents {
             upsAveragingList.addSample(tickRate)
             tickTimeAveragingList.addSample(tickTime)
 
-            if (logCountdown-- == 0) {
-                logCountdown = logInterval
+            if (++lastLog == 100) {
+                lastLog = 0
 
-                LOG.info("Total simulation rate: ${upsAveragingList.calculate()} Updates/Second")
-                LOG.info("Total simulation time: ${tickTimeAveragingList.calculate()}")
+                LOG.debug("Simulation rate: ${upsAveragingList.calculate().formatted()} U/S")
+                LOG.debug("Simulation time: ${Quantity(tickTimeAveragingList.calculate(), SECOND).classify()}")
             }
 
             GhostLightServer.applyChanges()
+
+            lastTickStopwatch.resetTotal()
         }
     }
 

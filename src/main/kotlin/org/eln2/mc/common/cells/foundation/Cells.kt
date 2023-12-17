@@ -4,6 +4,7 @@ import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.saveddata.SavedData
@@ -61,10 +62,8 @@ class TrackedSubscriberCollection(private val underlyingCollection: SubscriberCo
 /**
  * Describes the environment the cell sits in.
  * @param ambientTemperature The temperature of the environment.
- * @param ambientThermalParameters Connection info for thermal interaction with the environment.
- * @param substrateMaterial The material of the face in contact with the cell.
  * */
-data class CellEnvironment(val ambientTemperature: Quantity<Temperature>, val ambientThermalParameters: ConnectionParameters) {
+data class CellEnvironment(val ambientTemperature: Quantity<Temperature>) {
     companion object {
         fun evaluate(level: Level, pos: Locator): CellEnvironment {
             val position = pos.requireLocator<BlockLocator> {
@@ -77,10 +76,7 @@ data class CellEnvironment(val ambientTemperature: Quantity<Temperature>, val am
                 .MINECRAFT_TEMPERATURE_CELSIUS
                 .evaluate(biome.baseTemperature.toDouble())
 
-            return CellEnvironment(
-                Quantity(temperature, CELSIUS),
-                ConnectionParameters.DEFAULT
-            )
+            return CellEnvironment(Quantity(temperature, CELSIUS))
         }
     }
 }
@@ -94,15 +90,17 @@ fun CellEnvironment.loadTemperature(vararg bodies: ThermalMass) {
     }
 }
 
-/**
- * Adds [EnvironmentConnection]s for the bodies based on the [CellEnvironment.ambientTemperature] and [CellEnvironment.ambientThermalParameters].
- * */
 fun CellEnvironment.connect(simulator: Simulator, vararg bodies: ThermalMass) {
     bodies.forEach {
-        simulator.connect(it, this.ambientTemperature, this.ambientThermalParameters)
+        simulator.connect(it, this.ambientTemperature)
     }
 }
 
+fun CellEnvironment.connect(simulator: Simulator, parameters: ConnectionParameters, vararg bodies: ThermalMass) {
+    bodies.forEach {
+        simulator.connect(it, this.ambientTemperature, parameters)
+    }
+}
 
 data class CellCreateInfo(val locator: Locator, val id: ResourceLocation, val environment: CellEnvironment)
 
@@ -142,10 +140,12 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     val uniqueCellId = ID_ATOMIC.getAndIncrement()
 
     // Persistent behaviors are used by cell logic, and live throughout the lifetime of the cell:
-    private var persistentPool: TrackedSubscriberCollection? = null
+    private var persistentPoolInternal: TrackedSubscriberCollection? = null
 
     // Transient behaviors are used when the cell is in range of a player (and the game object exists):
-    private var transientPool: TrackedSubscriberCollection? = null
+    private var transientPoolInternal: TrackedSubscriberCollection? = null
+
+    val persistentPool get() = persistentPoolInternal ?: error("Invalid access to persistent pool")
 
     lateinit var graph: CellGraph
     var connections: ArrayList<Cell> = ArrayList(0)
@@ -196,7 +196,7 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
         }
     }
 
-    fun setChangedIf(value: Boolean, action: () -> Unit) {
+    inline fun setChangedIf(value: Boolean, action: () -> Unit) {
         if(value) {
             setChanged()
             action()
@@ -236,7 +236,7 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     var isBeingRemoved = false
         private set
 
-    protected val behaviors by lazy {
+    protected val behaviorContainer by lazy {
         createBehaviorContainer()
     }
 
@@ -311,14 +311,14 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
 
     fun bindGameObjects(objects: List<Any>) {
         // Not null, it is initialized when added to graph (so the SubscriberCollection is available)
-        val transient = this.transientPool
+        val transient = this.transientPoolInternal
             ?: error("Transient pool is null in bind")
 
         require(replicators.isEmpty()) { "Lingering replicators in bind" }
 
         objects.forEach { obj ->
             fun bindReplicator(behavior: ReplicatorBehavior) {
-                behaviors.addToCollection(behavior)
+                behaviorContainer.addToCollection(behavior)
                 replicators.add(behavior)
             }
 
@@ -336,11 +336,11 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     }
 
     fun unbindGameObjects() {
-        val transient = this.transientPool
+        val transient = this.transientPoolInternal
             ?: error("Transient null in unbind")
 
         replicators.forEach {
-            behaviors.destroy(it)
+            behaviorContainer.destroy(it)
         }
 
         replicators.clear()
@@ -369,9 +369,9 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
 
     fun notifyRemoving() {
         isBeingRemoved = true
-        behaviors.destroy()
+        behaviorContainer.destroy()
         onRemoving()
-        persistentPool?.clear()
+        persistentPoolInternal?.clear()
     }
 
     /**
@@ -395,39 +395,32 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     /**
      * Called when the graph and/or neighbouring cells are updated. This method is called after completeDiskLoad and setPlaced
      * @param connectionsChanged True if the neighbouring cells changed.
-     * @param graphChanged True if the graph that owns this cell has been updated.
+     * @param graphChanged True if the graph that owns this cell has changed.
      */
     open fun update(connectionsChanged: Boolean, graphChanged: Boolean) {
-        if (connectionsChanged) {
-            onConnectionsChanged()
-        }
-
         if (graphChanged) {
-            persistentPool?.clear()
-            transientPool?.clear()
+            persistentPoolInternal?.clear()
+            transientPoolInternal?.clear()
 
-            persistentPool = TrackedSubscriberCollection(graph.simulationSubscribers)
-            transientPool = TrackedSubscriberCollection(graph.simulationSubscribers)
+            persistentPoolInternal = TrackedSubscriberCollection(graph.simulationSubscribers)
+            transientPoolInternal = TrackedSubscriberCollection(graph.simulationSubscribers)
 
-            behaviors.behaviors.forEach {
-                it.subscribe(persistentPool!!)
+            behaviorContainer.behaviors.forEach {
+                it.subscribe(persistentPoolInternal!!)
             }
 
-            onGraphChanged()
-            subscribe(persistentPool!!)
+            subscribe(persistentPoolInternal!!)
+        }
+
+        objects.forEachObject {
+            it.update(connectionsChanged, graphChanged)
         }
     }
 
     /**
-     * Called when this cell's connection list changes.
+     * Called when subscribers should be added, after the graph changes.
+     * This is called before [SimulationObject.subscribe]
      * */
-    protected open fun onConnectionsChanged() {}
-
-    /**
-     * Called when this cell joined another graph.
-     * */
-    protected open fun onGraphChanged() {}
-
     protected open fun subscribe(subscribers: SubscriberCollection) {}
 
     /**
@@ -443,7 +436,7 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     fun recordObjectConnections() {
         objects.forEachObject { localObj ->
             for (remoteCell in connections) {
-                require(remoteCell.connections.contains(this)) {
+                check(remoteCell.connections.contains(this)) {
                     "Mismatched connection set"
                 }
 
@@ -1051,9 +1044,14 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
 
     /**
      * Runs one simulation step. This is called from the update thread.
+     * **The update is aborted if the server thread is not running. This happens if it got suspended externally or if the integrated server is paused!**
      * */
     @CrossThreadAccess
     private fun update() {
+        if(isServerPaused()) {
+            return
+        }
+
         simulationStopLock.lock()
 
         var stage = UpdateStep.Start

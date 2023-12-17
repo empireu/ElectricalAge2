@@ -126,19 +126,24 @@ class SubscriberPool : SubscriberCollection {
         private var countdown = parameters.interval
 
         fun update(dtId: Double): Boolean {
-            val dt = dtId * max(parameters.interval, 1)
+            try {
+                val dt = dtId * max(parameters.interval, 1)
 
-            if (--countdown <= 0) {
-                countdown = parameters.interval
-                isIterating = true
-                for (sub in pool) {
-                    sub.update(dt, parameters.phase)
+                if (--countdown <= 0) {
+                    countdown = parameters.interval
+                    isIterating = true
+                    for (sub in pool) {
+                        sub.update(dt, parameters.phase)
+                    }
+                    isIterating = false
+                    return true
                 }
-                isIterating = false
-                return true
-            }
 
-            return false
+                return false
+            }
+            finally {
+                isIterating = false
+            }
         }
 
         fun add(subscriber: Subscriber) {

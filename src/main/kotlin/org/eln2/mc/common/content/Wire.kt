@@ -32,10 +32,9 @@ import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.ImmutableIntArrayView
-import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.mathematics.Vector3d
-import org.ageseries.libage.mathematics.map
+import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.sim.*
 import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
@@ -57,12 +56,11 @@ import java.nio.ByteBuffer
 import java.nio.IntBuffer
 import java.util.function.Supplier
 import kotlin.math.PI
-import kotlin.math.max
 
 /**
  * Generalized thermal conductor, in the form of a single thermal body that gets connected to all neighbor cells.
  * */
-class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass) : ThermalObject<Cell>(cell), PersistentObject, ThermalContactInfo {
+class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass, val environmentLeakageParameters: ConnectionParameters = ConnectionParameters.DEFAULT) : ThermalObject<Cell>(cell), PersistentObject, ThermalContactInfo {
     companion object {
         // Storing temperature. If I change the properties of the material, it will be the same temperature in game.
         private const val TEMPERATURE = "temperature"
@@ -78,8 +76,11 @@ class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass) : ThermalObjec
         definition()
     )
 
+    private var lastTemperature: Double
+
     init {
         cell.environmentData.loadTemperature(thermalBody)
+        lastTemperature = !thermalBody.temperature
     }
 
     override fun offerComponent(neighbour: ThermalObject<*>) = ThermalComponentInfo(thermalBody)
@@ -87,7 +88,7 @@ class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass) : ThermalObjec
     override fun addComponents(simulator: Simulator) {
         simulator.add(thermalBody)
 
-        cell.environmentData.connect(simulator, thermalBody)
+        cell.environmentData.connect(simulator, environmentLeakageParameters, thermalBody)
     }
 
     override fun saveObjectNbt(): CompoundTag {
@@ -103,6 +104,19 @@ class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass) : ThermalObjec
     }
 
     override fun getContactTemperature(other: Locator) = thermalBody.temperature
+
+    override fun subscribe(subscribers: SubscriberCollection) {
+        subscribers.addSubscriber(
+            SubscriberOptions(100, SubscriberPhase.Post),
+            this::simulationTick
+        )
+    }
+
+    private fun simulationTick(dt: Double, phase: SubscriberPhase) {
+        cell.setChangedIf(!thermalBody.temperature.value.approxEq(lastTemperature)) {
+            lastTemperature = thermalBody.temperature.value
+        }
+    }
 }
 
 /**
@@ -350,6 +364,7 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
     var connectionSize = Vector3d(2.0 / 16.0, 1.5 / 16.0, 6.25 / 16.0)
     var wireShapes : Map<Pair<FaceLocator, Direction>, VoxelShape>? = null
     var wireShapesFilled : Map<Pair<FaceLocator, Direction>, VoxelShape>? = null
+    var leakageParameters: ConnectionParameters = ConnectionParameters.DEFAULT
 
     fun renderer(supplier: Supplier<WireRenderInfo>) {
         DistExecutor.safeRunWhenOn(Dist.CLIENT) {
@@ -362,7 +377,13 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
 
     protected abstract fun defaultRender() : WireRenderInfo
 
-    protected fun createMaterialProperties() = WireThermalProperties(material, damageOptions, replicatesInternalTemperature, isIncandescent)
+    protected fun createThermalProperties() = WireThermalProperties(
+        material,
+        damageOptions,
+        replicatesInternalTemperature,
+        isIncandescent,
+        leakageParameters
+    )
 
     protected fun registerPart(properties: WireThermalProperties, provider: RegistryObject<CellProvider<C>>) {
         fun createShapes(size: Vector3d) : HashMap<Pair<FaceLocator, Direction>, VoxelShape> {
@@ -425,14 +446,14 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
 
 class ThermalWireBuilder(id: String) : WireBuilder<ThermalWireCell>(id) {
     fun register(): ThermalWireRegistryObject {
-        val material = createMaterialProperties()
+        val material = createThermalProperties()
         val cell = CellRegistry.cell(
             id,
             BasicCellProvider { ci ->
                 ThermalWireCell(
                     ci,
                     contactSurfaceArea,
-                    material
+                    material,
                 )
             }
         )
@@ -451,7 +472,7 @@ class ElectricalWireBuilder(id: String) : WireBuilder<ElectrothermalWireCell>(id
     var resistance: Double = 2.14 * 1e-5
 
     fun register(): ElectricalWireRegistryObject {
-        val material = createMaterialProperties()
+        val material = createThermalProperties()
         val electrical = WireElectricalProperties(resistance)
         val cell = CellRegistry.cell(
             id,
@@ -481,12 +502,14 @@ class ElectricalWireBuilder(id: String) : WireBuilder<ElectrothermalWireCell>(id
  * @param damageOptions The damage config, passed to the [TemperatureExplosionBehavior]
  * @param replicatesInternalTemperature Indicates if the wire should replicate the internal temperature (temperature of the wire's thermal body)
  * @param replicatesExternalTemperature Indicates if the wire should replicate the external temperatures (temperatures of connected thermal objects)
+ * @param leakageParameters Environment connection info.
  * */
 data class WireThermalProperties(
     val thermalDef: ThermalMassDefinition,
     val damageOptions: TemperatureExplosionBehaviorOptions,
     val replicatesInternalTemperature: Boolean,
-    val replicatesExternalTemperature: Boolean
+    val replicatesExternalTemperature: Boolean,
+    val leakageParameters: ConnectionParameters
 )
 
 /**
@@ -540,7 +563,9 @@ open class WireCell(ci: CellCreateInfo, val connectionCrossSection: Double) : Ce
 open class ThermalWireCell(ci: CellCreateInfo, connectionCrossSection: Double, val thermalProperties: WireThermalProperties) : WireCell(ci, connectionCrossSection) {
     @SimObject
     val thermalWire = ThermalWireObject(
-        self()
+        self(),
+        thermalProperties.thermalDef(),
+        thermalProperties.leakageParameters
     )
 
     @Behavior
@@ -1017,10 +1042,18 @@ private fun checkIsFilledVariant(connections: List<Int>) = if (connections.size 
 abstract class WireRenderer<I>(
     val part: WirePart<*>,
     val renderInfo: WireRenderInfo,
-) : PartRenderer(), PartConnectionRenderInfoSetConsumer {
+) : PartRenderer(), PartConnectionRenderInfoSetConsumer, PartRendererStateStorage {
     private var connectionsUpdate = AtomicUpdate<IntArray>()
     protected var hubInstance: ModelData? = null
     protected var connectionInstances = Int2ObjectOpenHashMap<I>(4)
+
+    private var connectionDataRestore = IntArray(0)
+
+    override fun restoreSnapshot(renderer: PartRenderer) {
+        if(renderer is WireRenderer<*>) {
+            this.acceptConnections(renderer.connectionDataRestore)
+        }
+    }
 
     fun forEachConnectionInfo(user: (PartConnectionDirection) -> Unit) {
         if(connectionInstances.isEmpty()) {
@@ -1092,6 +1125,7 @@ abstract class WireRenderer<I>(
     protected abstract fun relightConnection(instance: I, source: RelightSource)
 
     override fun remove() {
+        connectionDataRestore = connectionInstances.keys.toIntArray()
         deleteInstances()
     }
 
@@ -1193,6 +1227,17 @@ class IncandescentInstancedWireRenderer(
     private val externalTemperatureUpdates = AtomicUpdate<Map<Int, Double>>()
     private var internalTemperature = 0.0
     private val externalTemperatures = Int2DoubleOpenHashMap()
+
+    private var externalTemperaturesRestore = emptyMap<Int, Double>()
+
+    override fun restoreSnapshot(renderer: PartRenderer) {
+        super.restoreSnapshot(renderer)
+
+        if(renderer is IncandescentInstancedWireRenderer) {
+            this.updateInternalTemperature(renderer.internalTemperature)
+            this.updateExternalTemperatures(renderer.externalTemperaturesRestore)
+        }
+    }
 
     override fun relightConnection(instance: PolarData, source: RelightSource) {
         instance.setSkyLight(multipart.readSkyBrightness())
@@ -1363,5 +1408,11 @@ class IncandescentInstancedWireRenderer(
 
             setExteriorPoleColor(instances, coreColor, remoteInfo, remoteTemperature)
         }
+    }
+
+    override fun remove() {
+        externalTemperaturesRestore = externalTemperatures.toMap()
+
+        super.remove()
     }
 }

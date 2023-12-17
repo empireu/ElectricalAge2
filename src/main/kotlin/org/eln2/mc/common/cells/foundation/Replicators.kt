@@ -1,5 +1,6 @@
 package org.eln2.mc.common.cells.foundation
 
+import it.unimi.dsi.fastutil.objects.Reference2DoubleArrayMap
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.approxEq
@@ -75,22 +76,26 @@ class InternalTemperatureReplicatorBehavior(
 ) : ReplicatorBehavior {
     var scanInterval: Int = 5
     var scanPhase: SubscriberPhase = SubscriberPhase.Pre
-    var toleranceK: Double = 1.0
+    var tolerance: Double = 1.0
 
-    private val tracked = bodies.associateWith { !it.temperature }.toMutableMap()
+    private val tracked = Reference2DoubleArrayMap<ThermalMass>()
 
     override fun subscribe(subscribers: SubscriberCollection) {
         subscribers.addSubscriber(SubscriberOptions(scanInterval, scanPhase), this::scan)
     }
 
     private fun scan(dt: Double, phase: SubscriberPhase) {
-        val dirty = bodies.filter { !tracked[it]!!.approxEq(!it.temperature, toleranceK) }
+        val dirty = bodies.filter {
+            !tracked.getDouble(it).approxEq(!it.temperature, tolerance)
+        }
 
         if (dirty.isEmpty()) {
             return
         }
 
-        dirty.forEach { tracked[it] = !it.temperature }
+        dirty.forEach {
+            tracked[it] = !it.temperature
+        }
 
         consumer.onInternalTemperatureChanges(dirty)
     }

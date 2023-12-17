@@ -81,7 +81,7 @@ class RadiantBipoleRenderer(
     val right: PartialModel,
     val leftColor: ThermalTint,
     val rightColor: ThermalTint,
-) : PartRenderer() {
+) : PartRenderer(), PartRendererStateStorage {
     constructor(
         part: Part<*>,
         body: PartialModel,
@@ -95,6 +95,15 @@ class RadiantBipoleRenderer(
 
     private val leftSideUpdate = AtomicUpdate<Quantity<Temperature>>()
     private val rightSideUpdate = AtomicUpdate<Quantity<Temperature>>()
+    private var leftSide: Quantity<Temperature>? = null
+    private var rightSide: Quantity<Temperature>? = null
+
+    override fun restoreSnapshot(renderer: PartRenderer) {
+        if(renderer is RadiantBipoleRenderer) {
+            renderer.leftSide?.run(this::updateLeftSideTemperature)
+            renderer.rightSide?.run(this::updateRightSideTemperature)
+        }
+    }
 
     fun updateLeftSideTemperature(value: Quantity<Temperature>) = leftSideUpdate.setLatest(value)
 
@@ -133,10 +142,12 @@ class RadiantBipoleRenderer(
 
     override fun beginFrame() {
         leftSideUpdate.consume {
+            leftSide = it
             applyTemperature(leftColor, leftInstance, it)
         }
 
         rightSideUpdate.consume {
+            rightSide = it
             applyTemperature(rightColor, rightInstance, it)
         }
     }

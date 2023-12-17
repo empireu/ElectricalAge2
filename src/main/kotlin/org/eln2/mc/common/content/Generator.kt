@@ -1,4 +1,4 @@
-@file:Suppress("UNUSED_VARIABLE", "LocalVariableName")
+@file:Suppress("UNUSED_VARIABLE", "LocalVariableName", "NonAsciiCharacters")
 
 package org.eln2.mc.common.content
 
@@ -27,10 +27,11 @@ import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.items.ItemStackHandler
 import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.InterpolationFunction
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.nz
 import org.ageseries.libage.mathematics.snzi
-import org.ageseries.libage.sim.MassConnection
+import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.mna.component.PowerVoltageSource
@@ -129,7 +130,7 @@ class FuelBurnerBehavior(val cell: Cell, val body: ThermalMass) : CellBehavior {
     private var fuel: FuelBurnState? = null
     private val updates = AtomicUpdate<FuelBurnState>()
 
-    private val pid = PIDController(10.0, 0.0, 0.0).also {
+    private val pid = PIDController(25.0, 0.0, 0.0).also {
         it.setPoint = 1.0
         it.minControl = 0.0
         it.maxControl = 1.0
@@ -182,13 +183,13 @@ class FuelBurnerBehavior(val cell: Cell, val body: ThermalMass) : CellBehavior {
         .useSubTagIfPreset(PID) { pid.stateFromNbt(it) }
 }
 
-class HeatGeneratorCell(ci: CellCreateInfo, thermalDef: ThermalMassDefinition) : Cell(ci), ThermalContactInfo {
+class HeatGeneratorCell(ci: CellCreateInfo, thermalDef: ThermalMassDefinition, leakageParameters: ConnectionParameters) : Cell(ci), ThermalContactInfo {
     companion object {
         private const val BURNER_BEHAVIOR = "burner"
     }
 
     @SimObject
-    val thermalWire = ThermalWireObject(this, thermalDef)
+    val thermalWire = ThermalWireObject(this, thermalDef(), leakageParameters)
 
     @Behavior
     val burner = FuelBurnerBehavior(this, thermalWire.thermalBody)
@@ -362,12 +363,9 @@ class HeatGeneratorBlock : CellBlock<HeatGeneratorCell>() {
 }
 
 data class HeatEngineElectricalModel(
-    val maxPower: Quantity<Power>,
-    val desiredPotential: Quantity<Potential>,
-    val p: Double,
-    val t: Double,
-    val m: Double,
-    val n: Double
+    val baseEfficiency: Double,
+    val potential: InterpolationFunction<Quantity<Temperature>, Quantity<Potential>>,
+    val conductance: Quantity<ThermalConductance>
 )
 
 class ElectricalHeatEngineCell(
@@ -381,9 +379,11 @@ class ElectricalHeatEngineCell(
     constructor(ci: CellCreateInfo, electricalMap: PoleMap, thermalMap: PoleMap, def: ThermalMassDefinition, model: HeatEngineElectricalModel) : this(ci, electricalMap, thermalMap, def, def, model)
 
     @SimObject
-    val generator = PolarTermObject(this, electricalMap, PowerVoltageSource().also {
-        it.potentialMax = !model.desiredPotential
-    })
+    val generator = PolarTermObject(
+        this,
+        electricalMap,
+        PowerVoltageSource()
+    )
 
     @SimObject
     val thermalBipole = ThermalBipoleObject(
@@ -421,21 +421,29 @@ class ElectricalHeatEngineCell(
             Tc = !hot.temperature
         }
 
-        efficiency = (Th - Tc) / Th
+        efficiency = model.baseEfficiency * ((Th - Tc) / Th)
 
-        val power = efficiency * sign(!hot.temperature - !cold.temperature) * (0.5 * abs(!hot.energy - !cold.energy) / dt)
+        val ΔE = hot.energy - cold.energy
+        val ΔT = hot.temperature - cold.temperature
 
-        generator.term.powerIdeal = power.coerceIn(-!model.maxPower, +!model.maxPower)
+        generator.term.potentialMax = !model.potential.evaluate(abs(ΔT))
+        generator.term.powerIdeal = efficiency * sign(!ΔT) * min((0.5 * abs(!ΔE) / dt), !model.conductance * !abs(ΔT))
     }
 
     private fun postTick(dt: Double, phase: SubscriberPhase) {
-        val electricalEnergy = Quantity(generator.term.power * dt, JOULE)
+        val electricalEnergy = generator.term.power * dt
 
-        val electricalDirection = snzi(!electricalEnergy)
+        val electricalDirection = snzi(electricalEnergy)
         val thermalDirection = snzi((!hot.temperature - !cold.temperature))
 
         if (electricalDirection == thermalDirection) {
-            val thermalEnergy = electricalEnergy / efficiency.nz()
+            val thermalEnergy = if(efficiency.approxEq(0.0)) {
+                0.0
+            }
+            else {
+                electricalEnergy / efficiency
+            }
+
             val wastedEnergy = thermalEnergy * (1.0 - efficiency)
 
             if (electricalDirection == 1) {
@@ -492,8 +500,9 @@ class ElectricalHeatEnginePart(ci: PartCreateInfo) : CellPart<ElectricalHeatEngi
         builder.power(cell.generator.term.power)
         builder.potential(cell.generator.term.potential)
         builder.current(cell.generator.term.current)
-        builder.debug("Eff: ${cell.efficiency.formattedPercentNormalized()}")
-        builder.debug("Pow: ${Quantity(cell.generator.term.powerIdeal, WATT).classify()}")
+        builder.debug("Efficiency: ${cell.efficiency.formattedPercentNormalized()}")
+        builder.debug("Potential Max: ${Quantity(cell.generator.term.potentialMax ?: 0.0, VOLT).classify()}")
+        builder.debug("Power Ideal: ${Quantity(cell.generator.term.powerIdeal, WATT).classify()}")
     }
 
     @Serializable

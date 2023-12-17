@@ -166,6 +166,17 @@ data class PartCreateInfo(
 )
 
 /**
+ * Helper interface for renderers that store state in the [PartRenderer] instance.
+ * */
+interface PartRendererStateStorage {
+    /**
+     * Called to restore the information from a previous renderer instance.
+     * Could happen when the renderer is re-created, after being destroyed. Could happen when origin shifts, etc. Passed as [PartRenderer] because the type can actually change (e.g. if switching backends)
+     * */
+    fun restoreSnapshot(renderer: PartRenderer)
+}
+
+/**
  * Parts are entity-like units that exist in a multipart entity. They are similar to normal block entities,
  * but up to 6 can exist in the same block space.
  * They are placed on the inner faces of a multipart container block space.
@@ -441,7 +452,10 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
     }
 
     @ClientOnly
-    protected var cachedRenderer: Renderer? = null
+    protected var previousRenderer: Renderer? = null
+
+    @ClientOnly
+    protected var activeRenderer: Renderer? = null
         private set
 
     /**
@@ -455,12 +469,22 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
                 error("Tried to get renderer on non-client side!")
             }
 
-            if (cachedRenderer == null) {
-                cachedRenderer = createRenderer()
+            if (activeRenderer == null) {
+                activeRenderer = createRenderer().also {
+                    val previousRenderer = this.previousRenderer
+                    this.previousRenderer = null
+
+                    if(previousRenderer != null) {
+                        if(it is PartRendererStateStorage) {
+                            it.restoreSnapshot(previousRenderer)
+                        }
+                    }
+                }
+
                 initializeRenderer()
             }
 
-            return cachedRenderer!!
+            return activeRenderer!!
         }
 
     /**
@@ -478,8 +502,9 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
 
     @ClientOnly
     open fun destroyRenderer() {
-        cachedRenderer?.remove()
-        cachedRenderer = null
+        previousRenderer = activeRenderer
+        activeRenderer?.remove()
+        activeRenderer = null
     }
 }
 

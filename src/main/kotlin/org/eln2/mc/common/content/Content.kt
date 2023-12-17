@@ -1,4 +1,6 @@
-@file:Suppress("MemberVisibilityCanBePrivate", "PublicApiImplicitType", "PublicApiImplicitType", "unused", "LongLine")
+@file:Suppress("MemberVisibilityCanBePrivate", "PublicApiImplicitType", "PublicApiImplicitType", "unused", "LongLine",
+    "NonAsciiCharacters", "LocalVariableName"
+)
 
 package org.eln2.mc.common.content
 
@@ -9,6 +11,8 @@ import org.ageseries.libage.mathematics.evaluate
 import org.ageseries.libage.mathematics.lerp
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.ChemicalElement
+import org.ageseries.libage.sim.ConnectionParameters
+import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.Datasets
 import org.eln2.mc.LOG
@@ -54,9 +58,34 @@ object Content {
         }
         .register()
 
+    val THERMAL_CONDUIT = ThermalWireBuilder("thermal_conduit")
+        .apply {
+            damageOptions = TemperatureExplosionBehaviorOptions(
+                temperatureThreshold = Quantity(1000.0, CELSIUS)
+            )
+
+            material = ThermalMassDefinition(
+                Material(
+                    label = "Test thermal conduit",
+                    electricalResistivity = Quantity(Double.POSITIVE_INFINITY),
+                    thermalConductivity = Quantity(3000.0, WATT_PER_METER_KELVIN),
+                    specificHeat = ChemicalElement.Copper.specificHeat,
+                    density = ChemicalElement.Copper.density
+                )
+            )
+
+            leakageParameters = ConnectionParameters.DEFAULT.copy(
+                conductance = Quantity(0.01)
+            )
+        }
+        .register()
+
     val ELECTRICAL_WIRE_COPPER = ElectricalWireBuilder("electrical_cable_copper")
         .apply {
             isIncandescent = false
+            leakageParameters = ConnectionParameters.DEFAULT.copy(
+                conductance = Quantity(0.2, WATT_PER_KELVIN) // Insulation
+            )
         }
         .register()
 
@@ -181,7 +210,10 @@ object Content {
                     temperatureThreshold = Quantity(1000.0, CELSIUS)
                 ),
                 replicatesInternalTemperature = true,
-                replicatesExternalTemperature = true
+                replicatesExternalTemperature = true,
+                leakageParameters = ConnectionParameters(
+                    area = 5.0
+                )
             )
 
             CellFactory {
@@ -200,12 +232,22 @@ object Content {
         "heat_generator",
         BasicCellProvider.setup {
             val thermalDefinition = ThermalMassDefinition(
-                ChemicalElement.Copper.asMaterial,
+                Material(
+                    label = "Test thermal conduit - heat generator",
+                    electricalResistivity = Quantity(Double.POSITIVE_INFINITY),
+                    thermalConductivity = Quantity(5000.0, WATT_PER_METER_KELVIN),
+                    specificHeat = ChemicalElement.Copper.specificHeat,
+                    density = ChemicalElement.Copper.density
+                ),
                 mass = Quantity(10.0, KILOGRAM)
             )
 
+            val leakageParameters = ConnectionParameters.DEFAULT.copy(
+                conductance = Quantity(0.01, WATT_PER_KELVIN)
+            )
+
             CellFactory {
-                HeatGeneratorCell(it, thermalDefinition)
+                HeatGeneratorCell(it, thermalDefinition, leakageParameters)
             }
         }
     )
@@ -277,6 +319,28 @@ object Content {
                 volumeProvider = LightFieldPrimitives.cone(
                     32,
                     28.0,
+                    PI / 4.0,
+                    1
+                )
+            )
+        )
+    }
+
+    val LIGHT_BULB_800V_100W = item("light_bulb_800v_100w") {
+        LightBulbItem(
+            LightModel(
+                temperatureFunction = {
+                    it.power / 100.0
+                },
+                resistanceFunction = {
+                    Quantity(6000.0, OHM)
+                },
+                damageFunction = { v, dt ->
+                    dt * (v.power / 100.0) * 1e-6
+                },
+                volumeProvider = LightFieldPrimitives.cone(
+                    32,
+                    30.0,
                     PI / 4.0,
                     1
                 )
@@ -368,12 +432,11 @@ object Content {
             )
 
             val model = HeatEngineElectricalModel(
-                maxPower = Quantity(5.0, KILO * WATT),
-                desiredPotential = Quantity(220.0, VOLT),
-                p = 0.425014,
-                t = 280.0,
-                m = 124.0,
-                n = 400.0
+                baseEfficiency = 1.0,
+                potential = { ΔT ->
+                    Quantity(!ΔT * (220.0 / 180.0), VOLT)
+                },
+                conductance = Quantity(5.0, WATT_PER_KELVIN)
             )
 
             CellFactory {
