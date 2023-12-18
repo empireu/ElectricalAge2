@@ -22,6 +22,7 @@ import java.util.*
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import java.util.function.Supplier
 import kotlin.concurrent.write
+import kotlin.math.max
 
 /**
  * Handles a "ghost light" (block light override) for a single block.
@@ -444,7 +445,7 @@ object GhostLightServer {
             val isOpen get() = lightLevel.gameLevel.getBlockState(position).isAir
 
             private fun changeHandleBrightness() {
-                val brightness = handles.maxOf { it.handleBrightness }
+                val brightness = handles.sumOf { it.handleBrightness }.coerceIn(0, 15)
 
                 if(brightness == targetBrightness) {
                     return
