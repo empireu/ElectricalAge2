@@ -306,7 +306,7 @@ object Content {
                     dt * (v.power / 100.0) * 1e-6
                 },
                 volumeProvider = LightFieldPrimitives.cone(
-                    32,
+                    128,
                     28.0,
                     PI / 4.0,
                     1
@@ -328,7 +328,7 @@ object Content {
                     dt * (v.power / 100.0) * 1e-6
                 },
                 volumeProvider = LightFieldPrimitives.cone(
-                    32,
+                    128,
                     30.0,
                     PI / 4.0,
                     1

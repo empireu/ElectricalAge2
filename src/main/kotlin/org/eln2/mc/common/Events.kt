@@ -23,6 +23,7 @@ import org.eln2.mc.common.content.GridConnectionManagerServer
 import org.eln2.mc.common.events.schedulePost
 import org.eln2.mc.data.AveragingList
 import org.eln2.mc.extensions.formatted
+import java.util.concurrent.Executors
 
 @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.MOD)
 object ModEvents {

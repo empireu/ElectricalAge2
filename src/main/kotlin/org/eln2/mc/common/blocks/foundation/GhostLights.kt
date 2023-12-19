@@ -1,9 +1,12 @@
+@file:Suppress("NOTHING_TO_INLINE")
+
 package org.eln2.mc.common.blocks.foundation
 
 import com.jozufozu.flywheel.light.LightUpdater
 import it.unimi.dsi.fastutil.ints.Int2ByteOpenHashMap
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntArrayList
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet
 import net.minecraft.client.Minecraft
 import net.minecraft.core.BlockPos
 import net.minecraft.core.SectionPos
@@ -14,15 +17,17 @@ import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.LightLayer
 import net.minecraftforge.network.NetworkEvent
+import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.common.network.Networking
+import org.eln2.mc.data.DefaultPooledObjectPolicy
+import org.eln2.mc.data.LinearObjectPool
 import org.eln2.mc.mathematics.BlockPosInt
 import java.nio.ByteBuffer
-import java.util.*
-import java.util.concurrent.locks.ReentrantReadWriteLock
+import java.util.concurrent.ConcurrentHashMap
 import java.util.function.Supplier
-import kotlin.concurrent.write
-import kotlin.math.max
+import kotlin.collections.component1
+import kotlin.collections.component2
 
 /**
  * Handles a "ghost light" (block light override) for a single block.
@@ -521,40 +526,62 @@ object GhostLightServer {
 
 @ClientOnly
 object GhostLightHackClient {
-    private val chunks = HashMap<ChunkPos, Int2ByteOpenHashMap>()
-    private val lock = ReentrantReadWriteLock(false)
+    private val grid = ConcurrentHashMap<SectionPos, ByteArray>()
+    private val preparedChunks = HashSet<ChunkPos>()
 
+    private val pool = LinearObjectPool(
+        DefaultPooledObjectPolicy(::allocateSection, ::clearSection),
+        16384
+    )
+
+    /**
+     * Gets the brightness at [blockPos].
+     * Safe to call from multiple threads.
+     * */
+    @CrossThreadAccess
     @JvmStatic
     fun getBlockBrightness(blockPos: BlockPos): Int {
-        val chunkPos = ChunkPos(blockPos)
-        val key = packKey(blockPos)
+        val section = grid[SectionPos.of(blockPos)]
+            ?: return 0
 
-        val readLock = lock.readLock()
-
-        readLock.lock()
-        val result = chunks[chunkPos]?.get(key) ?: 0
-        readLock.unlock()
-
-        return result.toInt()
+        return section[blockIndex(blockPos.x, blockPos.y, blockPos.z)].toInt()
     }
 
     /**
      * Prepares storage to handle ghost light data for the chunk at [chunkPos], if the chunk is not already prepared.
      * */
+    @OnClientThread
     fun addChunk(chunkPos: ChunkPos) {
-        lock.write {
-            if(!chunks.containsKey(chunkPos)) {
-                chunks[chunkPos] = Int2ByteOpenHashMap()
-            }
+        requireIsOnRenderThread {
+            "addChunk called on non-render thread"
+        }
+
+        if(!preparedChunks.add(chunkPos)) {
+            return // Already prepared
+        }
+
+        forEachSection(chunkPos) {
+            grid.putUnique(it, pool.get())
         }
     }
 
     /**
-     * Removes the data stores for the chunk at [chunkPos].
+     * Removes the data stores for the chunk at [chunkPos], if it exists.
      * */
+    @OnClientThread
     fun removeChunk(chunkPos: ChunkPos) {
-        lock.write {
-            chunks.remove(chunkPos)
+        requireIsOnRenderThread {
+            "removeChunk called on non-render thread"
+        }
+
+        if(!preparedChunks.remove(chunkPos)) {
+            return
+        }
+
+        forEachSection(chunkPos) {
+            val section = grid.remove(it)
+            check(section != null)
+            pool.release(section)
         }
     }
 
@@ -564,45 +591,96 @@ object GhostLightHackClient {
      * */
     fun commit(chunkPos: ChunkPos, values: LongArray) {
         requireIsOnRenderThread {
-            "Tried to load client lights on ${Thread.currentThread()}"
+            "Tried to commit on non-render thread"
+        }
+        
+        require(preparedChunks.contains(chunkPos)) {
+            "Tried to commit unprepared $chunkPos"
         }
 
-        val minecraft = Minecraft.getInstance()
-        val level = minecraft.level
-        val renderer = minecraft.levelRenderer
+        val level = checkNotNull(Minecraft.getInstance().level) {
+            "Expected level in commit"
+        }
 
-        lock.write {
-            val chunk = chunks[chunkPos] ?: error("Tried to load unmarked chunk")
+        val lightUpdater = LightUpdater.get(level)
 
-            for (i in values.indices) {
-                val packedVoxel = PackedLightVoxel(values[i])
+        val renderer = checkNotNull(Minecraft.getInstance().levelRenderer) {
+            "Expected level renderer in commit"
+        }
 
-                val key = !packedVoxel.relativePosition
-                val brightness = packedVoxel.lightValue
+        val changedSections = LongOpenHashSet()
 
-                if(brightness.compareTo(0) == 0) {
-                    chunk.remove(key)
-                }
-                else {
-                    chunk.put(key, brightness)
-                }
+        values.forEach { value ->
+            val packedVoxel = PackedLightVoxel(value)
 
-                val blockPos = unpackKey(chunkPos, key)
-                val sectionPos = SectionPos.of(blockPos)
+            val chunkRelativePos = packedVoxel.relativePosition
 
-                renderer.setSectionDirtyWithNeighbors(sectionPos.x, sectionPos.y, sectionPos.z)
+            val sectionPos = SectionPos.of(
+                chunkPos.x,
+                SectionPos.blockToSectionCoord(chunkRelativePos.y),
+                chunkPos.z
+            )
 
-                if(level != null) {
-                    // We also need to tell flywheel:
-                    LightUpdater.get(level).onLightUpdate(LightLayer.BLOCK, sectionPos.asLong())
-                }
+            val section = checkNotNull(grid[sectionPos]) {
+                "Expected pre-loaded section at $sectionPos"
             }
+
+            val index = sectionIndex(
+                chunkRelativePos.x,
+                SectionPos.sectionRelative(chunkRelativePos.y),
+                chunkRelativePos.z
+            )
+
+            section[index] = packedVoxel.lightValue
+
+            changedSections.add(sectionPos.asLong())
+        }
+
+        changedSections.forEach {
+            val section = SectionPos.of(it)
+            renderer.setSectionDirtyWithNeighbors(section.x, section.y, section.z)
+            lightUpdater.onLightUpdate(LightLayer.BLOCK, it)
         }
     }
 
     fun clear() {
-        lock.write {
-            chunks.clear()
+        grid.values.forEach {
+            pool.release(it)
         }
+
+        grid.clear()
+        preparedChunks.clear()
     }
+
+    private fun allocateSection() : ByteArray {
+        return ByteArray(16 * 16 * 16)
+    }
+
+    private fun clearSection(array: ByteArray) : Boolean {
+        array.fill(0)
+        return true
+    }
+
+    private fun forEachSection(chunkPos: ChunkPos, use: (SectionPos) -> Unit) {
+        val level = checkNotNull(Minecraft.getInstance().level) {
+            "Level is null in column"
+        }
+
+        SectionPos.betweenClosedStream(
+            chunkPos.x,
+            level.minSection,
+            chunkPos.z,
+            chunkPos.x,
+            level.maxSection,
+            chunkPos.z
+        ).forEach(use)
+    }
+
+    private fun blockIndex(x: Int, y: Int, z: Int) = sectionIndex(
+        SectionPos.sectionRelative(x),
+        SectionPos.sectionRelative(y),
+        SectionPos.sectionRelative(z)
+    )
+
+    private fun sectionIndex(x: Int, y: Int, z: Int) = x + 16 * (y + 16 * z)
 }

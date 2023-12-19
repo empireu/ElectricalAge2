@@ -19,6 +19,7 @@ import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.TooltipFlag
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.GlassBlock
+import net.minecraftforge.fml.ModWorkManager
 import net.minecraftforge.registries.ForgeRegistries
 import org.ageseries.libage.data.Event
 import org.ageseries.libage.data.Quantity
@@ -27,6 +28,7 @@ import org.ageseries.libage.data.registerHandler
 import org.ageseries.libage.mathematics.*
 import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
 import org.ageseries.libage.sim.electrical.mna.component.updateResistance
+import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.RenderTypeType
@@ -46,6 +48,8 @@ import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.*
 import java.nio.ByteBuffer
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Future
 import kotlin.math.*
 
 private val originPositionField = Vector3d(0.5, 0.5, 0.5)
@@ -170,7 +174,8 @@ object LightFieldPrimitives {
         val variantsByFace = HashMap<FaceLocator, HashMap<Int, Int2ByteOpenHashMap>>()
         val cosDeviationMax = cos(deviationMax)
 
-        var currentStep = 0
+        val executor = ModWorkManager.parallelExecutor()
+        val tasks = ArrayList<CountDownLatch>()
 
         Direction.entries.forEach { face ->
             val baseVectors = let {
@@ -212,117 +217,129 @@ object LightFieldPrimitives {
             val normal = face.toVector3d()
 
             val variants = HashMap<Int, Int2ByteOpenHashMap>()
-            variantsByFace[face] = variants
+            variantsByFace.putUnique(face, variants)
 
-            for (state in 0 .. increments) {
-                ++currentStep
+            for (state in 0..increments) {
+                val latch = CountDownLatch(1)
+                tasks.add(latch)
 
-                val fieldBase = Int2DoubleOpenHashMap()
-                val results = Int2ByteOpenHashMap(fieldBase.size)
-                variants[state] = results
+                executor.execute {
+                    val fieldBase = Int2DoubleOpenHashMap()
+                    val results = Int2ByteOpenHashMap(fieldBase.size)
 
-                val radius = strength * (state / increments.toDouble())
-                val radiusUpper = ceil(radius).toInt()
-
-                if(radiusUpper == 0) {
-                    continue
-                }
-
-                fun set(x: Int, y: Int, z: Int) {
-                    val cell = Vector3d(x, y, z)
-
-                    for(baseVector in baseVectors) {
-                        val distance = cell distanceTo baseVector
-
-                        if(!distance.approxEq(0.0)) {
-                            if((((cell - baseVector) / distance) cosAngle normal) < cosDeviationMax) {
-                                continue
-                            }
-                        }
-
-                        if(distance <= radiusUpper) {
-                            val fz = when(face.axis) {
-                                Direction.Axis.X -> cell.x - baseVector.x
-                                Direction.Axis.Y -> cell.y - baseVector.y
-                                Direction.Axis.Z -> cell.z - baseVector.z
-                                else -> error("Invalid axis ${face.axis}")
-                            }.absoluteValue
-
-                            val brightness = 15.0 * (1.0 - (fz / radius))
-
-                            if(brightness >= 1.0) {
-                                val k = BlockPosInt.pack(x, y, z)
-                                fieldBase.put(k, max(fieldBase.get(k), brightness))
-                            }
-                        }
+                    synchronized(variants) {
+                        variants.putUnique(state, results)
                     }
-                }
 
-                when(face) {
-                    Direction.DOWN -> {
-                        for (x in -radiusUpper..radiusUpper) {
-                            for (y in -radiusUpper..0) {
-                                for (z in -radiusUpper..radiusUpper) {
-                                    set(x, y, z)
+                    val radius = strength * (state / increments.toDouble())
+                    val radiusUpper = ceil(radius).toInt()
+
+                    if(radiusUpper != 0) {
+                        fun set(x: Int, y: Int, z: Int) {
+                            val cell = Vector3d(x, y, z)
+
+                            for(baseVector in baseVectors) {
+                                val distance = cell distanceTo baseVector
+
+                                if(!distance.approxEq(0.0)) {
+                                    if((((cell - baseVector) / distance) cosAngle normal) < cosDeviationMax) {
+                                        continue
+                                    }
+                                }
+
+                                if(distance <= radiusUpper) {
+                                    val fz = when(face.axis) {
+                                        Direction.Axis.X -> cell.x - baseVector.x
+                                        Direction.Axis.Y -> cell.y - baseVector.y
+                                        Direction.Axis.Z -> cell.z - baseVector.z
+                                        else -> error("Invalid axis ${face.axis}")
+                                    }.absoluteValue
+
+                                    val brightness = 15.0 * (1.0 - (fz / radius))
+
+                                    if(brightness >= 1.0) {
+                                        val k = BlockPosInt.pack(x, y, z)
+                                        fieldBase.put(k, max(fieldBase.get(k), brightness))
+                                    }
                                 }
                             }
                         }
-                    }
-                    Direction.UP -> {
-                        for (x in -radiusUpper..radiusUpper) {
-                            for (y in 0..radiusUpper) {
-                                for (z in -radiusUpper..radiusUpper) {
-                                    set(x, y, z)
-                                }
-                            }
-                        }
-                    }
-                    Direction.NORTH -> {
-                        for (x in -radiusUpper..radiusUpper) {
-                            for (y in -radiusUpper..radiusUpper) {
-                                for (z in -radiusUpper..0) {
-                                    set(x, y, z)
-                                }
-                            }
-                        }
-                    }
-                    Direction.SOUTH -> {
-                        for (x in -radiusUpper..radiusUpper) {
-                            for (y in -radiusUpper..radiusUpper) {
-                                for (z in 0..radiusUpper) {
-                                    set(x, y, z)
-                                }
-                            }
-                        }
-                    }
-                    Direction.WEST -> {
-                        for (x in -radiusUpper..0) {
-                            for (y in -radiusUpper..radiusUpper) {
-                                for (z in -radiusUpper..radiusUpper) {
-                                    set(x, y, z)
-                                }
-                            }
-                        }
-                    }
-                    Direction.EAST -> {
-                        for (x in 0..radiusUpper) {
-                            for (y in -radiusUpper..radiusUpper) {
-                                for (z in -radiusUpper..radiusUpper) {
-                                    set(x, y, z)
-                                }
-                            }
-                        }
-                    }
-                }
 
-                lateralPass(face, fieldBase)
+                        when(face) {
+                            Direction.DOWN -> {
+                                for (x in -radiusUpper..radiusUpper) {
+                                    for (y in -radiusUpper..0) {
+                                        for (z in -radiusUpper..radiusUpper) {
+                                            set(x, y, z)
+                                        }
+                                    }
+                                }
+                            }
+                            Direction.UP -> {
+                                for (x in -radiusUpper..radiusUpper) {
+                                    for (y in 0..radiusUpper) {
+                                        for (z in -radiusUpper..radiusUpper) {
+                                            set(x, y, z)
+                                        }
+                                    }
+                                }
+                            }
+                            Direction.NORTH -> {
+                                for (x in -radiusUpper..radiusUpper) {
+                                    for (y in -radiusUpper..radiusUpper) {
+                                        for (z in -radiusUpper..0) {
+                                            set(x, y, z)
+                                        }
+                                    }
+                                }
+                            }
+                            Direction.SOUTH -> {
+                                for (x in -radiusUpper..radiusUpper) {
+                                    for (y in -radiusUpper..radiusUpper) {
+                                        for (z in 0..radiusUpper) {
+                                            set(x, y, z)
+                                        }
+                                    }
+                                }
+                            }
+                            Direction.WEST -> {
+                                for (x in -radiusUpper..0) {
+                                    for (y in -radiusUpper..radiusUpper) {
+                                        for (z in -radiusUpper..radiusUpper) {
+                                            set(x, y, z)
+                                        }
+                                    }
+                                }
+                            }
+                            Direction.EAST -> {
+                                for (x in 0..radiusUpper) {
+                                    for (y in -radiusUpper..radiusUpper) {
+                                        for (z in -radiusUpper..radiusUpper) {
+                                            set(x, y, z)
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
-                if(fieldBase.size > 0) {
-                    for ((k, v) in fieldBase) {
-                        results.put(k, round(v).toInt().coerceIn(0, 15).toByte())
+                        lateralPass(face, fieldBase)
+
+                        if(fieldBase.size > 0) {
+                            for ((k, v) in fieldBase) {
+                                results.put(k, round(v).toInt().coerceIn(0, 15).toByte())
+                            }
+                        }
                     }
+
+                    latch.countDown()
                 }
             }
+        }
+
+        LOG.warn("ELN2 Computing cone with $increments increments, $strength strength with ${tasks.size} tasks")
+
+        tasks.forEach {
+            it.await()
         }
 
         return FaceOrientedLightVolumeProvider(variantsByFace)
