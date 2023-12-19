@@ -1,16 +1,25 @@
 {
     "item_group.eln2.all": "Electrical Age",
 
-    "block.eln2.voltage_source": "Voltage Source",
-    "block.eln2.resistor": "Resistor",
-    "block.eln2.wire": "Wire",
-    "block.eln2.ground": "Ground",
-    "block.eln2.12v_battery": "12V Battery",
-    "block.eln2.light": "Light",
-    "block.eln2.solar_light": "Solar Light",
-    "block.eln2.solar_panel": "Solar Panel",
-
-    "item.eln2.voltmeter": "Voltmeter",
+    "item.eln2.thermal_wire_copper": "Thermal Conduit",
+    "item.eln2.electrical_cable_copper": "Electrical Cable",
+    "item.eln2.voltage_source": "Voltage Source",
+    "item.eln2.ground": "Ground Pin",
+    "item.eln2.lead_acid_battery_12v": "12V Lead-Acid Battery",
+    "item.eln2.resistor": "Resistor",
+    "item.eln2.thermal_radiator": "Thermal Radiator",
+    "block.eln2.heat_generator": "Heat Generator",
+    "item.eln2.photovoltaic_panel": "Solar Panel",
+    "item.eln2.light_part": "Wall-Mounted Light",
+    "item.eln2.light_bulb_12v_100w": "12V 100W Light Bulb",
+    "item.eln2.light_bulb_800v_100w": "800V 100W Light Bulb",
+    "item.eln2.grid_tap": "Grid Tap",
+    "item.eln2.small_garden_light": "Small Garden Light",
+    "item.eln2.tall_garden_light": "Tall Garden Light",
+    "item.eln2.electrical_heat_engine": "Thermoelectric Generator",
+    "block.eln2.furnace": "Electrical Furnace",
+    "item.eln2.wrench": "Dragon Wrench",
+    "item.eln2.grid_connect_copper": "Copper Grid Wire",
 
     "waila.eln2.Temperature": "Temperature",
     "waila.eln2.Potential": "Potential",
@@ -24,14 +33,10 @@
     "waila.eln2.charge": "Charge",
     "waila.eln2.integrity": "Integrity",
     "waila.eln2.fuel_mass": "Fuel Amount",
-
     "waila.eln2.fuel_remaining": "Remaining Fuel",
     "waila.eln2.energy_remaining": "Remaining Energy",
     "waila.eln2.progress": "Progress",
-
     "waila.eln2.Irradiance": "Irradiance",
 
-    "waila.eln2.Mode": "Mode",
-    "config.jade.plugin_eln2.component_display": "ELN2",
-    "gui.eln2.save": "Save"
+    "config.jade.plugin_eln2.component_display": "ELN2"
 }

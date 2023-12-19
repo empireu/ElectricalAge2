@@ -616,7 +616,14 @@ abstract class CellPart<C: Cell, R : PartRenderer>(
      * It only exists on the server (it is a simulation-only item)
      * */
     @ServerOnly
-    final override val cell: C get() = cellField ?: error("Tried to get cell before it is set $this")
+    final override val cell: C get() = cellField
+        ?: error(
+            if(placement.level.isClientSide) {
+                "TRIED TO ACCESS CELL ON CLIENT"
+            } else {
+                "Tried to get cell before it is set $this"
+            }
+        )
 
     final override val hasCell: Boolean
         get() = cellField != null

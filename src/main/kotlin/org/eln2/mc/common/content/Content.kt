@@ -55,27 +55,16 @@ object Content {
             damageOptions = TemperatureExplosionBehaviorOptions(
                 temperatureThreshold = Quantity(1000.0, CELSIUS)
             )
-        }
-        .register()
-
-    val THERMAL_CONDUIT = ThermalWireBuilder("thermal_conduit")
-        .apply {
-            damageOptions = TemperatureExplosionBehaviorOptions(
-                temperatureThreshold = Quantity(1000.0, CELSIUS)
-            )
 
             material = ThermalMassDefinition(
-                Material(
-                    label = "Test thermal conduit",
-                    electricalResistivity = Quantity(Double.POSITIVE_INFINITY),
-                    thermalConductivity = Quantity(3000.0, WATT_PER_METER_KELVIN),
-                    specificHeat = ChemicalElement.Copper.specificHeat,
-                    density = ChemicalElement.Copper.density
+                ChemicalElement.Copper.asMaterial.copy(
+                    label = "Copper Thermal Conductor",
+                    thermalConductivity = Quantity(3500.0, WATT_PER_METER_KELVIN),
                 )
             )
 
             leakageParameters = ConnectionParameters.DEFAULT.copy(
-                conductance = Quantity(0.01)
+                conductance = Quantity(0.05, WATT_PER_KELVIN)
             )
         }
         .register()
@@ -84,7 +73,7 @@ object Content {
         .apply {
             isIncandescent = false
             leakageParameters = ConnectionParameters.DEFAULT.copy(
-                conductance = Quantity(0.2, WATT_PER_KELVIN) // Insulation
+                conductance = Quantity(0.01, WATT_PER_KELVIN) // Insulation
             )
         }
         .register()
