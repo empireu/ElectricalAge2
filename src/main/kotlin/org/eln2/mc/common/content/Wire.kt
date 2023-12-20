@@ -13,12 +13,14 @@ import it.unimi.dsi.fastutil.ints.Int2DoubleOpenHashMap
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet
 import kotlinx.serialization.Serializable
+import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.block.model.BakedQuad
 import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.core.Direction
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
+import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.util.RandomSource
 import net.minecraft.world.InteractionResult
@@ -767,6 +769,7 @@ class WirePart<C : WireCell>(
                 // Instancing is supported, so use good renderer:
                 IncandescentInstancedWireRenderer(this, renderInfo)
             } else {
+                Minecraft.getInstance().player?.sendSystemMessage(Component.literal("[DEBUG] If you want nice wires, do \"/flywheel backend instancing\" and replace the wires"))
                 // Maybe make batched fallback with temperature, not worth investing time into because batched will probably be removed
                 FlatWireRenderer(this, renderInfo)
             }
