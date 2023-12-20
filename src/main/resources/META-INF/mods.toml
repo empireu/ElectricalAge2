@@ -1,12 +1,12 @@
 modLoader="javafml"
 loaderVersion="${loader_version_range}"
-license="Code - MIT, Content - CC0 (unless otherwise specified)"
+license="${mod_license}"
 issueTrackerURL="https://github.com/age-series/ElectricalAge2/issues"
 
 [[mods]]
 modId="eln2"
-version="2.0.0"
-displayName="Electrical Age 2"
+version="${mod_version}"
+displayName="${mod_name}"
 # A URL to query for updates for this mod. See the JSON update specification https://mcforge.readthedocs.io/en/latest/gettingstarted/autoupdate/
 #updateJSONURL="https://change.me.example.invalid/updates.json" #optional
 # A URL for the "homepage" for this mod, displayed in the mod UI
@@ -14,21 +14,9 @@ displayURL="https://age-series.org/"
 # A file name (in the root of the mod JAR) containing a logo for display
 logoFile=""
 credits="The Age Series Team"
-authors="jrddunbr, Caeleron, Grissess, Baughn, DarthSidiousPalpatine, AlanFletes, bloxgate"
+authors="${mod_authors}"
 
-description='''
-Electrical Age 2 - Electricity, in your base!
-
-Also try the other Age Series mods!
-* Chat Age: Minecraft to Discord webhook chat bridge!
-
-These are some Age Series mods in development!
-* Computer Age: Go back to the 80's 8 bit microprocessor era with style!
-* Processing Age: Process all those raw materials into something useful!
-* Chemistry Age: Like alchemy, but with less magic!
-* Server Age: Real computing power for hardcore technical players!
-* Security Age: Lock up your stuff!
-'''
+description='''${mod_description}'''
 
 [[dependencies.eln2]]
     modId="forge"
