@@ -20,7 +20,7 @@ import java.util.Set;
 
 @Mixin(ChunkRenderDispatcher.RenderChunk.RebuildTask.class)
 public abstract class MixinRebuildTask {
-    @Shadow(aliases = { "f_112859_" }) // https://mcp.thiakil.com/#/class/net.minecraft.client.renderer.chunk.ChunkRenderDispatcher$RenderChunk$RebuildTask
+    @Shadow(aliases = { "this$1", "f_112859_" }) // https://mcp.thiakil.com/#/class/net.minecraft.client.renderer.chunk.ChunkRenderDispatcher$RenderChunk$RebuildTask
     @Final
     private ChunkRenderDispatcher.RenderChunk this$1;
 

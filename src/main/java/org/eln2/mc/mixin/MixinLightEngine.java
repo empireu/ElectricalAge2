@@ -22,7 +22,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(LightEngine.class)
 public abstract class MixinLightEngine {
     @Final
-    @Shadow
+    @Shadow (aliases = {"chunkSource", "f_283884_", "e"})
     protected LightChunkGetter chunkSource;
 
     @Unique

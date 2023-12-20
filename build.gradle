@@ -197,15 +197,14 @@ dependencies {
     shade minecraftLibrary("org.jetbrains.kotlinx:kotlinx-serialization-core:${kotlinx_serialization_version}")
     shade minecraftLibrary("org.jetbrains.kotlinx:kotlinx-serialization-cbor:${kotlinx_serialization_version}")
 
-    shade minecraftLibrary("com.github.age-series:LibAge:7e78fd5add")
+    shade minecraftLibrary("com.github.empireu:libage:a2c210d581")
     shade minecraftLibrary("org.apache.commons:commons-math3:3.6.1")
     shade minecraftLibrary("com.charleskorn.kaml:kaml:0.50.0")
 
     implementation fg.deobf("curse.maven:jade-324717:4801177")
     implementation fg.deobf("com.jozufozu.flywheel:flywheel-forge-1.20.1:0.6.10-7")
 
-    // TODO Not tested outside of devenv
-    implementation /* compileOnly */ fg.deobf("org.embeddedt:embeddium-1.20.1:0.2.11-git.23aedfb+mc1.20.1")
+    implementation fg.deobf("org.embeddedt:embeddium-1.20.1:0.2.11-git.23aedfb+mc1.20.1")
 
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
@@ -225,13 +224,13 @@ shadowJar {
 
     def domain = "${project.group}.shaded"
 
-    relocate "org.ageseries", "${domain}.ageseries"
-    relocate "org.jetbrains", "${domain}.jetbrains"
-    relocate "kotlin", "${domain}.kotlin"
-    relocate "kotlinx", "${domain}.kotlinx"
-    relocate "org.apache.commons.math3", "${domain}.apache.commons.math3"
-    relocate "com.charleskorn", "${domain}.charleskorn"
-    relocate "org.intellij", "${domain}.intellij"
+    //relocate "org.ageseries", "${domain}.ageseries"
+    //relocate "org.jetbrains", "${domain}.jetbrains"
+    //relocate "kotlin", "${domain}.kotlin"
+    //relocate "kotlinx", "${domain}.kotlinx"
+    //relocate "org.apache.commons.math3", "${domain}.apache.commons.math3"
+    //relocate "com.charleskorn", "${domain}.charleskorn"
+    //relocate "org.intellij", "${domain}.intellij"
 
     finalizedBy("reobfShadowJar")
 }
