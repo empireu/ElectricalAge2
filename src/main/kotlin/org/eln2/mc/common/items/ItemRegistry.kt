@@ -10,6 +10,7 @@ import net.minecraftforge.registries.RegistryObject
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.common.blocks.foundation.MultiblockScanTool
+import java.util.function.Supplier
 
 object ItemRegistry {
     val ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, MODID)!! // Yeah, if this fails blow up the game
@@ -22,7 +23,7 @@ object ItemRegistry {
     data class ItemRegistryItem(
         val name: String,
         val item: RegistryObject<Item>,
-    )
+    ) : Supplier<Item> by item
 
     fun item(name: String, supplier: () -> Item): ItemRegistryItem {
         val item = ITEMS.register(name) { supplier() }

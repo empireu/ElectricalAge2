@@ -28,6 +28,8 @@ import org.eln2.mc.common.cells.foundation.BasicCellProvider
 import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.cells.foundation.TemperatureExplosionBehaviorOptions
 import org.eln2.mc.common.containers.ContainerRegistry.menu
+import org.eln2.mc.common.items.CreativeTabRegistry
+import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.part
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
@@ -293,49 +295,85 @@ object Content {
         }
     )
 
-    val LIGHT_BULB_12V_100W = item("light_bulb_12v_100w") {
-        LightBulbItem(
-            LightModel(
+    private fun registerLightBulbPR(
+        name: String,
+        powerRating: Quantity<Power>,
+        resistance: Quantity<Resistance>,
+        damageRate: Double,
+        strength: Double,
+        deviationMax: Double,
+        increments: Int = 128,
+        baseRadius: Int = 1
+    ) : ItemRegistry.ItemRegistryItem {
+        val itemEntry = item(name) {
+            val model = LightModel(
                 temperatureFunction = {
-                    it.power / 100.0
+                    it.power / !powerRating
                 },
                 resistanceFunction = {
-                    Quantity(1.44, OHM)
+                    resistance
                 },
                 damageFunction = { v, dt ->
-                    dt * (v.power / 100.0) * 1e-6
+                    dt * (v.power / !powerRating) * damageRate
                 },
                 volumeProvider = LightFieldPrimitives.cone(
-                    128,
-                    28.0,
-                    PI / 4.0,
-                    1
+                    increments,
+                    strength,
+                    deviationMax,
+                    baseRadius
                 )
             )
-        )
+
+            LightBulbItem(model)
+        }
+
+        CreativeTabRegistry.creativeTabVariant {
+            (itemEntry.get() as LightBulbItem).createStack(
+                life = 1.0,
+                count = 1
+            )
+        }
+
+        return itemEntry
     }
 
-    val LIGHT_BULB_800V_100W = item("light_bulb_800v_100w") {
-        LightBulbItem(
-            LightModel(
-                temperatureFunction = {
-                    it.power / 100.0
-                },
-                resistanceFunction = {
-                    Quantity(6000.0, OHM)
-                },
-                damageFunction = { v, dt ->
-                    dt * (v.power / 100.0) * 1e-6
-                },
-                volumeProvider = LightFieldPrimitives.cone(
-                    128,
-                    30.0,
-                    PI / 4.0,
-                    1
-                )
-            )
-        )
-    }
+    private fun registerLightBulbPP(
+        name: String,
+        powerRating: Quantity<Power>,
+        potentialRating: Quantity<Potential>,
+        damageRate: Double,
+        strength: Double,
+        deviationMax: Double,
+        increments: Int = 128,
+        baseRadius: Int = 1
+    ) = registerLightBulbPR(
+        name,
+        powerRating,
+        Quantity((!potentialRating).pow(2) / !powerRating, OHM),
+        damageRate,
+        strength,
+        deviationMax,
+        increments,
+        baseRadius
+    )
+
+    val LIGHT_BULB_12V_100W = registerLightBulbPP(
+        "light_bulb_12v_100w",
+        powerRating = Quantity(100.0, WATT),
+        potentialRating = Quantity(12.0, VOLT),
+        damageRate = 1e-6,
+        strength = 24.0,
+        deviationMax = PI / 4.0
+    )
+
+    val LIGHT_BULB_800V_100W = registerLightBulbPP(
+        "light_bulb_800v_100w",
+        powerRating = Quantity(100.0, WATT),
+        potentialRating = Quantity(800.0, VOLT),
+        damageRate = 1e-6,
+        strength = 24.0,
+        deviationMax = PI / 4.0
+    )
 
     val GRID_CELL = cell(
         "grid",
