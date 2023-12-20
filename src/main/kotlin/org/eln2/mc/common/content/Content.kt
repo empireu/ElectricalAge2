@@ -26,6 +26,7 @@ import org.eln2.mc.common.blocks.BlockRegistry.blockEntity
 import org.eln2.mc.common.cells.CellRegistry.cell
 import org.eln2.mc.common.cells.foundation.BasicCellProvider
 import org.eln2.mc.common.cells.foundation.CellFactory
+import org.eln2.mc.common.cells.foundation.RadiantBodyEmissionDescription
 import org.eln2.mc.common.cells.foundation.TemperatureExplosionBehaviorOptions
 import org.eln2.mc.common.containers.ContainerRegistry.menu
 import org.eln2.mc.common.items.CreativeTabRegistry
@@ -52,6 +53,11 @@ object Content {
 
     //#region Wires
 
+    private val UNINSULATED_WIRE_LIGHT_FIELD = LightFieldPrimitives.sphereIncremental(
+        increments = 256,
+        strength = 3.0
+    )
+
     val COPPER_THERMAL_WIRE = ThermalWireBuilder("thermal_wire_copper")
         .apply {
             damageOptions = TemperatureExplosionBehaviorOptions(
@@ -67,6 +73,10 @@ object Content {
 
             leakageParameters = ConnectionParameters.DEFAULT.copy(
                 conductance = Quantity(0.05, WATT_PER_KELVIN)
+            )
+
+            radiantDescription = RadiantBodyEmissionDescription(
+                UNINSULATED_WIRE_LIGHT_FIELD,
             )
         }
         .register()
@@ -202,9 +212,10 @@ object Content {
                 ),
                 replicatesInternalTemperature = true,
                 replicatesExternalTemperature = true,
+                null, // TODO maybe it does radiate?
                 leakageParameters = ConnectionParameters(
                     area = 5.0
-                )
+                ),
             )
 
             CellFactory {
@@ -316,7 +327,7 @@ object Content {
                 damageFunction = { v, dt ->
                     dt * (v.power / !powerRating) * damageRate
                 },
-                volumeProvider = LightFieldPrimitives.cone(
+                volumeProvider = LightFieldPrimitives.coneContentOnly(
                     increments,
                     strength,
                     deviationMax,
@@ -458,12 +469,20 @@ object Content {
                 mass = Quantity(5.0, KILOGRAM)
             )
 
-            val model = HeatEngineElectricalModel(
+            val model = ElectricalHeatEngineModel(
                 baseEfficiency = 1.0,
                 potential = { ΔT ->
                     Quantity(!ΔT * (220.0 / 180.0), VOLT)
                 },
                 conductance = Quantity(5.0, WATT_PER_KELVIN)
+            )
+
+            // TODO make a semi sphere
+            val radiantInfo = RadiantBodyEmissionDescription(
+                LightFieldPrimitives.sphereIncremental(
+                    256,
+                    7.0
+                )
             )
 
             CellFactory {
@@ -472,7 +491,8 @@ object Content {
                     electricalMap,
                     thermalMap,
                     thermalDefinition,
-                    model
+                    model,
+                    radiantInfo
                 )
 
                 cell.generator.ruleSet.withDirectionRulePlanar(electricalA + electricalB)

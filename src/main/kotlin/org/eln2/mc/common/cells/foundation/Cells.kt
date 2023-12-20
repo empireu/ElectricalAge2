@@ -4,14 +4,12 @@ import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.resources.ResourceLocation
-import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.saveddata.SavedData
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.ageseries.libage.data.*
 import org.ageseries.libage.sim.ConnectionParameters
-import org.ageseries.libage.sim.EnvironmentConnection
 import org.ageseries.libage.sim.Simulator
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.electrical.mna.Circuit
@@ -35,6 +33,9 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
+import kotlin.reflect.KClass
+import kotlin.reflect.KProperty1
+import kotlin.reflect.full.isSuperclassOf
 
 /**
  * [SubscriberCollection] that tracks the added subscribers, making it possible to remove all of them at a later time.
@@ -127,7 +128,8 @@ annotation class Behavior
 abstract class Cell(val locator: Locator, val id: ResourceLocation, val environmentData: CellEnvironment) {
     companion object {
         private val OBJECT_READERS = ConcurrentHashMap<Class<*>, List<FieldInfo<Cell>>>()
-        private val BEHAVIOR_READERS = ConcurrentHashMap<Class<*>, List<FieldInfo<Cell>>>()
+        private val BEHAVIOR_READERS_FIELD = ConcurrentHashMap<Class<*>, List<FieldInfo<Cell>>>()
+        private val BEHAVIOR_READERS_LAZY = ConcurrentHashMap<Class<*>, List<FieldInfo<Cell>>>()
 
         private const val CELL_DATA = "cellData"
         private const val OBJECT_DATA = "objectData"
@@ -236,13 +238,53 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     var isBeingRemoved = false
         private set
 
-    protected val behaviorContainer by lazy {
+    private val behaviorContainer by lazy {
         createBehaviorContainer()
     }
 
-    open fun createBehaviorContainer() = CellBehaviorContainer().also { container ->
-        fieldScan(this.javaClass, CellBehavior::class, Behavior::class.java, BEHAVIOR_READERS)
-            .mapNotNull { it.reader.get(this) as? CellBehavior }.forEach(container::addToCollection)
+    protected open fun createBehaviorContainer() = CellBehaviorContainer().also { container ->
+        fun behaviorCast(value: Any?) = if(value == null) {
+            null
+        }
+        else {
+            checkNotNull(value as? CellBehavior) {
+                "Invalid behavior $value"
+            }
+        }
+        
+        val allowedTypes = listOf(
+            CellBehavior::class,
+            Lazy::class,
+        )
+
+        val disallowedTypes = listOf(
+            ReplicatorBehavior::class
+        )
+
+        fun handleInvalid(property: KProperty1<*, *>) {
+            val k = checkNotNull(property.returnType.classifier as? KClass<*>) {
+                "Invalid return type of $property"
+            }
+
+            if(!allowedTypes.any { it.isSuperclassOf(k) }) {
+                error("Invalid behavior property $property ($k)")
+            }
+
+            if(disallowedTypes.any { it.isSuperclassOf(k) }) {
+                error("Using $property ($k) as behavior is disallowed")
+            }
+        }
+
+        fieldScan(this.javaClass, CellBehavior::class, Behavior::class.java, BEHAVIOR_READERS_FIELD, ::handleInvalid)
+            .asSequence()
+            .mapNotNull { behaviorCast(it.reader.get(this)) }
+            .forEach(container::addToCollection)
+
+        fieldScan(this.javaClass, Lazy::class, Behavior::class.java, BEHAVIOR_READERS_LAZY, ::handleInvalid)
+            .asSequence()
+            .mapNotNull { it.reader.get(this) as? Lazy<*> }
+            .mapNotNull { behaviorCast(it.value) }
+            .forEach(container::addToCollection)
     }
 
     fun loadTag(tag: CompoundTag) {
@@ -336,6 +378,8 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     }
 
     fun unbindGameObjects() {
+        requireIsOnServerThread { "unbindGameObjects" }
+
         val transient = this.transientPoolInternal
             ?: error("Transient null in unbind")
 
@@ -392,6 +436,8 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
         objects.forEachObject { it.destroy() }
     }
 
+    private var lastLevel: Level? = null
+
     /**
      * Called when the graph and/or neighbouring cells are updated. This method is called after completeDiskLoad and setPlaced
      * @param connectionsChanged True if the neighbouring cells changed.
@@ -399,6 +445,14 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
      */
     open fun update(connectionsChanged: Boolean, graphChanged: Boolean) {
         if (graphChanged) {
+            if(lastLevel != null) {
+                if(lastLevel != graph.level) {
+                    LOG.fatal("ELN2 illegal switch level $lastLevel ${graph.level}")
+                }
+            }
+
+            lastLevel = graph.level
+
             persistentPoolInternal?.clear()
             transientPoolInternal?.clear()
 

@@ -3,18 +3,22 @@ package org.eln2.mc.common.cells.foundation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
-import org.ageseries.libage.data.JOULE
-import org.ageseries.libage.data.KELVIN
-import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.Temperature
+import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.ThermalMass
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
+import org.eln2.mc.common.content.LightVolume
+import org.eln2.mc.common.content.LightVolumeInstance
+import org.eln2.mc.common.content.LocatorLightVolumeProvider
 import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.events.schedulePre
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.data.*
 import org.eln2.mc.extensions.destroyPart
+import java.util.*
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.collections.ArrayList
 
 /**
  * *A cell behavior* manages routines ([Subscriber]) that run on the simulation thread.
@@ -24,12 +28,14 @@ interface CellBehavior {
     /**
      * Called when the behavior is added to the container.
      * */
+    @OnServerThread
     fun onAdded(container: CellBehaviorContainer) {}
 
     /**
      * Called when the subscriber collection is being set up.
      * Subscribers can be added here.
      * */
+    @OnServerThread
     fun subscribe(subscribers: SubscriberCollection) {}
 
     /**
@@ -37,6 +43,7 @@ interface CellBehavior {
      * This can be caused by the cell being destroyed.
      * It can also be caused by the game object being detached, in the case of [ReplicatorBehavior]s.
      * */
+    @OnServerThread
     fun destroy() {}
 }
 
@@ -47,6 +54,8 @@ class CellBehaviorContainer {
     val behaviors = ArrayList<CellBehavior>()
 
     fun addToCollection(b: CellBehavior) {
+        requireIsOnServerThread { "addToCollection" }
+
         if (behaviors.any { it.javaClass == b.javaClass }) {
             error("Duplicate behavior $b")
         }
@@ -60,11 +69,13 @@ class CellBehaviorContainer {
     inline fun <reified T : CellBehavior> get(): T = getOrNull() ?: error("Failed to get behavior")
 
     fun destroy(behavior: CellBehavior) {
+        requireIsOnServerThread { "destroy" }
         require(behaviors.remove(behavior)) { "Illegal behavior remove $behavior" }
         behavior.destroy()
     }
 
     fun destroy() {
+        requireIsOnServerThread { "destroy" }
         behaviors.toList().forEach { destroy(it) }
     }
 }
@@ -83,7 +94,7 @@ class PowerHeatingBehavior(private val power: () -> Double, val body: ThermalMas
 }
 
 fun interface ExplosionConsumer {
-    fun explode()
+    fun explode() : Boolean // return false if game object is not
 }
 
 data class TemperatureExplosionBehaviorOptions(
@@ -115,61 +126,112 @@ data class TemperatureExplosionBehaviorOptions(
  * If no consumer is specified, a default one is used. Currently, only [CellPart] is implemented.
  * Injection is supported using [TemperatureAccessor], [TemperatureField]
  * */
-class TemperatureExplosionBehavior(
+class TemperatureExplosionBehavior private constructor(
     val temperatureAccessor: () -> Quantity<Temperature>,
     val options: TemperatureExplosionBehaviorOptions,
     val consumer: ExplosionConsumer,
 ) : CellBehavior {
+    var interval = 10
+    var phase = SubscriberPhase.Post
+
     private var score = 0.0
-    private var enqueued = false
+    private var isTriggered = false
 
-    constructor(temperatureAccessor: () -> Quantity<Temperature> , options: TemperatureExplosionBehaviorOptions, cell: Cell) :
-        this(temperatureAccessor, options, { defaultNotifier(cell) })
+    private enum class State {
+        Enqueued,
+        Failed,
+        Success
+    }
 
-    override fun onAdded(container: CellBehaviorContainer) {}
+    @OnServerThread @OnSimulationThread
+    private val explosionResult = AtomicReference<State>(null)
+    private var isGameObjectExploded = false
 
     override fun subscribe(subscribers: SubscriberCollection) {
-        subscribers.addSubscriber(SubscriberOptions(10, SubscriberPhase.Post), this::simulationTick)
+        subscribers.addSubscriber(
+            SubscriberOptions(interval, phase),
+            this::simulationTick
+        )
     }
 
     private fun simulationTick(dt: Double, phase: SubscriberPhase) {
-        val temperature = temperatureAccessor()
-
-        if (temperature > options.temperatureThreshold) {
-            val difference = temperature - options.temperatureThreshold
-            score += options.increaseSpeed * !difference * dt
-        } else {
-            score -= options.decayRate * dt
+        if(isTriggered) {
+            updateTriggeredState()
         }
+        else {
+            val temperature = temperatureAccessor()
 
-        if (score >= 1.0) {
-            blowUp()
+            if (temperature > options.temperatureThreshold) {
+                val difference = temperature - options.temperatureThreshold
+                score += options.increaseSpeed * !difference * dt
+            } else {
+                score -= options.decayRate * dt
+            }
+
+            score = score.coerceIn(0.0, 1.0)
+
+            if (score >= 1.0) {
+                isTriggered = true
+                updateTriggeredState()
+            }
         }
-
-        score = score.coerceIn(0.0, 1.0)
     }
 
-    private fun blowUp() {
-        if (!enqueued) {
-            enqueued = true
+    private fun updateTriggeredState() {
+        if(isGameObjectExploded) {
+            LOG.error("Getting explosion ticks while finalized")
+            return // weird that we're still getting ticks
+        }
 
-            schedulePre(0) {
-                consumer.explode()
+        when (val result = explosionResult.get()) {
+            null, State.Failed -> {
+                explosionResult.set(State.Enqueued)
+
+                schedulePre(0) {
+                    explosionResult.set(
+                        if(consumer.explode()) {
+                            State.Success
+                        }
+                        else {
+                            State.Failed
+                        }
+                    )
+                }
+            }
+            State.Success -> {
+                isGameObjectExploded = true
+            }
+            else -> {
+                check(result == State.Enqueued)
             }
         }
     }
 
     companion object {
-        fun defaultNotifier(cell: Cell) {
-            val container = cell.container ?: return
+        fun create(options: TemperatureExplosionBehaviorOptions, consumer: ExplosionConsumer, temperatureAccessor: () -> Quantity<Temperature>) =
+            if(Eln2Config.serverConfig.explodeWhenHot.get()) {
+                TemperatureExplosionBehavior(temperatureAccessor, options, consumer)
+            }
+            else {
+                null
+            }
+
+        fun create(
+            options: TemperatureExplosionBehaviorOptions,
+            cell: Cell,
+            temperatureAccessor: () -> Quantity<Temperature>
+        ) = create(options, { defaultNotifier(cell) }, temperatureAccessor)
+
+        private fun defaultNotifier(cell: Cell) : Boolean {
+            val container = cell.container ?: return false
 
             if (container is MultipartBlockEntity) {
                 if (container.isRemoved) {
-                    return
+                    return true
                 }
 
                 val part = container.getPart(cell.locator.requireLocator<FaceLocator>())
-                    ?: return
+                    ?: return true
 
                 val level = (part.placement.level as ServerLevel)
 
@@ -185,9 +247,123 @@ class TemperatureExplosionBehavior(
                     randomFloat(0.9f, 1.1f),
                     randomFloat(0.9f, 1.1f)
                 )
-            } else {
+
+                return true
+            }
+            else {
                 error("Cannot explode $container")
             }
         }
+    }
+}
+
+data class RadiantBodyEmissionDescription(
+    val volumeProvider: LocatorLightVolumeProvider,
+    val coldTemperature: Quantity<Temperature> = Quantity(300.0, CELSIUS),
+    val hotTemperature: Quantity<Temperature> = Quantity(800.0, CELSIUS)
+)
+
+class RadiantEmissionBehavior private constructor(val cell: Cell, bodies: Map<ThermalMass, RadiantBodyEmissionDescription>) : CellBehavior {
+    private var isDestroyed = false
+
+    init {
+        require(cell.hasGraph) {
+            "Illegal initialization of radiant emission behavior. Please move this into a Lazy<RadiantEmissionBehavior>"
+        }
+    }
+
+    private val instances = bodies.map { (mass, description) ->
+        require(description.coldTemperature < description.hotTemperature) {
+            "Tried to create with ${description.coldTemperature} ${description.hotTemperature}"
+        }
+
+        val volume = description.volumeProvider.getVolume(cell.locator)
+
+        val instance = LightVolumeInstance(
+            cell.graph.level,
+            cell.locator.requireLocator {
+                "Radiant Emission Behavior requires block pos locator"
+            }
+        )
+
+        InstanceData(
+            mass,
+            volume,
+            description.coldTemperature,
+            description.hotTemperature,
+            instance
+        )
+    }
+
+    var interval = 10
+    var phase = SubscriberPhase.Post
+
+    override fun subscribe(subscribers: SubscriberCollection) {
+        subscribers.addSubscriber(
+            SubscriberOptions(interval, phase),
+            this::simulationTick
+        )
+    }
+
+    private fun simulationTick(dt: Double, phase: SubscriberPhase) {
+        val commandList = Scheduler.begin()
+
+        commandList.terminateIf {
+            this.isDestroyed
+        }
+
+        instances.forEach { instance ->
+            val targetIncrement = map(
+                (!instance.mass.temperature).coerceIn(
+                    !instance.coldTemperature,
+                    !instance.hotTemperature
+                ),
+                !instance.coldTemperature,
+                !instance.hotTemperature,
+                0.0,
+                instance.volume.stateIncrements.toDouble()
+            ).toInt().coerceIn(0, instance.volume.stateIncrements)
+
+            if(instance.lightInstance.isTransition(instance.volume, targetIncrement)) {
+                commandList.execute {
+                    check(!isDestroyed)
+
+                    instance.lightInstance.checkoutState(
+                        instance.volume,
+                        targetIncrement
+                    )
+                }
+            }
+        }
+
+        commandList.submit()
+    }
+
+    override fun destroy() {
+        requireIsOnServerThread()
+
+        isDestroyed = true
+
+        instances.forEach {
+            it.lightInstance.destroyCells()
+        }
+    }
+
+    private data class InstanceData(
+        val mass: ThermalMass,
+        val volume: LightVolume,
+        val coldTemperature: Quantity<Temperature>,
+        val hotTemperature: Quantity<Temperature>,
+        val lightInstance: LightVolumeInstance
+    )
+
+    companion object {
+        fun create(cell: Cell, vararg bodies: Pair<ThermalMass, RadiantBodyEmissionDescription>) =
+            if(Eln2Config.serverConfig.hotRadiatesLight.get()) {
+                lazy { RadiantEmissionBehavior(cell, bodies.toMap()) }
+            }
+            else {
+                null
+            }
     }
 }

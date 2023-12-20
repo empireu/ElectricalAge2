@@ -656,6 +656,10 @@ abstract class CellPart<C: Cell, R : PartRenderer>(
      * Notifies the cell that the container has been removed.
      * */
     override fun onUnloaded() {
+        requireIsOnServerThread {
+            "onUnloaded"
+        }
+
         if (hasCell) {
             cell.onContainerUnloading()
             cell.container = null

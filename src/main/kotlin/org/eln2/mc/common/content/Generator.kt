@@ -29,7 +29,6 @@ import net.minecraftforge.items.ItemStackHandler
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.InterpolationFunction
 import org.ageseries.libage.mathematics.approxEq
-import org.ageseries.libage.mathematics.nz
 import org.ageseries.libage.mathematics.snzi
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMass
@@ -362,7 +361,7 @@ class HeatGeneratorBlock : CellBlock<HeatGeneratorCell>() {
     }
 }
 
-data class HeatEngineElectricalModel(
+data class ElectricalHeatEngineModel(
     val baseEfficiency: Double,
     val potential: InterpolationFunction<Quantity<Temperature>, Quantity<Potential>>,
     val conductance: Quantity<ThermalConductance>
@@ -374,9 +373,25 @@ class ElectricalHeatEngineCell(
     thermalMap: PoleMap,
     b1Def: ThermalMassDefinition,
     b2Def: ThermalMassDefinition,
-    val model: HeatEngineElectricalModel,
+    val model: ElectricalHeatEngineModel,
+    radiantInfo: RadiantBodyEmissionDescription?
 ) : Cell(ci) {
-    constructor(ci: CellCreateInfo, electricalMap: PoleMap, thermalMap: PoleMap, def: ThermalMassDefinition, model: HeatEngineElectricalModel) : this(ci, electricalMap, thermalMap, def, def, model)
+    constructor(
+        ci: CellCreateInfo,
+        electricalMap: PoleMap,
+        thermalMap: PoleMap,
+        def: ThermalMassDefinition,
+        model: ElectricalHeatEngineModel,
+        radiantInfo: RadiantBodyEmissionDescription?
+    ) : this(
+        ci,
+        electricalMap,
+        thermalMap,
+        def,
+        def,
+        model,
+        radiantInfo
+    )
 
     @SimObject
     val generator = PolarTermObject(
@@ -395,6 +410,18 @@ class ElectricalHeatEngineCell(
 
     val cold by thermalBipole::b1
     val hot by thermalBipole::b2
+
+    @Behavior
+    val radiantEmitter = if(radiantInfo != null) {
+        RadiantEmissionBehavior.create(
+            self(),
+            thermalBipole.b1 to radiantInfo,
+            thermalBipole.b2 to radiantInfo
+        )
+    }
+    else {
+        null
+    }
 
     @Replicator
     fun replicator(target: InternalTemperatureConsumer) = InternalTemperatureReplicatorBehavior(

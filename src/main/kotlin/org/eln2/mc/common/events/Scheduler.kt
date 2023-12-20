@@ -9,6 +9,7 @@ import org.ageseries.libage.data.EventBus
 import org.eln2.mc.CrossThreadAccess
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.atomicRemoveIf
+import java.util.LinkedList
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.PriorityBlockingQueue
@@ -45,6 +46,28 @@ interface EventQueue {
 
 interface ScheduledWork {
     fun cancel()
+}
+
+interface CommandList {
+    fun execute(action: Command) : CommandList
+
+    fun terminateIf(termination: Termination) : CommandList
+
+    fun continueIf(condition: Condition) : CommandList
+
+    fun submit()
+
+    fun interface Command {
+        fun run()
+    }
+
+    fun interface Termination {
+        fun terminates() : Boolean
+    }
+
+    fun interface Condition {
+        fun continues() : Boolean
+    }
 }
 
 /**
@@ -265,6 +288,68 @@ object Scheduler {
             eventsUnique[event.javaClass] = event
 
             return true
+        }
+    }
+
+    fun begin(countdown: Int = 0, phase: Phase = Phase.START) : CommandList = CommandListImplementation(countdown, phase)
+
+    private class CommandListImplementation(val countdown: Int, val phase: Phase) : CommandList {
+        private var isSubmitted = false
+        private var hasCommands = false
+        private val list = LinkedList<Any>()
+
+        private fun validateUsage() {
+            check(!isSubmitted) {
+                "Cannot do operation after submit"
+            }
+        }
+
+        private fun add(item: Any) : CommandList {
+            validateUsage()
+            list.add(item)
+            return this
+        }
+
+        override fun execute(action: CommandList.Command) : CommandList {
+            hasCommands = true
+            return add(action)
+        }
+
+        override fun terminateIf(termination: CommandList.Termination): CommandList {
+            return add(termination)
+        }
+
+        override fun continueIf(condition: CommandList.Condition): CommandList {
+            return add(condition)
+        }
+
+        override fun submit() {
+            validateUsage()
+
+            if(hasCommands) {
+                scheduleWork(countdown, this::flush, phase)
+            }
+        }
+
+        private fun flush() {
+            list.forEach {
+                when(it) {
+                    is CommandList.Command -> {
+                        it.run()
+                    }
+                    is CommandList.Termination -> {
+                        if(it.terminates()) {
+                            return
+                        }
+                    }
+                    is CommandList.Condition -> {
+                        if(!it.continues()) {
+                            return
+                        }
+                    }
+                    else -> error("Invalid $it")
+                }
+            }
         }
     }
 }

@@ -116,12 +116,21 @@ class ClientConfig(builder: Builder) {
 
 class ServerConfig(builder: Builder) {
     val simulationThreadCount : ConfigValue<Int>
+    val explodeWhenHot : ConfigValue<Boolean>
+    val hotRadiatesLight : ConfigValue<Boolean>
 
     init {
         simulationThreadCount = builder
-            .comment("Simulation Thread Count")
             .comment("Specifies how many threads to use for simulations")
             .define("simulation_threads", 8)
+
+        explodeWhenHot = builder
+            .comment("If true, very hot things will blow up")
+            .define("explode_when_hot", true)
+
+        hotRadiatesLight = builder
+            .comment("If true, hot things (wires, etc) will emit light")
+            .define("hot_radiates_light", true)
     }
 }
 

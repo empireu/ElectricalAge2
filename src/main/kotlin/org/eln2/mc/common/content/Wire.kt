@@ -254,8 +254,8 @@ enum class WirePatchType {
 }
 
 class WirePolarPatchModel(modelLocation: ResourceLocation, val patchType: WirePatchType) : PolarModel(modelLocation) {
-    override fun set(bakedModelSource: BakedModel) {
-        super.set(bakedModelSource)
+    override fun set(bakedModel: BakedModel) {
+        super.set(bakedModel)
 
         applyChanges() // the super set the bound model as the field, so we will mutate that in applyChanges
     }
@@ -367,6 +367,7 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
     var wireShapes : Map<Pair<FaceLocator, Direction>, VoxelShape>? = null
     var wireShapesFilled : Map<Pair<FaceLocator, Direction>, VoxelShape>? = null
     var leakageParameters: ConnectionParameters = ConnectionParameters.DEFAULT
+    var radiantDescription: RadiantBodyEmissionDescription? = null
 
     fun renderer(supplier: Supplier<WireRenderInfo>) {
         DistExecutor.safeRunWhenOn(Dist.CLIENT) {
@@ -384,6 +385,7 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
         damageOptions,
         replicatesInternalTemperature,
         isIncandescent,
+        radiantDescription,
         leakageParameters
     )
 
@@ -504,6 +506,7 @@ class ElectricalWireBuilder(id: String) : WireBuilder<ElectrothermalWireCell>(id
  * @param damageOptions The damage config, passed to the [TemperatureExplosionBehavior]
  * @param replicatesInternalTemperature Indicates if the wire should replicate the internal temperature (temperature of the wire's thermal body)
  * @param replicatesExternalTemperature Indicates if the wire should replicate the external temperatures (temperatures of connected thermal objects)
+ * @param radiantInfo If not null, this wire will emit light based on the description.
  * @param leakageParameters Environment connection info.
  * */
 data class WireThermalProperties(
@@ -511,6 +514,7 @@ data class WireThermalProperties(
     val damageOptions: TemperatureExplosionBehaviorOptions,
     val replicatesInternalTemperature: Boolean,
     val replicatesExternalTemperature: Boolean,
+    val radiantInfo: RadiantBodyEmissionDescription?,
     val leakageParameters: ConnectionParameters
 )
 
@@ -571,11 +575,22 @@ open class ThermalWireCell(ci: CellCreateInfo, connectionCrossSection: Double, v
     )
 
     @Behavior
-    val explosion = TemperatureExplosionBehavior(
-        thermalWire.thermalBody::temperature,
+    val explosion = TemperatureExplosionBehavior.create(
         thermalProperties.damageOptions,
-        self()
+        self(),
+        thermalWire.thermalBody::temperature
     )
+
+    @Behavior
+    val radiantEmitter = if(thermalProperties.radiantInfo != null) {
+        RadiantEmissionBehavior.create(
+            self(),
+            thermalWire.thermalBody to thermalProperties.radiantInfo
+        )
+    }
+    else {
+        null
+    }
 
     /**
      * Replicates the temperature of [thermalWire] if [WireThermalProperties.replicatesInternalTemperature]
@@ -608,8 +623,7 @@ open class ElectrothermalWireCell(ci: CellCreateInfo, contactCrossSection: Doubl
         thermalWire.thermalBody
     )
 
-    override fun connectionPredicate(remoteCell: Cell) =
-        remoteCell.hasObject(SimulationObjectType.Electrical) && super.connectionPredicate(remoteCell)
+    override fun connectionPredicate(remoteCell: Cell) = remoteCell.hasObject(SimulationObjectType.Electrical) && super.connectionPredicate(remoteCell)
 }
 
 class WirePart<C : WireCell>(

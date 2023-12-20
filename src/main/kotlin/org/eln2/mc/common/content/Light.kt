@@ -36,6 +36,7 @@ import org.eln2.mc.client.render.RenderTypedPartialModel
 import org.eln2.mc.client.render.foundation.colorLerp
 import org.eln2.mc.client.render.foundation.transformPart
 import org.eln2.mc.client.render.solid
+import org.eln2.mc.common.ModEvents
 import org.eln2.mc.common.blocks.foundation.GhostLightServer
 import org.eln2.mc.common.blocks.foundation.GhostLightUpdateType
 import org.eln2.mc.common.cells.foundation.*
@@ -49,7 +50,6 @@ import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.*
 import java.nio.ByteBuffer
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Future
 import kotlin.math.*
 
 private val originPositionField = Vector3d(0.5, 0.5, 0.5)
@@ -140,11 +140,11 @@ private inline fun rayOcclusionAnalyzer(voxel: Int, predicate: (Int) -> Boolean)
 }
 
 /**
- * Implements a [LightVolumeProvider] parameterized by face.
+ * Implements a [LocatorLightVolumeProvider] parameterized by face.
  * It provides one light volume per orientation of the emitter; presumably, the light volume itself is an oriented shape.
  * @param variantsByFace The variants (map of state increment to the grid of brightnesses) for every face.
  * */
-class FaceOrientedLightVolumeProvider(variantsByFace: Map<FaceLocator, Map<Int, Map<Int, Byte>>>) : LightVolumeProvider {
+class FaceOrientedLightVolumeProvider(variantsByFace: Map<FaceLocator, Map<Int, Map<Int, Byte>>>) : LocatorLightVolumeProvider {
     init {
         require(variantsByFace.isNotEmpty()) { "Cannot create face oriented provider with empty variants" }
         require(variantsByFace.values.all { it.containsKey(0) }) { "Some supplied variants by face did not have a configuration at state 0" }
@@ -170,12 +170,39 @@ object LightFieldPrimitives {
      * @param strength The light range and intensity
      * @param deviationMax The maximum angle between the surface normal and a light ray
      * */
-    fun cone(increments: Int, strength: Double, deviationMax: Double, baseRadius: Int): FaceOrientedLightVolumeProvider {
+    fun coneContentOnly(increments: Int, strength: Double, deviationMax: Double, baseRadius: Int): FaceOrientedLightVolumeProvider {
+        check(!ModEvents.isFullyLoaded) {
+            "Cannot use coneContentOnly now"
+        }
+
+        val (tasks, results) = coneTasks(increments, strength, deviationMax, baseRadius)
+        val executor = ModWorkManager.parallelExecutor()
+
+        LOG.warn("ELN2 Computing cone with $increments increments, $strength strength with ${tasks.size} tasks")
+
+        val tasksWrapped = tasks.map {
+            val latch = CountDownLatch(1)
+
+            executor.execute {
+                it.run()
+                latch.countDown()
+            }
+
+            latch
+        }
+
+        tasksWrapped.forEach {
+            it.await()
+        }
+
+        return FaceOrientedLightVolumeProvider(results)
+    }
+
+    fun coneTasks(increments: Int, strength: Double, deviationMax: Double, baseRadius: Int): Pair<List<Runnable>, HashMap<FaceLocator, HashMap<Int, Int2ByteOpenHashMap>>> {
         val variantsByFace = HashMap<FaceLocator, HashMap<Int, Int2ByteOpenHashMap>>()
         val cosDeviationMax = cos(deviationMax)
 
-        val executor = ModWorkManager.parallelExecutor()
-        val tasks = ArrayList<CountDownLatch>()
+        val tasks = ArrayList<Runnable>()
 
         Direction.entries.forEach { face ->
             val baseVectors = let {
@@ -220,10 +247,7 @@ object LightFieldPrimitives {
             variantsByFace.putUnique(face, variants)
 
             for (state in 0..increments) {
-                val latch = CountDownLatch(1)
-                tasks.add(latch)
-
-                executor.execute {
+                tasks.add(Runnable {
                     val fieldBase = Int2DoubleOpenHashMap()
                     val results = Int2ByteOpenHashMap(fieldBase.size)
 
@@ -330,19 +354,11 @@ object LightFieldPrimitives {
                             }
                         }
                     }
-
-                    latch.countDown()
-                }
+                })
             }
         }
 
-        LOG.warn("ELN2 Computing cone with $increments increments, $strength strength with ${tasks.size} tasks")
-
-        tasks.forEach {
-            it.await()
-        }
-
-        return FaceOrientedLightVolumeProvider(variantsByFace)
+        return tasks to variantsByFace
     }
 
     fun sphere(increments: Int, strength: Double): ConstantLightVolumeProvider {
@@ -379,6 +395,55 @@ object LightFieldPrimitives {
                 for (y in -radiusUpper..radiusUpper) {
                     for (z in -radiusUpper..radiusUpper) {
                         set(x, y, z)
+                    }
+                }
+            }
+        }
+
+        return ConstantLightVolumeProvider(
+            LightVolume(variants)
+        )
+    }
+
+    fun sphereIncremental(increments: Int, strength: Double): ConstantLightVolumeProvider {
+        require(increments >= 15) {
+            "Incremental sphere requires at least 15"
+        }
+
+        val variants = HashMap<Int, Int2ByteOpenHashMap>()
+
+        for (state in 0 .. increments) {
+            val results = Int2ByteOpenHashMap()
+            variants[state] = results
+
+            if(state in (0..15)) {
+                results.put(BlockPosInt.pack(0, 0, 0), state.toByte())
+            }
+            else {
+                val radius = strength * ((state - 15.0) / (increments - 15.0)) + 1.0
+                val radiusUpper = ceil(radius).toInt()
+                val radiusSqr = radius * radius
+
+                fun set(x: Int, y: Int, z: Int) {
+                    val cell = Vector3d(x, y, z)
+
+                    val distanceSqr = cell.normSqr
+
+                    if(distanceSqr <= radiusSqr) {
+                        val brightness = 15.0 * (1.0 - (cell.norm / radius))
+
+                        if(brightness >= 1.0) {
+                            val k = BlockPosInt.pack(x, y, z)
+                            results.put(k, brightness.roundToInt().toByte().coerceIn(0, 15))
+                        }
+                    }
+                }
+
+                for (x in -radiusUpper..radiusUpper) {
+                    for (y in -radiusUpper..radiusUpper) {
+                        for (z in -radiusUpper..radiusUpper) {
+                            set(x, y, z)
+                        }
                     }
                 }
             }
@@ -536,11 +601,11 @@ fun interface LightResistanceFunction {
 /**
  * Provider for a [LightVolume], parameterized on the spatial configuration of the light emitter.
  * */
-fun interface LightVolumeProvider {
+fun interface LocatorLightVolumeProvider {
     fun getVolume(locatorSet: Locator) : LightVolume
 }
 
-data class ConstantLightVolumeProvider(val volume: LightVolume) : LightVolumeProvider {
+data class ConstantLightVolumeProvider(val volume: LightVolume) : LocatorLightVolumeProvider {
     override fun getVolume(locatorSet: Locator) = volume
 }
 
@@ -620,7 +685,7 @@ data class LightModel(
     val temperatureFunction: LightTemperatureFunction,
     val resistanceFunction: LightResistanceFunction,
     val damageFunction: LightDamageFunction,
-    val volumeProvider: LightVolumeProvider,
+    val volumeProvider: LocatorLightVolumeProvider,
 )
 
 /**
@@ -681,10 +746,10 @@ class LightCell(ci: CellCreateInfo, poleMap: PoleMap) : Cell(ci), LightView, Lig
     val thermalWire = ThermalWireObject(this)
 
     @Behavior
-    val explosion = TemperatureExplosionBehavior(
-        thermalWire.thermalBody::temperature,
+    val explosion = TemperatureExplosionBehavior.create(
         TemperatureExplosionBehaviorOptions(),
-        this
+        this,
+        thermalWire.thermalBody::temperature
     )
 
     override var volumeState: Int = 0
@@ -898,6 +963,8 @@ class LightVolumeInstance(val level: ServerLevel, val placementPosition: BlockPo
         return false
     }
 
+    fun isTransition(targetVolume: LightVolume, targetIncrement: Int) : Boolean = this.volume != targetVolume || this.stateIncrement != targetIncrement
+
     /**
      * Checks out the [targetVolume] and its [targetIncrement]th state increment.
      * @return True, if any changes were made. Otherwise, false.
@@ -907,7 +974,7 @@ class LightVolumeInstance(val level: ServerLevel, val placementPosition: BlockPo
             "Cannot update light volume instance outside of server thread"
         }
 
-        if (this.volume == targetVolume && this.stateIncrement == targetIncrement) {
+        if (!isTransition(targetVolume, targetIncrement)) {
             return false
         }
 
@@ -1262,7 +1329,7 @@ class PoweredLightPart(ci: PartCreateInfo, cellProvider: CellProvider<LightCell>
 data class SolarLightModel(
     val rechargeRate: Double,
     val dischargeRate: Double,
-    val volumeProvider: LightVolumeProvider
+    val volumeProvider: LocatorLightVolumeProvider
 )
 
 class SolarLightPart<R : PartRenderer>(
