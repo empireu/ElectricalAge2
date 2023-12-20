@@ -900,6 +900,13 @@ fun incrementFromForwardUp(facingPart: Direction, faceWorld: Direction, directio
 fun incrementFromForwardUp(facingPart: Direction, faceWorld: Direction, direction: Base6Direction3d) =
     incrementFromForwardUp(facingPart, faceWorld, direction.alias)
 
+fun Locator.transformPartWorld(directionPart: Base6Direction3d) : Direction {
+    val facing = this.requireLocator<FacingLocator> { "Part -> World requires facing" }
+    val face = this.requireLocator<FaceLocator> { "Part -> World requires face" }
+
+    return incrementFromForwardUp(facing.forwardWorld, face, directionPart)
+}
+
 @JvmInline
 value class PartConnectionDirection(val value: Int) {
     val mode get() = CellPartConnectionMode.byId[(value and 3)]

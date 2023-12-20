@@ -79,6 +79,7 @@ value class BlockPosInt(val value: Int) {
     operator fun not() = value
 
     companion object {
+        val zero = pack(0, 0, 0)
         const val MAX_VALUE = +511
         const val MIN_VALUE = -511
         const val SIGN_BIT = 1 shl 9

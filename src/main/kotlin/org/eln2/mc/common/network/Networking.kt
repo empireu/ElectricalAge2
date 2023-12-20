@@ -8,8 +8,8 @@ import net.minecraftforge.network.NetworkDirection
 import net.minecraftforge.network.NetworkRegistry
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
-import org.eln2.mc.common.blocks.foundation.GhostLightChunkDataMessage
-import org.eln2.mc.common.blocks.foundation.GhostLightCommandMessage
+import org.eln2.mc.common.GhostLightChunkDataMessage
+import org.eln2.mc.common.GhostLightCommandMessage
 import org.eln2.mc.common.content.GridConnectionCreateMessage
 import org.eln2.mc.common.content.GridConnectionDeleteMessage
 import org.eln2.mc.common.network.serverToClient.*

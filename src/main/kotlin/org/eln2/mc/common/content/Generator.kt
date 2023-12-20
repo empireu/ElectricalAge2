@@ -373,26 +373,12 @@ class ElectricalHeatEngineCell(
     thermalMap: PoleMap,
     b1Def: ThermalMassDefinition,
     b2Def: ThermalMassDefinition,
+    b1Leakage: ConnectionParameters,
+    b2Leakage: ConnectionParameters,
     val model: ElectricalHeatEngineModel,
-    radiantInfo: RadiantBodyEmissionDescription?
+    radiantInfoB1: RadiantBodyEmissionDescription?,
+    radiantInfoB2: RadiantBodyEmissionDescription?
 ) : Cell(ci) {
-    constructor(
-        ci: CellCreateInfo,
-        electricalMap: PoleMap,
-        thermalMap: PoleMap,
-        def: ThermalMassDefinition,
-        model: ElectricalHeatEngineModel,
-        radiantInfo: RadiantBodyEmissionDescription?
-    ) : this(
-        ci,
-        electricalMap,
-        thermalMap,
-        def,
-        def,
-        model,
-        radiantInfo
-    )
-
     @SimObject
     val generator = PolarTermObject(
         this,
@@ -404,19 +390,21 @@ class ElectricalHeatEngineCell(
     val thermalBipole = ThermalBipoleObject(
         this,
         thermalMap,
-        b1Def,
-        b2Def
+        b1Def(),
+        b2Def(),
+        b1Leakage,
+        b2Leakage
     )
 
     val cold by thermalBipole::b1
     val hot by thermalBipole::b2
 
     @Behavior
-    val radiantEmitter = if(radiantInfo != null) {
+    val radiantEmitter = if(radiantInfoB1 != null || radiantInfoB2 != null) {
         RadiantEmissionBehavior.create(
             self(),
-            thermalBipole.b1 to radiantInfo,
-            thermalBipole.b2 to radiantInfo
+            if(radiantInfoB1 != null) thermalBipole.b1 to radiantInfoB1 else null,
+            if(radiantInfoB2 != null) thermalBipole.b2 to radiantInfoB2 else null,
         )
     }
     else {

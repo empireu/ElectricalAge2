@@ -130,7 +130,7 @@ class ServerConfig(builder: Builder) {
 
         hotRadiatesLight = builder
             .comment("If true, hot things (wires, etc) will emit light")
-            .define("hot_radiates_light", true)
+            .define("hot_radiates_light", false)
     }
 }
 

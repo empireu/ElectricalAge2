@@ -5,6 +5,7 @@
 package org.eln2.mc.common.content
 
 import net.minecraft.client.gui.screens.MenuScreens
+import net.minecraft.core.Direction
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.Vector3d
 import org.ageseries.libage.mathematics.evaluate
@@ -21,6 +22,9 @@ import org.eln2.mc.client.render.cutout
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
 import org.eln2.mc.client.render.foundation.defaultRadiantBodyColor
 import org.eln2.mc.client.render.solid
+import org.eln2.mc.common.LightBulbItem
+import org.eln2.mc.common.LightFieldPrimitives
+import org.eln2.mc.common.LightModel
 import org.eln2.mc.common.blocks.BlockRegistry.block
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntity
 import org.eln2.mc.common.cells.CellRegistry.cell
@@ -34,6 +38,8 @@ import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.part
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
+import org.eln2.mc.common.parts.foundation.incrementFromForwardUp
+import org.eln2.mc.common.parts.foundation.transformPartWorld
 import org.eln2.mc.data.*
 import org.eln2.mc.mathematics.*
 import org.eln2.mc.extensions.toVector3d
@@ -53,10 +59,7 @@ object Content {
 
     //#region Wires
 
-    private val UNINSULATED_WIRE_LIGHT_FIELD = LightFieldPrimitives.sphereIncremental(
-        increments = 256,
-        strength = 3.0
-    )
+    private val UNINSULATED_WIRE_LIGHT_FIELD = LightFieldPrimitives.sourceOnlyStart(15)
 
     val COPPER_THERMAL_WIRE = ThermalWireBuilder("thermal_wire_copper")
         .apply {
@@ -75,9 +78,9 @@ object Content {
                 conductance = Quantity(0.05, WATT_PER_KELVIN)
             )
 
-            radiantDescription = RadiantBodyEmissionDescription(
-                UNINSULATED_WIRE_LIGHT_FIELD,
-            )
+            radiantDescription = RadiantBodyEmissionDescription({
+                UNINSULATED_WIRE_LIGHT_FIELD
+            })
         }
         .register()
 
@@ -469,6 +472,10 @@ object Content {
                 mass = Quantity(5.0, KILOGRAM)
             )
 
+            val leakage = ConnectionParameters(
+                conductance = Quantity(0.1, WATT_PER_KELVIN)
+            )
+
             val model = ElectricalHeatEngineModel(
                 baseEfficiency = 1.0,
                 potential = { ΔT ->
@@ -477,22 +484,27 @@ object Content {
                 conductance = Quantity(5.0, WATT_PER_KELVIN)
             )
 
-            // TODO make a semi sphere
-            val radiantInfo = RadiantBodyEmissionDescription(
-                LightFieldPrimitives.sphereIncremental(
-                    256,
-                    7.0
-                )
-            )
+            val hemispheres = Direction.entries.associateWith {
+                val volume = LightFieldPrimitives.hemisphereIncremental(
+                    15 + 64,
+                    3.0,
+                    it,
+                    1,
+                ).volume
+
+                RadiantBodyEmissionDescription({ volume })
+            }
 
             CellFactory {
                 val cell = ElectricalHeatEngineCell(
                     it,
                     electricalMap,
                     thermalMap,
-                    thermalDefinition,
+                    thermalDefinition, thermalDefinition,
+                    leakage, leakage,
                     model,
-                    radiantInfo
+                    hemispheres[it.locator.transformPartWorld(Base6Direction3d.Left)]!!,
+                    hemispheres[it.locator.transformPartWorld(Base6Direction3d.Right)]!!
                 )
 
                 cell.generator.ruleSet.withDirectionRulePlanar(electricalA + electricalB)

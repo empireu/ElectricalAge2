@@ -309,14 +309,14 @@ class ThermalBipoleObject<C : Cell>(
     cell: C,
     val map: PoleMap,
     override val b1: ThermalMass,
-    override val b2: ThermalMass
+    override val b2: ThermalMass,
+    val b1Leakage: ConnectionParameters,
+    val b2Leakage: ConnectionParameters
 ) : ThermalObject<C>(cell), PersistentObject, ThermalBipole, ThermalContactInfo {
     companion object {
         private const val B1 = "b1"
         private const val B2 = "b2"
     }
-
-    constructor(cell: C, map: PoleMap, d1: ThermalMassDefinition, d2: ThermalMassDefinition) : this(cell, map, d1(), d2())
 
     private var lastTemperatureB1: Double
     private var lastTemperatureB2: Double
@@ -337,6 +337,8 @@ class ThermalBipoleObject<C : Cell>(
     override fun addComponents(simulator: Simulator) {
         simulator.add(b1)
         simulator.add(b2)
+        simulator.connect(b1, cell.environmentData.ambientTemperature, b1Leakage)
+        simulator.connect(b2, cell.environmentData.ambientTemperature, b2Leakage)
     }
 
     override fun getContactTemperature(other: Locator): Quantity<Temperature>? {
