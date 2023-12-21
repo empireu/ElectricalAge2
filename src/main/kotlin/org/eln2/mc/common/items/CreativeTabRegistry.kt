@@ -31,7 +31,6 @@ object CreativeTabRegistry {
     private val BLACKLIST by lazy {
         setOf(
             BlockRegistry.MULTIPART_BLOCK.item.get(),
-            ItemRegistry.MULTIBLOCK_SCAN_TOOL.item.get()
         )
     }
     private var realized = false

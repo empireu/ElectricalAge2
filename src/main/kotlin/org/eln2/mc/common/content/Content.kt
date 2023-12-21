@@ -5,7 +5,9 @@
 package org.eln2.mc.common.content
 
 import net.minecraft.client.gui.screens.MenuScreens
+import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.world.level.block.Blocks
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.Vector3d
 import org.ageseries.libage.mathematics.evaluate
@@ -27,6 +29,11 @@ import org.eln2.mc.common.LightFieldPrimitives
 import org.eln2.mc.common.LightModel
 import org.eln2.mc.common.blocks.BlockRegistry.block
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntity
+import org.eln2.mc.common.blocks.BlockRegistry.blockItem
+import org.eln2.mc.common.blocks.foundation.BigBlockDelegateBlock
+import org.eln2.mc.common.blocks.foundation.BigBlockDelegateDefinition
+import org.eln2.mc.common.blocks.foundation.BigBlockItem
+import org.eln2.mc.common.blocks.foundation.TestRep
 import org.eln2.mc.common.cells.CellRegistry.cell
 import org.eln2.mc.common.cells.foundation.BasicCellProvider
 import org.eln2.mc.common.cells.foundation.CellFactory
@@ -38,11 +45,11 @@ import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.part
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
-import org.eln2.mc.common.parts.foundation.incrementFromForwardUp
 import org.eln2.mc.common.parts.foundation.transformPartWorld
 import org.eln2.mc.data.*
 import org.eln2.mc.mathematics.*
 import org.eln2.mc.extensions.toVector3d
+import org.eln2.mc.noop
 import kotlin.math.PI
 import kotlin.math.pow
 
@@ -256,7 +263,7 @@ object Content {
             }
         }
     )
-    val HEAT_GENERATOR_BLOCK = block("heat_generator", tab = null) { HeatGeneratorBlock() }
+    val HEAT_GENERATOR_BLOCK = block("heat_generator") { HeatGeneratorBlock() }
 
     val HEAT_GENERATOR_BLOCK_ENTITY = blockEntity("heat_generator", ::HeatGeneratorBlockEntity) { HEAT_GENERATOR_BLOCK.block.get() }
 
@@ -528,8 +535,33 @@ object Content {
         FurnaceCell(it, Base6Direction3d.Left, Base6Direction3d.Right)
     })
 
-    val FURNACE_BLOCK = block("furnace", tab = null) { FurnaceBlock() }
+    val FURNACE_BLOCK = block("furnace") { FurnaceBlock() }
     val FURNACE_MENU = menu("furnace_menu", ::FurnaceMenu)
+
+    val TEST_BIG_BLOCK_DELEGATE = block("del") {
+        BigBlockDelegateBlock()
+    }
+
+    val TEST_BIG_BLOCK_DELEGATE_DEFINITION = lazy {
+        BigBlockDelegateDefinition.build {
+            check(TEST_BIG_BLOCK_DELEGATE.block.isPresent) {
+                "Too early"
+            }
+
+            default(BlockPos(0, 1, 0), TEST_BIG_BLOCK_DELEGATE.block.get())
+        }
+    }
+
+    val TEST_BIG_BLOCK_REPRESENTATIVE = block("rep") {
+        TestRep()
+    }
+
+    val TEST_BIG_BLOCK_ITEM = blockItem("big") {
+        BigBlockItem(
+            TEST_BIG_BLOCK_DELEGATE_DEFINITION.value,
+            TEST_BIG_BLOCK_REPRESENTATIVE.get()
+        )
+    }
 
     fun clientWork() {
         MenuScreens.register(FURNACE_MENU.get(), ::FurnaceScreen)

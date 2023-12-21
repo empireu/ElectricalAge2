@@ -1,4 +1,4 @@
-@file:Suppress("unused", "MemberVisibilityCanBePrivate") // Because block variables here would be suggested for deletion.
+@file:Suppress("unused", "MemberVisibilityCanBePrivate", "NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS") // Because block variables here would be suggested for deletion.
 
 package org.eln2.mc.common.blocks
 
@@ -7,11 +7,11 @@ import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraftforge.eventbus.api.IEventBus
-import net.minecraftforge.registries.DeferredRegister
-import net.minecraftforge.registries.ForgeRegistries
-import net.minecraftforge.registries.RegistryObject
+import net.minecraftforge.registries.*
 import org.eln2.mc.MODID
 import org.eln2.mc.common.blocks.foundation.*
+import org.eln2.mc.resource
+import java.util.function.Supplier
 
 object BlockRegistry {
     val BLOCKS = DeferredRegister.create(ForgeRegistries.BLOCKS, MODID)!!
@@ -29,8 +29,7 @@ object BlockRegistry {
             BlockEntityType.Builder.of(
                 blockEntitySupplier,
                 blockSupplier()
-            )
-                .build(null)
+            ).build(null)
         }
     }
 
@@ -40,61 +39,43 @@ object BlockRegistry {
         BLOCK_ENTITIES.register(bus)
     }
 
-    /*val CELL_BLOCK_ENTITY: RegistryObject<BlockEntityType<CellBlockEntity>> = BLOCK_ENTITY_REGISTRY.register("cell") {
-        @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")
-        BlockEntityType.Builder.of(::CellBlockEntity).build(null)
-    }*/
-
     val MULTIPART_BLOCK_ENTITY: RegistryObject<BlockEntityType<MultipartBlockEntity>> =
         BLOCK_ENTITIES.register("multipart") {
-            @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS") // Thanks, Minecraft for the high quality code.
             BlockEntityType.Builder.of(::MultipartBlockEntity, MULTIPART_BLOCK.block.get()).build(null)
         }
 
-   /* data class CellBlockRegistryItem(
+    val BIG_BLOCK_DELEGATE_BLOCK_ENTITY: RegistryObject<BlockEntityType<BigBlockDelegateBlockEntity>> =
+        BLOCK_ENTITIES.register("big_block_delegate") {
+            BlockEntityType.Builder.of(::BigBlockDelegateBlockEntity, BIG_BLOCK_DELEGATE_BLOCK.block.get()).build(null)
+        }
+
+    data class BlockRegistryItem<T : Block>(
         val name: String,
-        val block: RegistryObject<CellBlock>,
+        val block: RegistryObject<T>,
         val item: RegistryObject<BlockItem>,
-    )
-*/
-    data class BlockRegistryItem(
-        val name: String,
-        val block: RegistryObject<Block>,
-        val item: RegistryObject<BlockItem>,
-    ) {
+    ) : Supplier<T> by block {
         val registryName get() = block.id ?: error("Invalid registry name")
     }
 
-   /* private fun registerCellBlock(
+    fun<T : Block> block(
         name: String,
-        tab: CreativeModeTab? = null,
-        supplier: () -> CellBlock,
-    ): CellBlockRegistryItem {
-        val block = BLOCK_REGISTRY.register(name) { supplier() }
-        val item = BLOCK_ITEM_REGISTRY.register(name) {
-            BlockItem(
-                block.get(),
-                Item.Properties().also { *//*TODO where did tabs go?*//* })
-        }
-
-        return CellBlockRegistryItem(name, block, item)
-    }
-*/
-    fun block(
-        name: String,
-        tab: CreativeModeTab? = null,
-        supplier: () -> Block,
-    ): BlockRegistryItem {
+        supplier: () -> T,
+    ): BlockRegistryItem<T> {
         val block = BLOCKS.register(name) { supplier() }
         val item = BLOCK_ITEMS.register(name) {
             BlockItem(
                 block.get(),
-                Item.Properties().also { /* TODO where did tabs go? */ }
+                Item.Properties()
             )
         }
 
         return BlockRegistryItem(name, block, item)
     }
 
-    val MULTIPART_BLOCK = block("multipart", tab = null) { MultipartBlock() }
+    fun blockItem(name: String, supplier: () -> BlockItem) = BLOCK_ITEMS.register(name) {
+        supplier()
+    }
+
+    val MULTIPART_BLOCK = block("multipart") { MultipartBlock() }
+    val BIG_BLOCK_DELEGATE_BLOCK = block("big_block_delegate") { BigBlockDelegateBlock() }
 }
