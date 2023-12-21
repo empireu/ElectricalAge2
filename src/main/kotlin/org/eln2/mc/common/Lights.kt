@@ -4,6 +4,8 @@ package org.eln2.mc.common
 
 import com.jozufozu.flywheel.light.LightUpdater
 import it.unimi.dsi.fastutil.ints.*
+import it.unimi.dsi.fastutil.longs.Long2ObjectFunction
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet
 import net.minecraft.client.Minecraft
 import net.minecraft.core.BlockPos
@@ -281,13 +283,11 @@ object GhostLightServer {
         return getLevelData(validateLevel(level)).createHandle(position, notifier)
     }
 
-    /**
-     * Gets the desired brightness in [level], at the specified [position].
-     * */
     @JvmStatic
-    fun getBlockBrightness(level: Level, position: BlockPos): Int {
+    fun createReader(level: Level) : (BlockPos) -> Int {
         validateUsage()
-        return levels[level]?.getDesiredBrightness(position) ?: 0
+
+        return getLevelData(level)::getDesiredBrightness
     }
 
     fun handleBlockEvent(level: Level, position: BlockPos) {
@@ -311,14 +311,53 @@ object GhostLightServer {
     }
 
     private class LevelLightData(val gameLevel: ServerLevel) {
-        private val chunks = HashMap<ChunkPos, LightChunk>()
-        private val dirtyChunks = HashSet<ChunkPos>()
+        companion object {
+            private const val LOOKUP_CACHE_SIZE = 4
+        }
 
-        private fun getOrCreateChunk(chunkPos: ChunkPos) = chunks.computeIfAbsent(chunkPos) { LightChunk(chunkPos, this) }
+        private val chunks = Long2ObjectOpenHashMap<LightChunk>()
+        private val dirtyChunks = ArrayList<LightChunk>()
+
+        private val lightChunkCache = Array<LightChunk?>(LOOKUP_CACHE_SIZE) { null }
+        private val lightChunkPosCache = LongArray(LOOKUP_CACHE_SIZE) { ChunkPos.INVALID_CHUNK_POS }
+
+        private fun clearCache() {
+            lightChunkCache.fill(null)
+            lightChunkPosCache.fill(ChunkPos.INVALID_CHUNK_POS)
+        }
+
+        private fun getOrCreateChunk(chunkPos: ChunkPos) : LightChunk {
+            val key = chunkPos.toLong()
+
+            return chunks.computeIfAbsent(key, Long2ObjectFunction {
+                LightChunk(chunkPos, this)
+            })
+        }
+
         private fun getOrCreateChunk(blockPos: BlockPos) = getOrCreateChunk(ChunkPos(blockPos))
-        private fun getChunk(blockPos: BlockPos) = chunks[ChunkPos(blockPos)]
+
+        private fun getExistingChunk(chunkPos: Long) : LightChunk? {
+            for (j in 0 until LOOKUP_CACHE_SIZE) {
+                if (lightChunkPosCache[j] == chunkPos) {
+                    return this.lightChunkCache[j]
+                }
+            }
+
+            val value = chunks[chunkPos]
+
+            for (i in (LOOKUP_CACHE_SIZE - 1) downTo 1) {
+                this.lightChunkPosCache[i] = this.lightChunkPosCache[i - 1]
+                this.lightChunkCache[i] = this.lightChunkCache[i - 1]
+            }
+
+            this.lightChunkPosCache[0] = chunkPos
+            this.lightChunkCache[0] = value
+
+            return value
+        }
 
         fun watch(player: ServerPlayer, chunkPos: ChunkPos) = getOrCreateChunk(chunkPos).startTrackingPlayer(player)
+
         fun unwatch(player: ServerPlayer, chunkPos: ChunkPos) = getOrCreateChunk(chunkPos).stopTrackingPlayer(player)
 
         fun canCreateHandle(pos: BlockPos) = gameLevel.isInWorldBounds(pos)
@@ -331,20 +370,22 @@ object GhostLightServer {
             return getOrCreateChunk(pos).createHandle(pos, notifier)
         }
 
-        fun handleBlockEvent(pos: BlockPos) = getChunk(pos)?.handleBlockEvent(pos)
+        fun handleBlockEvent(pos: BlockPos) = getExistingChunk(ChunkPos.asLong(pos))?.handleBlockEvent(pos)
 
-        fun getDesiredBrightness(pos: BlockPos) = getChunk(pos)?.getBrightness(pos) ?: 0
+        fun getDesiredBrightness(pos: BlockPos) = getExistingChunk(ChunkPos.asLong(pos))?.getBrightness(pos) ?: 0
 
-        fun setChunkDirty(pos: ChunkPos) {
-            require(dirtyChunks.add(pos))
+        fun setDirty(chunk: LightChunk) {
+            dirtyChunks.add(chunk)
         }
 
         fun applyChanges() {
-            dirtyChunks.forEach { chunkPos ->
-                chunks[chunkPos]?.applyChanges()
-            }
+           dirtyChunks.forEach {
+               it.applyChanges()
+           }
 
             dirtyChunks.clear()
+
+            clearCache()
         }
     }
 
@@ -442,7 +483,7 @@ object GhostLightServer {
             dirtyCells.add(packedPosition)
             if(!this@LightChunk.isDirty) {
                 this@LightChunk.isDirty = true
-                lightLevel.setChunkDirty(chunkPos)
+                lightLevel.setDirty(this)
             }
         }
 
