@@ -5,8 +5,6 @@ package org.eln2.mc.common.content
 import net.minecraft.nbt.CompoundTag
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
-import org.ageseries.libage.mathematics.evaluate
-import org.ageseries.libage.mathematics.lerp
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.ThermalMass
@@ -23,8 +21,6 @@ import org.eln2.mc.extensions.useSubTagIfPreset
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.*
-import kotlin.math.abs
-import kotlin.math.pow
 
 interface BatteryView {
     val model: BatteryModel

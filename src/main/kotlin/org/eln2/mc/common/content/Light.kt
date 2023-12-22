@@ -16,7 +16,7 @@ import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
 import org.ageseries.libage.sim.electrical.mna.component.updateResistance
 import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
-import org.eln2.mc.client.render.RenderTypeType
+import org.eln2.mc.client.render.DefaultRenderType
 import org.eln2.mc.client.render.RenderTypedPartialModel
 import org.eln2.mc.client.render.foundation.colorLerp
 import org.eln2.mc.client.render.foundation.transformPart
@@ -478,18 +478,18 @@ class LightFixtureRenderer(
     override fun setupRendering() {
         cageInstance?.delete()
         emitterInstance?.delete()
-        cageInstance = create(cageModel.partial, cageModel.type)
-        emitterInstance = create(emitterModel.partial, emitterModel.type)
+        cageInstance = create(cageModel.model, cageModel.type)
+        emitterInstance = create(emitterModel.model, emitterModel.type)
         applyLightTint()
     }
 
-    private fun create(model: PartialModel, type: RenderTypeType): ModelData {
+    private fun create(model: PartialModel, type: DefaultRenderType): ModelData {
         return multipart.materialManager
             .let {
                 when(type) {
-                    RenderTypeType.Solid -> it.defaultSolid()
-                    RenderTypeType.Cutout -> it.defaultCutout()
-                    RenderTypeType.Transparent -> it.defaultTransparent()
+                    DefaultRenderType.Solid -> it.defaultSolid()
+                    DefaultRenderType.Cutout -> it.defaultCutout()
+                    DefaultRenderType.Transparent -> it.defaultTransparent()
                 }
             }
             .material(Materials.TRANSFORMED)

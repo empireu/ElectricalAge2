@@ -29,10 +29,9 @@ object CreativeTabRegistry {
     }
 
     private val BLACKLIST by lazy {
-        setOf(
-            BlockRegistry.MULTIPART_BLOCK.item.get(),
-        )
+        setOf<Item>()
     }
+
     private var realized = false
 
     private val VARIANTS = ArrayList<Supplier<ItemStack>>()

@@ -330,14 +330,7 @@ fun Rotation.inverse() = when (this) {
     Rotation.COUNTERCLOCKWISE_90 -> Rotation.CLOCKWISE_90
 }
 
-operator fun Rotation.times(p: BlockPos) = p.rotate(this)
-fun rot(dir: Direction) = when (dir) {
-    Direction.NORTH -> Rotation.COUNTERCLOCKWISE_90
-    Direction.SOUTH -> Rotation.CLOCKWISE_90
-    Direction.WEST -> Rotation.CLOCKWISE_180
-    Direction.EAST -> Rotation.NONE
-    else -> error("Invalid horizontal facing $dir")
-}
+operator fun Rotation.times(p: BlockPos): BlockPos = p.rotate(this)
 
 operator fun Vec3.plus(b: Vec3): Vec3 {
     return Vec3(this.x + b.x, this.y + b.y, this.z + b.z)

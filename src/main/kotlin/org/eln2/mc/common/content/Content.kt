@@ -4,10 +4,10 @@
 
 package org.eln2.mc.common.content
 
+import com.jozufozu.flywheel.backend.instancing.InstancedRenderRegistry
 import net.minecraft.client.gui.screens.MenuScreens
-import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
-import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.phys.AABB
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.Vector3d
 import org.ageseries.libage.mathematics.evaluate
@@ -22,18 +22,18 @@ import org.eln2.mc.LOG
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.cutout
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
+import org.eln2.mc.client.render.foundation.SimpleBlockEntityInstance
 import org.eln2.mc.client.render.foundation.defaultRadiantBodyColor
 import org.eln2.mc.client.render.solid
 import org.eln2.mc.common.LightBulbItem
 import org.eln2.mc.common.LightFieldPrimitives
 import org.eln2.mc.common.LightModel
-import org.eln2.mc.common.blocks.BlockRegistry.block
-import org.eln2.mc.common.blocks.BlockRegistry.blockEntity
-import org.eln2.mc.common.blocks.BlockRegistry.blockItem
-import org.eln2.mc.common.blocks.foundation.BigBlockDelegateBlock
-import org.eln2.mc.common.blocks.foundation.BigBlockDelegateDefinition
+import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
+import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
+import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
+import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
+import org.eln2.mc.common.blocks.BlockRegistry.defineDelegateMap
 import org.eln2.mc.common.blocks.foundation.BigBlockItem
-import org.eln2.mc.common.blocks.foundation.TestRep
 import org.eln2.mc.common.cells.CellRegistry.cell
 import org.eln2.mc.common.cells.foundation.BasicCellProvider
 import org.eln2.mc.common.cells.foundation.CellFactory
@@ -46,10 +46,14 @@ import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.part
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.transformPartWorld
-import org.eln2.mc.data.*
-import org.eln2.mc.mathematics.*
+import org.eln2.mc.data.FaceLocator
+import org.eln2.mc.data.directionPoleMapPlanar
+import org.eln2.mc.data.requireLocator
+import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.extensions.toVector3d
-import org.eln2.mc.noop
+import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.mathematics.Base6Direction3dMask
+import org.eln2.mc.requireIsOnRenderThread
 import kotlin.math.PI
 import kotlin.math.pow
 
@@ -263,9 +267,9 @@ object Content {
             }
         }
     )
-    val HEAT_GENERATOR_BLOCK = block("heat_generator") { HeatGeneratorBlock() }
+    val HEAT_GENERATOR_BLOCK = blockAndItem("heat_generator") { HeatGeneratorBlock() }
 
-    val HEAT_GENERATOR_BLOCK_ENTITY = blockEntity("heat_generator", ::HeatGeneratorBlockEntity) { HEAT_GENERATOR_BLOCK.block.get() }
+    val HEAT_GENERATOR_BLOCK_ENTITY = blockEntityOnly("heat_generator", ::HeatGeneratorBlockEntity) { HEAT_GENERATOR_BLOCK.block.get() }
 
     val HEAT_GENERATOR_MENU = menu("heat_generator", ::HeatGeneratorMenu)
 
@@ -407,6 +411,36 @@ object Content {
         }
     )
 
+    val GRID_POLE_DELEGATE_MAP by defineDelegateMap("grid_pole") {
+        val column = registerDelegateOf(
+            AABB(
+                0.35, 0.0, 0.35,
+                0.65, 1.0, 0.65
+            )
+        )
+
+        principal(0, 1, 0, column)
+        principal(0, 2, 0, column)
+    }
+
+    val GRID_POLE_BLOCK = blockOnly("grid_pole") {
+        GridPoleBlock(
+            GRID_POLE_DELEGATE_MAP,
+            Vector3d(0.5, 2.5, 0.5)
+        )
+    }
+
+    val GRID_POLE_BLOCK_ENTITY = blockEntityOnly("grid_pole", GRID_POLE_BLOCK) { pos, state ->
+        GridPoleBlockEntity(GRID_POLE_BLOCK.get(), pos, state)
+    }
+
+    val GRID_POLE_BLOCK_ITEM = blockItemOnly("grid_pole") {
+        BigBlockItem(
+            GRID_POLE_DELEGATE_MAP,
+            GRID_POLE_BLOCK.get()
+        )
+    }
+
     val GRID_CONNECT_COPPER = item("grid_connect_copper") {
         GridConnectItem(GridMaterials.COPPER_AS_COPPER_COPPER)
     }
@@ -529,43 +563,39 @@ object Content {
         }
     )
 
-    val FURNACE_BLOCK_ENTITY = blockEntity("furnace", ::FurnaceBlockEntity) { FURNACE_BLOCK.block.get() }
+    val FURNACE_BLOCK_ENTITY = blockEntityOnly("furnace", ::FurnaceBlockEntity) { FURNACE_BLOCK.block.get() }
 
     val FURNACE_CELL = cell("furnace_cell", BasicCellProvider {
         FurnaceCell(it, Base6Direction3d.Left, Base6Direction3d.Right)
     })
 
-    val FURNACE_BLOCK = block("furnace") { FurnaceBlock() }
+    val FURNACE_BLOCK = blockAndItem("furnace") { FurnaceBlock() }
     val FURNACE_MENU = menu("furnace_menu", ::FurnaceMenu)
 
-    val TEST_BIG_BLOCK_DELEGATE = block("del") {
-        BigBlockDelegateBlock()
+    fun clientSetup() {
+        requireIsOnRenderThread()
+        setupScreens()
+        setupFlywheel()
+        LOG.info("Content client work completed")
     }
 
-    val TEST_BIG_BLOCK_DELEGATE_DEFINITION = lazy {
-        BigBlockDelegateDefinition.build {
-            check(TEST_BIG_BLOCK_DELEGATE.block.isPresent) {
-                "Too early"
-            }
-
-            default(BlockPos(0, 1, 0), TEST_BIG_BLOCK_DELEGATE.block.get())
-        }
-    }
-
-    val TEST_BIG_BLOCK_REPRESENTATIVE = block("rep") {
-        TestRep()
-    }
-
-    val TEST_BIG_BLOCK_ITEM = blockItem("big") {
-        BigBlockItem(
-            TEST_BIG_BLOCK_DELEGATE_DEFINITION.value,
-            TEST_BIG_BLOCK_REPRESENTATIVE.get()
-        )
-    }
-
-    fun clientWork() {
+    private fun setupScreens() {
         MenuScreens.register(FURNACE_MENU.get(), ::FurnaceScreen)
         MenuScreens.register(HEAT_GENERATOR_MENU.get(), ::HeatGeneratorScreen)
-        LOG.info("Content client work completed")
+
+        LOG.info("Client screens completed")
+    }
+
+    private fun setupFlywheel() {
+        InstancedRenderRegistry.configure(GRID_POLE_BLOCK_ENTITY.get())
+            .alwaysSkipRender()
+            .factory { manager, entity ->
+                SimpleBlockEntityInstance(manager, entity, PartialModels.POLE_TEMPORARY.solid()) { instance, renderer, blockEntity ->
+                    instance.translate(renderer.instancePosition).scale(1f, 3f, 1f)
+                }
+            }
+            .apply()
+
+        LOG.info("Client flywheel completed")
     }
 }

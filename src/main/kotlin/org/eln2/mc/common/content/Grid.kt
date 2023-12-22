@@ -10,6 +10,7 @@ import net.minecraft.client.renderer.chunk.RenderChunkRegion
 import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.client.renderer.texture.TextureAtlasSprite
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
 import net.minecraft.core.SectionPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
@@ -27,6 +28,9 @@ import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.entity.BlockEntity
+import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraftforge.network.NetworkEvent
 import org.ageseries.libage.data.MutableMapPairBiMap
@@ -41,16 +45,18 @@ import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.*
 import org.eln2.mc.client.render.foundation.*
-import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
+import org.eln2.mc.common.blocks.foundation.*
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.parts.foundation.CellPart
+import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.common.parts.foundation.PartRenderer
 import org.eln2.mc.data.*
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.integration.DebugComponentDisplay
 import org.eln2.mc.mathematics.*
 import java.util.*
 import java.util.concurrent.locks.ReentrantReadWriteLock
@@ -251,7 +257,9 @@ class GridConnectionPair private constructor(val a: GridEndpointInfo, val b: Gri
          * ```
          * */
         fun create(a: GridEndpointInfo, b: GridEndpointInfo) : GridConnectionPair {
-            require(a.id != b.id) { "End points $a and $b have same UUID ${a.id}"}
+            require(a.id != b.id) {
+                "End points $a and $b have same UUID ${a.id}"
+            }
 
             return if(a.id < b.id) {
                 GridConnectionPair(a, b)
@@ -974,43 +982,31 @@ class GridCell(ci: CellCreateInfo) : Cell(ci) {
     }
 }
 
-abstract class GridCellPart<R : PartRenderer>(
-    ci: PartCreateInfo,
-    provider: CellProvider<GridCell>
-) : CellPart<GridCell, R>(ci, provider), ComponentDisplay {
-    // Attachment in the fixed frame:
-    open val attachment: Vector3d = placement.position.toVector3d() + Vector3d(0.5)
-
-    fun setStaging(info: GridStagingInfo) {
-        require(hasCell) { "Cell wass not present to start staging" }
-
-        require(this.cell.stagingInfo == null) {
-            "Already staging"
+private object GridCellOperations {
+    fun setStaging(cell: GridCell, info: GridStagingInfo) {
+        require(cell.stagingInfo == null) {
+            "Cell $cell was already staging"
         }
 
-        this.cell.stagingInfo = info
+        cell.stagingInfo = info
     }
 
-    fun clearStaging() {
-        require(hasCell) { "Cell was not present to clear staging" }
-
-        require(this.cell.stagingInfo != null) {
-            "Not staging"
+    fun clearStaging(cell: GridCell) {
+        require(cell.stagingInfo != null) {
+            "Cell $cell was not staging when clear"
         }
 
-        this.cell.stagingInfo = null
+        cell.stagingInfo = null
     }
 
-    fun createEndpointInfo() = GridEndpointInfo(
-        cell.endpointId, attachment, cell.locator
-    )
+    fun createEndpointInfo(cell: GridCell, attachment: Vector3d) = GridEndpointInfo(cell.endpointId, attachment, cell.locator)
 
-    override fun addExtraConnections(results: MutableSet<CellNeighborInfo>) {
-        if(hasCell && cell.stagingInfo != null) {
+    fun addExtraConnections(cell: GridCell, results: MutableSet<CellNeighborInfo>) {
+        if(cell.stagingInfo != null) {
             results.add(CellNeighborInfo.of(cell.stagingInfo!!.remoteCell))
         }
 
-        if(hasCell && cell.hasGraph) {
+        if(cell.hasGraph) {
             cell.endPoints.keys.forEach { remoteEndPoint ->
                 results.add(
                     CellNeighborInfo.of(
@@ -1020,21 +1016,28 @@ abstract class GridCellPart<R : PartRenderer>(
             }
         }
     }
+}
 
-    override fun onLoaded() {
-        super.onLoaded()
+interface GridEndpointContainer : ComponentDisplay {
+    val gridCell: GridCell
+    val gridAttachment: Vector3d
+    val cellContainer: CellContainer
 
-        if(!placement.level.isClientSide) {
-            // Cell is available now:
+    fun setStaging(info: GridStagingInfo) = GridCellOperations.setStaging(gridCell, info)
+    fun clearStaging() = GridCellOperations.clearStaging(gridCell)
+    fun createEndpointInfo() = GridCellOperations.createEndpointInfo(gridCell, gridAttachment)
+
+    fun lazyLoadConnection(level: Level) {
+        if(!level.isClientSide) {
+            level as ServerLevel
+
             val localEndPoint = createEndpointInfo()
 
-            placement.level as ServerLevel
-
-            cell.endPoints.forEach { (remoteEndPoint, remoteEndPointInfo) ->
+            gridCell.endPoints.forEach { (remoteEndPoint, remoteEndPointInfo) ->
                 val pair = GridConnectionPair.create(localEndPoint, remoteEndPoint)
 
                 GridConnectionManagerServer.createPairIfAbsent(
-                    placement.level,
+                    level,
                     pair,
                     remoteEndPointInfo.material
                 )
@@ -1043,17 +1046,41 @@ abstract class GridCellPart<R : PartRenderer>(
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.resistance(cell.electricalObject.tapResistance)
-        builder.current(cell.electricalObject.totalCurrent)
-        builder.power(cell.electricalObject.totalPower)
+        builder.resistance(gridCell.electricalObject.tapResistance)
+        builder.current(gridCell.electricalObject.totalCurrent)
+        builder.power(gridCell.electricalObject.totalPower)
     }
 }
 
-class GridTapPart(
-    ci: PartCreateInfo,
-    provider: CellProvider<GridCell>
-) : GridCellPart<ConnectedPartRenderer>(ci, provider) {
-    override val attachment: Vector3d = super.attachment - placement.face.toVector3d() * 0.15
+abstract class GridCellPart<R : PartRenderer>(ci: PartCreateInfo, provider: CellProvider<GridCell>) :
+    CellPart<GridCell, R>(ci, provider),
+    ComponentDisplay,
+    GridEndpointContainer
+{
+    override val gridCell: GridCell
+        get() {
+            check(hasCell) {
+                "Tried to get grid part cell before it was present"
+            }
+
+            return this.cell
+        }
+
+    override val gridAttachment: Vector3d = placement.position.toVector3d() + Vector3d(0.5)
+
+    override val cellContainer: CellContainer
+        get() = placement.multipart
+
+    override fun addExtraConnections(results: MutableSet<CellNeighborInfo>) = GridCellOperations.addExtraConnections(cell, results)
+
+    override fun onLoaded() {
+        super.onLoaded()
+        lazyLoadConnection(placement.level)
+    }
+}
+
+class GridTapPart(ci: PartCreateInfo, provider: CellProvider<GridCell>) : GridCellPart<ConnectedPartRenderer>(ci, provider) {
+    override val gridAttachment: Vector3d = super.gridAttachment - placement.face.toVector3d() * 0.15
 
     override fun createRenderer() = ConnectedPartRenderer(
         this,
@@ -1066,7 +1093,70 @@ class GridTapPart(
     override fun onConnectivityChanged() = this.setSyncDirty()
 }
 
+class GridPoleBlock(val delegateMap: MultiblockDelegateMap, val attachment: Vector3d) : CellBlock<GridCell>() {
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun skipRendering(pState: BlockState, pAdjacentState: BlockState, pDirection: Direction): Boolean {
+        return true
+    }
+
+    override fun getCellProvider() = Content.GRID_CELL.get()
+
+    override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = GridPoleBlockEntity(this, pPos, pState)
+}
+
+class GridPoleBlockEntity(private val representativeBlock: GridPoleBlock, pos: BlockPos, state: BlockState) :
+    CellBlockEntity<GridCell>(pos, state, Content.GRID_POLE_BLOCK_ENTITY.get()),
+    BigBlockRepresentativeBlockEntity<GridPoleBlockEntity>,
+    GridEndpointContainer
+{
+    override val gridCell: GridCell
+        get() {
+            check(hasCell) {
+                "Tried to get grid pole cell before it was present"
+            }
+
+            return this.cell
+        }
+
+    override val gridAttachment: Vector3d
+        get() = blockPos.toVector3d() + representativeBlock.attachment
+
+    override val cellContainer: CellContainer
+        get() = this
+
+    override val delegateMap: MultiblockDelegateMap
+        get() = representativeBlock.delegateMap
+
+    override fun addExtraConnections(results: MutableSet<CellNeighborInfo>) = GridCellOperations.addExtraConnections(cell, results)
+
+    override fun onCellAcquired() {
+        lazyLoadConnection(level!!)
+    }
+
+    override fun setDestroyed() {
+        destroyDelegates()
+        super.setDestroyed()
+    }
+}
+
 open class GridConnectItem(val material: GridMaterial) : Item(Properties()) {
+    private fun pickContainer(pLevel: Level, pPlayer: Player, hit: BlockHitResult) : GridEndpointContainer? {
+        // make generic grid game object
+        val targetBlockEntity = pLevel.getBlockEntity(hit.blockPos) ?: return null
+
+        if(targetBlockEntity is MultipartBlockEntity) {
+            return targetBlockEntity.pickPart(pPlayer) as? GridCellPart<*>
+        }
+
+        if(targetBlockEntity is MultiblockDelegateBlockEntity) {
+            val representative = targetBlockEntity.representativePos ?: return null
+
+            return pLevel.getBlockEntity(representative) as? GridEndpointContainer
+        }
+
+        return targetBlockEntity as? GridEndpointContainer
+    }
+
     override fun use(pLevel: Level, pPlayer: Player, pUsedHand: InteractionHand): InteractionResultHolder<ItemStack> {
         val actualStack = pPlayer.getItemInHand(pUsedHand)
 
@@ -1097,35 +1187,49 @@ open class GridConnectItem(val material: GridMaterial) : Item(Properties()) {
         if (hit.type != HitResult.Type.BLOCK) {
             return fail("Cannot connect that!")
         }
-        // make generic grid game object
-        val targetMultipart = pLevel.getBlockEntity(hit.blockPos) as? MultipartBlockEntity
-            ?: return fail("Cannot connect that!")
 
-        val targetPart = targetMultipart.pickPart(pPlayer) as? GridCellPart<*>
-            ?: return fail("No valid part selected")
+        val targetContainer = pickContainer(pLevel, pPlayer, hit)
+            ?: return fail("No valid endpoint selected!")
 
-        if (actualStack.tag != null && actualStack.tag!!.contains(NBT_POS) && actualStack.tag!!.contains(NBT_FACE)) {
-            val remoteMultipart = pLevel.getBlockEntity(actualStack.tag!!.getBlockPos(NBT_POS)) as? MultipartBlockEntity
-                ?: return fail("Cannot connect that!")
+        if (actualStack.tag != null && actualStack.tag!!.contains(NBT_POS)) {
+            val tag = actualStack.tag!!
 
-            val remotePart = remoteMultipart.getPart(actualStack.tag!!.getDirection(NBT_FACE)) as? GridCellPart<*>
-                ?: return fail("No valid part selected")
+            fun getRemoteContainer() : GridEndpointContainer? {
+                val pos = tag.getBlockPos(NBT_POS)
+                if(tag.contains(NBT_FACE)) {
+                    val remoteMultipart = pLevel.getBlockEntity(pos) as? MultipartBlockEntity
+                        ?: return null
 
-            if(remotePart == targetPart) {
-                return fail("Can't connect an endpoint with itself")
+                    return remoteMultipart.getPart(tag.getDirection(NBT_FACE)) as? GridEndpointContainer
+                }
+                else {
+                    return pLevel.getBlockEntity(pos) as? GridEndpointContainer
+                }
             }
 
-            if(targetPart.cell.endPoints.keys.any { it.id == remotePart.cell.endpointId }) {
-                check(remotePart.cell.endPoints.keys.any { it.id == targetPart.cell.endpointId })
+            val remoteContainer = getRemoteContainer()
+                ?: return fail("The remote end point has disappeared!")
+
+            if(remoteContainer === targetContainer) {
+                return fail("Can't connect an endpoint with itself!")
+            }
+
+            if(targetContainer.gridCell.endPoints.keys.any { it.id == remoteContainer.gridCell.endpointId }) {
+                check(remoteContainer.gridCell.endPoints.keys.any { it.id == targetContainer.gridCell.endpointId }) {
+                    "Invalid reciprocal state - missing remote"
+                }
+
                 return fail("Can't do that!")
             }
             else {
-                check(remotePart.cell.endPoints.keys.none { it.id == targetPart.cell.endpointId })
+                check(remoteContainer.gridCell.endPoints.keys.none { it.id == targetContainer.gridCell.endpointId }) {
+                    "Invalid reciprocal state - unexpected remote"
+                }
             }
 
             val pair = GridConnectionPair.create(
-                targetPart.createEndpointInfo(),
-                remotePart.createEndpointInfo()
+                targetContainer.createEndpointInfo(),
+                remoteContainer.createEndpointInfo()
             )
 
             val gridCatenary = GridConnectionManagerServer.createGridCatenary(pair, material)
@@ -1150,32 +1254,40 @@ open class GridConnectItem(val material: GridMaterial) : Item(Properties()) {
                 gridCatenary.resistance
             )
 
-            CellConnections.retopologize(targetPart.cell, targetPart.placement.multipart) {
-                targetPart.setStaging(GridStagingInfo(remotePart.cell, connectionInfo))
-                remotePart.setStaging(GridStagingInfo(targetPart.cell, connectionInfo))
+            CellConnections.retopologize(targetContainer.gridCell, targetContainer.cellContainer) {
+                targetContainer.setStaging(GridStagingInfo(remoteContainer.gridCell, connectionInfo))
+                remoteContainer.setStaging(GridStagingInfo(targetContainer.gridCell, connectionInfo))
             }
 
-            targetPart.clearStaging()
-            remotePart.clearStaging()
+            targetContainer.clearStaging()
+            remoteContainer.clearStaging()
 
-            require(targetPart.cell.graph == remotePart.cell.graph) {
+            check(targetContainer.gridCell.graph == remoteContainer.gridCell.graph) {
                 "Grid staging failed"
             }
 
-            targetPart.cell.endPoints.putUnique(remotePart.createEndpointInfo(), connectionInfo)
-            remotePart.cell.endPoints.putUnique(targetPart.createEndpointInfo(), connectionInfo)
+            targetContainer.gridCell.endPoints.putUnique(remoteContainer.createEndpointInfo(), connectionInfo)
+            remoteContainer.gridCell.endPoints.putUnique(targetContainer.createEndpointInfo(), connectionInfo)
 
             GridConnectionManagerServer.createPair(pLevel as ServerLevel, pair, gridCatenary)
 
             return success("Connected successfully!")
         }
 
-        actualStack.tag = CompoundTag().apply {
-            putBlockPos(NBT_POS, targetPart.placement.position)
-            putDirection(NBT_FACE, targetPart.placement.face)
+        val tag = CompoundTag()
+
+        if(targetContainer is Part<*>) {
+            tag.putBlockPos(NBT_POS, targetContainer.placement.position)
+            tag.putDirection(NBT_FACE, targetContainer.placement.face)
+        }
+        else {
+            targetContainer as BlockEntity
+            tag.putBlockPos(NBT_POS, targetContainer.blockPos)
         }
 
-        tell("Start recorded")
+        actualStack.tag = tag
+
+        tell("Start recorded!")
 
         return InteractionResultHolder.success(actualStack)
     }

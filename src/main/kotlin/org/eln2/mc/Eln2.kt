@@ -69,7 +69,7 @@ class Eln2 {
         modEventBus.addListener { event: FMLClientSetupEvent ->
             event.enqueueWork {
                 FlywheelRegistry.initialize()
-                Content.clientWork()
+                Content.clientSetup()
             }
         }
 

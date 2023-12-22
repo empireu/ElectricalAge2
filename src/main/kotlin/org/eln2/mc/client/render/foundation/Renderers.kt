@@ -11,11 +11,12 @@ import com.jozufozu.flywheel.util.Color
 import com.jozufozu.flywheel.util.transform.Transform
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntArrayList
+import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.level.LightLayer
+import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.CELSIUS
-import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.Vector3d
@@ -23,6 +24,8 @@ import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.ClientOnly
+import org.eln2.mc.client.render.DefaultRenderTypePartialModel
+import org.eln2.mc.client.render.model
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.content.PartConnectionRenderInfo
 import org.eln2.mc.common.content.PartConnectionRenderInfoSetConsumer
@@ -416,4 +419,34 @@ class MultipartBlockEntityInstance(
 
 fun interface PartRendererSupplier<T : Part<R>, R : PartRenderer> {
     fun create(part: T) : R
+}
+
+class SimpleBlockEntityInstance<T : BlockEntity>(
+    materialManager: MaterialManager,
+    blockEntity: T,
+    val model: DefaultRenderTypePartialModel<PartialModel>,
+    val transformer: (instance : ModelData, renderer : SimpleBlockEntityInstance<T>, blockEntity : T) -> Unit
+) : BlockEntityInstance<T>(materialManager, blockEntity) {
+    var instance: ModelData? = null
+
+    override fun init() {
+        instance?.delete()
+
+        instance = materialManager
+            .model(model)
+            .createInstance()
+            .loadIdentity()
+
+        transformer(instance!!, this, blockEntity)
+    }
+
+    override fun remove() {
+        instance?.delete()
+    }
+
+    override fun updateLight() {
+        if(instance != null) {
+            relight(pos, instance)
+        }
+    }
 }

@@ -1,6 +1,11 @@
 package org.eln2.mc.client.render
 
+import com.jozufozu.flywheel.api.Instancer
+import com.jozufozu.flywheel.api.MaterialGroup
+import com.jozufozu.flywheel.api.MaterialManager
+import com.jozufozu.flywheel.core.Materials
 import com.jozufozu.flywheel.core.PartialModel
+import com.jozufozu.flywheel.core.materials.model.ModelData
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.eln2.mc.client.render.foundation.PolarModel
 import org.eln2.mc.client.render.foundation.WireConnectionModelPartial
@@ -41,6 +46,8 @@ object PartialModels {
     val TALL_GARDEN_LIGHT_EMITTER = partialBlock("tall_garden_light/emitter")
     val TALL_GARDEN_LIGHT_CAGE = partialBlock("tall_garden_light/cage")
 
+    val POLE_TEMPORARY = partialBlock("pole")
+
     private fun partial(path: String) = PartialModel(resource(path))
 
     fun partialBlock(path: String) = PartialModel(resource("block/$path"))
@@ -80,16 +87,27 @@ object PartialModels {
     }
 }
 
-enum class RenderTypeType {
+enum class DefaultRenderType {
     Solid,
     Cutout,
     Transparent
 }
 
 // find better name
-data class DefaultRenderTypePartialModel<Model : PartialModel>(val partial : Model, val type: RenderTypeType)
+data class DefaultRenderTypePartialModel<Model : PartialModel>(val model : Model, val type: DefaultRenderType)
 
-fun<T : PartialModel> T.solid() = DefaultRenderTypePartialModel<T>(this, RenderTypeType.Solid)
-fun<T : PartialModel> T.cutout() = DefaultRenderTypePartialModel<T>(this, RenderTypeType.Cutout)
-fun<T : PartialModel> T.transparent() = DefaultRenderTypePartialModel<T>(this, RenderTypeType.Transparent)
+fun MaterialManager.group(type: DefaultRenderType): MaterialGroup = when(type) {
+    DefaultRenderType.Solid -> this.defaultSolid()
+    DefaultRenderType.Cutout -> this.defaultCutout()
+    DefaultRenderType.Transparent -> this.defaultTransparent()
+}
+
+fun<T : PartialModel> MaterialManager.model(partial: DefaultRenderTypePartialModel<T>): Instancer<ModelData> =
+    this.group(partial.type)
+    .material(Materials.TRANSFORMED)
+    .getModel(partial.model)
+
+fun<T : PartialModel> T.solid() = DefaultRenderTypePartialModel<T>(this, DefaultRenderType.Solid)
+fun<T : PartialModel> T.cutout() = DefaultRenderTypePartialModel<T>(this, DefaultRenderType.Cutout)
+fun<T : PartialModel> T.transparent() = DefaultRenderTypePartialModel<T>(this, DefaultRenderType.Transparent)
 

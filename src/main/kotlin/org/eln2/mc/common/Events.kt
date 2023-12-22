@@ -15,6 +15,7 @@ import org.ageseries.libage.data.SECOND
 import org.ageseries.libage.data.classify
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.LOG
+import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.CellGraphManager
 import org.eln2.mc.common.content.GridConnectionManagerClient
 import org.eln2.mc.common.content.GridConnectionManagerServer
@@ -30,6 +31,8 @@ object ModEvents {
     @SubscribeEvent @JvmStatic
     fun loadCompletedEvent(event: FMLLoadCompleteEvent) {
         isFullyLoaded = true
+
+        BlockRegistry.finalize()
     }
 }
 

@@ -14,7 +14,7 @@ import org.eln2.mc.extensions.plus
 /**
  * The Part Item delegates the placement of a Part to the Multipart Container.
  * */
-class PartItem(private val provider: PartProvider) : BlockItem(BlockRegistry.MULTIPART_BLOCK.block.get(), Properties()) {
+class PartItem(private val provider: PartProvider) : BlockItem(BlockRegistry.MULTIPART_BLOCK.get(), Properties()) {
     override fun useOn(pContext: UseOnContext): InteractionResult {
         if (pContext.level.isClientSide) {
             return InteractionResult.FAIL

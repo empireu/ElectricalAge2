@@ -23,11 +23,10 @@ import org.eln2.mc.ServerOnly
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.data.*
-import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.integration.ComponentDisplay
-import org.eln2.mc.extensions.isHorizontal
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import java.util.*
+import kotlin.collections.ArrayList
+import kotlin.collections.HashSet
 
 abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirectionalBlock(p ?: Properties.of().noOcclusion()), EntityBlock {
     init {
@@ -51,12 +50,12 @@ abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirection
     }
 
     override fun onBlockExploded(blockState: BlockState?, level: Level?, blockPos: BlockPos?, explosion: Explosion?) {
-        destroy(level ?: error("Level was null"), blockPos ?: error("Position was null"))
+        markCellDestroyed(level ?: error("Level was null"), blockPos ?: error("Position was null"))
         super.onBlockExploded(blockState, level, blockPos, explosion)
     }
 
     override fun onDestroyedByPlayer(blockState: BlockState?, level: Level?, blockPos: BlockPos?, player: Player?, willHarvest: Boolean, fluidState: FluidState?): Boolean {
-        destroy(
+        markCellDestroyed(
             level
             ?: error("Level was null"),
             blockPos ?: error("Position was null")
@@ -64,10 +63,9 @@ abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirection
         return super.onDestroyedByPlayer(blockState, level, blockPos, player, willHarvest, fluidState)
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun destroy(level: Level, blockPos: BlockPos) {
+    fun markCellDestroyed(level: Level, blockPos: BlockPos) {
         if (!level.isClientSide) {
-            val cellEntity = level.getBlockEntity(blockPos)!! as CellBlockEntity<C>
+            val cellEntity = level.getBlockEntity(blockPos)!! as CellBlockEntity<*>
             cellEntity.setDestroyed()
         }
     }
@@ -83,6 +81,8 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
     private lateinit var savedGraphID: UUID
 
     private var cellField: C? = null
+
+    val hasCell get() = cellField != null
 
     @ServerOnly
     val cell: C get() = cellField ?: error("Tried to get cell too early! $this")
@@ -105,10 +105,12 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
 
         cell.container = this
 
-        CellConnections.insertFresh(this, cell!!)
+        CellConnections.insertFresh(this, cell)
         setChanged()
 
         cell.bindGameObjects(createObjectList())
+
+        onCellAcquired()
     }
 
     fun disconnect() {
@@ -200,8 +202,12 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
             cell.container = this
             cell.onContainerLoaded()
             cell.bindGameObjects(createObjectList())
+
+            onCellAcquired()
         }
     }
+
+    protected open fun onCellAcquired() { }
 
     //#endregion
 
@@ -218,14 +224,22 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
     override fun neighborScan(actualCell: Cell): List<CellNeighborInfo> {
         val level = this.level ?: error("Level is null in queryNeighbors")
 
-        val results = ArrayList<CellNeighborInfo>()
+        val results = HashSet<CellNeighborInfo>()
 
         Base6Direction3dMask.HORIZONTALS.directionList.forEach { searchDir ->
-            planarCellScan(level, cell, searchDir, results::add)
+            planarCellScan(level, cell, searchDir) {
+                check(results.add(it)) {
+                    "Duplicate planar cell scan $it"
+                }
+            }
         }
 
-        return results
+        addExtraConnections(results)
+
+        return results.toList()
     }
+
+    protected open fun addExtraConnections(results: MutableSet<CellNeighborInfo>) { }
 
     override fun onCellConnected(actualCell: Cell, remoteCell: Cell) {
         LOG.debug("Cell Block recorded connection from {} to {}", actualCell, remoteCell)

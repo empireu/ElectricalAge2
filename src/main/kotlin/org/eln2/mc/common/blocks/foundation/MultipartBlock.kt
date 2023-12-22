@@ -44,6 +44,7 @@ import org.eln2.mc.data.*
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
+import org.eln2.mc.integration.DebugComponentDisplay
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import java.util.*
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -319,7 +320,8 @@ class MultipartBlock : BaseEntityBlock(
 class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     BlockEntity(BlockRegistry.MULTIPART_BLOCK_ENTITY.get(), pos, state),
     CellContainer,
-    ComponentDisplay {
+    ComponentDisplay,
+    DebugComponentDisplay {
 
     // Interesting issue.
     // If we try to add tickers before the block receives the first tick,
@@ -1255,10 +1257,10 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        parts.values.forEach { part ->
-            if (part is ComponentDisplay) {
-                part.submitDisplay(builder)
-            }
-        }
+        LOG.error("Cannot submit display of multipart")
+    }
+
+    override fun submitDebugDisplay(builder: ComponentDisplayList) {
+        LOG.error("Cannot submit debug display of multipart")
     }
 }

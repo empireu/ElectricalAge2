@@ -9,6 +9,9 @@ import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.*
 import org.ageseries.libage.utils.sourceName
 import org.eln2.mc.*
+import org.eln2.mc.common.blocks.BlockRegistry
+import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlock
+import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.extensions.forEachCompound
 import org.eln2.mc.extensions.formattedPercentNormalized
@@ -16,6 +19,7 @@ import snownee.jade.api.*
 import snownee.jade.api.config.IPluginConfig
 import java.util.*
 import kotlin.math.absoluteValue
+
 
 @WailaPlugin
 class Eln2WailaPlugin : IWailaPlugin {
@@ -25,6 +29,30 @@ class Eln2WailaPlugin : IWailaPlugin {
 
     override fun registerClient(registration: IWailaClientRegistration) {
         registration.registerBlockComponent(ComponentDisplayProvider, Block::class.java)
+
+        registration.addRayTraceCallback { _, accessor, _ ->
+            if (accessor is BlockAccessor) {
+                if (accessor.block is MultiblockDelegateBlock) {
+                    val delegateBlockEntity = accessor.blockEntity
+                        as? MultiblockDelegateBlockEntity
+
+                    if(delegateBlockEntity != null) {
+                        val representativePos = delegateBlockEntity.representativePos
+
+                        if(representativePos != null) {
+                            return@addRayTraceCallback registration
+                                .blockAccessor()
+                                .from(accessor)
+                                .blockState(accessor.level.getBlockState(representativePos))
+                                .blockEntity(accessor.level.getBlockEntity(representativePos))
+                                .build()
+                        }
+                    }
+                }
+            }
+
+            return@addRayTraceCallback accessor
+        }
     }
 
     private object ComponentDisplayProvider : IBlockComponentProvider, IServerDataProvider<BlockAccessor> {
@@ -32,27 +60,50 @@ class Eln2WailaPlugin : IWailaPlugin {
 
         override fun getUid() = resource(COMPONENT_DISPLAY)
 
-        override fun appendServerData(p0: CompoundTag, p1: BlockAccessor) {
-            var node = p1.blockEntity as? ComponentDisplay
-                ?: return
+        private inline fun<reified T> castBlockEntityOrPart(p1: BlockAccessor) : T? {
+            var node = p1.blockEntity as? T
+                ?: return null
 
             if(node is MultipartBlockEntity) {
-                node = node.pickPart(p1.player) as? ComponentDisplay
-                    ?: return
+                node = node.pickPart(p1.player) as? T
+                    ?: return null
+            }
+
+            return node
+        }
+
+        override fun appendServerData(p0: CompoundTag, p1: BlockAccessor) {
+            val display = castBlockEntityOrPart<ComponentDisplay>(p1)
+
+            // FIXME SharedConstants.IS_RUNNING_IN_IDE is not working
+            val debugDisplay = if(true) {
+                castBlockEntityOrPart<DebugComponentDisplay>(p1)
+            } else {
+                null
             }
 
             val components = mutableListOf<Component>()
             val builder = ComponentDisplayList(components)
 
-            try {
-                node.submitDisplay(builder)
-            } catch (e : Exception) {
-                // Handle errors caused by simulator (invalid access from user code)
-                // Make sure you add a breakpoint here if you aren't getting your tooltip properly
-                LOG.error("Append component error $node: $e")
+            if(display != null) {
+                try {
+                    display.submitDisplay(builder)
+                } catch (e : Throwable) {
+                    LOG.error("Display error $display: $e")
+                }
             }
 
-            p0.put(COMPONENT_DISPLAY, packComponentList(components))
+            if(debugDisplay != null) {
+                try {
+                    debugDisplay.submitDebugDisplay(builder)
+                } catch (e : Throwable) {
+                    LOG.error("DEBUG Display error $display: $e")
+                }
+            }
+
+            if(components.isNotEmpty()) {
+                p0.put(COMPONENT_DISPLAY, packComponentList(components))
+            }
         }
 
         override fun appendTooltip(p0: ITooltip, p1: BlockAccessor, p2: IPluginConfig) {
@@ -74,6 +125,13 @@ class Eln2WailaPlugin : IWailaPlugin {
  * */
 interface ComponentDisplay {
     fun submitDisplay(builder: ComponentDisplayList)
+}
+
+/**
+ * Debug-only version of [ComponentDisplay]. It will be used if the mod is running in the IDE.
+ * */
+interface DebugComponentDisplay {
+    fun submitDebugDisplay(builder: ComponentDisplayList)
 }
 
 private const val ENTRIES = "entries"
