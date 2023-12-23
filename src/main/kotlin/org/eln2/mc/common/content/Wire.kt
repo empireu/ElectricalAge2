@@ -85,7 +85,7 @@ class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass, val environmen
         lastTemperature = !thermalBody.temperature
     }
 
-    override fun offerComponent(neighbour: ThermalObject<*>) = ThermalComponentInfo(thermalBody)
+    override fun offerComponent(remote: ThermalObject<*>) = ThermalComponentInfo(thermalBody)
 
     override fun addComponents(simulator: Simulator) {
         simulator.add(thermalBody)
@@ -136,7 +136,7 @@ class ElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
      * */
     var resistance by resistors::crossResistance
 
-    override fun offerComponent(neighbour: ElectricalObject<*>) = resistors.getOfferedResistor(neighbour)
+    override fun offerComponent(remote: ElectricalObject<*>) = resistors.getOfferedResistor(remote)
 
     override fun clearComponents() = resistors.clear()
 
@@ -175,7 +175,7 @@ class ElectricalWireObjectVirtual(cell: Cell) : ElectricalObject<Cell>(cell) {
      * */
     var resistance by resistors::crossResistance
 
-    override fun offerComponent(neighbour: ElectricalObject<*>) = resistors.getOfferedResistor(neighbour)
+    override fun offerComponent(remote: ElectricalObject<*>) = resistors.getOfferedResistor(remote)
 
     override fun clearComponents() = resistors.clear()
 
@@ -554,12 +554,12 @@ open class WireCell(ci: CellCreateInfo, val connectionCrossSection: Double) : Ce
 
     override fun getContactSection(cell: Cell) = connectionCrossSection
 
-    override fun connectionPredicate(remoteCell: Cell): Boolean {
-        if(!super.connectionPredicate(remoteCell)) {
+    override fun cellConnectionPredicate(remote: Cell): Boolean {
+        if(!super.cellConnectionPredicate(remote)) {
             return false
         }
 
-        val solution = getPartConnectionOrNull(this.locator, remoteCell.locator)
+        val solution = getPartConnectionOrNull(this.locator, remote.locator)
             ?: return true
 
         return !blacklist.contains(solution.directionPart)
@@ -623,7 +623,7 @@ open class ElectrothermalWireCell(ci: CellCreateInfo, contactCrossSection: Doubl
         thermalWire.thermalBody
     )
 
-    override fun connectionPredicate(remoteCell: Cell) = remoteCell.hasObject(SimulationObjectType.Electrical) && super.connectionPredicate(remoteCell)
+    override fun cellConnectionPredicate(remote: Cell) = remote.hasObject(SimulationObjectType.Electrical) && super.cellConnectionPredicate(remote)
 }
 
 class WirePart<C : WireCell>(

@@ -7,7 +7,9 @@ package org.eln2.mc.common.content
 import com.jozufozu.flywheel.backend.instancing.InstancedRenderRegistry
 import net.minecraft.client.gui.screens.MenuScreens
 import net.minecraft.core.Direction
+import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.phys.AABB
+import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.Vector3d
 import org.ageseries.libage.mathematics.evaluate
@@ -34,11 +36,9 @@ import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
 import org.eln2.mc.common.blocks.BlockRegistry.defineDelegateMap
 import org.eln2.mc.common.blocks.foundation.BigBlockItem
+import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
 import org.eln2.mc.common.cells.CellRegistry.cell
-import org.eln2.mc.common.cells.foundation.BasicCellProvider
-import org.eln2.mc.common.cells.foundation.CellFactory
-import org.eln2.mc.common.cells.foundation.RadiantBodyEmissionDescription
-import org.eln2.mc.common.cells.foundation.TemperatureExplosionBehaviorOptions
+import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.containers.ContainerRegistry.menu
 import org.eln2.mc.common.items.CreativeTabRegistry
 import org.eln2.mc.common.items.ItemRegistry
@@ -46,10 +46,7 @@ import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.part
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.transformPartWorld
-import org.eln2.mc.data.FaceLocator
-import org.eln2.mc.data.directionPoleMapPlanar
-import org.eln2.mc.data.requireLocator
-import org.eln2.mc.data.withDirectionRulePlanar
+import org.eln2.mc.data.*
 import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
@@ -66,7 +63,11 @@ object Content {
      */
     fun initialize() {}
 
+    //#region Tools
+
     val WRENCH = item("wrench") { WrenchItem() }
+
+    //#endregion
 
     //#region Wires
 
@@ -104,6 +105,42 @@ object Content {
         }
         .register()
 
+    val THERMAL_RADIATOR_CELL = cell(
+        "thermal_radiator",
+        BasicCellProvider.setup {
+            val thermalProperties = WireThermalProperties(
+                ThermalMassDefinition(
+                    ChemicalElement.Copper.asMaterial,
+                    mass = Quantity(50.0, KILOGRAM)
+                ),
+                TemperatureExplosionBehaviorOptions(
+                    temperatureThreshold = Quantity(1000.0, CELSIUS)
+                ),
+                replicatesInternalTemperature = true,
+                replicatesExternalTemperature = true,
+                null, // TODO maybe it does radiate?
+                leakageParameters = ConnectionParameters(
+                    area = 5.0
+                ),
+            )
+
+            CellFactory {
+                ThermalWireCell(it, Double.POSITIVE_INFINITY, thermalProperties)
+            }
+        }
+    )
+
+    val THERMAL_RADIATOR_PART = part(
+        "thermal_radiator",
+        BasicPartProvider(Vector3d(1.0, 3.0 / 16.0, 1.0)) { ci ->
+            RadiatorPart(ci, defaultRadiantBodyColor())
+        }
+    )
+
+    //#endregion
+
+    //#region Creative Components
+
     val VOLTAGE_SOURCE_CELL = cell(
         "voltage_source",
         BasicCellProvider(::VoltageSourceCell)
@@ -130,7 +167,11 @@ object Content {
         )
     )
 
-    val BATTERY_CELL_12V = cell(
+    //#endregion
+
+    //#region Batteries
+
+    val LEAD_ACID_BATTERY_CELL_12V = cell(
         "lead_acid_battery_12v",
         BasicCellProvider.setup {
             val model =  BatteryModel(
@@ -194,11 +235,15 @@ object Content {
     val BATTERY_PART_12V = part(
         "lead_acid_battery_12v",
         BasicPartProvider(Vector3d(6.0 / 16.0, 7.0 / 16.0, 10.0 / 16.0)) { ci ->
-            BatteryPart(ci, BATTERY_CELL_12V.get()) { part ->
+            BatteryPart(ci, LEAD_ACID_BATTERY_CELL_12V.get()) { part ->
                 BasicPartRenderer(part, PartialModels.BATTERY)
             }
         }
     )
+
+    //#endregion
+
+    //#region Basic Electrical Components
 
     val RESISTOR_CELL = cell(
         "resistor",
@@ -213,65 +258,9 @@ object Content {
         )
     )
 
-    val THERMAL_RADIATOR_CELL = cell(
-        "thermal_radiator",
-        BasicCellProvider.setup {
-            val thermalProperties = WireThermalProperties(
-                ThermalMassDefinition(
-                    ChemicalElement.Copper.asMaterial,
-                    mass = Quantity(50.0, KILOGRAM)
-                ),
-                TemperatureExplosionBehaviorOptions(
-                    temperatureThreshold = Quantity(1000.0, CELSIUS)
-                ),
-                replicatesInternalTemperature = true,
-                replicatesExternalTemperature = true,
-                null, // TODO maybe it does radiate?
-                leakageParameters = ConnectionParameters(
-                    area = 5.0
-                ),
-            )
+    //#endregion
 
-            CellFactory {
-                ThermalWireCell(it, Double.POSITIVE_INFINITY, thermalProperties)
-            }
-        }
-    )
-    val THERMAL_RADIATOR_PART = part(
-        "thermal_radiator",
-        BasicPartProvider(Vector3d(1.0, 3.0 / 16.0, 1.0)) { ci ->
-            RadiatorPart(ci, defaultRadiantBodyColor())
-        }
-    )
-
-    val HEAT_GENERATOR_CELL = cell(
-        "heat_generator",
-        BasicCellProvider.setup {
-            val thermalDefinition = ThermalMassDefinition(
-                Material(
-                    label = "Test thermal conduit - heat generator",
-                    electricalResistivity = Quantity(Double.POSITIVE_INFINITY),
-                    thermalConductivity = Quantity(5000.0, WATT_PER_METER_KELVIN),
-                    specificHeat = ChemicalElement.Copper.specificHeat,
-                    density = ChemicalElement.Copper.density
-                ),
-                mass = Quantity(10.0, KILOGRAM)
-            )
-
-            val leakageParameters = ConnectionParameters.DEFAULT.copy(
-                conductance = Quantity(0.01, WATT_PER_KELVIN)
-            )
-
-            CellFactory {
-                HeatGeneratorCell(it, thermalDefinition, leakageParameters)
-            }
-        }
-    )
-    val HEAT_GENERATOR_BLOCK = blockAndItem("heat_generator") { HeatGeneratorBlock() }
-
-    val HEAT_GENERATOR_BLOCK_ENTITY = blockEntityOnly("heat_generator", ::HeatGeneratorBlockEntity) { HEAT_GENERATOR_BLOCK.block.get() }
-
-    val HEAT_GENERATOR_MENU = menu("heat_generator", ::HeatGeneratorMenu)
+    //#region Photovoltaics
 
     val PHOTOVOLTAIC_GENERATOR_CELL = cell(
         "photovoltaic_generator",
@@ -303,6 +292,10 @@ object Content {
             )
         }
     )
+
+    //#endregion
+
+    //#region Lights
 
     val LIGHT_CELL = cell(
         "light",
@@ -400,50 +393,6 @@ object Content {
         deviationMax = PI / 4.0
     )
 
-    val GRID_CELL = cell(
-        "grid",
-        BasicCellProvider { GridCell(it) })
-
-    val GRID_TAP_PART = part(
-        "grid_tap",
-        BasicPartProvider(Vector3d(4.0 / 16.0, 0.5, 4.0 / 16.0)) { ci ->
-            GridTapPart(ci, GRID_CELL.get())
-        }
-    )
-
-    val GRID_POLE_DELEGATE_MAP by defineDelegateMap("grid_pole") {
-        val column = registerDelegateOf(
-            AABB(
-                0.35, 0.0, 0.35,
-                0.65, 1.0, 0.65
-            )
-        )
-
-        principal(0, 1, 0, column)
-        principal(0, 2, 0, column)
-    }
-
-    val GRID_POLE_BLOCK = blockOnly("grid_pole") {
-        GridPoleBlock(
-            GRID_POLE_DELEGATE_MAP,
-            Vector3d(0.5, 2.5, 0.5)
-        )
-    }
-
-    val GRID_POLE_BLOCK_ENTITY = blockEntityOnly("grid_pole", GRID_POLE_BLOCK) { pos, state ->
-        GridPoleBlockEntity(GRID_POLE_BLOCK.get(), pos, state)
-    }
-
-    val GRID_POLE_BLOCK_ITEM = blockItemOnly("grid_pole") {
-        BigBlockItem(
-            GRID_POLE_DELEGATE_MAP,
-            GRID_POLE_BLOCK.get()
-        )
-    }
-
-    val GRID_CONNECT_COPPER = item("grid_connect_copper") {
-        GridConnectItem(GridMaterials.COPPER_AS_COPPER_COPPER)
-    }
 
     private const val GARDEN_LIGHT_INITIAL_CHARGE = 0.5
 
@@ -493,6 +442,140 @@ object Content {
             ).also { it.energy = GARDEN_LIGHT_INITIAL_CHARGE }
         }
     )
+
+    //#endregion
+
+    //#region Grid
+
+    val GRID_TAP_CELL = cell(
+        "grid_tap",
+        BasicCellProvider {
+            GridCell(
+                ci = it,
+                tapResistance = !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
+                    L = Quantity(10.0, CENTIMETER),
+                    A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
+                )
+            )
+        }
+    )
+
+    val GRID_PASS_TROUGH_CELL = cell(
+        "grid_pass",
+        BasicCellProvider {
+            GridCell(
+                ci = it,
+                tapResistance = null
+            )
+        }
+    )
+
+    val GRID_TAP_PART = part(
+        "grid_tap",
+        BasicPartProvider(Vector3d(4.0 / 16.0, 0.5, 4.0 / 16.0)) { ci ->
+            GridTapPart(ci, GRID_TAP_CELL.get())
+        }
+    )
+
+    val GRID_POLE_DELEGATE_MAP = defineDelegateMap("grid_pole") {
+        val column = registerDelegateOf(
+            AABB(
+                0.35, 0.0, 0.35,
+                0.65, 1.0, 0.65
+            )
+        )
+
+        principal(0, 1, 0, column)
+        principal(0, 2, 0, column)
+    }
+
+    private fun registerGridPole(
+        name: String,
+        delegateMap: Lazy<MultiblockDelegateMap>,
+        attachment: Vector3d,
+        cell: RegistryObject<CellProvider<GridCell>>
+    ) : RegistryObject<BlockEntityType<GridPoleBlockEntity>> {
+        val block = blockOnly(name) {
+            GridPoleBlock(
+                delegateMap.value,
+                attachment,
+                cell
+            )
+        }
+
+        val blockEntity = blockEntityOnly(name, block) { pos, state ->
+            GridPoleBlockEntity(
+                representativeBlock = block.get(),
+                pos,
+                state
+            )
+        }
+
+        blockItemOnly(name) {
+            BigBlockItem(
+                delegateMap.value,
+                block.get()
+            )
+        }
+
+        return blockEntity
+    }
+
+    val GRID_PASS_TROUGH_POLE_BLOCK_ENTITY = registerGridPole(
+        "grid_pass_pole",
+        GRID_POLE_DELEGATE_MAP,
+        Vector3d(0.5, 2.5, 0.5),
+        GRID_PASS_TROUGH_CELL
+    )
+
+    val GRID_TAP_POLE_BLOCK_ENTITY = registerGridPole(
+        "grid_tap_pole",
+        GRID_POLE_DELEGATE_MAP,
+        Vector3d(0.5, 2.5, 0.5),
+        GRID_TAP_CELL
+    )
+
+    val GRID_CONNECT_COPPER = item("grid_connect_copper") {
+        GridConnectItem(GridMaterials.COPPER_AS_COPPER_COPPER)
+    }
+
+    //#endregion
+
+    //#region Heat Generator
+
+    val HEAT_GENERATOR_CELL = cell(
+        "heat_generator",
+        BasicCellProvider.setup {
+            val thermalDefinition = ThermalMassDefinition(
+                Material(
+                    label = "Test thermal conduit - heat generator",
+                    electricalResistivity = Quantity(Double.POSITIVE_INFINITY),
+                    thermalConductivity = Quantity(5000.0, WATT_PER_METER_KELVIN),
+                    specificHeat = ChemicalElement.Copper.specificHeat,
+                    density = ChemicalElement.Copper.density
+                ),
+                mass = Quantity(10.0, KILOGRAM)
+            )
+
+            val leakageParameters = ConnectionParameters.DEFAULT.copy(
+                conductance = Quantity(0.01, WATT_PER_KELVIN)
+            )
+
+            CellFactory {
+                HeatGeneratorCell(it, thermalDefinition, leakageParameters)
+            }
+        }
+    )
+
+    val HEAT_GENERATOR_BLOCK = blockAndItem("heat_generator") { HeatGeneratorBlock() }
+
+    val HEAT_GENERATOR_BLOCK_ENTITY = blockEntityOnly(
+        "heat_generator",
+        HEAT_GENERATOR_BLOCK,
+        ::HeatGeneratorBlockEntity
+    )
+
+    val HEAT_GENERATOR_MENU = menu("heat_generator", ::HeatGeneratorMenu)
 
     val ELECTRICAL_HEAT_ENGINE_CELL = cell(
         "electrical_heat_engine",
@@ -563,14 +646,28 @@ object Content {
         }
     )
 
-    val FURNACE_BLOCK_ENTITY = blockEntityOnly("furnace", ::FurnaceBlockEntity) { FURNACE_BLOCK.block.get() }
+    //#endregion
 
-    val FURNACE_CELL = cell("furnace_cell", BasicCellProvider {
-        FurnaceCell(it, Base6Direction3d.Left, Base6Direction3d.Right)
-    })
+    //#region Furnaces
+
+    val FURNACE_CELL = cell(
+        "furnace_cell",
+        BasicCellProvider {
+            FurnaceCell(it, Base6Direction3d.Left, Base6Direction3d.Right)
+        }
+    )
 
     val FURNACE_BLOCK = blockAndItem("furnace") { FurnaceBlock() }
+
+    val FURNACE_BLOCK_ENTITY = blockEntityOnly(
+        "furnace",
+        FURNACE_BLOCK.block,
+        ::FurnaceBlockEntity
+    )
+
     val FURNACE_MENU = menu("furnace_menu", ::FurnaceMenu)
+
+    //#endregion
 
     fun clientSetup() {
         requireIsOnRenderThread()
@@ -587,14 +684,15 @@ object Content {
     }
 
     private fun setupFlywheel() {
-        InstancedRenderRegistry.configure(GRID_POLE_BLOCK_ENTITY.get())
-            .alwaysSkipRender()
-            .factory { manager, entity ->
-                SimpleBlockEntityInstance(manager, entity, PartialModels.POLE_TEMPORARY.solid()) { instance, renderer, blockEntity ->
-                    instance.translate(renderer.instancePosition).scale(1f, 3f, 1f)
-                }
-            }
-            .apply()
+        listOf(GRID_PASS_TROUGH_POLE_BLOCK_ENTITY, GRID_TAP_POLE_BLOCK_ENTITY).forEach {
+            InstancedRenderRegistry.configure(it.get())
+                .alwaysSkipRender()
+                .factory { manager, entity ->
+                    SimpleBlockEntityInstance(manager, entity, PartialModels.POLE_TEMPORARY.solid()) { instance, renderer, _ ->
+                        instance.translate(renderer.instancePosition).scale(1f, 3f, 1f)
+                    }
+                }.apply()
+        }
 
         LOG.info("Client flywheel completed")
     }

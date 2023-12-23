@@ -24,8 +24,8 @@ class GroundObject(cell: Cell) : ElectricalObject<Cell>(cell) {
             resistors.resistance = value
         }
 
-    override fun offerComponent(neighbour: ElectricalObject<*>): ElectricalComponentInfo {
-        return resistors.getOfferedResistor(neighbour)
+    override fun offerComponent(remote: ElectricalObject<*>): ElectricalComponentInfo {
+        return resistors.getOfferedResistor(remote)
     }
 
     override fun clearComponents() {

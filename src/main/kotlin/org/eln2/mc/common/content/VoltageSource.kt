@@ -23,8 +23,8 @@ class VoltageSourceObject(cell: Cell) : ElectricalObject<Cell>(cell) {
     val source = VoltageSource()
     val resistors = resistorBundle(0.01)
 
-    override fun offerComponent(neighbour: ElectricalObject<*>): ElectricalComponentInfo {
-        return resistors.getOfferedResistor(neighbour)
+    override fun offerComponent(remote: ElectricalObject<*>): ElectricalComponentInfo {
+        return resistors.getOfferedResistor(remote)
     }
 
     override fun clearComponents() {

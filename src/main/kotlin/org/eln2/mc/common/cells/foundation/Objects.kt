@@ -7,7 +7,6 @@ import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Simulator
 import org.ageseries.libage.sim.ThermalMass
-import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.CircuitBuilder
 import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
@@ -58,6 +57,11 @@ abstract class SimulationObject<C : Cell>(val cell: C) {
      * */
     abstract fun destroy()
 
+    /**
+     * Implements locator-based rules. These rules are general to all objects.
+     * @param remoteDesc The locator of the remote object's cell.
+     * @return True, if the connection is allowed. Otherwise, false. *This does not imply that the connection will be created; other filters might reject it down the line.*
+     * */
     open fun acceptsRemoteLocation(remoteDesc: Locator): Boolean {
         return ruleSet.accepts(cell.locator, remoteDesc)
     }
@@ -92,7 +96,7 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     /**
      * Called by the cell graph to fetch a connection candidate.
      * */
-    abstract fun offerComponent(neighbour: ThermalObject<*>): ThermalComponentInfo
+    abstract fun offerComponent(remote: ThermalObject<*>): ThermalComponentInfo
 
     /**
      * Called by the building logic when the thermal object is made part of a simulation.
@@ -127,6 +131,18 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
         connections.clear()
     }
 
+    /**
+     * Called when the simulation must be updated with the components owned by this object.
+     * */
+    protected abstract fun addComponents(simulator: Simulator)
+
+    /**
+     * Implements object-based rules.
+     * @param remote The remote thermal object.
+     * @return True, if the connection is allowed. Otherwise, false.
+     * */
+    open fun acceptsRemoteObject(remote: ThermalObject<*>) = true
+
     fun build() {
         if (simulation == null) {
             error("Tried to build thermal obj with null simulation")
@@ -142,11 +158,6 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
             )
         }
     }
-
-    /**
-     * Called when the simulation must be updated with the components owned by this object.
-     * */
-    protected abstract fun addComponents(simulator: Simulator)
 }
 
 data class ElectricalComponentInfo(val component: Term, val index: Int)
@@ -180,7 +191,7 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
      * Called by electrical objects to fetch a connection candidate.
      * The same component and pin **must** be returned by subsequent calls to this method, during same re-building moment.
      * */
-    abstract fun offerComponent(neighbour: ElectricalObject<*>): ElectricalComponentInfo
+    abstract fun offerComponent(remote: ElectricalObject<*>): ElectricalComponentInfo
 
     /**
      * Called by the building logic when the electrical object is made part of a circuit.
@@ -230,6 +241,13 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
             circuit.add(offer.component)
         }
     }
+
+    /**
+     * Implements object-based rules.
+     * @param remote The remote electrical object.
+     * @return True, if the connection is allowed. Otherwise, false.
+     * */
+    open fun acceptsRemoteObject(remote: ElectricalObject<*>) = true
 
     /**
      * Builds the connections, after the circuit was acquired in [setNewCircuit] and the components were added in [addComponents].
@@ -327,8 +345,8 @@ class ThermalBipoleObject<C : Cell>(
         lastTemperatureB2 = !b2.temperature
     }
 
-    override fun offerComponent(neighbour: ThermalObject<*>) = ThermalComponentInfo(
-        when (map.evaluate(cell.locator, neighbour.cell.locator)) {
+    override fun offerComponent(remote: ThermalObject<*>) = ThermalComponentInfo(
+        when (map.evaluate(cell.locator, remote.cell.locator)) {
             Pole.Plus -> b1
             Pole.Minus -> b2
         }
@@ -393,8 +411,8 @@ open class VRGeneratorObject<C : Cell>(cell: C, val map: PoleMap) : ElectricalOb
      * Gets the offered component by evaluating the map.
      * @return The resistor's external pin when the pole evaluates to *plus*. The source's negative pin when the pole evaluates to *minus*.
      * */
-    override fun offerComponent(neighbour: ElectricalObject<*>): ElectricalComponentInfo =
-        when (map.evaluate(this.cell.locator, neighbour.cell.locator)) {
+    override fun offerComponent(remote: ElectricalObject<*>): ElectricalComponentInfo =
+        when (map.evaluate(this.cell.locator, remote.cell.locator)) {
             Pole.Plus -> resistor.offerExternal()
             Pole.Minus -> source.offerNegative()
         }
@@ -416,9 +434,9 @@ open class VRGeneratorObject<C : Cell>(cell: C, val map: PoleMap) : ElectricalOb
  * @param term The term to wrap.
  * */
 open class PolarTermObject<C: Cell, T : Term>(cell: C, val poleMap: PoleMap, val term: T) : ElectricalObject<C>(cell) {
-    override fun offerComponent(neighbour: ElectricalObject<*>) = ElectricalComponentInfo(
+    override fun offerComponent(remote: ElectricalObject<*>) = ElectricalComponentInfo(
         term,
-        poleMap.evaluate(cell.locator, neighbour.cell.locator).conventionalPin
+        poleMap.evaluate(cell.locator, remote.cell.locator).conventionalPin
     )
 
     override fun addComponents(circuit: ElectricalComponentSet) {

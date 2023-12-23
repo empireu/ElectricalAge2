@@ -1,3 +1,5 @@
+@file:Suppress("MemberVisibilityCanBePrivate")
+
 package org.eln2.mc.common.cells.foundation
 
 import net.minecraft.core.Direction
@@ -157,7 +159,7 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     }
 
     fun allowsConnection(remote: Cell): Boolean {
-        val result = connectionPredicate(remote)
+        val result = cellConnectionPredicate(remote) && objectConnectionPredicate(remote)
 
         // Discuss with me if you want more info
         if(!result && connections.contains(remote)) {
@@ -173,8 +175,53 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
      * **SPECIAL CARE MUST BE TAKEN to ensure that the results are consistent with the actual [connections]**
      * @return True if the connection is accepted. Otherwise, false.
      * */
-    protected open fun connectionPredicate(remoteCell: Cell) : Boolean {
-        return ruleSet.accepts(locator, remoteCell.locator)
+    protected open fun cellConnectionPredicate(remote: Cell) : Boolean {
+        return ruleSet.accepts(locator, remote.locator)
+    }
+
+    /**
+     * Checks if a connection between this cell and [remote] makes sense. This is determined to be the case if any objects will form connections.
+     * **SPECIAL CARE MUST BE TAKEN to ensure that the results are consistent with the actual [connections]**
+     * @return True if the connection is accepted. Otherwise, false.
+     * */
+    protected open fun objectConnectionPredicate(remote: Cell) : Boolean {
+        return countPossibleConnections(remote) > 0
+    }
+
+    /**
+     * Counts the number of object connections that will happen between this cell and the other cell.
+     * */
+    fun countPossibleConnections(remote: Cell) : Int {
+        var count = 0
+
+        this.objects.forEachObject { localObj ->
+            if(remote.hasObject(localObj.type)) {
+                val remoteObj = remote.objects[localObj.type]
+
+                if(localObj.acceptsRemoteLocation(remote.locator) && remoteObj.acceptsRemoteLocation(this.locator)) {
+                    when(localObj.type) {
+                        Electrical -> {
+                            localObj as ElectricalObject
+                            remoteObj as ElectricalObject
+
+                            if(localObj.acceptsRemoteObject(remoteObj) && remoteObj.acceptsRemoteObject(localObj)) {
+                                count++
+                            }
+                        }
+                        Thermal -> {
+                            localObj as ThermalObject
+                            remoteObj as ThermalObject
+
+                            if(localObj.acceptsRemoteObject(remoteObj) && remoteObj.acceptsRemoteObject(localObj)) {
+                                count++
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return count
     }
 
     private val replicators = ArrayList<ReplicatorBehavior>()
@@ -494,33 +541,37 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
                     "Mismatched connection set"
                 }
 
-                if (!localObj.acceptsRemoteLocation(remoteCell.locator)) {
-                    continue
-                }
-
                 if (!remoteCell.hasObject(localObj.type)) {
                     continue
                 }
 
                 val remoteObj = remoteCell.objects[localObj.type]
 
-                if (!remoteObj.acceptsRemoteLocation(locator)) {
+                if (!localObj.acceptsRemoteLocation(remoteCell.locator) || !remoteObj.acceptsRemoteLocation(this.locator)) {
                     continue
                 }
 
-                // We can form a connection here.
-
                 when (localObj.type) {
                     Electrical -> {
-                        (localObj as ElectricalObject).addConnection(
-                            remoteCell.objects.electricalObject
-                        )
+                        localObj as ElectricalObject
+                        remoteObj as ElectricalObject
+
+                        if(!localObj.acceptsRemoteObject(remoteObj) || !remoteObj.acceptsRemoteObject(localObj)) {
+                            continue
+                        }
+
+                        localObj.addConnection(remoteObj)
                     }
 
                     Thermal -> {
-                        (localObj as ThermalObject).addConnection(
-                            remoteCell.objects.thermalObject
-                        )
+                        localObj as ThermalObject
+                        remoteObj as ThermalObject
+
+                        if(!localObj.acceptsRemoteObject(remoteObj) || !remoteObj.acceptsRemoteObject(localObj)) {
+                            continue
+                        }
+
+                        localObj.addConnection(remoteObj)
                     }
                 }
             }

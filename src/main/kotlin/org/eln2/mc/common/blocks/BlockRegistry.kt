@@ -26,14 +26,16 @@ object BlockRegistry {
     fun <T : BlockEntity> blockEntityOnly(
         name: String,
         blockEntitySupplier: BlockEntityType.BlockEntitySupplier<T>,
-        blockSupplier: (() -> Block),
+        vararg blockSuppliers: (() -> Block),
     ): RegistryObject<BlockEntityType<T>> {
 
         return BLOCK_ENTITIES.register(name) {
             @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS") // Thanks, Minecraft for the high quality code.
             BlockEntityType.Builder.of(
                 blockEntitySupplier,
-                blockSupplier()
+                *blockSuppliers.map {
+                    it.invoke()
+                }.toTypedArray()
             ).build(null)
         }
     }
@@ -42,13 +44,13 @@ object BlockRegistry {
         name: String,
         blockSupplier: RegistryObject<B>,
         blockEntitySupplier: BlockEntityType.BlockEntitySupplier<T>,
-    ) = blockEntityOnly(name, blockEntitySupplier) { blockSupplier.get() }
+    ) = blockEntityOnly(name, blockEntitySupplier, { blockSupplier.get() })
 
     fun <T : BlockEntity, B : Block> blockEntityOnly(
         name: String,
         blockSupplier: BlockRegistryItem<B>,
         blockEntitySupplier: BlockEntityType.BlockEntitySupplier<T>,
-    ) = blockEntityOnly(name, blockEntitySupplier) { blockSupplier.get() }
+    ) = blockEntityOnly(name, blockEntitySupplier, { blockSupplier.get() })
 
     fun setup(bus: IEventBus) {
         BLOCKS.register(bus)

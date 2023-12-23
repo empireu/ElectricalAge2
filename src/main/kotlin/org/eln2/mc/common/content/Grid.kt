@@ -33,6 +33,7 @@ import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraftforge.network.NetworkEvent
+import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.MutableMapPairBiMap
 import org.ageseries.libage.data.MutableSetMapMultiMap
 import org.ageseries.libage.data.associateByMulti
@@ -56,7 +57,6 @@ import org.eln2.mc.data.*
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.integration.DebugComponentDisplay
 import org.eln2.mc.mathematics.*
 import java.util.*
 import java.util.concurrent.locks.ReentrantReadWriteLock
@@ -782,9 +782,9 @@ object GridConnectionManagerClient {
 
 /**
  * Represents an electrical object that can make connections with other remote objects, to create a grid.
- * @param tapResistance The resistance of the connection between the grid and the neighboring objects.
+ * @param tapResistance The resistance of the connection between the grid and the neighboring objects. If null, then the object will not allow external connection.
  * */
-class GridElectricalObject(cell: GridCell, val tapResistance: Double) : ElectricalObject<GridCell>(cell) {
+class GridElectricalObject(cell: GridCell, val tapResistance: Double?) : ElectricalObject<GridCell>(cell) {
     private val gridResistors = HashMap<GridElectricalObject, VirtualResistor>()
 
     val totalCurrent get() = gridResistors.values.sumOf { abs(it.current) }
@@ -792,39 +792,52 @@ class GridElectricalObject(cell: GridCell, val tapResistance: Double) : Electric
 
     // Reset on clear, isPresent -> Is connected
     private val tapResistor = UnsafeLazyResettable {
+        check(tapResistance != null) {
+            "Did not expect to create tap resistor"
+        }
+
         val result = VirtualResistor()
         result.resistance = tapResistance
         result
     }
 
-    override fun offerComponent(neighbour: ElectricalObject<*>) =
-        if (neighbour is GridElectricalObject) {
+    override fun offerComponent(remote: ElectricalObject<*>) =
+        if (remote is GridElectricalObject) {
             // Identify if adjacent or grid:
-
-            val contact = cell.getGridContactResistance(neighbour)
+            val contact = cell.getGridContactResistance(remote)
 
             if(contact != null) {
                 // Part of grid:
-                ElectricalComponentInfo(
-                    gridResistors.computeIfAbsent(neighbour) {
-                        val result = VirtualResistor()
-                        result.resistance = contact / 2.0
-                        result
-                    },
-                    EXTERNAL_PIN
-                )
+                gridResistors.computeIfAbsent(remote) {
+                    val result = VirtualResistor()
+                    result.resistance = contact / 2.0
+                    result
+                }.offerExternal()
             }
             else {
-                ElectricalComponentInfo(tapResistor.value, EXTERNAL_PIN)
+                tapResistor.value.offerExternal()
             }
         }
         else {
-            ElectricalComponentInfo(tapResistor.value, EXTERNAL_PIN)
+            tapResistor.value.offerExternal()
         }
 
     override fun clearComponents() {
         gridResistors.clear()
         tapResistor.reset()
+    }
+
+    override fun acceptsRemoteObject(remote: ElectricalObject<*>): Boolean {
+        if(tapResistance != null) {
+            return true
+        }
+
+        // Filter non-grid:
+        if(remote is GridElectricalObject) {
+            return cell.getGridContactResistance(remote) != null
+        }
+
+        return false
     }
 
     override fun build(map: ElectricalConnectivityMap) {
@@ -844,7 +857,9 @@ class GridElectricalObject(cell: GridCell, val tapResistance: Double) : Electric
             }
         }
 
-        if(tapResistor.isInitialized()) { // If not present, it is illegal to connect it (not in graph)
+        if(tapResistor.isInitialized()) {
+            check(tapResistance != null)
+
             // Connects grid to external:
             gridResistors.values.forEach { gridResistor ->
                 map.connect(
@@ -874,10 +889,12 @@ data class GridStagingInfo(val remoteCell: GridCell, val properties: GridEndpoin
 
 /**
  * Electrical-thermal cell that links power grids with standalone electrical circuits.
+ * TODO -thermal
+ * @param tapResistance The tap resistance passed to the [GridElectricalObject].
  * */
-class GridCell(ci: CellCreateInfo) : Cell(ci) {
+class GridCell(ci: CellCreateInfo, tapResistance: Double?) : Cell(ci) {
     @SimObject
-    val electricalObject = GridElectricalObject(this, 1e-5)
+    val electricalObject = GridElectricalObject(this, tapResistance)
 
     /**
      * Gets the connections to remote grid cells, and the properties of the respective connections.
@@ -1046,7 +1063,7 @@ interface GridEndpointContainer : ComponentDisplay {
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.resistance(gridCell.electricalObject.tapResistance)
+        //builder.resistance(gridCell.electricalObject.tapResistance)
         builder.current(gridCell.electricalObject.totalCurrent)
         builder.power(gridCell.electricalObject.totalPower)
     }
@@ -1093,19 +1110,19 @@ class GridTapPart(ci: PartCreateInfo, provider: CellProvider<GridCell>) : GridCe
     override fun onConnectivityChanged() = this.setSyncDirty()
 }
 
-class GridPoleBlock(val delegateMap: MultiblockDelegateMap, val attachment: Vector3d) : CellBlock<GridCell>() {
+class GridPoleBlock(val delegateMap: MultiblockDelegateMap, val attachment: Vector3d, private val cellProvider: RegistryObject<CellProvider<GridCell>>) : CellBlock<GridCell>() {
     @Suppress("OVERRIDE_DEPRECATION")
     override fun skipRendering(pState: BlockState, pAdjacentState: BlockState, pDirection: Direction): Boolean {
         return true
     }
 
-    override fun getCellProvider() = Content.GRID_CELL.get()
+    override fun getCellProvider() = cellProvider.get()
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = GridPoleBlockEntity(this, pPos, pState)
 }
 
 class GridPoleBlockEntity(private val representativeBlock: GridPoleBlock, pos: BlockPos, state: BlockState) :
-    CellBlockEntity<GridCell>(pos, state, Content.GRID_POLE_BLOCK_ENTITY.get()),
+    CellBlockEntity<GridCell>(pos, state, Content.GRID_PASS_TROUGH_POLE_BLOCK_ENTITY.get()),
     BigBlockRepresentativeBlockEntity<GridPoleBlockEntity>,
     GridEndpointContainer
 {
