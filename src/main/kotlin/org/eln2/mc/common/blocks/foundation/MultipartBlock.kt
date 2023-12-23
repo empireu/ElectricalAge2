@@ -10,7 +10,6 @@ import net.minecraft.network.Connection
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ClientGamePacketListener
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket
-import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.util.RandomSource
@@ -99,25 +98,25 @@ class MultipartBlock : BaseEntityBlock(
         return getPartShape(pLevel, pPos, pContext)
     }
 
+    private fun spawnDrop(pLevel: ServerLevel, removedPart: Part<*>, saveTag: CompoundTag) {
+        val center = removedPart.worldShape.bounds().center
+
+        pLevel.addItem(center.x, center.y, center.z, Part.createPartDropStack(removedPart.id, saveTag))
+    }
+
     override fun onDestroyedByPlayer(
-        state: BlockState?,
-        level: Level?,
-        pos: BlockPos?,
-        player: Player?,
+        state: BlockState,
+        level: Level,
+        pos: BlockPos,
+        player: Player,
         willHarvest: Boolean,
-        fluid: FluidState?,
+        fluid: FluidState,
     ): Boolean {
-        if (pos == null) {
+        if (level.isClientSide) {
             return false
         }
 
-        if (level !is ServerLevel) {
-            return false
-        }
-
-        if (player == null) {
-            return false
-        }
+        level as ServerLevel
 
         val multipart = level.getBlockEntity(pos) as? MultipartBlockEntity
 
@@ -128,11 +127,11 @@ class MultipartBlock : BaseEntityBlock(
 
         val saveTag = CompoundTag()
 
-        val removedId = multipart.remove(player, level, saveTag)
+        val removedPart = multipart.remove(player, level, saveTag)
             ?: return false
 
         if (!player.isCreative) {
-            player.inventory.add(Part.createPartDropStack(removedId, saveTag))
+            spawnDrop(level, removedPart, saveTag)
         }
 
         // We want to destroy the multipart only if it is empty
@@ -150,11 +149,11 @@ class MultipartBlock : BaseEntityBlock(
             }
             else {
                 // Force update packet:
-                val list1: List<ServerPlayer> = chunk.playerProvider.getPlayers(
+                val serverPlayerList: List<ServerPlayer> = chunk.playerProvider.getPlayers(
                     ChunkPos(pos), false
                 )
 
-                chunk.broadcastBlockEntity(list1, level, pos)
+                chunk.broadcastBlockEntity(serverPlayerList, level, pos)
                 level.destroyBlock(pos, false)
             }
         }
@@ -186,12 +185,28 @@ class MultipartBlock : BaseEntityBlock(
         pFromPos: BlockPos,
         pIsMoving: Boolean,
     ) {
-        val multipart = pLevel.getBlockEntity(pPos) as? MultipartBlockEntity ?: return
+        val multipart = pLevel.getBlockEntity(pPos) as? MultipartBlockEntity
 
-        val completelyDestroyed = multipart.onNeighborDestroyed(pFromPos)
+        if(multipart != null) {
+            if(multipart.isEmpty) {
+                LOG.error("Multipart is already empty!")
+            }
 
-        if (completelyDestroyed) {
-            pLevel.destroyBlock(pPos, false)
+            if(!pLevel.isClientSide) {
+                pLevel as ServerLevel
+
+                val saveTag = CompoundTag()
+                val removedPart = multipart.destroyPartByNeighbor(pFromPos, saveTag)
+
+                if(removedPart != null) {
+                    spawnDrop(pLevel, removedPart, saveTag)
+                }
+
+                if (multipart.isEmpty) {
+                    check(removedPart != null)
+                    pLevel.destroyBlock(pPos, false)
+                }
+            }
         }
 
         super.neighborChanged(pState, pLevel, pPos, pBlock, pFromPos, pIsMoving)
@@ -237,7 +252,7 @@ class MultipartBlock : BaseEntityBlock(
         val entity: LivingEntity
 
         if (context.entity == null) {
-            if (level is ClientLevel && Minecraft.getInstance() != null && Minecraft.getInstance().player != null) {
+            if (level is ClientLevel && Minecraft.getInstance().player != null) {
                 // What to do?
                 // It doesn't give me the context
                 // Hopefully, this workaround won't screw me
@@ -513,10 +528,10 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     /**
      * Tries to destroy a part.
      * @param saveTag A tag to save part data, if required.
-     * @return The ID of the part that was broken, if any were picked. Otherwise, null.
+     * @return The ID of the part and its placement info, if a part was found. Otherwise, null.
      * */
     @ServerOnly
-    fun remove(entity: Player, level: Level, saveTag: CompoundTag? = null): ResourceLocation? {
+    fun remove(entity: Player, level: Level, saveTag: CompoundTag? = null): Part<*>? {
         if (level.isClientSide) {
             return null
         }
@@ -524,11 +539,9 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         val part = pickPart(entity)
             ?: return null
 
-        val id = part.id
-
         breakPart(part, saveTag)
 
-        return id
+        return part
     }
 
     /**
@@ -554,31 +567,20 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         setSyncDirty()
     }
 
-    /**
-     * Called by the block when a neighbor is destroyed.
-     * If a part is placed on the face corresponding to that neighbor,
-     * the part must be destroyed.
-     * */
     @ServerOnly
-    fun onNeighborDestroyed(neighborPos: BlockPos): Boolean {
-        if (level!!.isClientSide) {
-            return false
-        }
+    fun destroyPartByNeighbor(neighborPos: BlockPos, saveTag: CompoundTag? = null): Part<*>? {
+        check(!level!!.isClientSide)
 
         val direction = neighborPos.directionTo(pos)
+            ?: return null
 
-        if (direction == null) {
-            LOG.error("Failed to get direction")
-            return false
-        } else {
-            LOG.info("Face: $direction")
+        val part = parts[direction]
+
+        if (part != null) {
+            breakPart(part, saveTag)
         }
 
-        if (parts.containsKey(direction)) {
-            breakPart(parts[direction]!!)
-        }
-
-        return parts.size == 0
+        return part
     }
 
     /**
