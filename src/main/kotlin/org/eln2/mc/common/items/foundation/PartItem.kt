@@ -4,9 +4,11 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.context.UseOnContext
+import net.minecraft.world.level.block.Blocks
 import org.eln2.mc.LOG
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
+import org.eln2.mc.common.content.GridConnectionManagerClient
 import org.eln2.mc.common.content.GridConnectionManagerServer
 import org.eln2.mc.common.parts.foundation.PartProvider
 import org.eln2.mc.extensions.plus
@@ -16,63 +18,109 @@ import org.eln2.mc.extensions.plus
  * */
 class PartItem(private val provider: PartProvider) : BlockItem(BlockRegistry.MULTIPART_BLOCK.get(), Properties()) {
     override fun useOn(pContext: UseOnContext): InteractionResult {
-        if (pContext.level.isClientSide) {
-            return InteractionResult.FAIL
-        }
+        val player = pContext.player
 
-        if (pContext.player == null) {
+        if (player == null) {
             LOG.error("Null player!")
             return InteractionResult.FAIL
         }
 
-        val level = pContext.level as ServerLevel
+        val level = pContext.level
+        val substratePos = pContext.clickedPos
+        val face = pContext.clickedFace
+        val multipartPos = substratePos + face
 
-        val targetPos = pContext.clickedPos + pContext.clickedFace
-
-        if(GridConnectionManagerServer.clipsBlock(level, targetPos)) { 
-            LOG.warn("Multipart clips grid")
+        if (!MultipartBlockEntity.isValidSubstrateBlock(level, substratePos)) {
+            LOG.debug("Non-valid substrate")
             return InteractionResult.FAIL
         }
 
-        LOG.info("Interacting with multipart at $targetPos")
-
-        var entity = level.getBlockEntity(targetPos)
-
-        if (entity != null) {
-            LOG.info("Existing entity: $entity")
-
-            if (entity !is MultipartBlockEntity) {
-                LOG.error("Non-multipart entity found!")
-
+        if(level.isClientSide) {
+            if(GridConnectionManagerClient.clipsBlock(multipartPos)) {
+                LOG.debug("Multipart clips grid")
                 return InteractionResult.FAIL
             }
-        } else {
-            LOG.warn("Placing new multipart.")
+        }
+        else {
+            if(GridConnectionManagerServer.clipsBlock(level as ServerLevel, multipartPos)) {
+                LOG.debug("Multipart clips grid")
+                return InteractionResult.FAIL
+            }
+        }
+
+        LOG.debug("Placing part at {}", multipartPos)
+
+        var blockEntity = level.getBlockEntity(multipartPos)
+
+        if (blockEntity == null) {
+            // Need to place a multipart if the block is air:
+
+            val state = level.getBlockState(multipartPos)
+
+            if(!state.isAir) {
+                if(!state.`is`(Blocks.WATER)) {
+                    LOG.debug("Other block there")
+                    return InteractionResult.FAIL
+                }
+                else {
+                    LOG.debug("Waterlogging")
+                }
+            }
+
+            LOG.debug("Placing new multipart and part")
+
+            if(level.isClientSide) {
+                // Assume it works out
+                return InteractionResult.SUCCESS
+            }
 
             // Place multipart
             super.useOn(pContext)
 
-            entity = level.getBlockEntity(targetPos)
+            blockEntity = level.getBlockEntity(multipartPos) // Checked under this block
+        } else {
+            LOG.debug("Existing block entity: {}", blockEntity)
+
+            if (blockEntity !is MultipartBlockEntity) {
+                LOG.debug("Non-multipart entity found!")
+                return InteractionResult.FAIL
+            }
+
+            if(level.isClientSide) {
+                return if (blockEntity.placementCollides(player, face, provider)) {
+                    LOG.debug("Collides with part")
+                    InteractionResult.FAIL
+                } else {
+                    LOG.debug("Does not collide")
+                    InteractionResult.SUCCESS
+                }
+            }
         }
 
-        LOG.info("Target multipart entity: $entity")
+        check(!level.isClientSide)
+        level as ServerLevel
 
-        if (entity == null) {
+        LOG.debug("Target multipart entity: {}", blockEntity)
+
+        if (blockEntity == null) {
+            LOG.error("Placed multipart is null") // Maybe an entity is standing or some other external thing?
             return InteractionResult.FAIL
         }
 
-        val placed = (entity as MultipartBlockEntity).place(
-            pContext.player!!,
-            targetPos,
+        val isPlaced = (blockEntity as MultipartBlockEntity).place(
+            player,
+            multipartPos,
             pContext.clickedFace,
             provider,
             pContext.itemInHand.tag
         )
 
-        // If the part was placed successfully, let us consume this item.
-
-        return if (placed) InteractionResult.SUCCESS
-        else InteractionResult.FAIL
+        return if (isPlaced) {
+            InteractionResult.CONSUME
+        }
+        else {
+            InteractionResult.FAIL
+        }
     }
 
     override fun getDescriptionId(): String {

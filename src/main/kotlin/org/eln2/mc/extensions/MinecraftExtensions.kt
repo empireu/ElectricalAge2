@@ -27,6 +27,7 @@ import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.inventory.Slot
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.ChunkPos
+import net.minecraft.world.level.GameRules
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
@@ -212,15 +213,19 @@ fun Level.addParticle(
 }
 
 fun ServerLevel.addItem(x: Double, y: Double, z: Double, stack: ItemStack) {
-    this.addFreshEntity(
-        ItemEntity(
+    if(this.gameRules.getBoolean(GameRules.RULE_DOBLOCKDROPS) && !this.restoringBlockSnapshots) {
+        val entity =  ItemEntity(
             this,
             x,
             y,
             z,
             stack
         )
-    )
+
+        entity.setDefaultPickUpDelay()
+
+        this.addFreshEntity(entity)
+    }
 }
 
 fun ServerLevel.addItem(pos: BlockPos, stack: ItemStack) = addItem(pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble(), stack)

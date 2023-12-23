@@ -19,17 +19,24 @@ import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.context.BlockPlaceContext
 import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.LevelAccessor
 import net.minecraft.world.level.block.BaseEntityBlock
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.SimpleWaterloggedBlock
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.block.state.StateDefinition
+import net.minecraft.world.level.block.state.properties.BlockStateProperties
+import net.minecraft.world.level.block.state.properties.BooleanProperty
 import net.minecraft.world.level.material.FluidState
+import net.minecraft.world.level.material.Fluids
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.shapes.*
@@ -39,25 +46,65 @@ import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.foundation.*
-import org.eln2.mc.data.*
+import org.eln2.mc.data.FaceLocator
+import org.eln2.mc.data.requireLocator
 import org.eln2.mc.extensions.*
-import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
+import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.DebugComponentDisplay
 import org.eln2.mc.mathematics.Base6Direction3dMask
-import java.util.*
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.collections.set
 
 class MultipartBlock : BaseEntityBlock(
     Properties.copy(Blocks.STONE)
     .noOcclusion()
-    .destroyTime(0.2f)) {
+    .destroyTime(0.2f)), SimpleWaterloggedBlock
+{
+    companion object {
+        val WATERLOGGED: BooleanProperty = BlockStateProperties.WATERLOGGED
+    }
 
     private val epsilon = 0.00001
     private val emptyBox = box(0.0, 0.0, 0.0, epsilon, epsilon, epsilon)
 
     //#region Block Methods
+
+    init {
+        registerDefaultState(getStateDefinition().any().setValue(WATERLOGGED, false))
+    }
+
+    override fun getStateForPlacement(pContext: BlockPlaceContext): BlockState? {
+        val fluidState = pContext.level.getFluidState(pContext.clickedPos)
+        val flag = fluidState.type === Fluids.WATER
+        return defaultBlockState().setValue(WATERLOGGED, flag)
+    }
+
+    override fun createBlockStateDefinition(pBuilder: StateDefinition.Builder<Block, BlockState>) {
+        super.createBlockStateDefinition(pBuilder)
+        pBuilder.add(WATERLOGGED)
+    }
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun updateShape(
+        pState: BlockState,
+        pDirection: Direction,
+        pNeighborState: BlockState,
+        pLevel: LevelAccessor,
+        pPos: BlockPos,
+        pNeighborPos: BlockPos,
+    ): BlockState {
+        if (pState.getValue(WATERLOGGED)) {
+            pLevel.scheduleTick(pPos, Fluids.WATER, Fluids.WATER.getTickDelay(pLevel))
+        }
+
+        return super.updateShape(pState, pDirection, pNeighborState, pLevel, pPos, pNeighborPos)
+    }
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun getFluidState(pState: BlockState): FluidState {
+        return if (pState.getValue(WATERLOGGED)) Fluids.WATER.getSource(false) else super.getFluidState(pState)
+    }
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState): BlockEntity {
         return MultipartBlockEntity(pPos, pState)
@@ -433,6 +480,31 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     }
 
     /**
+     * Checks if placement of this part collides with an existing part.
+     * */
+    @ClientOnly
+    fun placementCollides(
+        entity: Player,
+        face: Direction,
+        provider: PartProvider,
+    ) : Boolean {
+        if(parts.containsKey(face)) {
+            return true
+        }
+
+        val worldBoundingBox = PartGeometry.worldBoundingBox(
+            provider.placementCollisionSize,
+            getHorizontalFacing(face, entity),
+            face,
+            pos
+        )
+
+        return parts.values.any { part ->
+            part.worldBoundingBox.intersects(worldBoundingBox)
+        }
+    }
+
+    /**
      * Attempts to place a part.
      * @return True if the part was successfully placed. Otherwise, false.
      * */
@@ -460,20 +532,22 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         }
 
         val neighborPos = pos - face
-        val targetBlockState = level.getBlockState(neighborPos)
-
-        if (!targetBlockState.isCollisionShapeFullBlock(level, neighborPos)) {
-            LOG.info("Cannot place on non-full block")
+        if (!isValidSubstrateBlock(level, neighborPos)) {
+            LOG.debug("Cannot place on non-full block")
             return false
         }
 
-        val placeDirection = orientation ?: if (face.isVertical()) {
-            entity.direction
-        } else {
-            Direction.NORTH
-        }
+        val placeDirection = orientation
+            ?: getHorizontalFacing(face, entity)
 
-        val placementContext = PartPlacementInfo(pos, face, placeDirection, level, this, provider)
+        val placementContext = PartPlacementInfo(
+            pos,
+            face,
+            placeDirection,
+            level,
+            this,
+            provider
+        )
 
         val worldBoundingBox = PartGeometry.worldBoundingBox(
             provider.placementCollisionSize,
@@ -888,7 +962,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
                 // GC reference tracking
                 savedTag = null
             } else {
-                LOG.info("Multipart save tag null")
+                LOG.debug("Multipart save tag null")
             }
         } catch (ex: Exception) {
             LOG.error("Unhandled exception in setLevel: $ex")
@@ -1215,6 +1289,18 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     val needsTicks get() = tickingParts.isNotEmpty()
 
     companion object {
+        private val DEFAULT_HORIZONTAL_FACING = Direction.NORTH
+
+        fun getHorizontalFacing(face: Direction, entity: Player) = if (face.isVertical()) {
+            entity.direction
+        } else {
+            DEFAULT_HORIZONTAL_FACING
+        }
+
+        fun isValidSubstrateBlock(pLevel: Level, substratePos: BlockPos) = pLevel.getBlockState(substratePos).let {
+            !it.isAir && it.isCollisionShapeFullBlock(pLevel, substratePos)
+        }
+
         fun <T : BlockEntity> serverTick(level: Level?, pos: BlockPos?, state: BlockState?, entity: T?) {
             if (entity !is MultipartBlockEntity) {
                 LOG.error("Block tick entity is not a multipart!")

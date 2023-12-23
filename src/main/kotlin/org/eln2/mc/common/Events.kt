@@ -72,8 +72,8 @@ object ForgeEvents {
             if (++lastLog == 100) {
                 lastLog = 0
 
-                LOG.debug("Simulation rate: ${upsAveragingList.calculate().formatted()} U/S")
-                LOG.debug("Simulation time: ${Quantity(tickTimeAveragingList.calculate(), SECOND).classify()}")
+                //LOG.debug("Simulation rate: ${upsAveragingList.calculate().formatted()} U/S")
+                //LOG.debug("Simulation time: ${Quantity(tickTimeAveragingList.calculate(), SECOND).classify()}")
             }
 
             GhostLightServer.applyChanges()

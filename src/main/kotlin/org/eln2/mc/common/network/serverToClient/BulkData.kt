@@ -222,7 +222,7 @@ object BulkMessages {
 
             if(++lastLog == 100) {
                 lastLog = 0
-                LOG.debug("Bulk messages per tick: ${messagesPerTickAverage.calculate().formatted()}")
+                //LOG.debug("Bulk messages per tick: ${messagesPerTickAverage.calculate().formatted()}")
             }
         }
     }
