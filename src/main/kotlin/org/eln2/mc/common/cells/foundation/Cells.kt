@@ -736,7 +736,15 @@ object CellConnections {
 
     fun disconnectCell(actualCell: Cell, actualContainer: CellContainer, notify: Boolean = true) {
         val manager = actualContainer.manager
-        val actualNeighborCells = actualContainer.neighborScan(actualCell)
+        val actualNeighborCells = actualContainer.neighborScan(actualCell).filter {
+            val isConnection = actualCell.connections.contains(it.neighbor)
+
+            if(!isConnection) {
+                LOG.warn("Found non-neighbor in query, did the world state change?")
+            }
+
+            isConnection
+        }
 
         val graph = actualCell.graph
 
@@ -942,16 +950,30 @@ inline fun planarCellScan(level: Level, actualCell: Cell, searchDirection: Direc
         }
 }
 
+/*
+* There is a little bug that makes connections possible around the corner of a block, even if there's a block adjacent diagonally.
+* I kind of like this, do we want to fix it?
+* */
+
+const val ALLOW_WRAPPED_DIAGONAL_WHATEVER = false
+
 inline fun wrappedCellScan(
     level: Level,
     actualCell: Cell,
-    searchDirectionTarget: Direction,
+    searchDirection: Direction,
     consumer: ((CellNeighborInfo) -> Unit),
 ) {
     val actualPosWorld = actualCell.locator.requireLocator<BlockLocator> { "Wrapped Scan requires a block position" }
-    val actualFaceActual = actualCell.locator.requireLocator<FaceLocator> { "Wrapped Scan requires a face" }
-    val wrapDirection = actualFaceActual.opposite
-    val remoteContainer = level.getBlockEntity(actualPosWorld + searchDirectionTarget + wrapDirection) as? CellContainer
+    val actualFaceWorld = actualCell.locator.requireLocator<FaceLocator> { "Wrapped Scan requires a face" }
+    val wrapDirection = actualFaceWorld.opposite
+
+    if(!ALLOW_WRAPPED_DIAGONAL_WHATEVER) {
+        if(!level.getBlockState(actualPosWorld + searchDirection).isAir) {
+            return
+        }
+    }
+
+    val remoteContainer = level.getBlockEntity(actualPosWorld + searchDirection + wrapDirection) as? CellContainer
         ?: return
 
     remoteContainer
@@ -960,7 +982,7 @@ inline fun wrappedCellScan(
         .forEach { targetCell ->
             val targetFaceTarget = targetCell.locator.requireLocator<FaceLocator>()
 
-            if (targetFaceTarget == searchDirectionTarget) {
+            if (targetFaceTarget == searchDirection) {
                 if (isConnectionAccepted(actualCell, targetCell)) {
                     consumer(CellNeighborInfo(targetCell, remoteContainer))
                 }
@@ -969,7 +991,7 @@ inline fun wrappedCellScan(
 }
 
 interface CellContainer {
-    fun getCells(): ArrayList<Cell>
+    fun getCells(): List<Cell>
     fun neighborScan(actualCell: Cell): List<CellNeighborInfo>
     fun onCellConnected(actualCell: Cell, remoteCell: Cell)
     fun onCellDisconnected(actualCell: Cell, remoteCell: Cell)

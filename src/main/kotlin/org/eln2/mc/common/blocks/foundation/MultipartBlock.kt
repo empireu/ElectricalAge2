@@ -40,6 +40,7 @@ import net.minecraft.world.level.material.Fluids
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.shapes.*
+import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.MultipartBlockEntityInstance
 import org.eln2.mc.common.blocks.BlockRegistry
@@ -54,7 +55,6 @@ import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.DebugComponentDisplay
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import java.util.concurrent.ConcurrentLinkedQueue
-import kotlin.collections.set
 
 class MultipartBlock : BaseEntityBlock(
     Properties.copy(Blocks.STONE)
@@ -174,7 +174,7 @@ class MultipartBlock : BaseEntityBlock(
 
         val saveTag = CompoundTag()
 
-        val removedPart = multipart.remove(player, level, saveTag)
+        val removedPart = multipart.breakPartByPlayer(player, level, saveTag)
             ?: return false
 
         if (!player.isCreative) {
@@ -243,7 +243,7 @@ class MultipartBlock : BaseEntityBlock(
                 pLevel as ServerLevel
 
                 val saveTag = CompoundTag()
-                val removedPart = multipart.destroyPartByNeighbor(pFromPos, saveTag)
+                val removedPart = multipart.breakPartByNeighbor(pFromPos, saveTag)
 
                 if(removedPart != null) {
                     spawnDrop(pLevel, removedPart, saveTag)
@@ -383,7 +383,8 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     BlockEntity(BlockRegistry.MULTIPART_BLOCK_ENTITY.get(), pos, state),
     CellContainer,
     ComponentDisplay,
-    DebugComponentDisplay {
+    DebugComponentDisplay
+{
 
     // Interesting issue.
     // If we try to add tickers before the block receives the first tick,
@@ -396,8 +397,6 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     // Used for part sync:
     private val dirtyParts = HashSet<Direction>()
     private val placementUpdates = ArrayList<PartUpdate>()
-
-    val hasPlacementUpdates get() = placementUpdates.isNotEmpty()
 
     // Used for disk loading:
     private var savedTag: CompoundTag? = null
@@ -416,17 +415,22 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     @ClientOnly
     val renderUpdates = ConcurrentLinkedQueue<PartUpdate>()
 
-    var collisionShape: VoxelShape private set
+    var collisionShape: VoxelShape = Shapes.empty()
+        private set
 
-    init {
-        collisionShape = Shapes.empty()
-    }
 
+    /**
+     * Gets the part on the specified [face] or null, if a part does not exist there.
+     * */
     fun getPart(face: Direction): Part<*>? {
         return parts[face]
     }
 
-    private fun destroyPart(face: Direction): Part<*>? {
+    /**
+     * Removes the part on [face] from all containers and notifies via [Part.onRemoved]
+     * @return The removed part or null, if there is no part on [face].
+     * */
+    private fun removePart(face: Direction): Part<*>? {
         val result = parts.remove(face)
             ?: return null
 
@@ -441,8 +445,12 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         return result
     }
 
+    /**
+     * Adds the [part] on the [face] and notifies via [Part.onAdded]
+     * Throws if a part already exists on that face.
+     * */
     private fun addPart(face: Direction, part: Part<*>) {
-        parts[face] = part
+        parts.putUnique(face, part)
         part.onAdded()
     }
 
@@ -461,33 +469,27 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     @ServerOnly
     fun enqueuePartSync(face: Direction) {
         dirtyParts.add(face)
-        setSyncDirty() // TODO: Can we batch multiple updates?
+        setSyncDirty()
     }
 
     /**
-     * Finds the part intersected by the entity's view.
+     * Finds the part intersected by the [entity]'s view.
+     * @return The intersected part or null, if none intersect the [entity]'s view.
      * */
-    fun pickPart(entity: LivingEntity): Part<*>? {
-        return clipScene(
-            entity,
-            { it.first },
-            parts.values.flatMap { part ->
-                part.worldShapeParts.map { aabb ->
-                    Pair(aabb, part)
-                }
+    fun pickPart(entity: LivingEntity) = clipScene(
+        entity,
+        { it.first },
+        parts.values.flatMap { part ->
+            part.worldShapeParts.map { aabb ->
+                Pair(aabb, part)
             }
-        )?.second
-    }
+        }
+    )?.second
 
     /**
      * Checks if placement of this part collides with an existing part.
      * */
-    @ClientOnly
-    fun placementCollides(
-        entity: Player,
-        face: Direction,
-        provider: PartProvider,
-    ) : Boolean {
+    fun placementCollides(entity: Player, face: Direction, provider: PartProvider) : Boolean {
         if(parts.containsKey(face)) {
             return true
         }
@@ -600,12 +602,12 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     }
 
     /**
-     * Tries to destroy a part.
-     * @param saveTag A tag to save part data, if required.
-     * @return The ID of the part and its placement info, if a part was found. Otherwise, null.
+     * Tries to break the part selected by [entity] with [breakPart].
+     * @param entity The player breaking the part.
+     * @return The part that was destroyed or null, if the player's view did not intersect a part.
      * */
     @ServerOnly
-    fun remove(entity: Player, level: Level, saveTag: CompoundTag? = null): Part<*>? {
+    fun breakPartByPlayer(entity: Player, level: Level, saveTag: CompoundTag? = null): Part<*>? {
         if (level.isClientSide) {
             return null
         }
@@ -619,10 +621,17 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     }
 
     /**
-     * Destroys a part, saves and synchronizes the changes.
+     * Removes a part with full synchronization. Automatically handles [CellPart]s.
+     * Notifies via [Part.onBroken].
+     * @param part The part to remove.
+     * @param saveTag A tag to save part data, if required (for [ItemPersistentPart]s).
      * */
     @ServerOnly
     fun breakPart(part: Part<*>, saveTag: CompoundTag? = null) {
+        require(parts.values.contains(part)) {
+            "Tried to break part $part which was not present"
+        }
+
         if (part is PartCellContainer<*>) {
             part.cell.unbindGameObjects()
             CellConnections.destroy(part.cell, this)
@@ -632,7 +641,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             part.saveToItemNbt(saveTag)
         }
 
-        destroyPart(part.placement.face)
+        removePart(part.placement.face)
         placementUpdates.add(PartUpdate(part, PartUpdateType.Remove))
 
         part.onBroken()
@@ -641,8 +650,14 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         setSyncDirty()
     }
 
+    /**
+     * Destroys a part based on a neighbor block that was broken.
+     * @param neighborPos The neighbor block that was broken.
+     * @param saveTag A tag to save part data, if required (for [ItemPersistentPart]s).
+     * @return The part that was destroyed or null, if no part was resting on the neighbor at [neighborPos].
+     * */
     @ServerOnly
-    fun destroyPartByNeighbor(neighborPos: BlockPos, saveTag: CompoundTag? = null): Part<*>? {
+    fun breakPartByNeighbor(neighborPos: BlockPos, saveTag: CompoundTag? = null): Part<*>? {
         check(!level!!.isClientSide)
 
         val direction = neighborPos.directionTo(pos)
@@ -794,13 +809,10 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             }
 
             val syncTag = part.getSyncTag()
-
-            if (syncTag == null) {
-                //LOG.error("Part $part had an update enqueued, but returned a null sync tag")
-                return@forEach
-            }
+                ?: return@forEach
 
             val updateTag = CompoundTag()
+
             updateTag.putDirection("Face", face)
             updateTag.put("SyncTag", syncTag)
 
@@ -857,7 +869,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
 
                 PartUpdateType.Remove -> {
                     val face = updateTag.getDirection("RemovedPartFace")
-                    val part = destroyPart(face)
+                    val part = removePart(face)
 
                     if (part == null) {
                         LOG.error("Client received broken part on $face, but there was no part present on the face!")
@@ -924,14 +936,14 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         try {
             saveParts(pTag, false)
         } catch (t: Throwable) {
-            LOG.error("MULTIPART SAVE EX $t")
+            LOG.fatal("MULTIPART SAVE ERROR: $t")
         }
     }
 
     /**
      * This method gets called when the tile entity is constructed.
      * The level is not available at this stage. We require this level to reconstruct the parts.
-     * As such, we defer part reconstruction to a stage where the level becomes available (setLevel)
+     * As such, we defer part reconstruction to a stage where the level becomes available ([setLevel])
      * */
     @ServerOnly
     override fun load(pTag: CompoundTag) {
@@ -941,7 +953,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     }
 
     /**
-     * This method finishes loading from disk. It constructs all parts from the saved tag.
+     * This method finishes loading. It constructs all parts from the saved tag.
      * */
     @ServerOnly
     override fun setLevel(pLevel: Level) {
@@ -962,10 +974,10 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
                 // GC reference tracking
                 savedTag = null
             } else {
-                LOG.debug("Multipart save tag null")
+                LOG.info("Multipart loaded fresh")
             }
         } catch (ex: Exception) {
-            LOG.error("Unhandled exception in setLevel: $ex")
+            LOG.fatal("setLevel ERROR: $ex")
         }
     }
 
@@ -1020,7 +1032,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * */
     @ServerOnly
     private fun saveParts(tag: CompoundTag, initial: Boolean) {
-        assert(!level!!.isClientSide)
+        check(!level!!.isClientSide)
 
         val partsTag = ListTag()
 
