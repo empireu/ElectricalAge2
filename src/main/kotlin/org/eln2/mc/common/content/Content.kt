@@ -43,7 +43,7 @@ import org.eln2.mc.common.containers.ContainerRegistry.menu
 import org.eln2.mc.common.items.CreativeTabRegistry
 import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
-import org.eln2.mc.common.parts.PartRegistry.part
+import org.eln2.mc.common.parts.PartRegistry.partAndItem
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.transformPartWorld
 import org.eln2.mc.data.*
@@ -130,7 +130,7 @@ object Content {
         }
     )
 
-    val THERMAL_RADIATOR_PART = part(
+    val THERMAL_RADIATOR_PART = partAndItem(
         "thermal_radiator",
         BasicPartProvider(Vector3d(1.0, 3.0 / 16.0, 1.0)) { ci ->
             RadiatorPart(ci, defaultRadiantBodyColor())
@@ -146,7 +146,7 @@ object Content {
         BasicCellProvider(::VoltageSourceCell)
     )
 
-    val VOLTAGE_SOURCE_PART = part(
+    val VOLTAGE_SOURCE_PART = partAndItem(
         "voltage_source",
         BasicPartProvider(
             Vector3d(6.0 / 16.0, 2.5 / 16.0, 6.0 / 16.0),
@@ -159,7 +159,7 @@ object Content {
         BasicCellProvider(::GroundCell)
     )
 
-    val GROUND_PART = part(
+    val GROUND_PART = partAndItem(
         "ground",
         BasicPartProvider(
             Vector3d(4.0 / 16.0, 4.0 / 16.0, 4.0 / 16.0),
@@ -232,7 +232,7 @@ object Content {
         }
     )
 
-    val BATTERY_PART_12V = part(
+    val BATTERY_PART_12V = partAndItem(
         "lead_acid_battery_12v",
         BasicPartProvider(Vector3d(6.0 / 16.0, 7.0 / 16.0, 10.0 / 16.0)) { ci ->
             BatteryPart(ci, LEAD_ACID_BATTERY_CELL_12V.get()) { part ->
@@ -250,7 +250,7 @@ object Content {
         BasicCellProvider(::ResistorCell)
     )
 
-    val RESISTOR_PART = part(
+    val RESISTOR_PART = partAndItem(
         "resistor",
         BasicPartProvider(
             Vector3d(3.5 / 16.0, 2.25 / 16.0, 5.0 / 16.0),
@@ -283,7 +283,7 @@ object Content {
         }
     )
 
-    val PHOTOVOLTAIC_PANEL_PART = part(
+    val PHOTOVOLTAIC_PANEL_PART = partAndItem(
         "photovoltaic_panel",
         BasicPartProvider(Vector3d(1.0, 2.0 / 16.0, 1.0)) { ci ->
             PhotovoltaicPanelPart(
@@ -306,7 +306,7 @@ object Content {
         }
     )
 
-    val LIGHT_PART = part(
+    val LIGHT_PART = partAndItem(
         "light_part",
         BasicPartProvider(Vector3d(8.0 / 16.0, (1.0 + 2.302) / 16.0, 5.0 / 16.0)) { ci ->
             PoweredLightPart(ci, LIGHT_CELL.get())
@@ -404,7 +404,7 @@ object Content {
 
     private val SMALL_GARDEN_LIGHT_MODEL = gardenLightModel(3.0)
 
-    val SMALL_GARDEN_LIGHT = part(
+    val SMALL_GARDEN_LIGHT = partAndItem(
         "small_garden_light",
         BasicPartProvider(Vector3d(4.0 / 16.0, 6.0 / 16.0, 4.0 / 16.0)) { ci ->
             SolarLightPart(
@@ -424,7 +424,7 @@ object Content {
 
     private val TALL_GARDEN_LIGHT_MODEL = gardenLightModel(7.0)
 
-    val TALL_GARDEN_LIGHT = part(
+    val TALL_GARDEN_LIGHT = partAndItem(
         "tall_garden_light",
         BasicPartProvider(Vector3d(3.0 / 16.0, 15.5 / 16.0, 3.0 / 16.0)) { ci ->
             SolarLightPart(
@@ -470,7 +470,7 @@ object Content {
         }
     )
 
-    val GRID_TAP_PART = part(
+    val GRID_TAP_PART = partAndItem(
         "grid_tap",
         BasicPartProvider(Vector3d(4.0 / 16.0, 0.5, 4.0 / 16.0)) { ci ->
             GridTapPart(ci, GRID_TAP_CELL.get())
@@ -639,7 +639,7 @@ object Content {
         }
     )
 
-    val ELECTRICAL_HEAT_ENGINE_PART = part(
+    val ELECTRICAL_HEAT_ENGINE_PART = partAndItem(
         "electrical_heat_engine",
         BasicPartProvider(Vector3d(4.0 / 16.0, 15.0 / 16.0, 14.0 / 16.0)) {
             ElectricalHeatEnginePart(it)

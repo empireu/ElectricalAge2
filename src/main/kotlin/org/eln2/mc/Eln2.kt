@@ -25,6 +25,7 @@ import org.eln2.mc.common.items.CreativeTabRegistry
 import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.parts.PartRegistry
+import org.eln2.mc.common.specs.SpecRegistry
 import java.io.InputStream
 import java.nio.charset.Charset
 import java.nio.file.Files
@@ -60,6 +61,7 @@ class Eln2 {
 
         CellRegistry.setup(modEventBus)
         PartRegistry.setup(modEventBus)
+        SpecRegistry.setup(modEventBus)
         Content.initialize()
 
         LOG.info("Prepared registries.")

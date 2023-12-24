@@ -6,10 +6,13 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraftforge.eventbus.api.IEventBus
 import net.minecraftforge.registries.*
 import org.ageseries.libage.data.mutableBiMapOf
+import org.ageseries.libage.mathematics.Vector3d
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.common.items.foundation.PartItem
+import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.PartProvider
+import org.eln2.mc.common.specs.foundation.SpecPart
 import org.eln2.mc.resource
 import java.util.function.Supplier
 
@@ -46,7 +49,7 @@ object PartRegistry {
      *  @param name The name for all the registry items.
      *  @param provider The part provider that will be used to create the part.
      * */
-    fun part(name: String, provider: PartProvider): PartRegistryItem {
+    fun partAndItem(name: String, provider: PartProvider): PartRegistryItem {
         val part = PARTS.register(name) { provider }
         val item = PART_ITEMS.register(name) { PartItem(provider) }
 
@@ -68,4 +71,8 @@ object PartRegistry {
     fun getPartItem(id: ResourceLocation): PartItem {
         return ForgeRegistries.ITEMS.getValue(id) as PartItem
     }
+
+    val SPEC_PART = partAndItem("spec_container", BasicPartProvider(Vector3d(1.0, 0.1, 1.0)) {
+        SpecPart(it)
+    })
 }

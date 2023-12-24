@@ -431,7 +431,7 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
 
         val smokeTemperature = this.smokeTemperature ?: (!properties.damageOptions.temperatureThreshold * 0.9)
 
-        PartRegistry.part(
+        PartRegistry.partAndItem(
             id,
             BasicPartProvider(hubSize) { ci ->
                 WirePart(

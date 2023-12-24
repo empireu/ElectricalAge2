@@ -32,6 +32,7 @@ import org.eln2.mc.common.content.PartConnectionRenderInfoSetConsumer
 import org.eln2.mc.common.content.getPartConnectionAsContactSectionConnectionOrNull
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.parts.foundation.*
+import org.eln2.mc.common.specs.foundation.SpecRenderer
 import org.eln2.mc.extensions.index
 import org.eln2.mc.mathematics.Base6Direction3d
 import kotlin.collections.HashSet

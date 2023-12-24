@@ -166,17 +166,6 @@ data class PartCreateInfo(
 )
 
 /**
- * Helper interface for renderers that store state in the [PartRenderer] instance.
- * */
-interface PartRendererStateStorage {
-    /**
-     * Called to restore the information from a previous renderer instance.
-     * Could happen when the renderer is re-created, after being destroyed. Could happen when origin shifts, etc. Passed as [PartRenderer] because the type can actually change (e.g. if switching backends)
-     * */
-    fun restoreSnapshot(renderer: PartRenderer)
-}
-
-/**
  * Parts are entity-like units that exist in a multipart entity. They are similar to normal block entities,
  * but up to 6 can exist in the same block space.
  * They are placed on the inner faces of a multipart container block space.
@@ -459,14 +448,14 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
         private set
 
     /**
-     * Gets the renderer instance for this part.
-     * By default, it calls the createRenderer method, and caches the result.
+     * Gets the [Renderer] instance for this part.
+     * By default, it calls the [createRenderer] method, and stores the result.
      * */
     @ClientOnly
     open val renderer: Renderer
         get() {
             if (!placement.level.isClientSide) {
-                error("Tried to get renderer on non-client side!")
+                error("Tried to get part renderer on non-client side!")
             }
 
             if (activeRenderer == null) {
@@ -1136,36 +1125,48 @@ abstract class PartRenderer {
     }
 
     /**
-     * Called when the part is picked up by the renderer.
-     * @param multipart The renderer instance.
+     * Called when the part is picked up by the [MultipartBlockEntity]'s renderer.
+     * @param multipartInstance The multipart's renderer instance.
      * */
-    fun setupRendering(multipart: MultipartBlockEntityInstance) {
-        this.multipart = multipart
+    fun setupRendering(multipartInstance: MultipartBlockEntityInstance) {
+        this.multipart = multipartInstance
         setupRendering()
     }
 
     /**
-     * Called to set up rendering, when [multipart] has been acquired.
+     * Called to set up rendering, when the [multipart] has been acquired.
      * */
     protected open fun setupRendering() { }
 
     /**
-     * Called when a light update occurs, or the part is set up (after [setupRendering]).
+     * Called when a light update occurs, or this renderer is set up (after [setupRendering]).
      * Models should be re-lit here
      * */
     open fun relight(source: RelightSource) { }
 
     /**
-     * Called each frame. This method may be used to animate parts or to
-     * apply general per-frame updates.
+     * Called each frame.
+     * This method may be used to play animations or to apply general per-frame updates.
      * */
     open fun beginFrame() { }
 
     /**
-     * Called when the renderer is no longer required.
-     * All resources must be released here.
+     * Called when the renderer is no longer required **OR** the rendering pipeline/backend/whatever is re-created. In that case, the renderer might be re-created just after this one is destroyed.
+     * As an example, this will happen if the user switches flywheel backends, (I think) when the user changes some graphics settings, and it can also happen when the floating origin shifts.
+     * All resources must be released here. If you have any data that you stored in this renderer but not in the part, and you would like to get it back, implement [PartRendererStateStorage].
      * */
-    abstract fun remove()
+    open fun remove() { }
+}
+
+/**
+ * Helper interface for renderers that store state in the [PartRenderer] instance.
+ * */
+interface PartRendererStateStorage {
+    /**
+     * Called to restore the information from a previous renderer instance.
+     * Could happen when the renderer is re-created, after being destroyed. Could happen when origin shifts, etc. Passed as [PartRenderer] because the type can actually change (e.g. if switching backends and the part chooses to create another renderer. Example: the wire)
+     * */
+    fun restoreSnapshot(renderer: PartRenderer)
 }
 
 fun interface PartRendererFactory<R : PartRenderer> {
