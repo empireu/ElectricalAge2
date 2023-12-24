@@ -185,27 +185,38 @@ class MultipartBlock : BaseEntityBlock(
         val multipartIsDestroyed = multipart.isEmpty
 
         if (multipartIsDestroyed) {
-            // There is an edge case here!
-            // Because we destroyed it, the update packet never got sent, unfortunately.
-            // We will manually send the update packet:
-
-            val chunk = level.chunkSource.chunkMap.updatingChunkMap.get(ChunkPos(pos).toLong())
-
-            if(chunk == null) {
-                LOG.error("Failed to access chunk holder for removed multipart!")
-            }
-            else {
-                // Force update packet:
-                val serverPlayerList: List<ServerPlayer> = chunk.playerProvider.getPlayers(
-                    ChunkPos(pos), false
-                )
-
-                chunk.broadcastBlockEntity(serverPlayerList, level, pos)
-                level.destroyBlock(pos, false)
-            }
+            destroyMultipart(level, pos)
         }
 
         return multipartIsDestroyed
+    }
+
+    private fun destroyMultipart(level: ServerLevel, pos: BlockPos) {
+        // There is an edge case here!
+        // Because we destroyed it, the update packet never got sent, unfortunately.
+        // We will manually send the update packet:
+
+        flushUpdatePacket(level, pos)
+        level.destroyBlock(pos, false)
+    }
+
+    /**
+     * Solution for edge case when some part updates are enqueued but the multipart is removed before minecraft decides to finally send the packet.
+     * */
+    private fun flushUpdatePacket(level: ServerLevel, pos: BlockPos) {
+        val chunk = level.chunkSource.chunkMap.updatingChunkMap.get(ChunkPos(pos).toLong())
+
+        if(chunk == null) {
+            LOG.error("Failed to access chunk holder for flush packet!")
+        }
+        else {
+            // Force update packet:
+            val serverPlayerList: List<ServerPlayer> = chunk.playerProvider.getPlayers(
+                ChunkPos(pos), false
+            )
+
+            chunk.broadcastBlockEntity(serverPlayerList, level, pos)
+        }
     }
 
     override fun addRunningEffects(state: BlockState?, level: Level?, pos: BlockPos?, entity: Entity?): Boolean {
@@ -251,7 +262,7 @@ class MultipartBlock : BaseEntityBlock(
 
                 if (multipart.isEmpty) {
                     check(removedPart != null)
-                    pLevel.destroyBlock(pPos, false)
+                    destroyMultipart(pLevel, pPos)
                 }
             }
         }
@@ -440,7 +451,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             animatedParts.removeIf { it == result }
         }
 
-        result.onRemoved()
+        result.setRemoved()
 
         return result
     }

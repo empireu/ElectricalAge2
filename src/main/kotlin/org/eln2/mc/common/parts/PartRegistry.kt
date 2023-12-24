@@ -12,7 +12,7 @@ import org.eln2.mc.MODID
 import org.eln2.mc.common.items.foundation.PartItem
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.PartProvider
-import org.eln2.mc.common.specs.foundation.SpecPart
+import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.resource
 import java.util.function.Supplier
 
@@ -73,6 +73,6 @@ object PartRegistry {
     }
 
     val SPEC_PART = partAndItem("spec_container", BasicPartProvider(Vector3d(1.0, 0.1, 1.0)) {
-        SpecPart(it)
+        SpecContainerPart(it)
     })
 }

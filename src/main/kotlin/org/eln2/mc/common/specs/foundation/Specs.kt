@@ -1,22 +1,33 @@
 package org.eln2.mc.common.specs.foundation
 
 import com.jozufozu.flywheel.core.materials.model.ModelData
+import com.jozufozu.flywheel.util.Color
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.Item
+import org.ageseries.libage.mathematics.BoundingBox3d
+import org.ageseries.libage.mathematics.Pose2d
 import org.ageseries.libage.mathematics.Vector3d
+import org.ageseries.libage.mathematics.o
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.CrossThreadAccess
+import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.createPartInstance
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.common.specs.SpecRegistry
+import org.eln2.mc.extensions.formatted
+import org.eln2.mc.extensions.getViewRay
+import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.DebugComponentDisplay
+import org.eln2.mc.mathematics.Plane3d
+import org.eln2.mc.mathematics.intersectionWith
 import java.util.concurrent.ConcurrentLinkedQueue
 
-class SpecPartRenderer(val specPart: SpecPart) : PartRenderer() {
+class SpecPartRenderer(val specPart: SpecContainerPart) : PartRenderer() {
     private val specs = ArrayList<Spec<*>>()
 
     /* FIXME FIXME FIXME FIXME FIXME */
@@ -79,14 +90,48 @@ class SpecPartRenderer(val specPart: SpecPart) : PartRenderer() {
     }
 }
 
-class SpecPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugComponentDisplay {
+class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugComponentDisplay {
+    val substratePlane = Plane3d(placement.face.toVector3d(), placement.mountingPointWorld)
+
     val renderUpdates = ConcurrentLinkedQueue<SpecUpdate>()
 
     override fun createRenderer(): SpecPartRenderer {
         return SpecPartRenderer(this)
     }
 
+    override fun onAddedToClient() {
+        DebugVisualizer.partFrame(this)
+        DebugVisualizer.partBounds(this)
+    }
+
     override fun onUsedBy(context: PartUseInfo): InteractionResult {
+        if(placement.level.isClientSide) {
+            val intersection = context.player.getViewRay() intersectionWith substratePlane
+
+            DebugVisualizer.lineBox(
+                BoundingBox3d.fromCenterSize(
+                    intersection,
+                    0.1
+                )
+            ).removeAfter(5.0).withinScopeOf(this)
+
+            val px = placement.positiveX.toVector3d()
+            val pz = placement.positiveZ.toVector3d()
+
+            val specialX = (intersection - placement.mountingPointWorld) o px
+            val specialZ = (intersection - placement.mountingPointWorld) o pz
+
+            println("Special x=${specialX.formatted()} z=${specialZ.formatted()}")
+
+            DebugVisualizer.lineBox(
+                BoundingBox3d.fromCenterSize(
+                    px * specialX + pz * specialZ + placement.mountingPointWorld,
+                    0.05
+                ),
+                color = Color.GREEN
+            ).removeAfter(5.0).withinScopeOf(this)
+        }
+
         return super.onUsedBy(context)
     }
 
@@ -131,14 +176,21 @@ abstract class SpecProvider {
     open fun canPlace(context: SpecPlacementInfo): Boolean = true
 }
 
+/**
+ * @param position The world position of the spec, on the substrate plane.
+ * */
 data class SpecPlacementInfo(
-    val part: SpecPart,
-    val provider: SpecProvider
+    val part: SpecContainerPart,
+    val provider: SpecProvider,
+    val position: Vector3d,
+    val specialPose: Pose2d
 ) {
     val level by part.placement::level
     val blockPos by part.placement::position
     val face by part.placement::face
     val multipart by part.placement::multipart
+    val specialPosition by specialPose::translation
+    val specialRotation by specialPose::rotation
 }
 
 abstract class Spec<Renderer : SpecRenderer>(ci: SpecCreateInfo) {
@@ -225,7 +277,7 @@ abstract class SpecRenderer {
     }
 
     /**
-     * Called when the spec is picked up by the [SpecPart]'s renderer.
+     * Called when the spec is picked up by the [SpecContainerPart]'s renderer.
      * @param partRenderer The spec part's renderer.
      * */
     fun setupRendering(partRenderer: SpecPartRenderer) {

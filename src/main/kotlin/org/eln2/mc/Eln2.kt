@@ -14,6 +14,7 @@ import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
+import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.FlywheelRegistry
 import org.eln2.mc.common.blocks.BlockRegistry

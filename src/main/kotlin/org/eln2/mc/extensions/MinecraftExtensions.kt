@@ -41,10 +41,7 @@ import net.minecraft.world.phys.shapes.VoxelShape
 import net.minecraftforge.common.ForgeMod
 import net.minecraftforge.network.NetworkHooks
 import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.mathematics.Rotation2d
-import org.ageseries.libage.mathematics.Vector2d
-import org.ageseries.libage.mathematics.Vector3d
-import org.ageseries.libage.mathematics.Vector3di
+import org.ageseries.libage.mathematics.*
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.parts.foundation.Part
@@ -69,6 +66,14 @@ fun Entity.getClipStartEnd() : Pair<Vec3, Vec3> {
     val end = start + viewDirection * distance
 
     return Pair(start, end)
+}
+
+fun Entity.getViewRay(): Ray3d {
+    val lookAngle = this.lookAngle
+    val viewDirection = Vector3d(lookAngle.x, lookAngle.y, lookAngle.z)
+    val start = Vector3d(this.x, this.eyeY, this.z)
+
+    return Ray3d(start, viewDirection.normalized())
 }
 
 fun AABB.viewClip(entity: LivingEntity): Optional<Vec3> {

@@ -56,7 +56,11 @@ data class PartPlacementInfo(
     val multipart: MultipartBlockEntity,
     val provider: PartProvider
 ) {
-    val orientation = PartOrientation(face, horizontalFacing)
+    val positiveX = partX(horizontalFacing, face)
+    val positiveY = partY(horizontalFacing, face)
+    val positiveZ = partZ(horizontalFacing, face)
+
+    val mountingPointWorld = position.toVector3d() + Vector3d(0.5) - face.toVector3d() * 0.5
 
     fun createLocator() = LocatorSetBuilder().apply {
         withLocator(position)
@@ -174,6 +178,7 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
     val id = ci.id
     val placement = ci.placement
     val partProviderShape = Shapes.create(modelBoundingBox)
+    var isRemoved = false
 
     companion object {
         fun createPartDropStack(id: ResourceLocation, saveTag: CompoundTag?, count: Int = 1): ItemStack {
@@ -421,10 +426,19 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
      * */
     open fun onBroken() {}
 
+    fun setRemoved() {
+        if(this.isRemoved) {
+            LOG.error("Multiple calls to setRemoved")
+        }
+
+        this.isRemoved = true
+        onRemoved()
+    }
+
     /**
      * Called when the part is removed from the multipart.
      * */
-    open fun onRemoved() {}
+    protected open fun onRemoved() {}
 
     /**
      * Called when this part is received and added to the client multipart, just before rendering set-up is enqueued.
@@ -628,7 +642,7 @@ abstract class CellPart<C: Cell, R : PartRenderer>(
     @ServerOnly
     private var customSimulationData: CompoundTag? = null
 
-    protected var isAlive = false
+    protected var isAlive = false // FIXME remove, replace with Part#isRemoved
         private set
 
     /**
@@ -886,8 +900,11 @@ fun incrementFromForwardUp(facingPart: Direction, faceWorld: Direction, directio
     return Direction.from3DDataValue(INCREMENT_FROM_FORWARD_UP.get(id))
 }
 
-fun incrementFromForwardUp(facingPart: Direction, faceWorld: Direction, direction: Base6Direction3d) =
-    incrementFromForwardUp(facingPart, faceWorld, direction.alias)
+fun incrementFromForwardUp(facingPart: Direction, faceWorld: Direction, direction: Base6Direction3d) = incrementFromForwardUp(facingPart, faceWorld, direction.alias)
+
+fun partX(facingPart: Direction, faceWorld: Direction) = incrementFromForwardUp(facingPart, faceWorld, Direction.EAST)
+fun partY(facingPart: Direction, faceWorld: Direction) = incrementFromForwardUp(facingPart, faceWorld, Direction.UP)
+fun partZ(facingPart: Direction, faceWorld: Direction) = incrementFromForwardUp(facingPart, faceWorld, Direction.SOUTH)
 
 fun Locator.transformPartWorld(directionPart: Base6Direction3d) : Direction {
     val facing = this.requireLocator<FacingLocator> { "Part -> World requires facing" }

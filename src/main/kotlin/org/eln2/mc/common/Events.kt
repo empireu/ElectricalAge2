@@ -15,6 +15,7 @@ import org.ageseries.libage.data.SECOND
 import org.ageseries.libage.data.classify
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.LOG
+import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.CellGraphManager
 import org.eln2.mc.common.content.GridConnectionManagerClient
@@ -140,6 +141,7 @@ object ForgeEvents {
         if(event.level.isClientSide) {
             GhostLightHackClient.clear()
             GridConnectionManagerClient.clear()
+            DebugVisualizer.clear()
         }
     }
 }
