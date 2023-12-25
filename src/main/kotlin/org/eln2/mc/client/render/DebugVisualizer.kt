@@ -3,7 +3,6 @@
 package org.eln2.mc.client.render
 
 import com.jozufozu.flywheel.util.Color
-import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.PoseStack
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
@@ -14,11 +13,13 @@ import net.minecraft.client.renderer.RenderType
 import net.minecraft.core.Direction
 import net.minecraft.world.phys.AABB
 import org.ageseries.libage.mathematics.BoundingBox3d
+import org.ageseries.libage.mathematics.OrientedBoundingBox3d
 import org.ageseries.libage.mathematics.Vector3d
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.common.parts.foundation.Part
-import org.eln2.mc.extensions.toVec3
+import org.eln2.mc.extensions.*
+import org.joml.Quaternionf
 
 @ClientOnly
 object DebugVisualizer {
@@ -120,7 +121,7 @@ object DebugVisualizer {
 
     }
 
-    private class LineBox(val aabb: AABB, val color: Color, val thickness: Float) : RenderElement() {
+    private class LineAABB(val aabb: AABB, val color: Color) : RenderElement() {
         override fun render(
             pPoseStack: PoseStack,
             pBufferSource: MultiBufferSource.BufferSource,
@@ -130,8 +131,6 @@ object DebugVisualizer {
             level: ClientLevel,
             player: LocalPlayer,
         ) {
-            RenderSystem.lineWidth(thickness)
-
             LevelRenderer.renderLineBox(
                 pPoseStack,
                 pBufferSource.getBuffer(RenderType.lines()),
@@ -150,6 +149,59 @@ object DebugVisualizer {
                 color.blueAsFloat
             )
         }
+    }
+
+    private class LineOBB(val obb: OrientedBoundingBox3d, val color: Color) : RenderElement() {
+        override fun render(
+            pPoseStack: PoseStack,
+            pBufferSource: MultiBufferSource.BufferSource,
+            pCamX: Double,
+            pCamY: Double,
+            pCamZ: Double,
+            level: ClientLevel,
+            player: LocalPlayer,
+        ) {
+            pPoseStack.pushPose()
+
+            pPoseStack.translate(-pCamX, -pCamY, -pCamZ)
+
+            pPoseStack.translate(
+                obb.transform.translation.x,
+                obb.transform.translation.y,
+                obb.transform.translation.z
+            )
+
+            pPoseStack.mulPose(
+                Quaternionf().run {
+                    val (x, y, z, w) = obb.transform.rotation
+                    set(x.toFloat(), y.toFloat(), z.toFloat(), w.toFloat())
+                }
+            )
+
+            val min = -obb.halfSize
+            val max = +obb.halfSize
+
+            LevelRenderer.renderLineBox(
+                pPoseStack,
+                pBufferSource.getBuffer(RenderType.lines()),
+                min.x,
+                min.y,
+                min.z,
+                max.x,
+                max.y,
+                max.z,
+                color.redAsFloat,
+                color.greenAsFloat,
+                color.blueAsFloat,
+                color.alphaAsFloat,
+                color.redAsFloat,
+                color.greenAsFloat,
+                color.blueAsFloat
+            )
+
+            pPoseStack.popPose()
+        }
+
     }
 
     @JvmStatic
@@ -200,13 +252,16 @@ object DebugVisualizer {
         return composite
     }
 
-    fun createLineBox(vararg aabbs: AABB, color: Color = Color.WHITE, thickness: Float = 5.0f) =
-        createCompositionOf(*aabbs.map { LineBox(it, color, thickness) }.toTypedArray())
+    fun createLineBox(vararg aabbs: AABB, color: Color = Color.WHITE) =
+        createCompositionOf(*aabbs.map { LineAABB(it, color) }.toTypedArray())
 
-    fun createLineBox(vararg aabbs: BoundingBox3d, color: Color = Color.WHITE, thickness: Float = 5.0f) =
-        createCompositionOf(*aabbs.map { LineBox(AABB(it.min.toVec3(), it.max.toVec3()), color, thickness) }.toTypedArray())
+    fun createLineBox(vararg aabbs: BoundingBox3d, color: Color = Color.WHITE) =
+        createCompositionOf(*aabbs.map { LineAABB(AABB(it.min.toVec3(), it.max.toVec3()), color) }.toTypedArray())
 
-    fun createDirection(origin: Vector3d, direction: Direction, size: Double = 0.05, color: Color = Color.WHITE, thickness: Float = 5.0f) : RenderElement {
+    fun createLineOrientedBox(vararg obbs: OrientedBoundingBox3d, color: Color = Color.WHITE) =
+        createCompositionOf(*obbs.map { LineOBB(it, color) }.toTypedArray())
+
+    fun createDirection(origin: Vector3d, direction: Direction, size: Double = 0.05, color: Color = Color.WHITE) : RenderElement {
         val t = size / 2.0
 
         val box = when(direction) {
@@ -241,7 +296,7 @@ object DebugVisualizer {
             )
         }
 
-        return createLineBox(box, color = color, thickness = thickness)
+        return createLineBox(box, color = color)
     }
 
     fun createPartFrame(part: Part<*>) = createCompositionOf(
@@ -251,18 +306,21 @@ object DebugVisualizer {
     ).withinScopeOf(part)
 
     fun createPartBounds(part: Part<*>) =
-        createLineBox(part.worldBoundingBox, thickness = 1.0f).withinScopeOf(part)
+        createLineBox(part.worldBoundingBox).withinScopeOf(part)
 
     fun compositionOf(vararg elements: RenderElement) = add(createCompositionOf(*elements))
 
-    fun lineBox(vararg aabbs: AABB, color: Color = Color.WHITE, thickness: Float = 5.0f) =
-        add(createLineBox(*aabbs, color = color, thickness = thickness))
+    fun lineBox(vararg aabbs: AABB, color: Color = Color.WHITE) =
+        add(createLineBox(*aabbs, color = color))
 
-    fun lineBox(vararg aabbs: BoundingBox3d, color: Color = Color.WHITE, thickness: Float = 5.0f) =
-        add(createLineBox(*aabbs, color = color, thickness = thickness))
+    fun lineBox(vararg aabbs: BoundingBox3d, color: Color = Color.WHITE) =
+        add(createLineBox(*aabbs, color = color))
 
-    fun direction(origin: Vector3d, direction: Direction, size: Double = 0.05, color: Color = Color.WHITE, thickness: Float = 5.0f) =
-        add(createDirection(origin, direction, size, color, thickness))
+    fun lineOrientedBox(vararg obbs: OrientedBoundingBox3d, color: Color = Color.WHITE) =
+        add(createLineOrientedBox(*obbs, color = color))
+
+    fun direction(origin: Vector3d, direction: Direction, size: Double = 0.05, color: Color = Color.WHITE) =
+        add(createDirection(origin, direction, size, color))
 
     fun partFrame(part: Part<*>) = add(createPartFrame(part))
 

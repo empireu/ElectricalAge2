@@ -3,14 +3,10 @@ package org.eln2.mc.common.specs.foundation
 import com.jozufozu.flywheel.core.materials.model.ModelData
 import com.jozufozu.flywheel.util.Color
 import net.minecraft.core.BlockPos
-import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.Item
-import org.ageseries.libage.mathematics.BoundingBox3d
-import org.ageseries.libage.mathematics.Pose2d
-import org.ageseries.libage.mathematics.Vector3d
-import org.ageseries.libage.mathematics.o
+import org.ageseries.libage.mathematics.*
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.CrossThreadAccess
 import org.eln2.mc.client.render.DebugVisualizer
@@ -23,9 +19,8 @@ import org.eln2.mc.extensions.getViewRay
 import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.DebugComponentDisplay
-import org.eln2.mc.mathematics.Plane3d
-import org.eln2.mc.mathematics.intersectionWith
 import java.util.concurrent.ConcurrentLinkedQueue
+import kotlin.math.PI
 
 class SpecPartRenderer(val specPart: SpecContainerPart) : PartRenderer() {
     private val specs = ArrayList<Spec<*>>()
@@ -126,9 +121,20 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
             DebugVisualizer.lineBox(
                 BoundingBox3d.fromCenterSize(
                     px * specialX + pz * specialZ + placement.mountingPointWorld,
-                    0.05
+                    0.08
                 ),
                 color = Color.GREEN
+            ).removeAfter(5.0).withinScopeOf(this)
+
+            DebugVisualizer.lineOrientedBox(
+                OrientedBoundingBox3d(
+                    Pose3d(
+                        px * specialX + pz * specialZ + placement.mountingPointWorld,
+                        Rotation3d.exp(placement.positiveY.toVector3d() * (PI / 4.0))
+                    ),
+                    Vector3d(0.025)
+                ),
+                color = Color.RED
             ).removeAfter(5.0).withinScopeOf(this)
         }
 
