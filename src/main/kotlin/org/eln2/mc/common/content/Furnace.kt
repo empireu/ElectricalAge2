@@ -38,7 +38,7 @@ import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.items.ItemStackHandler
 import org.ageseries.libage.data.*
-import org.ageseries.libage.mathematics.Vector2di
+import org.ageseries.libage.mathematics.geometry.Vector2di
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters

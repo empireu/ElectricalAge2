@@ -30,6 +30,10 @@ import org.ageseries.libage.data.Event
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Resistance
 import org.ageseries.libage.mathematics.*
+import org.ageseries.libage.mathematics.geometry.Ray3d
+import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.mathematics.geometry.Vector3di
+import org.ageseries.libage.mathematics.geometry.dda
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.common.network.Networking

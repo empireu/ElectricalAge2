@@ -6,9 +6,9 @@ import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap
 import net.minecraft.client.renderer.LevelRenderer
 import net.minecraft.core.BlockPos
 import net.minecraft.world.level.BlockAndTintGetter
-import org.ageseries.libage.mathematics.Vector3d
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.avg
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.mathematics.*
 import kotlin.math.roundToInt
 import kotlin.math.sqrt

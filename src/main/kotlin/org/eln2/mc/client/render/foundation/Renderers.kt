@@ -20,7 +20,7 @@ import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
-import org.ageseries.libage.mathematics.Vector3d
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
 import org.ageseries.libage.utils.putUnique
@@ -35,17 +35,10 @@ import org.eln2.mc.common.content.getPartConnectionAsContactSectionConnectionOrN
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.common.specs.foundation.Spec
-import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.common.specs.foundation.SpecPartRenderer
 import org.eln2.mc.common.specs.foundation.SpecRenderer
 import org.eln2.mc.extensions.rotationFast
 import org.eln2.mc.mathematics.Base6Direction3d
-import kotlin.collections.HashSet
-import kotlin.collections.Iterable
-import kotlin.collections.Map
-import kotlin.collections.asIterable
-import kotlin.collections.forEach
-import kotlin.collections.mapOf
 import kotlin.math.max
 
 fun createPartInstance(

@@ -4,10 +4,10 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.resources.ResourceLocation
-import org.ageseries.libage.mathematics.Pose2d
-import org.ageseries.libage.mathematics.Rotation2d
-import org.ageseries.libage.mathematics.Vector2d
-import org.ageseries.libage.mathematics.Vector3d
+import org.ageseries.libage.mathematics.geometry.Pose2d
+import org.ageseries.libage.mathematics.geometry.Rotation2d
+import org.ageseries.libage.mathematics.geometry.Vector2d
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.common.parts.foundation.CellPartConnectionMode
 import org.eln2.mc.common.parts.foundation.PartUpdateType
 import org.eln2.mc.common.specs.foundation.SpecUpdateType

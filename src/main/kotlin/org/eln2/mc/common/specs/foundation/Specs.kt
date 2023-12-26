@@ -11,7 +11,7 @@ import net.minecraft.world.InteractionResult
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.context.UseOnContext
-import org.ageseries.libage.mathematics.*
+import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.DebugVisualizer
@@ -20,8 +20,6 @@ import org.eln2.mc.client.render.foundation.createPartInstance
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.common.specs.SpecRegistry
-import org.eln2.mc.data.FacingLocator
-import org.eln2.mc.data.LocatorSetBuilder
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.DebugComponentDisplay
@@ -44,7 +42,7 @@ object SpecGeometry {
     }
 
     fun rotationWorld(specHorizontalFacing: Rotation2d, partFacing: FacingDirection, partFace: Direction) =
-        Rotation3dStack()
+        Rotation3dBuilder()
             .rotate(Rotation3d.exp(Vector3d.unitY * specHorizontalFacing.ln()))
             .rotate(partFacing.rotation3d)
             .rotate(partFace.rotation3d)
@@ -191,7 +189,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         )
 
         for (spec in specs.values) {
-            if(spec.placement.boundingBox intersects boundingBox) {
+            if(spec.placement.boundingBox intersectsWith boundingBox) {
                 return true
             }
         }
@@ -620,23 +618,39 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         if(placement.level.isClientSide) {
             val intersection = getSpecMountingPointWorld(context.player)
 
-            DebugVisualizer.lineBox(
-                BoundingBox3d.fromCenterSize(
-                    intersection,
-                    0.15
-                )
-            ).removeAfter(5.0).withinScopeOf(this)
+            val obb = SpecGeometry.boundingBox(
+                intersection,
+                Rotation2d.exp(PI / 6.0),
+                Vector3d(0.3, 0.5, 0.3),
+                placement.facing,
+                placement.face
+            )
 
             DebugVisualizer.lineOrientedBox(
-                SpecGeometry.boundingBox(
-                    intersection,
-                    Rotation2d.exp(PI / 6.0),
-                    Vector3d(0.1, 0.2, 0.1),
-                    placement.facing,
-                    placement.face
-                ),
-                color = Color.RED
+                obb,
+                color = Color.WHITE
             ).removeAfter(5.0).withinScopeOf(this)
+
+            val ray = context.player.getViewRay()
+
+            val t = ray intersectionWith obb
+
+            if(t != null) {
+                val p1 = ray.evaluate(t.entry)
+                val p2 = ray.evaluate(t.exit)
+
+                val size = 0.05
+
+                DebugVisualizer.lineBox(
+                    BoundingBox3d.fromCenterSize(p1, size),
+                    color = Color.RED
+                ).removeAfter(5.0).withinScopeOf(this)
+
+                DebugVisualizer.lineBox(
+                    BoundingBox3d.fromCenterSize(p2, size),
+                    color = Color.GREEN
+                ).removeAfter(5.0).withinScopeOf(this)
+            }
         }
 
         return super.onUsedBy(context)

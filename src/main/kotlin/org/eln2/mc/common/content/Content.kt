@@ -11,8 +11,8 @@ import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.phys.AABB
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.*
-import org.ageseries.libage.mathematics.Vector3d
 import org.ageseries.libage.mathematics.evaluate
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.lerp
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.ChemicalElement

@@ -38,6 +38,7 @@ import org.ageseries.libage.data.MutableMapPairBiMap
 import org.ageseries.libage.data.MutableSetMapMultiMap
 import org.ageseries.libage.data.associateByMulti
 import org.ageseries.libage.mathematics.*
+import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
@@ -1453,7 +1454,7 @@ class Cable3d(
     val spline: Spline3d
 
     init {
-        val distance = a .. b
+        val distance = a..b
         val catenaryLength = distance * (1.0 + slack)
 
         val catenarySegment = ArcReparamCatenarySegment3d(

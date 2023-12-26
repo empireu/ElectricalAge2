@@ -4,7 +4,7 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraftforge.eventbus.api.IEventBus
 import net.minecraftforge.registries.*
 import org.ageseries.libage.data.mutableBiMapOf
-import org.ageseries.libage.mathematics.Vector3d
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.common.parts.foundation.MySpec

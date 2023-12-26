@@ -41,6 +41,7 @@ import net.minecraftforge.common.ForgeMod
 import net.minecraftforge.network.NetworkHooks
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.mathematics.*
+import org.ageseries.libage.mathematics.geometry.*
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.parts.foundation.Part

@@ -1,7 +1,7 @@
 package org.eln2.mc.client.render.foundation
 
 import com.jozufozu.flywheel.util.Color
-import org.ageseries.libage.mathematics.Vector3d
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.lerp
 
 fun colorLerp(from: Color, to: Color, blend: Float): Color =

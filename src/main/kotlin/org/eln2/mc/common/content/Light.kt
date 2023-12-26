@@ -12,6 +12,7 @@ import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import org.ageseries.libage.data.registerHandler
 import org.ageseries.libage.mathematics.*
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
 import org.ageseries.libage.sim.electrical.mna.component.updateResistance
 import org.eln2.mc.*

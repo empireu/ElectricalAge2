@@ -1,7 +1,7 @@
 package org.eln2.mc.data
 
 import net.minecraft.core.Vec3i
-import org.ageseries.libage.mathematics.Vector3d
+import org.ageseries.libage.mathematics.geometry.Vector3d
 
 class AveragingList(private val sampleCount: Int) {
     init {

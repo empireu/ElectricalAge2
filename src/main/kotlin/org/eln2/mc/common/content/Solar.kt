@@ -6,8 +6,8 @@ import org.ageseries.libage.data.Area
 import org.ageseries.libage.data.Potential
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.WATT_PER_METER2
-import org.ageseries.libage.mathematics.Vector3d
 import org.ageseries.libage.mathematics.frac
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.electrical.mna.component.PowerVoltageSource
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.BasicPartRenderer

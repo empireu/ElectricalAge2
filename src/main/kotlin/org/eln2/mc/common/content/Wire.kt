@@ -35,8 +35,8 @@ import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.ImmutableIntArrayView
 import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.mathematics.Vector3d
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.*
 import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
@@ -51,8 +51,8 @@ import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.data.*
 import org.eln2.mc.extensions.*
-import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
+import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.*
 import java.nio.ByteBuffer
 import java.nio.IntBuffer
