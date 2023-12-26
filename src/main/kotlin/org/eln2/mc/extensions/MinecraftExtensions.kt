@@ -24,7 +24,6 @@ import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.AbstractContainerMenu
-import net.minecraft.world.inventory.Slot
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.GameRules
@@ -47,6 +46,7 @@ import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.joml.Quaternionf
+import org.joml.Quaternionfc
 import org.joml.Vector3f
 import java.util.*
 import kotlin.math.PI
@@ -125,7 +125,7 @@ fun AABB.corners(): ArrayList<Vec3> {
  * Transforms the Axis Aligned Bounding Box by the given rotation.
  * This operation does not change the volume for axis aligned transformations.
  * */
-fun AABB.transformed(quaternion: Quaternionf): AABB {
+fun AABB.transformed(quaternion: Quaternionfc): AABB {
     var min = Vector3f(Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE)
     var max = Vector3f(Float.MIN_VALUE, Float.MIN_VALUE, Float.MIN_VALUE)
 
@@ -180,13 +180,23 @@ val Direction.alias: Base6Direction3d
         Direction.EAST -> Base6Direction3d.Right
     }
 
-fun Direction.index(): Int {
-    return this.get3DDataValue()
+private val DIRECTION_TO_VECTOR3D = buildDirectionTable {
+    Vector3d(it.stepX.toDouble(), it.stepY.toDouble(), it.stepZ.toDouble())
 }
 
-fun Direction.toVector3d(): Vector3d {
-    return Vector3d(this.stepX.toDouble(), this.stepY.toDouble(), this.stepZ.toDouble())
+val Direction.vector3d get() = DIRECTION_TO_VECTOR3D[this.get3DDataValue()]
+
+private val DIRECTION_TO_JOML_QUATERNION = buildDirectionTable {
+    it.rotation
 }
+
+val Direction.rotationFast: Quaternionf get() = DIRECTION_TO_JOML_QUATERNION[this.get3DDataValue()]
+
+private val DIRECTION_TO_ROTATION3D = buildDirectionTable {
+    it.rotation.cast()
+}
+
+val Direction.rotation3d get() = DIRECTION_TO_ROTATION3D[this.get3DDataValue()]
 
 fun Level.playLocalSound(
     pos: Vec3,
@@ -499,3 +509,5 @@ inline fun ListTag.forEachCompound(action: (CompoundTag) -> Unit) {
 fun CompoundTag.getListTag(key: String) : ListTag = checkNotNull(this.get(key) as? ListTag) {
     "Failed to get list tag from compound"
 }
+
+fun Quaternionf.cast() = Rotation3d(this.x.toDouble(), this.y.toDouble(), this.z.toDouble(), this.w.toDouble())

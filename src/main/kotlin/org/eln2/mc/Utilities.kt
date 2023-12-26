@@ -1,12 +1,11 @@
 package org.eln2.mc
 
 import com.mojang.blaze3d.systems.RenderSystem
-import net.minecraft.client.Minecraft
 import net.minecraft.client.server.IntegratedServer
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.Vec3i
-import net.minecraft.server.packs.resources.ResourceManager
+import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntity
@@ -15,24 +14,19 @@ import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.minecraftforge.api.distmarker.Dist
-import net.minecraftforge.common.ForgeHooks
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.*
 import org.eln2.mc.common.ForgeEvents
 import org.eln2.mc.extensions.minus
 import org.eln2.mc.extensions.viewClip
+import org.eln2.mc.mathematics.FacingDirection
 import org.joml.Vector3f
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ForkJoinPool
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.contracts.ExperimentalContracts
-import kotlin.contracts.InvocationKind
-import kotlin.contracts.contract
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
-import kotlin.system.measureNanoTime
 
 fun randomFloat(min: Float, max: Float) = map(Random.nextFloat(), 0f, 1f, min, max)
 
@@ -110,10 +104,22 @@ fun componentMax(a: Vector3f, b: Vector3f): Vector3f {
     )
 }
 
-inline fun requireIsOnServerThread(message: () -> String) = require(ServerLifecycleHooks.getCurrentServer().isSameThread) { message() }
+fun isServerThread() = ServerLifecycleHooks.getCurrentServer().isSameThread
+fun isRenderThread() = RenderSystem.isOnRenderThread()
+
+inline fun requireIsOnServerThread(message: () -> String) = require(isServerThread()) {
+    message()
+}
+
 fun requireIsOnServerThread() = requireIsOnServerThread { "Requirement failed: not on server thread (${Thread.currentThread()})" }
-inline fun requireIsOnRenderThread(message: () -> String) = require(RenderSystem.isOnRenderThread(), message)
-fun requireIsOnRenderThread() = requireIsOnRenderThread { "Requirement failed: not on render thread (${Thread.currentThread()})" }
+
+inline fun requireIsOnRenderThread(message: () -> String) = require(isRenderThread()) {
+    message()
+}
+
+fun requireIsOnRenderThread() = requireIsOnRenderThread {
+    "Requirement failed: not on render thread (${Thread.currentThread()})"
+}
 
 fun<K, V> ConcurrentHashMap<K, V>.atomicRemoveIf(consumer: (Map.Entry<K, V>) -> Boolean) {
     this.entries.forEach { entry ->
@@ -171,4 +177,40 @@ fun isServerPaused() : Boolean {
     }
 
     return false
+}
+
+inline fun<reified T> buildDirectionTable(transform: (Direction) -> T) = Direction.entries
+    .map { it to transform(it) }
+    .sortedBy { it.first.get3DDataValue() }
+    .map { it.second }
+
+inline fun<reified T> buildHorizontalFacingTable(transform: (FacingDirection) -> T) = FacingDirection.entries
+    .map { it to transform(it) }
+    .sortedBy { it.first.index }
+    .map { it.second }
+
+enum class ItemPersistentLoadOrder {
+    /**
+     * The data is loaded before the simulation is built.
+     * */
+    BeforeSim,
+    /**
+     * The data is loaded after the simulation is built.
+     * */
+    AfterSim
+}
+
+interface ItemPersistent {
+    val order: ItemPersistentLoadOrder
+
+    /**
+     * Saves the part to an item tag.
+     * */
+    fun saveToItemNbt(tag: CompoundTag)
+
+    /**
+     * Loads the part from the item tag.
+     * @param tag The saved tag. Null if no data was present in the item (possibly because the item was newly created)
+     * */
+    fun loadFromItemNbt(tag: CompoundTag?)
 }

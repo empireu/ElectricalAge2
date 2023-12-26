@@ -920,7 +920,7 @@ object LightFieldPrimitives {
                 results
             }
 
-            val normal = face.toVector3d()
+            val normal = face.vector3d
 
             val variants = HashMap<Int, Int2ByteOpenHashMap>()
             variantsByFace.putUnique(face, variants)

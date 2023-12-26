@@ -1,3 +1,5 @@
+@file:Suppress("MemberVisibilityCanBePrivate")
+
 package org.eln2.mc.client.render.foundation
 
 import com.jozufozu.flywheel.api.MaterialManager
@@ -11,7 +13,6 @@ import com.jozufozu.flywheel.util.Color
 import com.jozufozu.flywheel.util.transform.Transform
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntArrayList
-import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.level.LightLayer
@@ -24,6 +25,7 @@ import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.ClientOnly
+import org.eln2.mc.buildDirectionTable
 import org.eln2.mc.client.render.DefaultRenderTypePartialModel
 import org.eln2.mc.client.render.model
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
@@ -32,8 +34,11 @@ import org.eln2.mc.common.content.PartConnectionRenderInfoSetConsumer
 import org.eln2.mc.common.content.getPartConnectionAsContactSectionConnectionOrNull
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.parts.foundation.*
+import org.eln2.mc.common.specs.foundation.Spec
+import org.eln2.mc.common.specs.foundation.SpecContainerPart
+import org.eln2.mc.common.specs.foundation.SpecPartRenderer
 import org.eln2.mc.common.specs.foundation.SpecRenderer
-import org.eln2.mc.extensions.index
+import org.eln2.mc.extensions.rotationFast
 import org.eln2.mc.mathematics.Base6Direction3d
 import kotlin.collections.HashSet
 import kotlin.collections.Iterable
@@ -41,7 +46,6 @@ import kotlin.collections.Map
 import kotlin.collections.asIterable
 import kotlin.collections.forEach
 import kotlin.collections.mapOf
-import kotlin.collections.set
 import kotlin.math.max
 
 fun createPartInstance(
@@ -57,6 +61,21 @@ fun createPartInstance(
         .createInstance()
         .loadIdentity()
         .transformPart(multipart, part, yRotation)
+}
+
+fun createSpecInstance(
+    part: SpecPartRenderer,
+    model: PartialModel,
+    spec: Spec<*>,
+    yRotation: Double
+): ModelData {
+    return part.multipart.materialManager
+        .defaultSolid()
+        .material(Materials.TRANSFORMED)
+        .getModel(model)
+        .createInstance()
+        .loadIdentity()
+        .transformSpec(part, spec, yRotation)
 }
 
 /**
@@ -214,24 +233,37 @@ class ConnectedPartRenderer(
     }
 }
 
-private val offsetTable = Int2ObjectOpenHashMap<Vector3d>(6).also {
-    it[Direction.DOWN.index()] = Vector3d(0.5, 1.0, 0.5)
-    it[Direction.UP.index()] = Vector3d(0.5, 0.0, 0.5)
-    it[Direction.NORTH.index()] = Vector3d(0.5, 0.5, 1.0)
-    it[Direction.SOUTH.index()] = Vector3d(0.5, 0.5, 0.0)
-    it[Direction.WEST.index()] = Vector3d(1.0, 0.5, 0.5)
-    it[Direction.EAST.index()] = Vector3d(0.0, 0.5, 0.5)
+val partOffsetTable = buildDirectionTable {
+    when(it) {
+        Direction.DOWN -> Vector3d(0.5, 1.0, 0.5)
+        Direction.UP -> Vector3d(0.5, 0.0, 0.5)
+        Direction.NORTH -> Vector3d(0.5, 0.5, 1.0)
+        Direction.SOUTH -> Vector3d(0.5, 0.5, 0.0)
+        Direction.WEST -> Vector3d(1.0, 0.5, 0.5)
+        Direction.EAST -> Vector3d(0.0, 0.5, 0.5)
+    }
 }
 
 fun<T : Transform<T>> T.transformPart(instance: MultipartBlockEntityInstance, part: Part<*>, yRotation: Double = 0.0): T {
-    val (dx, dy, dz) = offsetTable.get(part.placement.face.index())!!
+    val (dx, dy, dz) = partOffsetTable[part.placement.face.get3DDataValue()]
 
     return this
         .translate(instance.instancePosition)
         .translate(dx, dy, dz)
-        .multiply(part.placement.face.rotation)
-        .rotateYRadians(PartGeometry.facingRotationLog(part.placement.horizontalFacing))
-        .rotateYRadians(yRotation)
+        .multiply(part.placement.face.rotationFast)
+        .rotateYRadians(yRotation + part.placement.facing.angle)
+        .translate(-0.5, 0.0, -0.5)
+}
+
+fun<T : Transform<T>> T.transformSpec(instance: SpecPartRenderer, spec: Spec<*>, yRotation: Double): T {
+    val (dx, dy, dz) = partOffsetTable[instance.specPart.placement.face.get3DDataValue()]
+    val (dx1, dy1, dz1) = spec.placement.mountingPointWorld - instance.specPart.placement.mountingPointWorld
+
+    return this
+        .translate(instance.instancePosition)
+        .translate(dx + dx1, dy + dy1, dz + dz1)
+        .multiply(instance.specPart.placement.face.rotationFast)
+        .rotateYRadians(yRotation + instance.specPart.placement.facing.angle + spec.placement.orientation.ln())
         .translate(-0.5, 0.0, -0.5)
 }
 
@@ -449,5 +481,33 @@ class SimpleBlockEntityInstance<T : BlockEntity>(
         if(instance != null) {
             relight(pos, instance)
         }
+    }
+}
+
+/**
+ * Part renderer with a single model.
+ * */
+open class BasicSpecRenderer(val spec: Spec<*>, val model: PartialModel) : SpecRenderer() {
+    var yRotation = 0.0
+
+    private var modelInstance: ModelData? = null
+
+    override fun setupRendering() {
+        buildInstance()
+    }
+
+    fun buildInstance() {
+        modelInstance?.delete()
+        modelInstance = createSpecInstance(partRenderer, model, spec, yRotation)
+    }
+
+    override fun relight(source: RelightSource) {
+        partRenderer.multipart.relightModels(modelInstance)
+    }
+
+    override fun beginFrame() {}
+
+    override fun remove() {
+        modelInstance?.delete()
     }
 }

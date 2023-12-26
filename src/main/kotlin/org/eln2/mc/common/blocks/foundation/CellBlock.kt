@@ -24,6 +24,7 @@ import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.data.*
 import org.eln2.mc.mathematics.Base6Direction3dMask
+import org.eln2.mc.mathematics.toHorizontalFacing
 import java.util.*
 import kotlin.collections.ArrayList
 import kotlin.collections.HashSet
@@ -214,7 +215,7 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
     private fun createCellLocator() = LocatorSetBuilder().apply {
         withLocator(blockPos)
         withLocator(cellFace)
-        withLocator(FacingLocator(blockState.getValue(HorizontalDirectionalBlock.FACING)))
+        withLocator(FacingLocator(blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing()))
     }.build()
 
     override fun getCells(): ArrayList<Cell> {

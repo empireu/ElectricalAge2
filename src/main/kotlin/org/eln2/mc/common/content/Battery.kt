@@ -305,7 +305,7 @@ class BatteryPart(
     ci: PartCreateInfo,
     provider: CellProvider<BatteryCell>,
     private val rendererSupplier: PartRendererSupplier<BatteryPart, BasicPartRenderer>
-) : CellPart<BatteryCell, BasicPartRenderer>(ci, provider), ItemPersistentPart, WrenchRotatablePart, ComponentDisplay {
+) : CellPart<BatteryCell, BasicPartRenderer>(ci, provider), ItemPersistent, WrenchRotatablePart, ComponentDisplay {
     companion object {
         private const val BATTERY = "battery"
     }
@@ -320,7 +320,7 @@ class BatteryPart(
         tag?.useSubTagIfPreset(BATTERY, cell::deserializeNbt)
     }
 
-    override val order get() = ItemPersistentPartLoadOrder.AfterSim
+    override val order get() = ItemPersistentLoadOrder.AfterSim
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         builder.quantity(cell.thermalWire.thermalBody.temperature)

@@ -3,7 +3,10 @@
 package org.eln2.mc.mathematics
 
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
 import org.ageseries.libage.mathematics.*
+import org.joml.Quaternionf
+import org.joml.Quaternionfc
 import kotlin.math.*
 
 data class Vector2I(val x: Int, val y: Int) {
@@ -98,4 +101,33 @@ value class BlockPosInt(val value: Int) {
 
         inline fun unpackBlockPos(value: Int) = BlockPos(unpackX(value), unpackY(value), unpackZ(value))
     }
+}
+
+enum class FacingDirection(val angle: Double, val direction: Direction) {
+    SOUTH(PI, Direction.SOUTH),
+    WEST(PI / 2.0, Direction.WEST),
+    NORTH(0.0, Direction.NORTH),
+    EAST(-PI / 2.0, Direction.EAST);
+
+    val clockWise = direction.clockWise.toHorizontalFacing()
+    val counterClockWise = direction.counterClockWise.toHorizontalFacing()
+
+    val index get() = direction.get2DDataValue()
+
+    val rotation = Quaternionf().rotateY(angle.toFloat()) as Quaternionfc
+    val rotation2d = Rotation2d.exp(angle)
+    val rotation3d = Rotation3d.exp(Vector3d.unitY * angle)
+
+    companion object {
+        fun byIndex(index: Int) = entries[index]
+    }
+}
+
+fun Direction.toHorizontalFacing() = when(this) {
+    Direction.DOWN -> error("Down is not a good horizontal facing")
+    Direction.UP -> error("Up is not a good horizontal facing")
+    Direction.NORTH -> FacingDirection.NORTH
+    Direction.SOUTH -> FacingDirection.SOUTH
+    Direction.WEST -> FacingDirection.WEST
+    Direction.EAST -> FacingDirection.EAST
 }

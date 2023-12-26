@@ -45,10 +45,10 @@ class WrenchItem : Item(Properties()) {
         multipart.breakPart(part, tag)
 
         val orientation = if(player.isShiftKeyDown) {
-            part.placement.horizontalFacing.clockWise
+            part.placement.facing.clockWise
         }
         else {
-            part.placement.horizontalFacing.counterClockWise
+            part.placement.facing.counterClockWise
         }
 
         val flag = multipart.place(

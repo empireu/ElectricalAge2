@@ -10,26 +10,24 @@ import org.ageseries.libage.data.ImmutableBiMapView
 import org.ageseries.libage.data.biMapOf
 import org.ageseries.libage.sim.electrical.mna.NEGATIVE
 import org.ageseries.libage.sim.electrical.mna.POSITIVE
-import org.eln2.mc.*
 import org.eln2.mc.common.parts.foundation.getPartConnectionOrNull
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
+import org.eln2.mc.mathematics.FacingDirection
 
 typealias BlockLocator = BlockPos
 typealias FaceLocator = Direction
 
-data class FacingLocator(val forwardWorld: Direction) {
-    override fun hashCode() = forwardWorld.valueHashCode()
+data class FacingLocator(val facing: FacingDirection) {
+    override fun hashCode() = facing.direction.valueHashCode()
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
 
         other as FacingLocator
 
-        if (forwardWorld != other.forwardWorld) return false
-
-        return true
+        return facing.direction == other.facing.direction
     }
 }
 
@@ -58,10 +56,10 @@ val locatorSerializers: ImmutableBiMapView<Class<*>, LocatorSerializer> = biMapO
 
     FacingLocator::class.java to object : LocatorSerializer {
         override fun toNbt(obj: Any): CompoundTag =
-            CompoundTag().apply { putDirection("Forward", (obj as FacingLocator).forwardWorld) }
+            CompoundTag().apply { putHorizontalFacing("Forward", (obj as FacingLocator).facing) }
 
         override fun fromNbt(tag: CompoundTag): Any =
-            FacingLocator(tag.getDirection("Forward"))
+            FacingLocator(tag.getHorizontalFacing("Forward"))
     },
 
     FaceLocator::class.java to object : LocatorSerializer {
@@ -235,7 +233,7 @@ fun Locator.findDirActualPlanarOrNull(other: Locator): Base6Direction3d? {
     val targetPosWorld = other.get<BlockLocator>() ?: return null
     val dir = actualPosWorld.directionTo(targetPosWorld) ?: return null
 
-    return Base6Direction3d.fromForwardUp(actualIdWorld.forwardWorld, actualFaceWorld, dir)
+    return Base6Direction3d.fromForwardUp(actualIdWorld.facing, actualFaceWorld, dir)
 }
 
 fun Locator.findDirActualPartOrNull(other: Locator): Base6Direction3d? {

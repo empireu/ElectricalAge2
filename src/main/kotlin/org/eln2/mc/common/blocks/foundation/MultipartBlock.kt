@@ -54,6 +54,8 @@ import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.DebugComponentDisplay
 import org.eln2.mc.mathematics.Base6Direction3dMask
+import org.eln2.mc.mathematics.FacingDirection
+import org.eln2.mc.mathematics.toHorizontalFacing
 import java.util.concurrent.ConcurrentLinkedQueue
 
 class MultipartBlock : BaseEntityBlock(
@@ -429,12 +431,20 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     var collisionShape: VoxelShape = Shapes.empty()
         private set
 
-
     /**
      * Gets the part on the specified [face] or null, if a part does not exist there.
      * */
     fun getPart(face: Direction): Part<*>? {
         return parts[face]
+    }
+
+    /**
+     * Adds the [part] on the [face] and notifies via [Part.onAdded]
+     * Throws if a part already exists on that face.
+     * */
+    private fun addPart(face: Direction, part: Part<*>) {
+        parts.putUnique(face, part)
+        part.onAdded()
     }
 
     /**
@@ -457,15 +467,6 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     }
 
     /**
-     * Adds the [part] on the [face] and notifies via [Part.onAdded]
-     * Throws if a part already exists on that face.
-     * */
-    private fun addPart(face: Direction, part: Part<*>) {
-        parts.putUnique(face, part)
-        part.onAdded()
-    }
-
-    /**
      * Enqueues this multipart for synchronization to clients.
      * */
     @ServerOnly
@@ -479,6 +480,10 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * */
     @ServerOnly
     fun enqueuePartSync(face: Direction) {
+        requireIsOnServerThread {
+            "Tried to enqueue part sync on non-server thread"
+        }
+
         dirtyParts.add(face)
         setSyncDirty()
     }
@@ -528,12 +533,8 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         face: Direction,
         provider: PartProvider,
         saveTag: CompoundTag? = null,
-        orientation: Direction? = null,
+        orientation: FacingDirection? = null,
     ): Boolean {
-        if (orientation != null && !orientation.isHorizontal()) {
-            error("Invalid orientation $orientation")
-        }
-
         if (entity.level().isClientSide) {
             return false
         }
@@ -564,7 +565,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
 
         val worldBoundingBox = PartGeometry.worldBoundingBox(
             provider.placementCollisionSize,
-            placementContext.horizontalFacing,
+            placementContext.facing,
             placementContext.face,
             placementContext.position
         )
@@ -588,7 +589,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         placementUpdates.add(PartUpdate(part, PartUpdateType.Add))
         joinCollider(part)
 
-        if (part is ItemPersistentPart && part.order == ItemPersistentPartLoadOrder.BeforeSim) {
+        if (part is ItemPersistent && part.order == ItemPersistentLoadOrder.BeforeSim) {
             part.loadFromItemNbt(saveTag)
         }
 
@@ -598,7 +599,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             CellConnections.insertFresh(this, part.cell)
         }
 
-        if (part is ItemPersistentPart && part.order == ItemPersistentPartLoadOrder.AfterSim) {
+        if (part is ItemPersistent && part.order == ItemPersistentLoadOrder.AfterSim) {
             part.loadFromItemNbt(saveTag)
         }
 
@@ -635,7 +636,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * Removes a part with full synchronization. Automatically handles [CellPart]s.
      * Notifies via [Part.onBroken].
      * @param part The part to remove.
-     * @param saveTag A tag to save part data, if required (for [ItemPersistentPart]s).
+     * @param saveTag A tag to save part data, if required (for [ItemPersistent]s).
      * */
     @ServerOnly
     fun breakPart(part: Part<*>, saveTag: CompoundTag? = null) {
@@ -648,7 +649,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             CellConnections.destroy(part.cell, this)
         }
 
-        if (part is ItemPersistentPart && saveTag != null) {
+        if (part is ItemPersistent && saveTag != null) {
             part.saveToItemNbt(saveTag)
         }
 
@@ -664,7 +665,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     /**
      * Destroys a part based on a neighbor block that was broken.
      * @param neighborPos The neighbor block that was broken.
-     * @param saveTag A tag to save part data, if required (for [ItemPersistentPart]s).
+     * @param saveTag A tag to save part data, if required (for [ItemPersistent]s).
      * @return The part that was destroyed or null, if no part was resting on the neighbor at [neighborPos].
      * */
     @ServerOnly
@@ -714,7 +715,8 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             return CompoundTag() //?
         }
 
-        val tag = saveParts(true)
+        val tag = CompoundTag()
+        saveParts(tag, true)
 
         parts.values.forEach {
             it.onSyncSuggested()
@@ -1015,25 +1017,13 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         tag.putResourceLocation("ID", part.id)
         tag.putBlockPos("Pos", part.placement.position)
         tag.putDirection("Face", part.placement.face)
-        tag.putDirection("Facing", part.placement.horizontalFacing)
+        tag.putHorizontalFacing("Facing", part.placement.facing)
 
         val customTag = part.getSaveTag()
 
         if (customTag != null) {
             tag.put("CustomTag", customTag)
         }
-
-        return tag
-    }
-
-    /**
-     * Saves the entire part set to a CompoundTag.
-     * */
-    @ServerOnly
-    private fun saveParts(initial: Boolean): CompoundTag {
-        val tag = CompoundTag()
-
-        saveParts(tag, initial)
 
         return tag
     }
@@ -1101,7 +1091,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         val id = tag.getResourceLocation("ID")
         val pos = tag.getBlockPos("Pos")
         val face = tag.getDirection("Face")
-        val facing = tag.getDirection("Facing")
+        val facing = tag.getHorizontalFacing("Facing")
         val customTag = tag.get("CustomTag") as? CompoundTag
 
         val provider = PartRegistry.tryGetProvider(id) ?: error("Failed to get part with id $id")
@@ -1312,10 +1302,10 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     val needsTicks get() = tickingParts.isNotEmpty()
 
     companion object {
-        private val DEFAULT_HORIZONTAL_FACING = Direction.NORTH
+        private val DEFAULT_HORIZONTAL_FACING = FacingDirection.NORTH
 
         fun getHorizontalFacing(face: Direction, entity: Player) = if (face.isVertical()) {
-            entity.direction
+            entity.direction.toHorizontalFacing()
         } else {
             DEFAULT_HORIZONTAL_FACING
         }

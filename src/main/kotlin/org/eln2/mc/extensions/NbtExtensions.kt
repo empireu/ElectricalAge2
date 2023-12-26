@@ -4,27 +4,70 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.resources.ResourceLocation
+import org.ageseries.libage.mathematics.Pose2d
+import org.ageseries.libage.mathematics.Rotation2d
+import org.ageseries.libage.mathematics.Vector2d
 import org.ageseries.libage.mathematics.Vector3d
 import org.eln2.mc.common.parts.foundation.CellPartConnectionMode
 import org.eln2.mc.common.parts.foundation.PartUpdateType
+import org.eln2.mc.common.specs.foundation.SpecUpdateType
 import org.eln2.mc.data.Locator
 import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.mathematics.FacingDirection
 
 fun CompoundTag.putVector3d(key: String, v: Vector3d) {
-    val dataTag = CompoundTag()
-    dataTag.putDouble("X", v.x)
-    dataTag.putDouble("Y", v.y)
-    dataTag.putDouble("Z", v.z)
-    this.put(key, dataTag)
+    val tag = CompoundTag()
+    tag.putDouble("X", v.x)
+    tag.putDouble("Y", v.y)
+    tag.putDouble("Z", v.z)
+    this.put(key, tag)
 }
 
 fun CompoundTag.getVector3d(key: String) : Vector3d {
-    val dataTag = this.get(key) as CompoundTag
-    val x = dataTag.getDouble("X")
-    val y = dataTag.getDouble("Y")
-    val z = dataTag.getDouble("Z")
+    val tag = this.get(key) as CompoundTag
+    val x = tag.getDouble("X")
+    val y = tag.getDouble("Y")
+    val z = tag.getDouble("Z")
 
     return Vector3d(x, y, z)
+}
+
+fun CompoundTag.putRotation2d(key: String, r: Rotation2d) {
+    val tag = CompoundTag()
+    tag.putDouble("Re", r.re)
+    tag.putDouble("Im", r.im)
+    this.put(key, tag)
+}
+
+fun CompoundTag.getRotation2d(key: String) : Rotation2d {
+    val tag = this.get(key) as CompoundTag
+    val re = tag.getDouble("Re")
+    val im = tag.getDouble("Im")
+
+    return Rotation2d(re, im)
+}
+
+fun CompoundTag.putPose2d(key: String, p: Pose2d) {
+    val tag = CompoundTag()
+    tag.putDouble("X", p.translation.x)
+    tag.putDouble("Y", p.translation.y)
+    tag.putDouble("Re", p.rotation.re)
+    tag.putDouble("Im", p.rotation.im)
+    this.put(key, tag)
+}
+
+fun CompoundTag.getPose2d(key: String) : Pose2d {
+    val tag = this.get(key) as CompoundTag
+
+    val x = tag.getDouble("X")
+    val y = tag.getDouble("Y")
+    val re = tag.getDouble("Re")
+    val im = tag.getDouble("Im")
+
+    return Pose2d(
+        Vector2d(x, y),
+        Rotation2d(re, im)
+    )
 }
 
 fun CompoundTag.putBlockPos(key: String, pos: BlockPos) {
@@ -76,7 +119,17 @@ fun CompoundTag.getDirection(key: String): Direction {
     return Direction.from3DDataValue(data3d)
 }
 
-fun CompoundTag.putBase6Direction(key: String, direction: Base6Direction3d) {
+fun CompoundTag.putHorizontalFacing(key: String, direction: FacingDirection) {
+    this.putInt(key, direction.index)
+}
+
+fun CompoundTag.getHorizontalFacing(key: String) : FacingDirection {
+    val data2d = this.getInt(key)
+
+    return FacingDirection.byIndex(data2d)
+}
+
+fun CompoundTag.putBase6Direction3d(key: String, direction: Base6Direction3d) {
     this.putInt(key, direction.id)
 }
 
@@ -89,9 +142,9 @@ fun CompoundTag.getConnectionMode(key: String): CellPartConnectionMode {
     return CellPartConnectionMode.byId[value] ?: error("Invalid connection mode $value")
 }
 
-fun CompoundTag.getDirectionActual(key: String): Base6Direction3d {
+fun CompoundTag.getBase6Direction3d(key: String): Base6Direction3d {
     val data = this.getInt(key)
-    return Base6Direction3d.byId[data]
+    return Base6Direction3d.entries[data]
 }
 
 fun CompoundTag.putPartUpdateType(key: String, type: PartUpdateType) {
@@ -104,6 +157,18 @@ fun CompoundTag.getPartUpdateType(key: String): PartUpdateType {
     val data = this.getInt(key)
 
     return PartUpdateType.fromId(data)
+}
+
+fun CompoundTag.putSpecUpdateType(key: String, type: SpecUpdateType) {
+    val data = type.id
+
+    this.putInt(key, data)
+}
+
+fun CompoundTag.getSpecUpdateType(key: String): SpecUpdateType {
+    val data = this.getInt(key)
+
+    return SpecUpdateType.fromId(data)
 }
 
 /**

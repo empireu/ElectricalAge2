@@ -48,6 +48,7 @@ import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.transformPartWorld
 import org.eln2.mc.data.*
 import org.eln2.mc.extensions.toVector3d
+import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.requireIsOnRenderThread
@@ -277,7 +278,7 @@ object Content {
 
             CellFactory {
                 PhotovoltaicGeneratorCell(it, surface, model) { cell ->
-                    cell.locator.requireLocator<FaceLocator>().toVector3d()
+                    cell.locator.requireLocator<FaceLocator>().vector3d
                 }
             }
         }
@@ -410,7 +411,7 @@ object Content {
             SolarLightPart(
                 ci,
                 SMALL_GARDEN_LIGHT_MODEL,
-                { it.placement.face.toVector3d() },
+                { it.placement.face.vector3d },
                 {
                     BasicPartRenderer(
                         it,
@@ -430,7 +431,7 @@ object Content {
             SolarLightPart(
                 ci,
                 SMALL_GARDEN_LIGHT_MODEL,
-                { it.placement.face.toVector3d() },
+                { it.placement.face.vector3d },
                 {
                     LightFixtureRenderer(
                         it,

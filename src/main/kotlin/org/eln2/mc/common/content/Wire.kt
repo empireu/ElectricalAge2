@@ -399,7 +399,7 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
             ).move((-Vector3d.unitZ / 2.0 + Vector3d.unitZ * (size.z / 2.0)).toVec3())
 
             Base6Direction3dMask.FULL.directionList.forEach { face ->
-                Base6Direction3dMask.HORIZONTALS.directionList.forEach { facing ->
+                FacingDirection.entries.forEach { facing ->
                     results[
                         Pair(
                             face,
@@ -548,7 +548,7 @@ open class WireCell(ci: CellCreateInfo, val connectionCrossSection: Double) : Ce
 
     override fun loadCellData(tag: CompoundTag) {
         if(tag.contains(BLACKLIST)) {
-            blacklist.addAll(tag.getIntArray(BLACKLIST).map { Base6Direction3d.byId[it] })
+            blacklist.addAll(tag.getIntArray(BLACKLIST).map { Base6Direction3d.entries[it] })
         }
     }
 
@@ -662,7 +662,7 @@ class WirePart<C : WireCell>(
     private fun getConnectionShapeKey(connectionInfo: Int) = Pair(
         placement.face,
         incrementFromForwardUp(
-            placement.horizontalFacing,
+            placement.facing,
             placement.face,
             PartConnectionDirection(connectionInfo).directionPart
         )
@@ -721,7 +721,7 @@ class WirePart<C : WireCell>(
                 return InteractionResult.FAIL
 
             val directionPart = Base6Direction3d.fromForwardUp(
-                placement.horizontalFacing,
+                placement.facing,
                 placement.face,
                 hit.direction
             )
@@ -987,7 +987,7 @@ interface ExternalTemperatureConsumerWire {
 @JvmInline
 value class PartConnectionRenderInfo(val value: Int) {
     val mode get() = CellPartConnectionMode.byId[(value and 3)]
-    val directionPart get() = Base6Direction3d.byId[(value shr 2) and 7]
+    val directionPart get() = Base6Direction3d.entries[(value shr 2) and 7]
     val flag get() = (value and 32) != 0
 
     constructor(mode: CellPartConnectionMode, directionPart: Base6Direction3d, flag: Boolean) : this(mode.index or (directionPart.id shl 2) or (if(flag) 32 else 0))
@@ -997,7 +997,7 @@ value class PartConnectionRenderInfo(val value: Int) {
     fun toNbt(): CompoundTag {
         val tag = CompoundTag()
 
-        tag.putBase6Direction(DIR, directionPart)
+        tag.putBase6Direction3d(DIR, directionPart)
         tag.putConnectionMode(MODE, mode)
         tag.putBoolean(FLAG, flag)
 
@@ -1013,7 +1013,7 @@ value class PartConnectionRenderInfo(val value: Int) {
 
         fun fromNbt(tag: CompoundTag) = PartConnectionRenderInfo(
             tag.getConnectionMode(MODE),
-            tag.getDirectionActual(DIR),
+            tag.getBase6Direction3d(DIR),
             tag.getBoolean(FLAG)
         )
     }
@@ -1383,7 +1383,7 @@ class IncandescentInstancedWireRenderer(
      * */
     private fun evaluateRemoteColor(remoteInfo: Int, remoteTemperature: Double) : Color {
         val remotePositionWorld = part.placement.position + PartConnectionDirection(remoteInfo).getIncrement(
-            part.placement.horizontalFacing,
+            part.placement.facing,
             part.placement.face
         )
 

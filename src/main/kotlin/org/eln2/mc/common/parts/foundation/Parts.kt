@@ -27,23 +27,80 @@ import org.eln2.mc.common.network.serverToClient.PartMessage
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.data.*
 import org.eln2.mc.mathematics.Base6Direction3d
-import org.joml.AxisAngle4f
-import org.joml.Quaternionf
 import org.joml.Vector3f
 import java.util.*
-import kotlin.math.PI
 import net.minecraft.world.level.block.Block
 import org.ageseries.libage.mathematics.Vector3d
+import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.specs.foundation.Spec
+import org.eln2.mc.common.specs.foundation.SpecCreateInfo
 import org.eln2.mc.extensions.*
-import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.BlockPosInt
+import org.eln2.mc.mathematics.FacingDirection
 
-data class PartOrientation(
-    val face: Direction,
-    val horizontalFacing: Direction
-)
+object PartGeometry {
+    fun transform(aabb: AABB, face: Direction): AABB = aabb
+        .transformed(face.rotationFast)
+        .move(faceOffset(aabb.size3d(), face))
+
+    fun transform(aabb: AABB, facing: FacingDirection, face: Direction): AABB = aabb
+        .transformed(facing.rotation)
+        .transformed(face.rotationFast)
+        .move(faceOffset(aabb.size3d(), face))
+
+    fun modelBoundingBox(translation: Vector3d, size: Vector3d, facing: FacingDirection, face: Direction): AABB {
+        val extent = size / 2.0
+
+        return transform(
+            AABB(
+                (translation - extent).toVec3(),
+                (translation + extent).toVec3()
+            ),
+            facing,
+            face
+        )
+    }
+
+    fun modelBoundingBox(size: Vector3d, facing: FacingDirection, faceWorld: Direction) =
+        modelBoundingBox(Vector3d.zero, size, facing, faceWorld)
+
+    fun faceOffset(size: Vector3d, face: Direction): Vec3 {
+        val halfSize = size / 2.0
+
+        val positiveOffset = halfSize.y
+        val negativeOffset = 1 - halfSize.y
+
+        return when (val axis = face.axis) {
+            Direction.Axis.X -> Vec3(
+                (if (face.axisDirection == Direction.AxisDirection.POSITIVE) positiveOffset else negativeOffset),
+                0.5,
+                0.5
+            )
+
+            Direction.Axis.Y -> Vec3(
+                0.5,
+                (if (face.axisDirection == Direction.AxisDirection.POSITIVE) positiveOffset else negativeOffset),
+                0.5
+            )
+
+            Direction.Axis.Z -> Vec3(
+                0.5,
+                0.5,
+                (if (face.axisDirection == Direction.AxisDirection.POSITIVE) positiveOffset else negativeOffset)
+            )
+
+            else -> error("Invalid axis $axis")
+        }
+    }
+
+    fun worldBoundingBox(translation: Vector3d, size: Vector3d, facing: FacingDirection, face: Direction, multipartPos: BlockPos): AABB =
+        modelBoundingBox(translation, size, facing, face).move(multipartPos)
+
+    fun worldBoundingBox(size: Vector3d, facing: FacingDirection, face: Direction, multipartPos: BlockPos): AABB =
+        modelBoundingBox(size, facing, face).move(multipartPos)
+}
 
 /**
  * Encapsulates all the data associated with a part's placement.
@@ -51,20 +108,20 @@ data class PartOrientation(
 data class PartPlacementInfo(
     val position: BlockPos,
     val face: Direction,
-    val horizontalFacing: Direction,
+    val facing: FacingDirection,
     val level: Level,
     val multipart: MultipartBlockEntity,
     val provider: PartProvider
 ) {
-    val positiveX = partX(horizontalFacing, face)
-    val positiveY = partY(horizontalFacing, face)
-    val positiveZ = partZ(horizontalFacing, face)
+    val positiveX = partX(facing, face)
+    val positiveY = partY(facing, face)
+    val positiveZ = partZ(facing, face)
 
-    val mountingPointWorld = position.toVector3d() + Vector3d(0.5) - face.toVector3d() * 0.5
+    val mountingPointWorld = position.toVector3d() + Vector3d(0.5) - face.vector3d * 0.5
 
     fun createLocator() = LocatorSetBuilder().apply {
         withLocator(position)
-        withLocator(FacingLocator(horizontalFacing)) // is this right?
+        withLocator(FacingLocator(facing))
         withLocator(face)
     }.build()
 }
@@ -85,89 +142,10 @@ enum class PartUpdateType(val id: Int) {
 }
 
 data class PartUpdate(val part: Part<*>, val type: PartUpdateType)
+
 data class PartUseInfo(val player: Player, val hand: InteractionHand)
 
-object PartGeometry {
-    fun transform(aabb: AABB, faceWorld: Direction): AABB = aabb
-        .transformed(faceWorld.rotation)
-        .move(faceOffset(aabb.size3d(), faceWorld))
-
-    fun transform(aabb: AABB, facing: Direction, faceWorld: Direction): AABB = aabb
-        .transformed(facingRotation(facing))
-        .transformed(faceWorld.rotation)
-        .move(faceOffset(aabb.size3d(), faceWorld))
-
-    fun modelBoundingBox(translation: Vector3d, sizeActual: Vector3d, facing: Direction, faceWorld: Direction): AABB {
-        val extent = sizeActual / 2.0
-
-        return transform(
-            AABB(
-                (translation - extent).toVec3(),
-                (translation + extent).toVec3()
-            ),
-            facing,
-            faceWorld
-        )
-    }
-
-    fun modelBoundingBox(sizeActual: Vector3d, facing: Direction, faceWorld: Direction) =
-        modelBoundingBox(Vector3d.zero, sizeActual, facing, faceWorld)
-
-    fun facingRotationLog(facing: Direction) = when (facing) {
-        Direction.NORTH -> 0.0
-        Direction.SOUTH -> PI
-        Direction.WEST -> PI / 2.0
-        Direction.EAST -> -PI / 2.0
-        else -> error("Invalid horizontal facing $facing")
-    }
-
-    fun facingRotation(facing: Direction) = Quaternionf(
-        AxisAngle4f(
-            facingRotationLog(facing).toFloat(),
-            Vector3f(0.0f, 1.0f, 0.0f)
-        )
-    )
-
-    fun faceOffset(sizeActual: Vector3d, faceWorld: Direction): Vec3 {
-        val halfSize = sizeActual / 2.0
-
-        val positiveOffset = halfSize.y
-        val negativeOffset = 1 - halfSize.y
-
-        return when (val axis = faceWorld.axis) {
-            Direction.Axis.X -> Vec3(
-                (if (faceWorld.axisDirection == Direction.AxisDirection.POSITIVE) positiveOffset else negativeOffset),
-                0.5,
-                0.5
-            )
-
-            Direction.Axis.Y -> Vec3(
-                0.5,
-                (if (faceWorld.axisDirection == Direction.AxisDirection.POSITIVE) positiveOffset else negativeOffset),
-                0.5
-            )
-
-            Direction.Axis.Z -> Vec3(
-                0.5,
-                0.5,
-                (if (faceWorld.axisDirection == Direction.AxisDirection.POSITIVE) positiveOffset else negativeOffset)
-            )
-
-            else -> error("Invalid axis $axis")
-        }
-    }
-
-    fun worldBoundingBox(translation: Vector3d, sizeActual: Vector3d, facing: Direction, faceWorld: Direction, posWorld: BlockPos): AABB =
-        modelBoundingBox(translation, sizeActual, facing, faceWorld).move(posWorld)
-
-    fun worldBoundingBox(sizeActual: Vector3d, facing: Direction, faceWorld: Direction, posWorld: BlockPos): AABB =
-        modelBoundingBox(sizeActual, facing, faceWorld).move(posWorld)
-}
-
-data class PartCreateInfo(
-    val id: ResourceLocation,
-    val placement: PartPlacementInfo
-)
+data class PartCreateInfo(val id: ResourceLocation, val placement: PartPlacementInfo)
 
 /**
  * Parts are entity-like units that exist in a multipart entity. They are similar to normal block entities,
@@ -237,7 +215,7 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
      * */
     fun getDirectionActual(dirWorld: Direction): Base6Direction3d {
         return Base6Direction3d.fromForwardUp(
-            placement.horizontalFacing,
+            placement.facing,
             placement.face,
             dirWorld
         )
@@ -247,7 +225,7 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
         PartGeometry.modelBoundingBox(
             translation,
             size,
-            placement.horizontalFacing,
+            placement.facing,
             placement.face
         )
 
@@ -255,7 +233,7 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
         PartGeometry.worldBoundingBox(
             translation,
             size,
-            placement.horizontalFacing,
+            placement.facing,
             placement.face,
             placement.position
         )
@@ -417,6 +395,12 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
     open fun onAdded() {}
 
     /**
+     * Called when this part is received and added to the client multipart, just before rendering set-up is enqueued.
+     * */
+    @ClientOnly
+    open fun onAddedToClient() {}
+
+    /**
      * Called when this part is being unloaded.
      * */
     open fun onUnloaded() {}
@@ -439,12 +423,6 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
      * Called when the part is removed from the multipart.
      * */
     protected open fun onRemoved() {}
-
-    /**
-     * Called when this part is received and added to the client multipart, just before rendering set-up is enqueued.
-     * */
-    @ClientOnly
-    open fun onAddedToClient() {}
 
     /**
      * Called when synchronization is suggested. This happens when a client enters the viewing area of the part.
@@ -543,6 +521,13 @@ open class BasicPartProvider(
     val factory: ((ci: PartCreateInfo) -> Part<*>),
 ) : PartProvider() {
     override fun create(context: PartPlacementInfo) = factory(PartCreateInfo(id, context))
+}
+
+
+class MySpec(ci: SpecCreateInfo) : Spec<BasicSpecRenderer>(ci) {
+    override fun createRenderer(): BasicSpecRenderer {
+        return BasicSpecRenderer(this, PartialModels.ELECTRICAL_WIRE_HUB)
+    }
 }
 
 /**
@@ -793,40 +778,6 @@ open class BasicCellPart<C: Cell, R : PartRenderer>(
     }
 }
 
-open class BasicConnectedCellPart<C : Cell>(
-    ci: PartCreateInfo,
-    provider: CellProvider<C>,
-    val body: PartialModel,
-    val connections: Map<Base6Direction3d, WireConnectionModelPartial>
-) : CellPart<C, ConnectedPartRenderer>(ci, provider) {
-    constructor(
-        ci: PartCreateInfo,
-        provider: CellProvider<C>,
-        body: PartialModel,
-        connection: WireConnectionModelPartial,
-        mask: Base6Direction3dMask
-    ) : this(ci, provider, body, mask.directionList.map { it.alias }.associateWith { connection })
-
-    constructor(
-        ci: PartCreateInfo,
-        provider: CellProvider<C>,
-        body: PartialModel,
-        connection: WireConnectionModelPartial
-    ) : this(ci, provider, body, connection, Base6Direction3dMask.HORIZONTALS)
-
-    override fun createRenderer(): ConnectedPartRenderer {
-        return ConnectedPartRenderer(
-            this,
-            body,
-            connections
-        )
-    }
-
-    override fun getSyncTag() = this.getConnectedPartTag()
-    override fun handleSyncTag(tag: CompoundTag) = this.handleConnectedPartTag(tag)
-    override fun onConnectivityChanged() = this.setSyncDirty()
-}
-
 /**
  * A connection mode represents the way two cells may be connected.
  * */
@@ -860,11 +811,7 @@ enum class CellPartConnectionMode(val index: Int) {
 private val DIRECTIONS = Direction.entries.toTypedArray()
 
 private val INCREMENT_FROM_FORWARD_UP = Int2IntOpenHashMap().also { map ->
-    for (facingWorld in DIRECTIONS) {
-        if(facingWorld.isVertical()) {
-            continue
-        }
-
+    for (facingWorld in FacingDirection.entries) {
         DIRECTIONS.forEach { faceWorld ->
             DIRECTIONS.forEach { direction ->
                 val direction3d = Vector3f(
@@ -873,13 +820,13 @@ private val INCREMENT_FROM_FORWARD_UP = Int2IntOpenHashMap().also { map ->
                     direction.stepZ.toFloat()
                 )
 
-                PartGeometry.facingRotation(facingWorld).transform(direction3d)
-                faceWorld.rotation.transform(direction3d)
+                facingWorld.rotation.transform(direction3d)
+                faceWorld.rotationFast.transform(direction3d)
 
                 val result = Direction.getNearest(direction3d.x, direction3d.y, direction3d.z)
 
                 val id = BlockPosInt.pack(
-                    facingWorld.get3DDataValue(),
+                    facingWorld.index,
                     faceWorld.get3DDataValue(),
                     direction.get3DDataValue()
                 )
@@ -890,57 +837,57 @@ private val INCREMENT_FROM_FORWARD_UP = Int2IntOpenHashMap().also { map ->
     }
 }
 
-fun incrementFromForwardUp(facingPart: Direction, faceWorld: Direction, direction: Direction): Direction {
+fun incrementFromForwardUp(facing: FacingDirection, face: Direction, direction: Direction): Direction {
     val id = BlockPosInt.pack(
-        facingPart.get3DDataValue(),
-        faceWorld.get3DDataValue(),
+        facing.index,
+        face.get3DDataValue(),
         direction.get3DDataValue()
     )
 
     return Direction.from3DDataValue(INCREMENT_FROM_FORWARD_UP.get(id))
 }
 
-fun incrementFromForwardUp(facingPart: Direction, faceWorld: Direction, direction: Base6Direction3d) = incrementFromForwardUp(facingPart, faceWorld, direction.alias)
+fun incrementFromForwardUp(facing: FacingDirection, face: Direction, direction: Base6Direction3d) = incrementFromForwardUp(facing, face, direction.alias)
 
-fun partX(facingPart: Direction, faceWorld: Direction) = incrementFromForwardUp(facingPart, faceWorld, Direction.EAST)
-fun partY(facingPart: Direction, faceWorld: Direction) = incrementFromForwardUp(facingPart, faceWorld, Direction.UP)
-fun partZ(facingPart: Direction, faceWorld: Direction) = incrementFromForwardUp(facingPart, faceWorld, Direction.SOUTH)
+fun partX(facing: FacingDirection, faceWorld: Direction) = incrementFromForwardUp(facing, faceWorld, Direction.EAST)
+fun partY(facing: FacingDirection, faceWorld: Direction) = incrementFromForwardUp(facing, faceWorld, Direction.UP)
+fun partZ(facing: FacingDirection, faceWorld: Direction) = incrementFromForwardUp(facing, faceWorld, Direction.SOUTH)
 
 fun Locator.transformPartWorld(directionPart: Base6Direction3d) : Direction {
     val facing = this.requireLocator<FacingLocator> { "Part -> World requires facing" }
     val face = this.requireLocator<FaceLocator> { "Part -> World requires face" }
 
-    return incrementFromForwardUp(facing.forwardWorld, face, directionPart)
+    return incrementFromForwardUp(facing.facing, face, directionPart)
 }
 
 @JvmInline
 value class PartConnectionDirection(val value: Int) {
     val mode get() = CellPartConnectionMode.byId[(value and 3)]
-    val directionPart get() = Base6Direction3d.byId[(value shr 2) and 7]
+    val directionPart get() = Base6Direction3d.entries[(value shr 2) and 7]
 
     constructor(mode: CellPartConnectionMode, directionPart: Base6Direction3d) : this(mode.index or (directionPart.id shl 2))
 
     fun toNbt(): CompoundTag {
         val tag = CompoundTag()
 
-        tag.putBase6Direction(DIR, directionPart)
+        tag.putBase6Direction3d(DIR, directionPart)
         tag.putConnectionMode(MODE, mode)
 
         return tag
     }
 
-    fun getIncrement(facingWorld: Direction, faceWorld: Direction): Vec3i = when(mode) {
+    fun getIncrement(facing: FacingDirection, faceWorld: Direction): Vec3i = when(mode) {
         CellPartConnectionMode.Unknown -> {
             error("Undefined part connection")
         }
         CellPartConnectionMode.Planar -> {
-            incrementFromForwardUp(facingWorld, faceWorld, directionPart).normal
+            incrementFromForwardUp(facing, faceWorld, directionPart).normal
         }
         CellPartConnectionMode.Inner -> {
             Vec3i.ZERO
         }
         CellPartConnectionMode.Wrapped ->{
-            val trWorld = incrementFromForwardUp(facingWorld, faceWorld, directionPart)
+            val trWorld = incrementFromForwardUp(facing, faceWorld, directionPart)
             Vec3i(
                 trWorld.stepX - faceWorld.stepX,
                 trWorld.stepY - faceWorld.stepY,
@@ -955,7 +902,7 @@ value class PartConnectionDirection(val value: Int) {
 
         fun fromNbt(tag: CompoundTag) = PartConnectionDirection(
             tag.getConnectionMode(MODE),
-            tag.getDirectionActual(DIR),
+            tag.getBase6Direction3d(DIR),
         )
     }
 }
@@ -1059,7 +1006,7 @@ fun getPartConnection(
     return PartConnectionDirection(
         mode,
         Base6Direction3d.fromForwardUp(
-            actualFacingWorld.forwardWorld,
+            actualFacingWorld.facing,
             actualFaceWorld,
             dir
         )
@@ -1084,32 +1031,6 @@ interface TickablePart {
  * */
 interface AnimatedPart {
     fun animationTick(random: RandomSource)
-}
-
-enum class ItemPersistentPartLoadOrder {
-    /**
-     * The data is loaded before the simulation is built.
-     * */
-    BeforeSim,
-    /**
-     * The data is loaded after the simulation is built.
-     * */
-    AfterSim
-}
-
-interface ItemPersistentPart {
-    val order: ItemPersistentPartLoadOrder
-
-    /**
-     * Saves the part to an item tag.
-     * */
-    fun saveToItemNbt(tag: CompoundTag)
-
-    /**
-     * Loads the part from the item tag.
-     * @param tag The saved tag. Null if no data was present in the item (possibly because the item was newly created)
-     * */
-    fun loadFromItemNbt(tag: CompoundTag?)
 }
 
 enum class RelightSource {

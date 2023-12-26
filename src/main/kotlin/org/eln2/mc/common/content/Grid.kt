@@ -1097,7 +1097,7 @@ abstract class GridCellPart<R : PartRenderer>(ci: PartCreateInfo, provider: Cell
 }
 
 class GridTapPart(ci: PartCreateInfo, provider: CellProvider<GridCell>) : GridCellPart<ConnectedPartRenderer>(ci, provider) {
-    override val gridAttachment: Vector3d = super.gridAttachment - placement.face.toVector3d() * 0.15
+    override val gridAttachment: Vector3d = super.gridAttachment - placement.face.vector3d * 0.15
 
     override fun createRenderer() = ConnectedPartRenderer(
         this,

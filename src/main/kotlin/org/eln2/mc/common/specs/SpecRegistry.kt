@@ -4,8 +4,11 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraftforge.eventbus.api.IEventBus
 import net.minecraftforge.registries.*
 import org.ageseries.libage.data.mutableBiMapOf
+import org.ageseries.libage.mathematics.Vector3d
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
+import org.eln2.mc.common.parts.foundation.MySpec
+import org.eln2.mc.common.specs.foundation.BasicSpecProvider
 import org.eln2.mc.common.specs.foundation.Spec
 import org.eln2.mc.common.specs.foundation.SpecItem
 import org.eln2.mc.common.specs.foundation.SpecProvider
@@ -58,4 +61,8 @@ object SpecRegistry {
     fun getSpecItem(id: ResourceLocation): SpecItem {
         return ForgeRegistries.ITEMS.getValue(id) as SpecItem
     }
+
+    val TEST = specAndItem("test_spec", BasicSpecProvider(Vector3d(0.1, 0.1, 0.1)) {
+        MySpec(it)
+    })
 }

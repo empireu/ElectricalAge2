@@ -5,10 +5,7 @@ package org.eln2.mc.mathematics
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
 import net.minecraft.core.Direction
 import org.ageseries.libage.data.ImmutableByteArrayView
-import org.eln2.mc.extensions.alias
-import org.eln2.mc.extensions.index
-import org.eln2.mc.extensions.isHorizontal
-import org.eln2.mc.extensions.isVertical
+import org.eln2.mc.extensions.*
 import org.joml.Matrix4f
 
 enum class Base6Direction3d(val id: Int) {
@@ -49,11 +46,7 @@ enum class Base6Direction3d(val id: Int) {
         private val FROM_FORWARD_UP = let {
             val map = Int2IntOpenHashMap()
 
-            for (facing in Direction.entries) {
-                if(facing.isVertical()) {
-                    continue
-                }
-
+            for (facing in FacingDirection.entries) {
                 for (normal in Direction.entries) {
                     for (direction in Direction.entries) {
                         val result = when (direction) {
@@ -66,7 +59,12 @@ enum class Base6Direction3d(val id: Int) {
                             }
 
                             else -> {
-                                val adjustedFacing = Direction.rotate(Matrix4f().identity().rotate(normal.rotation), facing)
+                                val adjustedFacing = Direction.rotate(
+                                    Matrix4f()
+                                        .identity()
+                                        .rotate(normal.rotationFast),
+                                    facing.direction
+                                )
 
                                 var result = when (direction) {
                                     adjustedFacing -> Front
@@ -86,7 +84,11 @@ enum class Base6Direction3d(val id: Int) {
                             }
                         }
 
-                        map.put(BlockPosInt.pack(facing.index(), normal.index(), direction.index()), result.id)
+                        map.put(BlockPosInt.pack(
+                            facing.index,
+                            normal.get3DDataValue(),
+                            direction.get3DDataValue()
+                        ), result.id)
                     }
                 }
             }
@@ -94,23 +96,17 @@ enum class Base6Direction3d(val id: Int) {
             map
         }
 
-        fun fromForwardUp(facing: Direction, normal: Direction, direction: Direction): Base6Direction3d {
-            if (facing.isVertical()) {
-                error("Facing cannot be vertical")
-            }
-
-            return Base6Direction3d.byId[
+        fun fromForwardUp(facing: FacingDirection, normal: Direction, direction: Direction): Base6Direction3d {
+            return Base6Direction3d.entries[
                 FROM_FORWARD_UP.get(
                     BlockPosInt.pack(
-                        facing.index(),
-                        normal.index(),
-                        direction.index()
+                        facing.index,
+                        normal.get3DDataValue(),
+                        direction.get3DDataValue()
                     )
                 )
             ]
         }
-
-        val byId = values().toList()
     }
 }
 
@@ -147,7 +143,7 @@ value class Base6Direction3dMask(val value: Int) {
 
         // This cache maps single directions to masks.
         private val perDirection = Direction.values()
-            .sortedBy { it.index() }
+            .sortedBy { it.get3DDataValue() }
             .map { Base6Direction3dMask(getBit(it)) }
             .toTypedArray()
 
@@ -158,7 +154,7 @@ value class Base6Direction3dMask(val value: Int) {
          * Gets the cached mask for the specified direction.
          * */
         fun of(direction: Direction): Base6Direction3dMask {
-            return perDirection[direction.index()]
+            return perDirection[direction.get3DDataValue()]
         }
 
         /**
@@ -234,7 +230,7 @@ value class Base6Direction3dMask(val value: Int) {
                 var result = 0
 
                 Direction.values()
-                    .sortedBy { it.index() }
+                    .sortedBy { it.get3DDataValue() }
                     .filter { it != direction && it != direction.opposite }
                     .forEach { perpendicular ->
                         result = result or getBit(perpendicular)
@@ -248,7 +244,7 @@ value class Base6Direction3dMask(val value: Int) {
          * Gets the cached mask with perpendicular directions to the specified direction.
          * */
         fun perpendicular(direction: Direction): Base6Direction3dMask {
-            return perpendiculars[direction.index()]
+            return perpendiculars[direction.get3DDataValue()]
         }
 
         // These are all mask combinations.
