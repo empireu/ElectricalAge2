@@ -62,7 +62,7 @@ object SpecRegistry {
         return ForgeRegistries.ITEMS.getValue(id) as SpecItem
     }
 
-    val TEST = specAndItem("test_spec", BasicSpecProvider(Vector3d(0.1, 0.1, 0.1)) {
+    val TEST = specAndItem("test_spec", BasicSpecProvider(Vector3d(3.5 / 16.0, 2.0 / 16.0, 3.5 / 16.0)) {
         MySpec(it)
     })
 }

@@ -616,7 +616,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     /**
      * Tries to break the part selected by [entity] with [breakPart].
      * @param entity The player breaking the part.
-     * @return The part that was destroyed or null, if the player's view did not intersect a part.
+     * @return The part that was destroyed or null, if not successful
      * */
     @ServerOnly
     fun breakPartByPlayer(entity: Player, level: Level, saveTag: CompoundTag? = null): Part<*>? {
@@ -626,6 +626,10 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
 
         val part = pickPart(entity)
             ?: return null
+
+        if(!part.tryBreakByPlayer(entity)) {
+            return null
+        }
 
         breakPart(part, saveTag)
 
@@ -716,7 +720,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         }
 
         val tag = CompoundTag()
-        saveParts(tag, true)
+        saveParts(tag, SaveType.ClientData)
 
         parts.values.forEach {
             it.onSyncSuggested()
@@ -742,7 +746,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             return
         }
 
-        loadParts(tag)
+        loadParts(tag, SaveType.ClientData)
 
         parts.values.forEach { part ->
             clientAddPart(part)
@@ -789,7 +793,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
 
             when (update.type) {
                 PartUpdateType.Add -> {
-                    updateTag.put("NewPart", savePartCommon(part))
+                    updateTag.put("NewPart", savePartCommon(part, SaveType.ClientData))
                 }
 
                 PartUpdateType.Remove -> {
@@ -870,7 +874,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             when (updateTag.getPartUpdateType("Type")) {
                 PartUpdateType.Add -> {
                     val newPartTag = updateTag.get("NewPart") as CompoundTag
-                    val part = unpackPart(newPartTag)
+                    val part = unpackPart(newPartTag, SaveType.ClientData)
 
                     if (parts.put(part.placement.face, part) != null) {
                         LOG.error("Client received new part, but a part was already present on the ${part.placement.face} face!")
@@ -947,7 +951,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         }
 
         try {
-            saveParts(pTag, false)
+            saveParts(pTag, SaveType.ServerData)
         } catch (t: Throwable) {
             LOG.fatal("MULTIPART SAVE ERROR: $t")
         }
@@ -978,7 +982,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             }
 
             if (this.savedTag != null) {
-                loadParts(savedTag!!)
+                loadParts(savedTag!!, SaveType.ServerData)
 
                 parts.values.forEach { part ->
                     part.onLoaded()
@@ -1007,11 +1011,16 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         }
     }
 
+    private enum class SaveType {
+        ServerData,
+        ClientData
+    }
+
     /**
      * Saves all the data associated with a part to a CompoundTag.
      * */
     @ServerOnly
-    private fun savePartCommon(part: Part<*>): CompoundTag {
+    private fun savePartCommon(part: Part<*>, type: SaveType): CompoundTag {
         val tag = CompoundTag()
 
         tag.putResourceLocation("ID", part.id)
@@ -1019,7 +1028,10 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         tag.putDirection("Face", part.placement.face)
         tag.putHorizontalFacing("Facing", part.placement.facing)
 
-        val customTag = part.getSaveTag()
+        val customTag = when(type) {
+            SaveType.ServerData -> part.getServerSaveTag()
+            SaveType.ClientData -> part.getClientSaveTag()
+        }
 
         if (customTag != null) {
             tag.put("CustomTag", customTag)
@@ -1032,24 +1044,13 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * Saves the entire part set to the provided CompoundTag.
      * */
     @ServerOnly
-    private fun saveParts(tag: CompoundTag, initial: Boolean) {
+    private fun saveParts(tag: CompoundTag, type: SaveType) {
         check(!level!!.isClientSide)
 
         val partsTag = ListTag()
 
-        parts.keys.forEach { face ->
-            val part = parts[face]
-            val commonTag = savePartCommon(part!!)
-
-            if (initial) {
-                val initialTag = part.getInitialSyncTag()
-
-                if (initialTag != null) {
-                    commonTag.put("Initial", initialTag)
-                }
-            }
-
-            partsTag.add(commonTag)
+        parts.values.forEach { part ->
+            partsTag.add(savePartCommon(part, type))
         }
 
         tag.put("Parts", partsTag)
@@ -1060,20 +1061,14 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * This is used by the server to load from disk, and by the client to set up parts during the initial
      * chunk synchronization.
      * */
-    private fun loadParts(tag: CompoundTag) {
+    private fun loadParts(tag: CompoundTag, type: SaveType) {
         if (tag.contains("Parts")) {
             val partsTag = tag.get("Parts") as ListTag
             partsTag.forEach { partTag ->
                 val partCompoundTag = partTag as CompoundTag
-                val part = unpackPart(partCompoundTag)
+                val part = unpackPart(partCompoundTag, type)
 
                 addPart(part.placement.face, part)
-
-                val initialTag = partCompoundTag.get("Initial") as? CompoundTag
-
-                if (initialTag != null) {
-                    part.loadInitialSyncTag(initialTag)
-                }
             }
 
             rebuildCollider()
@@ -1087,18 +1082,32 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * This tag should be a product of the getPartTag method.
      * This method _does not_ add the part to the part map!
      * */
-    private fun unpackPart(tag: CompoundTag): Part<*> {
+    private fun unpackPart(tag: CompoundTag, saveType: SaveType): Part<*> {
         val id = tag.getResourceLocation("ID")
         val pos = tag.getBlockPos("Pos")
         val face = tag.getDirection("Face")
         val facing = tag.getHorizontalFacing("Facing")
         val customTag = tag.get("CustomTag") as? CompoundTag
 
-        val provider = PartRegistry.tryGetProvider(id) ?: error("Failed to get part with id $id")
-        val part = provider.create(PartPlacementInfo(pos, face, facing, level!!, this, provider))
+        val provider = PartRegistry.tryGetProvider(id)
+            ?: error("Failed to get part with id $id")
+
+        val part = provider.create(
+            PartPlacementInfo(
+                pos,
+                face,
+                facing,
+                level!!,
+                this,
+                provider
+            )
+        )
 
         if (customTag != null) {
-            part.loadFromTag(customTag)
+            when(saveType) {
+                SaveType.ServerData -> part.loadServerSaveTag(customTag)
+                SaveType.ClientData -> part.loadClientSaveTag(customTag)
+            }
         }
 
         return part

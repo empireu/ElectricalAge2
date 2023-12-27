@@ -48,6 +48,8 @@ object PartialModels {
 
     val POLE_TEMPORARY = partialBlock("pole")
 
+    val SPEC_PART_FRAME = partialBlock("spec_part_frame")
+
     private fun partial(path: String) = PartialModel(resource(path))
 
     fun partialBlock(path: String) = PartialModel(resource("block/$path"))

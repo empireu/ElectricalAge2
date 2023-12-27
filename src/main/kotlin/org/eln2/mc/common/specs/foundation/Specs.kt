@@ -2,21 +2,34 @@ package org.eln2.mc.common.specs.foundation
 
 import com.jozufozu.flywheel.core.materials.model.ModelData
 import com.jozufozu.flywheel.util.Color
+import com.mojang.blaze3d.vertex.PoseStack
+import com.mojang.blaze3d.vertex.VertexConsumer
+import net.minecraft.client.Minecraft
+import net.minecraft.client.renderer.RenderType
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.level.ServerLevel
+import net.minecraft.util.Mth
 import net.minecraft.world.InteractionResult
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.Item
+import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.context.UseOnContext
+import net.minecraft.world.phys.shapes.BooleanOp
+import net.minecraft.world.phys.shapes.Shapes
+import net.minecraftforge.client.event.RenderHighlightEvent
 import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.createPartInstance
+import org.eln2.mc.client.render.foundation.partOffsetTable
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.common.specs.SpecRegistry
@@ -24,6 +37,7 @@ import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.DebugComponentDisplay
 import org.eln2.mc.mathematics.FacingDirection
+import org.joml.Quaternionf
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.PI
 
@@ -85,7 +99,7 @@ data class SpecPlacementInfo(
     val provider: SpecProvider,
     val mountingPointWorld: Vector3d,
     val specialPose: Pose2d,
-    val placementId: Int
+    val placementId: Int,
 ) {
     val level by part.placement::level
     val blockPos by part.placement::position
@@ -94,13 +108,32 @@ data class SpecPlacementInfo(
     val mountingPointSpecial by specialPose::translation
     val orientation by specialPose::rotation
 
-    val boundingBox = SpecGeometry.boundingBox(
+    val orientedBoundingBoxWorld = SpecGeometry.boundingBox(
         mountingPointWorld,
         orientation,
         provider.placementCollisionSize,
         part.placement.facing,
         part.placement.face
     )
+
+    val shapeBoundingBox = run {
+        val offset = PartGeometry.faceOffset(
+            provider.placementCollisionSize,
+            part.placement.face
+        )
+
+        BoundingBox3d.fromOrientedBoundingBox(
+            OrientedBoundingBox3d(
+                Vector3d(offset.x, offset.y, offset.z) + (mountingPointWorld - part.placement.mountingPointWorld),
+                SpecGeometry.rotationWorld(
+                    orientation,
+                    part.placement.facing,
+                    part.placement.face
+                ),
+                provider.placementCollisionSize * 0.5
+            )
+        )
+    }
 }
 
 enum class SpecUpdateType(val id: Int) {
@@ -189,7 +222,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         )
 
         for (spec in specs.values) {
-            if(spec.placement.boundingBox intersectsWith boundingBox) {
+            if(spec.placement.orientedBoundingBoxWorld intersectsWith boundingBox) {
                 return true
             }
         }
@@ -223,6 +256,17 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
             id
         )
     }
+
+    fun pickSpec(ray3d: Ray3d) = specs.values
+        .mapNotNull {
+            val intersection = (ray3d intersectionWith it.placement.orientedBoundingBoxWorld)
+                ?: return@mapNotNull null
+
+            intersection to it
+        }
+        .minByOrNull { ray3d.origin..ray3d.evaluate(it.first.entry) }?.second
+
+    fun pickSpec(player: Entity) = pickSpec(player.getViewRay())
 
     /**
      * Adds the [spec] and notifies via [Spec.onAdded]
@@ -286,6 +330,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
 
         addSpec(spec)
         placementUpdates.add(SpecUpdate(spec, SpecUpdateType.Add))
+        rebuildCollider()
 
         if (spec is ItemPersistent && spec.order == ItemPersistentLoadOrder.BeforeSim) {
             spec.loadFromItemNbt(saveTag)
@@ -300,39 +345,94 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
     }
 
     @ServerOnly
-    override fun getSaveTag(): CompoundTag? {
-        if(specs.isEmpty()) {
-            return null // Prevent loadFromTag when part is placed
+    override fun tryBreakByPlayer(player: Player): Boolean {
+        val spec = pickSpec(player.getViewRay())
+
+        if(spec != null) {
+            if(spec.tryBreakByPlayer(player)) {
+                val tag = CompoundTag()
+                breakSpec(spec, tag)
+
+                if(!player.isCreative) {
+                    spawnDrop(placement.level as ServerLevel, spec, tag)
+                }
+            }
+
+            return false
         }
 
+        return specs.isEmpty()
+    }
+
+    override fun onBroken() {
+        if(!placement.level.isClientSide) {
+            specs.values.toList().forEach {
+                val tag = CompoundTag()
+                breakSpec(it, tag)
+                spawnDrop(placement.level as ServerLevel, it, tag)
+            }
+        }
+    }
+
+    /**
+     * Removes a spec with full synchronization.
+     * Notifies via [Spec.onBroken].
+     * @param spec The part to remove.
+     * @param saveTag A tag to save part data, if required (for [ItemPersistent]s).
+     * */
+    @ServerOnly
+    fun breakSpec(spec: Spec<*>, saveTag: CompoundTag? = null) {
+        require(specs.values.contains(spec)) {
+            "Tried to break spec $spec which was not present"
+        }
+
+        if (spec is ItemPersistent && saveTag != null) {
+            spec.saveToItemNbt(saveTag)
+        }
+
+        removeSpec(spec)
+        placementUpdates.add(SpecUpdate(spec, SpecUpdateType.Remove))
+
+        spec.onBroken()
+
+        setSaveDirty()
+        setSyncDirty()
+
+        rebuildCollider()
+    }
+
+    @ServerOnly
+    override fun getServerSaveTag(): CompoundTag {
         val tag = CompoundTag()
-        saveSpecs(tag, false)
+        saveSpecs(tag, SaveType.ServerData)
         return tag
     }
 
     @ServerOnly
-    override fun loadFromTag(tag: CompoundTag) {
-        requireIsOnServerThread() // This is what gets called on loadInitialSynTag which we overrode, so we're peachy
-
-        loadSpecs(tag)
+    override fun loadServerSaveTag(tag: CompoundTag) {
+        loadSpecs(tag, SaveType.ServerData)
 
         specs.values.forEach {
             it.onLoaded()
         }
+
+        rebuildCollider()
     }
 
-    override fun getInitialSyncTag(): CompoundTag {
+    override fun getClientSaveTag(): CompoundTag {
         val tag = CompoundTag()
-        saveSpecs(tag, true)
+        saveSpecs(tag, SaveType.ClientData)
         return tag
     }
 
-    override fun loadInitialSyncTag(tag: CompoundTag) {
-        loadSpecs(tag)
+    override fun loadClientSaveTag(tag: CompoundTag) {
+        loadSpecs(tag, SaveType.ClientData)
 
         specs.values.forEach {
             clientAddSpec(it)
         }
+
+        rebuildCollider()
     }
 
     override fun onSyncSuggested() {
@@ -374,7 +474,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
 
             when (update.type) {
                 SpecUpdateType.Add -> {
-                    updateTag.put(NEW_SPEC, saveSpecCommon(spec))
+                    updateTag.put(NEW_SPEC, saveSpecCommon(spec, SaveType.ClientData))
                 }
 
                 SpecUpdateType.Remove -> {
@@ -402,7 +502,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
             when (updateTag.getSpecUpdateType(TYPE)) {
                 SpecUpdateType.Add -> {
                     val newSpecTag = updateTag.get(NEW_SPEC) as CompoundTag
-                    val spec = unpackSpec(newSpecTag)
+                    val spec = unpackSpec(newSpecTag, SaveType.ClientData)
 
                     if (specs.put(spec.placement.placementId, spec) != null) {
                         LOG.error("Client received new part, but a part was already present on the ${spec.placement.face} face!")
@@ -424,6 +524,8 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
                 }
             }
         }
+
+        rebuildCollider()
     }
 
     @ServerOnly
@@ -481,8 +583,13 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         }
     }
 
+    private enum class SaveType {
+        ServerData,
+        ClientData
+    }
+
     @ServerOnly
-    private fun saveSpecCommon(spec: Spec<*>): CompoundTag {
+    private fun saveSpecCommon(spec: Spec<*>, saveType: SaveType): CompoundTag {
         requireIsOnServerThread()
 
         val tag = CompoundTag()
@@ -493,7 +600,10 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         tag.putPose2d(SPECIAL_POSE, placement.specialPose)
         tag.putInt(PLACEMENT_ID, placement.placementId)
 
-        val customTag = spec.getSaveTag()
+        val customTag = when(saveType) {
+            SaveType.ServerData -> spec.getServerSaveTag()
+            SaveType.ClientData -> spec.getClientSaveTag()
+        }
 
         if (customTag != null) {
             tag.put(TAG, customTag)
@@ -503,49 +613,33 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
     }
 
     @ServerOnly
-    private fun saveSpecs(tag: CompoundTag, initial: Boolean) {
+    private fun saveSpecs(tag: CompoundTag, saveType: SaveType) {
         requireIsOnServerThread()
 
         val specsTag = ListTag()
 
         specs.values.forEach { spec ->
-            val commonTag = saveSpecCommon(spec)
-
-            if (initial) {
-                val initialTag = spec.getInitialSyncTag()
-
-                if (initialTag != null) {
-                    commonTag.put(INITIAL_TAG, initialTag)
-                }
-            }
-
-            specsTag.add(commonTag)
+            specsTag.add(saveSpecCommon(spec, saveType))
         }
 
         tag.put(SPECS, specsTag)
     }
 
-    private fun loadSpecs(tag: CompoundTag) {
+    private fun loadSpecs(tag: CompoundTag, saveType: SaveType) {
         if (tag.contains(SPECS)) {
             val partsTag = tag.get(SPECS) as ListTag
             partsTag.forEach { partTag ->
-                val partCompoundTag = partTag as CompoundTag
-                val part = unpackSpec(partCompoundTag)
+                val specCompoundTag = partTag as CompoundTag
+                val part = unpackSpec(specCompoundTag, saveType)
 
                 addSpec(part)
-
-                val initialTag = partCompoundTag.get(INITIAL_TAG) as? CompoundTag
-
-                if (initialTag != null) {
-                    part.loadInitialSyncTag(initialTag)
-                }
             }
         } else {
             LOG.error("Spec at ${placement.position} had no saved data")
         }
     }
 
-    private fun unpackSpec(tag: CompoundTag): Spec<*> {
+    private fun unpackSpec(tag: CompoundTag, saveType: SaveType): Spec<*> {
         val id = tag.getResourceLocation(ID)
         val mountingPointWorld = tag.getVector3d(MOUNTING_POINT_WORLD)
         val specialPose = tag.getPose2d(SPECIAL_POSE)
@@ -566,7 +660,10 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         )
 
         if (customTag != null) {
-            spec.loadFromTag(customTag)
+            when(saveType) {
+                SaveType.ServerData -> spec.loadServerSaveTag(customTag)
+                SaveType.ClientData -> spec.loadClientSaveTag(customTag)
+            }
         }
 
         return spec
@@ -577,6 +674,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
      * */
     @ClientOnly
     private fun clientAddSpec(spec: Spec<*>) {
+        requireIsOnRenderThread()
         spec.onAddedToClient()
         renderUpdates.add(SpecUpdate(spec, SpecUpdateType.Add))
     }
@@ -586,27 +684,38 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
      * */
     @ClientOnly
     private fun clientRemoveSpec(spec: Spec<*>) {
+        requireIsOnRenderThread()
         spec.onBroken()
         renderUpdates.add(SpecUpdate(spec, SpecUpdateType.Remove))
     }
 
-    companion object {
-        private const val ID = "id"
-        private const val TYPE = "type"
-        private const val NEW_SPEC = "newSpec"
-        private const val REMOVED_ID = "removedId"
-        private const val PLACEMENT_UPDATES = "placementUpdates"
-        private const val SPEC_UPDATES = "specUpdates"
-        private const val SPECS = "specs"
-        private const val MOUNTING_POINT_WORLD = "position"
-        private const val SPECIAL_POSE = "pose"
-        private const val PLACEMENT_ID = "placementId"
-        private const val TAG = "tag"
-        private const val INITIAL_TAG = "initialTag"
+    private fun rebuildCollider() {
+        var shape = if(specs.isEmpty()) {
+            partProviderShape
+        }
+        else {
+            Shapes.empty()
+        }
+
+        specs.values.forEach {
+            shape = Shapes.joinUnoptimized(
+                shape,
+                Shapes.create(it.placement.shapeBoundingBox.cast()),
+                BooleanOp.OR
+            )
+        }
+
+        updateShape(shape)
     }
 
     override fun createRenderer(): SpecPartRenderer {
         return SpecPartRenderer(this)
+    }
+
+    fun bindRenderer(instance: SpecPartRenderer) {
+        specs.values.forEach {
+            renderUpdates.add(SpecUpdate(it, SpecUpdateType.Add))
+        }
     }
 
     override fun onAddedToClient() {
@@ -615,6 +724,8 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
     }
 
     override fun onUsedBy(context: PartUseInfo): InteractionResult {
+        return InteractionResult.PASS
+
         if(placement.level.isClientSide) {
             val intersection = getSpecMountingPointWorld(context.player)
 
@@ -659,18 +770,134 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
     override fun submitDebugDisplay(builder: ComponentDisplayList) {
         builder.debug("Specs: ${specs.size}")
     }
+
+    companion object {
+        private const val ID = "id"
+        private const val TYPE = "type"
+        private const val NEW_SPEC = "newSpec"
+        private const val REMOVED_ID = "removedId"
+        private const val PLACEMENT_UPDATES = "placementUpdates"
+        private const val SPEC_UPDATES = "specUpdates"
+        private const val SPECS = "specs"
+        private const val MOUNTING_POINT_WORLD = "position"
+        private const val SPECIAL_POSE = "pose"
+        private const val PLACEMENT_ID = "placementId"
+        private const val TAG = "tag"
+
+        fun createSpecDropStack(id: ResourceLocation, saveTag: CompoundTag?, count: Int = 1): ItemStack {
+            val item = SpecRegistry.getSpecItem(id)
+            val stack = ItemStack(item, count)
+
+            stack.tag = saveTag
+
+            return stack
+        }
+
+        private fun spawnDrop(pLevel: ServerLevel, removedSpec: Spec<*>, saveTag: CompoundTag) {
+            val center = removedSpec.placement.orientedBoundingBoxWorld.center
+
+            pLevel.addItem(center.x, center.y, center.z, createSpecDropStack(removedSpec.id, saveTag))
+        }
+
+        @ClientOnly
+        fun renderHighlightEvent(event: RenderHighlightEvent.Block) {
+            val level = Minecraft.getInstance().level
+                ?: return
+
+            val player = event.camera.entity as? LivingEntity
+                ?: return
+
+            val multipart = level.getBlockEntity(event.target.blockPos) as? MultipartBlockEntity
+                ?: return
+
+            val part = multipart.pickPart(player) as? SpecContainerPart
+                ?: return
+
+            event.isCanceled = true
+
+            val spec = part.pickSpec(player)
+                ?: return
+
+            val pConsumer: VertexConsumer = event.multiBufferSource.getBuffer(RenderType.lines())
+
+            val stack = event.poseStack
+            stack.pushPose()
+
+            val pRed = 0.1f
+            val pGreen = 0.5f
+            val pBlue = 0.8f
+            val pAlpha = 0.9f
+
+            stack.translate(
+                -event.camera.position.x + spec.placement.blockPos.x.toDouble(),
+                -event.camera.position.y + spec.placement.blockPos.y.toDouble(),
+                -event.camera.position.z + spec.placement.blockPos.z.toDouble()
+            )
+
+            val (dx, dy, dz) = partOffsetTable[part.placement.face.get3DDataValue()]
+            val (dx1, dy1, dz1) = spec.placement.mountingPointWorld - part.placement.mountingPointWorld
+
+            stack.translate(
+                dx + dx1,
+                dy + dy1,
+                dz + dz1
+            )
+
+            stack.mulPose(part.placement.face.rotationFast)
+            stack.mulPose(Quaternionf(part.placement.facing.rotation))
+            stack.mulPose(Quaternionf().rotateY(spec.placement.orientation.ln().toFloat()))
+            stack.translate(0.0, spec.placement.provider.placementCollisionSize.y * 0.5, 0.0)
+
+            val box = BoundingBox3d.fromCenterSize(
+                Vector3d.zero,
+                spec.placement.provider.placementCollisionSize
+            ).cast()
+
+            val pose: PoseStack.Pose = stack.last()
+            Shapes.create(box).forAllEdges { pX1: Double, pY1: Double, pZ1: Double, pX2: Double, pY2: Double, pZ2: Double ->
+                var f = (pX2 - pX1).toFloat()
+                var f1 = (pY2 - pY1).toFloat()
+                var f2 = (pZ2 - pZ1).toFloat()
+                val f3 = Mth.sqrt(f * f + f1 * f1 + f2 * f2)
+                f /= f3
+                f1 /= f3
+                f2 /= f3
+                pConsumer.vertex(
+                    pose.pose(),
+                    pX1.toFloat(),
+                    pY1.toFloat(),
+                    pZ1.toFloat()
+                ).color(pRed, pGreen, pBlue, pAlpha).normal(pose.normal(), f, f1, f2).endVertex()
+                pConsumer.vertex(
+                    pose.pose(),
+                    pX2.toFloat(),
+                    pY2.toFloat(),
+                    pZ2.toFloat()
+                ).color(pRed, pGreen, pBlue, pAlpha).normal(pose.normal(), f, f1, f2).endVertex()
+            }
+
+            stack.popPose()
+        }
+    }
 }
 
 class SpecPartRenderer(val specPart: SpecContainerPart) : PartRenderer() {
-    private val specs = ArrayList<Spec<*>>()
+    private val specs = HashSet<Spec<*>>()
 
-    /* FIXME FIXME FIXME FIXME FIXME */
-    var modelInstance: ModelData? = null
-    /* FIXME FIXME FIXME FIXME FIXME */
+    private var frameInstance: ModelData? = null
 
     override fun setupRendering() {
-        modelInstance?.delete()
-        modelInstance = createPartInstance(multipart, PartialModels.GROUND, specPart, 0.0)
+        frameInstance?.delete()
+
+        frameInstance = createPartInstance(
+            multipart,
+            PartialModels.SPEC_PART_FRAME,
+            specPart,
+            0.0
+        )
+        multipart.relightModels(frameInstance)
+
+        specPart.bindRenderer(this)
     }
 
     override fun beginFrame() {
@@ -694,14 +921,12 @@ class SpecPartRenderer(val specPart: SpecContainerPart) : PartRenderer() {
 
             when (update.type) {
                 SpecUpdateType.Add -> {
-                    check(!specs.contains(spec))
                     specs.add(spec)
                     spec.renderer.setupRendering(this)
                     spec.renderer.relight(RelightSource.Setup)
                 }
 
                 SpecUpdateType.Remove -> {
-                    check(specs.contains(spec))
                     specs.remove(spec)
                     spec.destroyRenderer()
                 }
@@ -713,10 +938,12 @@ class SpecPartRenderer(val specPart: SpecContainerPart) : PartRenderer() {
         specs.forEach {
             it.renderer.relight(source)
         }
+
+        multipart.relightModels(frameInstance)
     }
 
     override fun remove() {
-        modelInstance?.delete()
+        frameInstance?.delete()
 
         specs.forEach {
             it.destroyRenderer()
@@ -734,6 +961,7 @@ class SpecItem(val provider: SpecProvider) : Item(Properties()) {
         }
 
         val multipart = pContext.level.getBlockEntity(pContext.clickedPos) as? MultipartBlockEntity
+            ?: pContext.level.getBlockEntity(pContext.clickedPos + pContext.clickedFace) as? MultipartBlockEntity
             ?: return InteractionResult.FAIL
 
         val part = multipart.getPart(pContext.clickedFace) as? SpecContainerPart
@@ -771,7 +999,10 @@ abstract class SpecProvider {
     open fun canPlace(context: SpecPlacementInfo): Boolean = true
 }
 
-open class BasicSpecProvider(final override val placementCollisionSize: Vector3d, val factory: ((ci: SpecCreateInfo) -> Spec<*>), ) : SpecProvider() {
+open class BasicSpecProvider(
+    final override val placementCollisionSize: Vector3d,
+    val factory: ((ci: SpecCreateInfo) -> Spec<*>),
+) : SpecProvider() {
     override fun create(context: SpecPlacementInfo) = factory(SpecCreateInfo(id, context))
 }
 
@@ -790,30 +1021,28 @@ abstract class Spec<Renderer : SpecRenderer>(ci: SpecCreateInfo) {
         private set
 
     /**
-     * Saves the spec data to the compound tag.
-     * @return A compound tag with all the save data for this spec, or null, if no data needs saving.
+     * Saves data that should be persisted.
      * */
     @ServerOnly
-    open fun getSaveTag(): CompoundTag? = null
+    open fun getServerSaveTag(): CompoundTag? = null
 
     /**
-     * Gets the synced data that should be sent when a client first loads the spec.
-     * @return A compound tag with all the data, or null, if no data needs to be sent.
+     * Saves data that should be sent to the client when the part is placed or when the part is first sent to the client.
+     * */
+    @ClientOnly
+    open fun getClientSaveTag(): CompoundTag? = getSyncTag()
+
+    /**
+     * Loads the data saved by [getServerSaveTag].
      * */
     @ServerOnly
-    open fun getInitialSyncTag(): CompoundTag? = getSyncTag()
+    open fun loadServerSaveTag(tag: CompoundTag) { }
 
     /**
-     * Restore the spec data from the compound tag.
-     * This method is used on both logical sides. The client only receives this call when the initial chunk synchronization happens.
-     * @param tag The custom data tag, as created by getSaveTag.
+     * Loads the data sent by [getClientSaveTag].
      * */
-    open fun loadFromTag(tag: CompoundTag) { }
-
-    /**
-     * Loads the synced data that was sent when the client first loaded this spec, from [getInitialSyncTag].
-     * */
-    open fun loadInitialSyncTag(tag: CompoundTag) = loadFromTag(tag)
+    @ClientOnly
+    open fun loadClientSaveTag(tag: CompoundTag) = handleSyncTag(tag)
 
     /**
      * This method is called when this spec is invalidated, and in need of synchronization to clients.
@@ -864,6 +1093,15 @@ abstract class Spec<Renderer : SpecRenderer>(ci: SpecCreateInfo) {
      * */
     @ServerOnly
     open fun onPlaced() {}
+
+    /**
+     * Called when the player tries to destroy the spec, on the server.
+     * @return True, if the spec shall break. Otherwise, false.
+     * */
+    @ServerOnly
+    open fun tryBreakByPlayer(player: Player) : Boolean {
+        return true
+    }
 
     /**
      * Called on the server when the spec finished loading from disk

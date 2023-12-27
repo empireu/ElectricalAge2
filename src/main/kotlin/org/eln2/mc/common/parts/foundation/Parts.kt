@@ -297,31 +297,37 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
     }
 
     /**
-     * Saves the part data to the compound tag.
-     * @return A compound tag with all the save data for this part, or null, if no data needs saving.
+     * Called when the player tries to destroy the part, on the server.
+     * @return True, if the part shall break. Otherwise, false.
      * */
     @ServerOnly
-    open fun getSaveTag(): CompoundTag? = null
+    open fun tryBreakByPlayer(player: Player) : Boolean {
+        return true
+    }
 
     /**
-     * Gets the synced data that should be sent when a client first loads the part.
-     * @return A compound tag with all the data, or null, if no data needs to be sent.
+     * Saves data that should be persisted.
      * */
     @ServerOnly
-    open fun getInitialSyncTag(): CompoundTag? = getSyncTag()
+    open fun getServerSaveTag(): CompoundTag? = null
 
     /**
-     * Restore the part data from the compound tag.
-     * This method is used on both logical sides. The client only receives this call
-     * when the initial chunk synchronization happens.
-     * @param tag The custom data tag, as created by getSaveTag.
+     * Saves data that should be sent to the client when the part is placed or when the part is first sent to the client.
      * */
-    open fun loadFromTag(tag: CompoundTag) { }
+    @ClientOnly
+    open fun getClientSaveTag(): CompoundTag? = getSyncTag()
 
     /**
-     * Loads the synced data that was sent when the client first loaded this part, from [getInitialSyncTag].
+     * Loads the data saved by [getServerSaveTag].
      * */
-    open fun loadInitialSyncTag(tag: CompoundTag) = loadFromTag(tag)
+    @ServerOnly
+    open fun loadServerSaveTag(tag: CompoundTag) { }
+
+    /**
+     * Loads the data sent by [getClientSaveTag].
+     * */
+    @ClientOnly
+    open fun loadClientSaveTag(tag: CompoundTag) = handleSyncTag(tag)
 
     /**
      * This method is called when this part is invalidated, and in need of synchronization to clients.
@@ -669,7 +675,7 @@ abstract class CellPart<C: Cell, R : PartRenderer>(
     /**
      * The saved data includes the Graph ID. This is used to fetch the cell after loading.
      * */
-    override fun getSaveTag(): CompoundTag? {
+    override fun getServerSaveTag(): CompoundTag? {
         if (!hasCell) {
             LOG.error("Saving, but cell not initialized!")
             return null
@@ -690,7 +696,7 @@ abstract class CellPart<C: Cell, R : PartRenderer>(
      * This method gets the graph ID from the saved data.
      * The level is not available at this point, so we defer cell fetching to the onLoaded method.
      * */
-    override fun loadFromTag(tag: CompoundTag) {
+    override fun loadServerSaveTag(tag: CompoundTag) {
         if (placement.level.isClientSide) {
             return
         }
@@ -1116,5 +1122,44 @@ fun interface PartRendererFactory<R : PartRenderer> {
 fun basicPartRenderer(model: PartialModel): PartRendererFactory<BasicPartRenderer> {
     return PartRendererFactory { part ->
         BasicPartRenderer(part, model)
+    }
+}
+
+class SavingLifecycleTestPart(ci: PartCreateInfo) : Part<BasicPartRenderer>(ci) {
+    override fun createRenderer(): BasicPartRenderer {
+        return BasicPartRenderer(this, PartialModels.GROUND)
+    }
+
+    private fun print(string: String) {
+        println(
+            if(placement.level.isClientSide) {
+                "[client] $string"
+            }
+            else {
+                "[server] $string"
+            }
+        )
+    }
+
+    override fun getServerSaveTag(): CompoundTag {
+        val tag = CompoundTag()
+        tag.putString("Disk", "Disk Data")
+        print("getServerSaveTag")
+        return tag
+    }
+
+    override fun loadServerSaveTag(tag: CompoundTag) {
+        print("loadServerSaveTag ${tag.getString("Disk")} ${tag.size()}")
+    }
+
+    override fun getClientSaveTag(): CompoundTag {
+        val tag = CompoundTag()
+        tag.putString("Client", "Client Data")
+        print("getClientSaveTag")
+        return tag
+    }
+
+    override fun loadClientSaveTag(tag: CompoundTag) {
+        print("loadClientSaveTag ${tag.getString("Client")} ${tag.size()}")
     }
 }

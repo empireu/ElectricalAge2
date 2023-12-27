@@ -404,12 +404,12 @@ class SolarLightPart<R : PartRenderer>(
         }
     }
 
-    override fun getSaveTag() = CompoundTag().also {
+    override fun getServerSaveTag() = CompoundTag().also {
         it.putDouble(ENERGY, energy)
         it.putBoolean(IS_ON, isOn)
     }
 
-    override fun loadFromTag(tag: CompoundTag) {
+    override fun loadServerSaveTag(tag: CompoundTag) {
         energy = tag.getDouble(ENERGY)
         isOn = tag.getBoolean(IS_ON)
     }

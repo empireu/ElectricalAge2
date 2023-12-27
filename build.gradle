@@ -202,7 +202,7 @@ dependencies {
     shade minecraftLibrary("com.charleskorn.kaml:kaml:0.50.0")
 
     implementation fg.deobf("curse.maven:jade-324717:4801177")
-    implementation fg.deobf("com.jozufozu.flywheel:flywheel-forge-1.20.1:0.6.10-7")
+    implementation fg.deobf("com.jozufozu.flywheel:flywheel-forge-1.20.1:0.6.10-8")
 
     implementation fg.deobf("org.embeddedt:embeddium-1.20.1:0.2.11-git.23aedfb+mc1.20.1")
 

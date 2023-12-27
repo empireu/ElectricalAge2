@@ -27,6 +27,7 @@ import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.SpecRegistry
+import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import java.io.InputStream
 import java.nio.charset.Charset
 import java.nio.file.Files
@@ -77,6 +78,7 @@ class Eln2 {
         }
 
         forgeEventBus.addListener(Eln2Config::registerClientCommands);
+        forgeEventBus.addListener(SpecContainerPart::renderHighlightEvent)
 
         PartialModels.initialize()
 

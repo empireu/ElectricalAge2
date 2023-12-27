@@ -261,7 +261,7 @@ object DebugVisualizer {
     fun createLineOrientedBox(vararg obbs: OrientedBoundingBox3d, color: Color = Color.WHITE) =
         createCompositionOf(*obbs.map { LineOBB(it, color) }.toTypedArray())
 
-    fun createDirection(origin: Vector3d, direction: Direction, size: Double = 0.05, color: Color = Color.WHITE) : RenderElement {
+    fun createDirection(origin: Vector3d, direction: Direction, size: Double = 0.01, color: Color = Color.WHITE) : RenderElement {
         val t = size / 2.0
 
         val box = when(direction) {

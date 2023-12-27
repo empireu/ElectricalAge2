@@ -838,10 +838,10 @@ class WirePart<C : WireCell>(
     }
 
     @ServerOnly
-    override fun getInitialSyncTag() = getSyncTag()
+    override fun getClientSaveTag() = getSyncTag()
 
     @ClientOnly
-    override fun loadInitialSyncTag(tag: CompoundTag) = handleSyncTag(tag)
+    override fun loadClientSaveTag(tag: CompoundTag) = handleSyncTag(tag)
 
     @ServerOnly
     override fun onConnectivityChanged() {

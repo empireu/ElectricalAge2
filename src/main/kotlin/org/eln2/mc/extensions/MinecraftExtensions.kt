@@ -512,3 +512,5 @@ fun CompoundTag.getListTag(key: String) : ListTag = checkNotNull(this.get(key) a
 }
 
 fun Quaternionf.cast() = Rotation3d(this.x.toDouble(), this.y.toDouble(), this.z.toDouble(), this.w.toDouble())
+
+fun BoundingBox3d.cast() = AABB(this.min.toVec3(), this.max.toVec3())

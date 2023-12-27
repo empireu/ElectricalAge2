@@ -12,6 +12,7 @@ import org.eln2.mc.MODID
 import org.eln2.mc.common.items.foundation.PartItem
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.PartProvider
+import org.eln2.mc.common.parts.foundation.SavingLifecycleTestPart
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.resource
 import java.util.function.Supplier
@@ -72,7 +73,17 @@ object PartRegistry {
         return ForgeRegistries.ITEMS.getValue(id) as PartItem
     }
 
-    val SPEC_PART = partAndItem("spec_container", BasicPartProvider(Vector3d(1.0, 0.1, 1.0)) {
-        SpecContainerPart(it)
-    })
+    val SPEC_CONTAINER_PART = partAndItem(
+        "spec_container",
+        BasicPartProvider(Vector3d(1.0, 0.1, 1.0)) {
+            SpecContainerPart(it)
+        }
+    )
+
+    val SAVING_LIFECYCLE_TEST_PART = partAndItem(
+        "saving_lifecycle_test_part",
+        BasicPartProvider(Vector3d(1.0)) {
+            SavingLifecycleTestPart(it)
+        }
+    )
 }
