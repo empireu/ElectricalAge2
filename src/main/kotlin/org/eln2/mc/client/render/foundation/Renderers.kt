@@ -336,12 +336,15 @@ class ThermalTint(
 }
 
 @ClientOnly
-class MultipartBlockEntityInstance(
-    val materialManager: MaterialManager,
-    blockEntity: MultipartBlockEntity,
-) : BlockEntityInstance<MultipartBlockEntity>(materialManager, blockEntity), DynamicInstance {
+class MultipartBlockEntityInstance(val materialManager: MaterialManager, blockEntity: MultipartBlockEntity) :
+    BlockEntityInstance<MultipartBlockEntity>(materialManager, blockEntity),
+    DynamicInstance
+{
+    private class Entry(val part: Part<*>) {
+        var renderer = part.renderer
+    }
 
-    private val parts = HashSet<Part<*>>()
+    private val entries = ArrayList<Entry>()
 
     override fun init() {
         // When this is called on an already initialized renderer (e.g. changing graphics settings),
@@ -360,14 +363,25 @@ class MultipartBlockEntityInstance(
     override fun beginFrame() {
         handlePartUpdates()
 
-        for (part in parts) {
-            val renderer = part.renderer
+        for (entry in entries) {
+            val part = entry.part
+            val actualRenderer = part.renderer
 
-            if (!renderer.isSetupWith(this)) {
-                renderer.setupRendering(this)
+            /**
+             * This is a frakking pinch.
+             * Flywheel creates new instances when breaking in survival, to render the whatever as crumbling.
+             * But it doesn't destroy the old instance, and after crumbling is done, the crumbling instance gets destroyed,
+             * which causes the part renderers get destroyed in [Part.destroyRenderer], and then flywheel dispatches beginFrame to that old instance,
+             * and we need to do extra work to see if the part's renderer changed, and we need to re-frak it the old renderer (this one).
+             * Also, I don't really see how we can make crumbling only affect a part, since flywheel doesn't tell us if the renderer is for crumbling or anything like that
+             * probably need some sort of mixin?
+             * */
+            if(actualRenderer !== entry.renderer) {
+                actualRenderer.setupRendering(this)
+                entry.renderer = actualRenderer
             }
 
-            renderer.beginFrame()
+            actualRenderer.beginFrame()
         }
     }
 
@@ -376,7 +390,7 @@ class MultipartBlockEntityInstance(
      * This applies a re-light to all the part renderers.
      * */
     override fun updateLight() {
-        for (part in parts) {
+        for (part in entries) {
             part.renderer.relight(RelightSource.BlockEvent)
         }
     }
@@ -390,18 +404,23 @@ class MultipartBlockEntityInstance(
      * */
     private fun handlePartUpdates() {
         while (true) {
-            val update = blockEntity.renderUpdates.poll() ?: break
+            val update = blockEntity.renderUpdates.poll()
+                ?: break
+
             val part = update.part
 
             when (update.type) {
                 PartUpdateType.Add -> {
-                    parts.add(part)
-                    part.renderer.setupRendering(this)
-                    part.renderer.relight(RelightSource.Setup)
-                }
+                    if (entries.none { it.part === part }) {
+                        entries.add(Entry(part))
+                        part.renderer.setupRendering(this)
+                    }
 
+                    // Can get duplicate adds if the client first receives the parts (and clientAddPart enqueues updates)
+                    // but just then the multipart renderer gets created and calls bindRenderer, which duplicate enqueues some more updates
+                }
                 PartUpdateType.Remove -> {
-                    parts.remove(part)
+                    entries.removeIf { it.part === part }
                     part.destroyRenderer()
                 }
             }
@@ -413,8 +432,8 @@ class MultipartBlockEntityInstance(
      * This also calls a cleanup method on the part renderers.
      * */
     override fun remove() {
-        for (part in parts) {
-            part.destroyRenderer()
+        for (entry in entries) {
+            entry.part.destroyRenderer()
         }
 
         blockEntity.unbindRenderer()
@@ -447,11 +466,11 @@ fun interface PartRendererSupplier<T : Part<R>, R : PartRenderer> {
     fun create(part: T) : R
 }
 
-class SimpleBlockEntityInstance<T : BlockEntity>(
+class TestBlockEntityInstance<T : BlockEntity>(
     materialManager: MaterialManager,
     blockEntity: T,
     val model: DefaultRenderTypePartialModel<PartialModel>,
-    val transformer: (instance : ModelData, renderer : SimpleBlockEntityInstance<T>, blockEntity : T) -> Unit
+    val transformer: (instance : ModelData, renderer : TestBlockEntityInstance<T>, blockEntity : T) -> Unit
 ) : BlockEntityInstance<T>(materialManager, blockEntity) {
     var instance: ModelData? = null
 

@@ -86,4 +86,15 @@ object PartRegistry {
             SavingLifecycleTestPart(it)
         }
     )
+
+    fun finalize() {
+        for (it in PART_ITEMS.entries) {
+            val item = it.get() as? PartItem
+                ?: continue
+
+            item.ensureResolved()
+        }
+
+        LOG.info("Finalized part registry")
+    }
 }

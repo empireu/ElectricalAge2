@@ -255,6 +255,11 @@ class MultipartBlock : BaseEntityBlock(
             if(!pLevel.isClientSide) {
                 pLevel as ServerLevel
 
+                if(MultipartBlockEntity.isValidSubstrateBlock(pLevel, pFromPos)) {
+                    // Replaced substrate (e.g. dirt -> grass)
+                    return
+                }
+
                 val saveTag = CompoundTag()
                 val removedPart = multipart.breakPartByNeighbor(pFromPos, saveTag)
 
@@ -394,9 +399,7 @@ class MultipartBlock : BaseEntityBlock(
  * */
 class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     BlockEntity(BlockRegistry.MULTIPART_BLOCK_ENTITY.get(), pos, state),
-    CellContainer,
-    ComponentDisplay,
-    DebugComponentDisplay
+    CellContainer
 {
 
     // Interesting issue.
@@ -821,7 +824,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             val part = parts[face]
 
             if (part == null) {
-                LOG.error("Multipart at $pos part $face requested update, but was null")
+                LOG.debug("Multipart at {} part {} requested update, but was null", pos, face)
                 return@forEach
             }
 
@@ -1364,13 +1367,5 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
 
             entity.tickingRemoveQueue.clear()
         }
-    }
-
-    override fun submitDisplay(builder: ComponentDisplayList) {
-        LOG.error("Cannot submit display of multipart")
-    }
-
-    override fun submitDebugDisplay(builder: ComponentDisplayList) {
-        LOG.error("Cannot submit debug display of multipart")
     }
 }

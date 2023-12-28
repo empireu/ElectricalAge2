@@ -12,11 +12,30 @@ import org.eln2.mc.common.content.GridConnectionManagerClient
 import org.eln2.mc.common.content.GridConnectionManagerServer
 import org.eln2.mc.common.parts.foundation.PartProvider
 import org.eln2.mc.extensions.plus
+import java.util.function.Supplier
 
 /**
  * The Part Item delegates the placement of a Part to the Multipart Container.
  * */
-class PartItem(private val provider: PartProvider) : BlockItem(BlockRegistry.MULTIPART_BLOCK.get(), Properties()) {
+open class PartItem(private val provider: Lazy<PartProvider>) : BlockItem(BlockRegistry.MULTIPART_BLOCK.get(), Properties()) {
+    // Patch for SpecItem
+    // Items get registered before our specs, parts, etc so we don't have the registered part provider when the spec item gets registred
+    // we add this lazy to mitigate, and sort of compensate by calling this ensureResolved in our finishing pass
+
+    fun ensureResolved() {
+        if(provider.isInitialized()) {
+            return
+        }
+
+        LOG.debug("Resolved part item {}", provider.value)
+    }
+
+    constructor(provider: PartProvider) : this(lazy { provider }) {
+        ensureResolved() // We were passed the item, we can do immediately
+    }
+
+    constructor(supplier: Supplier<PartProvider>) : this(lazy { supplier.get() })
+
     override fun useOn(pContext: UseOnContext): InteractionResult {
         val player = pContext.player
 
@@ -87,7 +106,7 @@ class PartItem(private val provider: PartProvider) : BlockItem(BlockRegistry.MUL
             }
 
             if(level.isClientSide) {
-                return if (blockEntity.placementCollides(player, face, provider)) {
+                return if (blockEntity.placementCollides(player, face, provider.value)) {
                     LOG.debug("Collides with part")
                     InteractionResult.FAIL
                 } else {
@@ -111,7 +130,7 @@ class PartItem(private val provider: PartProvider) : BlockItem(BlockRegistry.MUL
             player,
             multipartPos,
             pContext.clickedFace,
-            provider,
+            provider.value,
             pContext.itemInHand.tag
         )
 

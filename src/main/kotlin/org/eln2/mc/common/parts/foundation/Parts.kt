@@ -34,6 +34,7 @@ import org.eln2.mc.common.network.serverToClient.PartMessage
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.foundation.Spec
 import org.eln2.mc.common.specs.foundation.SpecCreateInfo
+import org.eln2.mc.common.specs.foundation.SpecUseInfo
 import org.eln2.mc.data.*
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3d
@@ -290,7 +291,7 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
     }
 
     /**
-     * Called when the part is right-clicked by a living entity.
+     * Called when the part is right-clicked by a player.
      * */
     open fun onUsedBy(context: PartUseInfo): InteractionResult {
         return InteractionResult.FAIL
@@ -409,7 +410,7 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
     open fun onAddedToClient() {}
 
     /**
-     * Called when this part is being unloaded.
+     * Called when this part is being unloaded, on both client and server.
      * */
     open fun onUnloaded() {}
 
@@ -536,6 +537,11 @@ class MySpec(ci: SpecCreateInfo) : Spec<BasicSpecRenderer>(ci) {
     override fun createRenderer(): BasicSpecRenderer {
         return BasicSpecRenderer(this, PartialModels.ELECTRICAL_WIRE_HUB)
     }
+
+    override fun onUsedBy(context: SpecUseInfo): InteractionResult {
+        println("use")
+        return super.onUsedBy(context)
+    }
 }
 
 /**
@@ -652,11 +658,8 @@ abstract class CellPart<C: Cell, R : PartRenderer>(
      * Notifies the cell that the container has been removed.
      * */
     override fun onUnloaded() {
-        requireIsOnServerThread {
-            "onUnloaded"
-        }
-
         if (hasCell) {
+            requireIsOnServerThread() { "onUnloaded cell!=null"}
             cell.onContainerUnloading()
             cell.container = null
             cell.onContainerUnloaded()
@@ -1066,10 +1069,6 @@ abstract class PartRenderer {
         return multipart.instancePosition
     }
 
-    fun isSetupWith(multipartBlockEntityInstance: MultipartBlockEntityInstance): Boolean {
-        return this::multipart.isInitialized && multipart == multipartBlockEntityInstance
-    }
-
     /**
      * Called when the part is picked up by the [MultipartBlockEntity]'s renderer.
      * @param multipartInstance The multipart's renderer instance.
@@ -1077,6 +1076,7 @@ abstract class PartRenderer {
     fun setupRendering(multipartInstance: MultipartBlockEntityInstance) {
         this.multipart = multipartInstance
         setupRendering()
+        relight(RelightSource.Setup)
     }
 
     /**

@@ -24,7 +24,7 @@ import org.eln2.mc.LOG
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.cutout
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
-import org.eln2.mc.client.render.foundation.SimpleBlockEntityInstance
+import org.eln2.mc.client.render.foundation.TestBlockEntityInstance
 import org.eln2.mc.client.render.foundation.defaultRadiantBodyColor
 import org.eln2.mc.client.render.solid
 import org.eln2.mc.common.LightBulbItem
@@ -47,7 +47,6 @@ import org.eln2.mc.common.parts.PartRegistry.partAndItem
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.transformPartWorld
 import org.eln2.mc.data.*
-import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
@@ -689,7 +688,7 @@ object Content {
             InstancedRenderRegistry.configure(it.get())
                 .alwaysSkipRender()
                 .factory { manager, entity ->
-                    SimpleBlockEntityInstance(manager, entity, PartialModels.POLE_TEMPORARY.solid()) { instance, renderer, _ ->
+                    TestBlockEntityInstance(manager, entity, PartialModels.POLE_TEMPORARY.solid()) { instance, renderer, _ ->
                         instance.translate(renderer.instancePosition).scale(1f, 3f, 1f)
                     }
                 }.apply()

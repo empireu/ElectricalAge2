@@ -1,9 +1,9 @@
 package org.eln2.mc.common.specs.foundation
 
 import com.jozufozu.flywheel.core.materials.model.ModelData
-import com.jozufozu.flywheel.util.Color
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
+import it.unimi.dsi.fastutil.objects.ReferenceArraySet
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.core.BlockPos
@@ -13,11 +13,11 @@ import net.minecraft.nbt.ListTag
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.util.Mth
+import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
-import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.context.UseOnContext
 import net.minecraft.world.phys.shapes.BooleanOp
@@ -31,6 +31,8 @@ import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.createPartInstance
 import org.eln2.mc.client.render.foundation.partOffsetTable
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
+import org.eln2.mc.common.items.foundation.PartItem
+import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.common.specs.SpecRegistry
 import org.eln2.mc.extensions.*
@@ -153,12 +155,19 @@ enum class SpecUpdateType(val id: Int) {
 
 data class SpecUpdate(val spec: Spec<*>, val type: SpecUpdateType)
 
+data class SpecUseInfo(
+    val player: Player,
+    val hand: InteractionHand,
+    val playerViewRay: Ray3d,
+    val intersection: RayIntersection
+)
+
 data class SpecCreateInfo(val id: ResourceLocation, val placement: SpecPlacementInfo)
 
 class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugComponentDisplay {
     val substratePlane = Plane3d(placement.face.vector3d, placement.mountingPointWorld)
 
-    private var specId = 0
+    private var lastPlacementId = 0
         get() {
             requireIsOnServerThread {
                 "specID get"
@@ -237,7 +246,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
             -1
         }
         else {
-            specId++
+            lastPlacementId++
         }
 
         return SpecPlacementInfo(
@@ -264,7 +273,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
 
             intersection to it
         }
-        .minByOrNull { ray3d.origin..ray3d.evaluate(it.first.entry) }?.second
+        .minByOrNull { ray3d.origin..ray3d.evaluate(it.first.entry) }
 
     fun pickSpec(player: Entity) = pickSpec(player.getViewRay())
 
@@ -303,6 +312,9 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
 
     /**
      * Attempts to place a spec.
+     * @param isFreshlyPlacedSpecContainer If true, then the placement update shall be dropped.
+     * Use true if and only if the spec part container was placed right before the spec was added.
+     * In this case, the initial client update will include this already existing spec. Enqueueing a placement update too would lead to duplicate saves.
      * @return True, if the spec was placed successfully. Otherwise, false.
      * */
     @ServerOnly
@@ -310,6 +322,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         player: LivingEntity,
         desiredOrientation: Rotation2d,
         provider: SpecProvider,
+        isFreshlyPlacedSpecContainer: Boolean = false,
         saveTag: CompoundTag? = null,
     ) : Boolean {
         requireIsOnServerThread {
@@ -329,7 +342,11 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         val spec = provider.create(context)
 
         addSpec(spec)
-        placementUpdates.add(SpecUpdate(spec, SpecUpdateType.Add))
+
+        if(!isFreshlyPlacedSpecContainer) {
+            placementUpdates.add(SpecUpdate(spec, SpecUpdateType.Add))
+        }
+
         rebuildCollider()
 
         if (spec is ItemPersistent && spec.order == ItemPersistentLoadOrder.BeforeSim) {
@@ -346,19 +363,17 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
 
     @ServerOnly
     override fun tryBreakByPlayer(player: Player): Boolean {
-        val spec = pickSpec(player.getViewRay())
+        val intersection = pickSpec(player.getViewRay())
 
-        if(spec != null) {
-            if(spec.tryBreakByPlayer(player)) {
+        if(intersection != null) {
+            if(intersection.second.tryBreakByPlayer(player)) {
                 val tag = CompoundTag()
-                breakSpec(spec, tag)
+                breakSpec(intersection.second, tag)
 
                 if(!player.isCreative) {
-                    spawnDrop(placement.level as ServerLevel, spec, tag)
+                    spawnDrop(placement.level as ServerLevel, intersection.second, tag)
                 }
             }
-
-            return false
         }
 
         return specs.isEmpty()
@@ -377,7 +392,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
     /**
      * Removes a spec with full synchronization.
      * Notifies via [Spec.onBroken].
-     * @param spec The part to remove.
+     * @param spec The spec to remove.
      * @param saveTag A tag to save part data, if required (for [ItemPersistent]s).
      * */
     @ServerOnly
@@ -404,12 +419,17 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
     @ServerOnly
     override fun getServerSaveTag(): CompoundTag {
         val tag = CompoundTag()
+
+        tag.putInt(PLACEMENT_ID, lastPlacementId)
         saveSpecs(tag, SaveType.ServerData)
+
         return tag
     }
 
     @ServerOnly
     override fun loadServerSaveTag(tag: CompoundTag) {
+        lastPlacementId = tag.getInt(PLACEMENT_ID)
+
         loadSpecs(tag, SaveType.ServerData)
 
         specs.values.forEach {
@@ -502,13 +522,17 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
             when (updateTag.getSpecUpdateType(TYPE)) {
                 SpecUpdateType.Add -> {
                     val newSpecTag = updateTag.get(NEW_SPEC) as CompoundTag
-                    val spec = unpackSpec(newSpecTag, SaveType.ClientData)
+                    val placementId = newSpecTag.getInt(PLACEMENT_ID)
 
-                    if (specs.put(spec.placement.placementId, spec) != null) {
-                        LOG.error("Client received new part, but a part was already present on the ${spec.placement.face} face!")
+                    if(specs.containsKey(placementId)) {
+                        LOG.error("Duplicate spec placement update!")
                     }
-
-                    clientAddSpec(spec)
+                    else {
+                        val spec = unpackSpec(newSpecTag, SaveType.ClientData)
+                        check(placementId == spec.placement.placementId)
+                        specs.putUnique(placementId, spec)
+                        clientAddSpec(spec)
+                    }
                 }
                 SpecUpdateType.Remove -> {
                     val id = updateTag.getInt(REMOVED_ID)
@@ -724,47 +748,25 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
     }
 
     override fun onUsedBy(context: PartUseInfo): InteractionResult {
-        return InteractionResult.PASS
+        val item = context.player.getItemInHand(context.hand).item
 
-        if(placement.level.isClientSide) {
-            val intersection = getSpecMountingPointWorld(context.player)
-
-            val obb = SpecGeometry.boundingBox(
-                intersection,
-                Rotation2d.exp(PI / 6.0),
-                Vector3d(0.3, 0.5, 0.3),
-                placement.facing,
-                placement.face
-            )
-
-            DebugVisualizer.lineOrientedBox(
-                obb,
-                color = Color.WHITE
-            ).removeAfter(5.0).withinScopeOf(this)
-
-            val ray = context.player.getViewRay()
-
-            val t = ray intersectionWith obb
-
-            if(t != null) {
-                val p1 = ray.evaluate(t.entry)
-                val p2 = ray.evaluate(t.exit)
-
-                val size = 0.05
-
-                DebugVisualizer.lineBox(
-                    BoundingBox3d.fromCenterSize(p1, size),
-                    color = Color.RED
-                ).removeAfter(5.0).withinScopeOf(this)
-
-                DebugVisualizer.lineBox(
-                    BoundingBox3d.fromCenterSize(p2, size),
-                    color = Color.GREEN
-                ).removeAfter(5.0).withinScopeOf(this)
-            }
+        if(item is SpecItem || item is PartItem) {
+            return InteractionResult.PASS
         }
 
-        return super.onUsedBy(context)
+        val ray = context.player.getViewRay()
+
+        val intersection = pickSpec(ray)
+            ?: return InteractionResult.FAIL
+
+        val specContext = SpecUseInfo(
+            context.player,
+            context.hand,
+            ray,
+            intersection.first
+        )
+
+        return intersection.second.onUsedBy(specContext)
     }
 
     override fun submitDebugDisplay(builder: ComponentDisplayList) {
@@ -815,7 +817,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
 
             event.isCanceled = true
 
-            val spec = part.pickSpec(player)
+            val spec = part.pickSpec(player)?.second
                 ?: return
 
             val pConsumer: VertexConsumer = event.multiBufferSource.getBuffer(RenderType.lines())
@@ -882,21 +884,14 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
 }
 
 class SpecPartRenderer(val specPart: SpecContainerPart) : PartRenderer() {
-    private val specs = HashSet<Spec<*>>()
+    private val specs = ReferenceArraySet<Spec<*>>()
 
     private var frameInstance: ModelData? = null
 
     override fun setupRendering() {
         frameInstance?.delete()
-
-        frameInstance = createPartInstance(
-            multipart,
-            PartialModels.SPEC_PART_FRAME,
-            specPart,
-            0.0
-        )
+        frameInstance = createPartInstance(multipart, PartialModels.SPEC_PART_FRAME, specPart, 0.0)
         multipart.relightModels(frameInstance)
-
         specPart.bindRenderer(this)
     }
 
@@ -904,13 +899,7 @@ class SpecPartRenderer(val specPart: SpecContainerPart) : PartRenderer() {
         handleSpecUpdates()
 
         for (spec in specs) {
-            val renderer = spec.renderer
-
-            if (!renderer.isSetupWith(this)) {
-                renderer.setupRendering(this)
-            }
-
-            renderer.beginFrame()
+            spec.renderer.beginFrame()
         }
     }
 
@@ -921,11 +910,11 @@ class SpecPartRenderer(val specPart: SpecContainerPart) : PartRenderer() {
 
             when (update.type) {
                 SpecUpdateType.Add -> {
-                    specs.add(spec)
-                    spec.renderer.setupRendering(this)
-                    spec.renderer.relight(RelightSource.Setup)
+                    if(specs.add(spec)) {
+                        spec.renderer.setupRendering(this)
+                        spec.renderer.relight(RelightSource.Setup)
+                    }
                 }
-
                 SpecUpdateType.Remove -> {
                     specs.remove(spec)
                     spec.destroyRenderer()
@@ -951,7 +940,7 @@ class SpecPartRenderer(val specPart: SpecContainerPart) : PartRenderer() {
     }
 }
 
-class SpecItem(val provider: SpecProvider) : Item(Properties()) {
+class SpecItem(val provider: SpecProvider) : PartItem(PartRegistry.SPEC_CONTAINER_PART.part) {
     override fun useOn(pContext: UseOnContext): InteractionResult {
         val player = pContext.player
 
@@ -960,17 +949,41 @@ class SpecItem(val provider: SpecProvider) : Item(Properties()) {
             return InteractionResult.FAIL
         }
 
-        val multipart = pContext.level.getBlockEntity(pContext.clickedPos) as? MultipartBlockEntity
-            ?: pContext.level.getBlockEntity(pContext.clickedPos + pContext.clickedFace) as? MultipartBlockEntity
-            ?: return InteractionResult.FAIL
+        fun getPart() = (pContext.level.getBlockEntity(pContext.clickedPos)
+            as? MultipartBlockEntity ?: pContext.level.getBlockEntity(pContext.clickedPos + pContext.clickedFace) as? MultipartBlockEntity)
+            ?.getPart(pContext.clickedFace) as? SpecContainerPart
 
-        val part = multipart.getPart(pContext.clickedFace) as? SpecContainerPart
-            ?: return InteractionResult.FAIL
+        var isNew = false
+
+        if(getPart() == null) {
+            if(pContext.level.isClientSide) {
+                return InteractionResult.SUCCESS
+            }
+
+            super.useOn(pContext)
+
+            isNew = true
+        }
+
+        val part = getPart()
+           ?: return InteractionResult.FAIL
 
         val orientation = Rotation2d.exp(PI / 6.0)
 
+        fun cleanupNew() {
+            if(isNew) {
+                check(!pContext.level.isClientSide)
+
+                val level = pContext.level as ServerLevel
+                level.destroyPart(part, false)
+
+                LOG.debug("destroy new")
+            }
+        }
+
         if(!part.canPlace(player, orientation, provider)) {
             LOG.debug("Cannot place")
+            cleanupNew()
             return InteractionResult.FAIL
         }
 
@@ -980,8 +993,9 @@ class SpecItem(val provider: SpecProvider) : Item(Properties()) {
             return InteractionResult.SUCCESS
         }
 
-        if(!part.place(player, orientation, provider)) {
+        if(!part.place(player, orientation, provider, isFreshlyPlacedSpecContainer = isNew)) {
             LOG.debug("Did not place")
+            cleanupNew()
             return InteractionResult.FAIL
         }
 
@@ -1093,6 +1107,13 @@ abstract class Spec<Renderer : SpecRenderer>(ci: SpecCreateInfo) {
      * */
     @ServerOnly
     open fun onPlaced() {}
+
+    /**
+     * Called when the spec is right-clicked by a player.
+     * */
+    open fun onUsedBy(context: SpecUseInfo): InteractionResult {
+        return InteractionResult.FAIL
+    }
 
     /**
      * Called when the player tries to destroy the spec, on the server.

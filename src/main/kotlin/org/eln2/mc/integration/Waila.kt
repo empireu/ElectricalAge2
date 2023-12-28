@@ -9,10 +9,10 @@ import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.*
 import org.ageseries.libage.utils.sourceName
 import org.eln2.mc.*
-import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlock
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
+import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.extensions.forEachCompound
 import org.eln2.mc.extensions.formattedPercentNormalized
 import snownee.jade.api.*
@@ -60,24 +60,29 @@ class Eln2WailaPlugin : IWailaPlugin {
 
         override fun getUid() = resource(COMPONENT_DISPLAY)
 
-        private inline fun<reified T> castBlockEntityOrPart(p1: BlockAccessor) : T? {
-            var node = p1.blockEntity as? T
+        private inline fun<reified T> castGameObject(p1: BlockAccessor) : T? {
+            val blockEntity = p1.blockEntity
                 ?: return null
 
-            if(node is MultipartBlockEntity) {
-                node = node.pickPart(p1.player) as? T
-                    ?: return null
+            if(blockEntity is MultipartBlockEntity) {
+                val part = blockEntity.pickPart(p1.player)
+
+                if(part is SpecContainerPart) {
+                    return part.pickSpec(p1.player) as? T
+                }
+
+                return part as? T
             }
 
-            return node
+            return blockEntity as? T
         }
 
         override fun appendServerData(p0: CompoundTag, p1: BlockAccessor) {
-            val display = castBlockEntityOrPart<ComponentDisplay>(p1)
+            val display = castGameObject<ComponentDisplay>(p1)
 
             // FIXME SharedConstants.IS_RUNNING_IN_IDE is not working
             val debugDisplay = if(true) {
-                castBlockEntityOrPart<DebugComponentDisplay>(p1)
+                castGameObject<DebugComponentDisplay>(p1)
             } else {
                 null
             }

@@ -21,6 +21,7 @@ import org.eln2.mc.common.cells.foundation.CellGraphManager
 import org.eln2.mc.common.content.GridConnectionManagerClient
 import org.eln2.mc.common.content.GridConnectionManagerServer
 import org.eln2.mc.common.events.schedulePost
+import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.data.AveragingList
 import org.eln2.mc.extensions.formatted
 
@@ -32,8 +33,8 @@ object ModEvents {
     @SubscribeEvent @JvmStatic
     fun loadCompletedEvent(event: FMLLoadCompleteEvent) {
         isFullyLoaded = true
-
         BlockRegistry.finalize()
+        PartRegistry.finalize()
     }
 }
 

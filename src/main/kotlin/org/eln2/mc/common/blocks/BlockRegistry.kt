@@ -243,5 +243,7 @@ object BlockRegistry {
             val value = it.value.value
             LOG.debug("Resolved delegate definition {} to {}", it.key, value)
         }
+
+        LOG.info("Finalized block registry")
     }
 }
