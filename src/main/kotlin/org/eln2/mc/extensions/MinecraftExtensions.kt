@@ -9,6 +9,7 @@ import net.minecraft.core.Vec3i
 import net.minecraft.core.particles.ParticleOptions
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
+import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
@@ -40,7 +41,6 @@ import net.minecraft.world.phys.shapes.VoxelShape
 import net.minecraftforge.common.ForgeMod
 import net.minecraftforge.network.NetworkHooks
 import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.mathematics.*
 import org.ageseries.libage.mathematics.geometry.*
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
@@ -514,3 +514,36 @@ fun CompoundTag.getListTag(key: String) : ListTag = checkNotNull(this.get(key) a
 fun Quaternionf.cast() = Rotation3d(this.x.toDouble(), this.y.toDouble(), this.z.toDouble(), this.w.toDouble())
 
 fun BoundingBox3d.cast() = AABB(this.min.toVec3(), this.max.toVec3())
+
+fun Vec3.cast() = Vector3d(this.x, this.y, this.z)
+
+fun FriendlyByteBuf.writeVector2d(vector2d: Vector2d) {
+    this.writeDouble(vector2d.x)
+    this.writeDouble(vector2d.y)
+}
+
+fun FriendlyByteBuf.readVector2d() = Vector2d(
+    this.readDouble(),
+    this.readDouble()
+)
+
+fun FriendlyByteBuf.writeRotation2d(rotation2d: Rotation2d) {
+    this.writeDouble(rotation2d.re)
+    this.writeDouble(rotation2d.im)
+}
+
+fun FriendlyByteBuf.readRotation2d() = Rotation2d(
+    this.readDouble(),
+    this.readDouble()
+)
+
+fun FriendlyByteBuf.writePose2d(pose2d: Pose2d) {
+    this.writeVector2d(pose2d.translation)
+    this.writeRotation2d(pose2d.rotation)
+}
+
+fun FriendlyByteBuf.readPose2d() = Pose2d(
+    this.readVector2d(),
+    this.readRotation2d()
+)
+

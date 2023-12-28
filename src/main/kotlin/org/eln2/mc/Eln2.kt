@@ -14,7 +14,8 @@ import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
-import org.eln2.mc.client.render.DebugVisualizer
+import org.eln2.mc.client.input.KeyMappingRegistry
+import org.eln2.mc.client.overlays.OverlayRegistry
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.FlywheelRegistry
 import org.eln2.mc.common.blocks.BlockRegistry
@@ -28,6 +29,8 @@ import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.SpecRegistry
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
+import org.eln2.mc.common.specs.foundation.SpecPlacementOverlayClient
+import org.eln2.mc.common.specs.foundation.SpecPreviewRenderer
 import java.io.InputStream
 import java.nio.charset.Charset
 import java.nio.file.Files
@@ -77,8 +80,14 @@ class Eln2 {
             }
         }
 
+        modEventBus.addListener(OverlayRegistry::register)
+        modEventBus.addListener(KeyMappingRegistry::register)
+
         forgeEventBus.addListener(Eln2Config::registerClientCommands);
         forgeEventBus.addListener(SpecContainerPart::renderHighlightEvent)
+        forgeEventBus.addListener(SpecPlacementOverlayClient::onScroll)
+        forgeEventBus.addListener(SpecPlacementOverlayClient::onCycleOrientation)
+        forgeEventBus.addListener(SpecPreviewRenderer::render)
 
         PartialModels.initialize()
 

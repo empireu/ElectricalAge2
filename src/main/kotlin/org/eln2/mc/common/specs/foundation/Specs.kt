@@ -1,17 +1,22 @@
 package org.eln2.mc.common.specs.foundation
 
 import com.jozufozu.flywheel.core.materials.model.ModelData
+import com.mojang.blaze3d.platform.InputConstants
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
 import it.unimi.dsi.fastutil.objects.ReferenceArraySet
+import net.minecraft.client.KeyMapping
 import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
+import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.server.level.ServerPlayer
 import net.minecraft.util.Mth
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
@@ -20,18 +25,29 @@ import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.context.UseOnContext
+import net.minecraft.world.phys.BlockHitResult
+import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.shapes.BooleanOp
 import net.minecraft.world.phys.shapes.Shapes
+import net.minecraftforge.client.event.InputEvent
 import net.minecraftforge.client.event.RenderHighlightEvent
+import net.minecraftforge.client.event.RenderLevelStageEvent
+import net.minecraftforge.client.gui.overlay.ForgeGui
+import net.minecraftforge.client.gui.overlay.IGuiOverlay
+import net.minecraftforge.client.settings.KeyConflictContext
+import net.minecraftforge.network.NetworkEvent
+import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.PartialModels
+import org.eln2.mc.client.render.foundation.color
 import org.eln2.mc.client.render.foundation.createPartInstance
 import org.eln2.mc.client.render.foundation.partOffsetTable
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.items.foundation.PartItem
+import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.common.specs.SpecRegistry
@@ -40,8 +56,14 @@ import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.DebugComponentDisplay
 import org.eln2.mc.mathematics.FacingDirection
 import org.joml.Quaternionf
+import org.lwjgl.glfw.GLFW
+import java.util.*
 import java.util.concurrent.ConcurrentLinkedQueue
-import kotlin.math.PI
+import java.util.function.Supplier
+import kotlin.collections.ArrayList
+import kotlin.collections.HashMap
+import kotlin.collections.HashSet
+import kotlin.math.abs
 
 object SpecGeometry {
     fun mountingPointSpecial(specMountingPointWorld: Vector3d, partPositiveX: Direction, partPositiveZ: Direction, partMountingPointWorld: Vector3d) : Vector2d {
@@ -742,11 +764,6 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         }
     }
 
-    override fun onAddedToClient() {
-        DebugVisualizer.partFrame(this)
-        DebugVisualizer.partBounds(this)
-    }
-
     override fun onUsedBy(context: PartUseInfo): InteractionResult {
         val item = context.player.getItemInHand(context.hand).item
 
@@ -968,7 +985,12 @@ class SpecItem(val provider: SpecProvider) : PartItem(PartRegistry.SPEC_CONTAINE
         val part = getPart()
            ?: return InteractionResult.FAIL
 
-        val orientation = Rotation2d.exp(PI / 6.0)
+        val overlayState = if(pContext.level.isClientSide) {
+            SpecPlacementOverlayClient.createSnapshot()
+        }
+        else {
+            SpecPlacementOverlayServer.getState(player as ServerPlayer)
+        }
 
         fun cleanupNew() {
             if(isNew) {
@@ -981,7 +1003,7 @@ class SpecItem(val provider: SpecProvider) : PartItem(PartRegistry.SPEC_CONTAINE
             }
         }
 
-        if(!part.canPlace(player, orientation, provider)) {
+        if(!part.canPlace(player, overlayState.orientation, provider)) {
             LOG.debug("Cannot place")
             cleanupNew()
             return InteractionResult.FAIL
@@ -993,7 +1015,7 @@ class SpecItem(val provider: SpecProvider) : PartItem(PartRegistry.SPEC_CONTAINE
             return InteractionResult.SUCCESS
         }
 
-        if(!part.place(player, orientation, provider, isFreshlyPlacedSpecContainer = isNew)) {
+        if(!part.place(player, overlayState.orientation, provider, isFreshlyPlacedSpecContainer = isNew)) {
             LOG.debug("Did not place")
             cleanupNew()
             return InteractionResult.FAIL
@@ -1295,4 +1317,316 @@ interface SpecRendererStateStorage {
      * Could happen when the renderer is re-created, after being destroyed. Could happen when origin shifts, etc. Passed as [SpecRenderer] because the type can actually change (e.g. if switching backends and the part chooses to create another renderer)
      * */
     fun restoreSnapshot(renderer: SpecRenderer)
+}
+
+data class SpecPlacementOverlayState(
+    val orientation: Rotation2d
+)
+
+data class SpecOverlayMessage(val state: SpecPlacementOverlayState) {
+    companion object {
+        fun encode(message: SpecOverlayMessage, buf: FriendlyByteBuf) {
+            val state = message.state
+            buf.writeRotation2d(state.orientation)
+        }
+
+        fun decode(buf: FriendlyByteBuf) = SpecOverlayMessage(
+            SpecPlacementOverlayState(
+                buf.readRotation2d()
+            )
+        )
+
+        fun handle(message: SpecOverlayMessage, supplier: Supplier<NetworkEvent.Context>) {
+            val ctx = supplier.get()
+
+            ctx.enqueueWork {
+                SpecPlacementOverlayServer.setState(message.state, ctx.sender)
+            }
+
+            ctx.packetHandled = true
+        }
+    }
+}
+
+@ClientOnly
+private fun getClientSpecItem() : SpecItem? {
+    requireIsOnRenderThread()
+
+    val player = Minecraft.getInstance().player
+        ?: return null
+
+    val stack = player.getItemInHand(InteractionHand.MAIN_HAND)
+
+    return stack.item as? SpecItem
+}
+
+@ClientOnly
+object SpecPlacementOverlayClient : IGuiOverlay {
+    private val DEFAULT_ORIENTATIONS = listOf(
+        Rotation2d(1.0, 0.0),
+        Rotation2d(0.0, 1.0),
+        Rotation2d(-1.0, 0.0),
+        Rotation2d(0.0, -1.0)
+    )
+
+    private var orientation = Rotation2d.identity
+
+    val CYCLE_ORIENTATION = KeyMapping(
+        "key.$MODID.cycle_spec_orientation",
+        KeyConflictContext.UNIVERSAL,
+        InputConstants.Type.KEYSYM,
+        GLFW.GLFW_KEY_R,
+        "key.$MODID.category"
+    )
+
+    fun createSnapshot() = SpecPlacementOverlayState(
+        orientation
+    )
+
+    override fun render(
+        gui: ForgeGui,
+        guiGraphics: GuiGraphics,
+        partialTick: Float,
+        screenWidth: Int,
+        screenHeight: Int,
+    ) {
+        getClientSpecItem() ?: return
+
+        val font = gui.font
+
+        guiGraphics.drawString(
+            font,
+            "θ×=${Math.toDegrees(orientation.ln()).formatted(2)}°",
+            0,
+            0,
+            color(255, 0, 0, 255)
+        )
+    }
+
+    fun onScroll(event: InputEvent.MouseScrollingEvent) {
+        val player = Minecraft.getInstance().player
+            ?: return
+
+        if(!player.isShiftKeyDown) {
+            return
+        }
+
+        getClientSpecItem() ?: return
+
+        if(event.scrollDelta.approxEq(0.0)) {
+            return
+        }
+
+        orientation *= Rotation2d.exp(
+            event.scrollDelta * 1e-2
+        )
+
+        event.isCanceled = true
+
+        sendSnapshot()
+    }
+
+    fun onCycleOrientation(event: InputEvent.Key) {
+        getClientSpecItem() ?: return
+
+        if(CYCLE_ORIENTATION.key.value == event.key && event.action == InputConstants.RELEASE) {
+            val closest = DEFAULT_ORIENTATIONS.minBy { abs((it / orientation).ln()) }
+
+            orientation = if(closest.approxEq(orientation)) {
+                DEFAULT_ORIENTATIONS[(DEFAULT_ORIENTATIONS.indexOf(closest) + 1) % DEFAULT_ORIENTATIONS.size]
+            }
+            else {
+                closest
+            }
+
+            sendSnapshot()
+        }
+    }
+
+    private fun sendSnapshot() {
+        Networking.sendToServer(SpecOverlayMessage(createSnapshot()))
+    }
+}
+
+@ServerOnly
+object SpecPlacementOverlayServer {
+    private val states = WeakHashMap<ServerPlayer, SpecPlacementOverlayState>()
+
+    fun getState(player: ServerPlayer) = states[player] ?: SpecPlacementOverlayState(
+        Rotation2d.identity
+    )
+
+    fun clear() {
+        states.clear()
+    }
+
+    fun setState(state: SpecPlacementOverlayState, sender: ServerPlayer?) {
+        requireIsOnServerThread()
+
+        if(sender == null) {
+            return
+        }
+
+        states[sender] = state
+    }
+}
+
+@ClientOnly
+object SpecPreviewRenderer {
+    private val CAN_PLACE_COLOR = Vector4d(0.1, 1.0, 0.15, 0.5)
+    private val CANNOT_PLACE_COLOR = Vector4d(1.0, 0.1, 0.2, 0.6)
+    private const val AXIS_THICKNESS = 0.01
+    private const val CAN_PLACE_AXIS_ALPHA = 0.8
+    private const val CANNOT_PLACE_AXIS_ALPHA = 0.1
+
+    fun render(event: RenderLevelStageEvent) {
+        if(event.stage != RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) {
+            return
+        }
+
+        val player = Minecraft.getInstance().player
+            ?: return
+
+        val level = Minecraft.getInstance().level
+            ?: return
+
+        val item = getClientSpecItem()
+            ?: return
+
+        val clipSize = player.getClipStartEnd()
+
+        val clipResult = player.pick(
+            clipSize.first.distanceTo(clipSize.second),
+            event.partialTick,
+            false
+        )
+
+        if(clipResult.type != HitResult.Type.BLOCK) {
+            return
+        }
+
+        clipResult as BlockHitResult
+
+        val specContainer = (level.getBlockEntity(clipResult.blockPos)
+            as? MultipartBlockEntity ?: level.getBlockEntity(clipResult.blockPos + clipResult.direction) as? MultipartBlockEntity)
+            ?.getPart(clipResult.direction) as? SpecContainerPart
+
+        val mountingPoint = clipResult.location.cast()
+
+        val blockPos = clipResult.blockPos
+        val face = clipResult.direction
+
+        val snapshot = SpecPlacementOverlayClient.createSnapshot()
+
+        val canPlace = specContainer?.canPlace(player, snapshot.orientation, item.provider) ?: true
+
+        val partFacing = if(specContainer != null) {
+            Quaternionf(specContainer.placement.facing.rotation)
+        }
+        else {
+            Quaternionf()
+        }
+
+        val stack = event.poseStack
+        val pConsumer = Minecraft.getInstance().renderBuffers().bufferSource().getBuffer(RenderType.lines())
+
+        stack.pushPose()
+
+        stack.translate(
+            -event.camera.position.x + blockPos.x.toDouble(),
+            -event.camera.position.y + blockPos.y.toDouble(),
+            -event.camera.position.z + blockPos.z.toDouble()
+        )
+
+        val (dx, dy, dz) = partOffsetTable[face.get3DDataValue()]
+        val (dx1, dy1, dz1) = mountingPoint - (blockPos.toVector3d() + Vector3d(0.5) - face.vector3d * 0.5)
+
+        stack.translate(
+            dx + dx1,
+            dy + dy1,
+            dz + dz1
+        )
+
+        stack.mulPose(face.rotationFast)
+        stack.mulPose(partFacing)
+        stack.mulPose(Quaternionf().rotateY(snapshot.orientation.ln().toFloat()))
+        stack.translate(0.0, item.provider.placementCollisionSize.y * 0.5, 0.0)
+
+        val pose: PoseStack.Pose = stack.last()
+
+        fun submitShape(shape: BoundingBox3d, color: Vector4d) {
+            val pRed = color.x.toFloat()
+            val pGreen = color.y.toFloat()
+            val pBlue = color.z.toFloat()
+            val pAlpha = color.w.toFloat()
+
+            Shapes.create(shape.cast()).forAllEdges { pX1: Double, pY1: Double, pZ1: Double, pX2: Double, pY2: Double, pZ2: Double ->
+                var f = (pX2 - pX1).toFloat()
+                var f1 = (pY2 - pY1).toFloat()
+                var f2 = (pZ2 - pZ1).toFloat()
+                val f3 = Mth.sqrt(f * f + f1 * f1 + f2 * f2)
+                f /= f3
+                f1 /= f3
+                f2 /= f3
+                pConsumer.vertex(
+                    pose.pose(),
+                    pX1.toFloat(),
+                    pY1.toFloat(),
+                    pZ1.toFloat()
+                ).color(pRed, pGreen, pBlue, pAlpha).normal(pose.normal(), f, f1, f2).endVertex()
+                pConsumer.vertex(
+                    pose.pose(),
+                    pX2.toFloat(),
+                    pY2.toFloat(),
+                    pZ2.toFloat()
+                ).color(pRed, pGreen, pBlue, pAlpha).normal(pose.normal(), f, f1, f2).endVertex()
+            }
+        }
+
+        submitShape(
+            BoundingBox3d.fromCenterSize(
+                Vector3d.zero,
+                item.provider.placementCollisionSize
+            ),
+            if(canPlace) {
+                CAN_PLACE_COLOR
+            }
+            else {
+                CANNOT_PLACE_COLOR
+            }
+        )
+
+        val axisAlpha = if(canPlace) {
+            CAN_PLACE_AXIS_ALPHA
+        }
+        else {
+            CANNOT_PLACE_AXIS_ALPHA
+        }
+
+        submitShape(
+            BoundingBox3d.fromCenterSize(
+                Vector3d(0.5, 0.0, 0.0),
+                Vector3d(0.5, AXIS_THICKNESS, AXIS_THICKNESS)
+            ),
+            Vector4d(1.0, 0.0, 0.0, axisAlpha)
+        )
+
+        submitShape(
+            BoundingBox3d.fromCenterSize(
+                Vector3d(0.0, 0.5, 0.0),
+                Vector3d(AXIS_THICKNESS, 0.5, AXIS_THICKNESS)
+            ),
+            Vector4d(0.0, 1.0, 0.0, axisAlpha)
+        )
+
+        submitShape(
+            BoundingBox3d.fromCenterSize(
+                Vector3d(0.0, 0.0, 0.5),
+                Vector3d(AXIS_THICKNESS, AXIS_THICKNESS, 0.5)
+            ),
+            Vector4d(0.0, 0.0, 1.0, axisAlpha)
+        )
+
+        stack.popPose()
+    }
 }

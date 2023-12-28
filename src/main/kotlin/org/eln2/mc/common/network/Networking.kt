@@ -13,6 +13,7 @@ import org.eln2.mc.common.GhostLightCommandMessage
 import org.eln2.mc.common.content.GridConnectionCreateMessage
 import org.eln2.mc.common.content.GridConnectionDeleteMessage
 import org.eln2.mc.common.network.serverToClient.*
+import org.eln2.mc.common.specs.foundation.SpecOverlayMessage
 import java.util.*
 
 object Networking {
@@ -74,6 +75,15 @@ object Networking {
             GridConnectionDeleteMessage::decode,
             GridConnectionDeleteMessage::handle,
             Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        )
+
+        channel.registerMessage(
+            id(),
+            SpecOverlayMessage::class.java,
+            SpecOverlayMessage::encode,
+            SpecOverlayMessage::decode,
+            SpecOverlayMessage::handle,
+            Optional.of(NetworkDirection.PLAY_TO_SERVER)
         )
     }
 

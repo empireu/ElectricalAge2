@@ -38,5 +38,8 @@
     "waila.eln2.progress": "Progress",
     "waila.eln2.Irradiance": "Irradiance",
 
-    "config.jade.plugin_eln2.component_display": "ELN2"
+    "config.jade.plugin_eln2.component_display": "ELN2",
+
+    "key.eln2.category": "ELN2",
+    "key.eln2.cycle_spec_orientation": "Cycle Spec Orientation"
 }

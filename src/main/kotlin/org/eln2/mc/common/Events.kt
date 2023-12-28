@@ -10,9 +10,6 @@ import net.minecraftforge.eventbus.api.SubscribeEvent
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.event.lifecycle.FMLLoadCompleteEvent
 import net.minecraftforge.server.ServerLifecycleHooks
-import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.SECOND
-import org.ageseries.libage.data.classify
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.DebugVisualizer
@@ -22,8 +19,8 @@ import org.eln2.mc.common.content.GridConnectionManagerClient
 import org.eln2.mc.common.content.GridConnectionManagerServer
 import org.eln2.mc.common.events.schedulePost
 import org.eln2.mc.common.parts.PartRegistry
+import org.eln2.mc.common.specs.foundation.SpecPlacementOverlayServer
 import org.eln2.mc.data.AveragingList
-import org.eln2.mc.extensions.formatted
 
 @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.MOD)
 object ModEvents {
@@ -105,6 +102,7 @@ object ForgeEvents {
 
         GhostLightServer.clear()
         GridConnectionManagerServer.clear()
+        SpecPlacementOverlayServer.clear()
     }
 
     private fun scheduleGhostEvent(event: BlockEvent) {
