@@ -1,5 +1,6 @@
 package org.eln2.mc.common.specs.foundation
 
+import com.jozufozu.flywheel.core.PartialModel
 import com.jozufozu.flywheel.core.materials.model.ModelData
 import com.mojang.blaze3d.platform.InputConstants
 import com.mojang.blaze3d.vertex.PoseStack
@@ -17,7 +18,6 @@ import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
-import net.minecraft.util.Mth
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.entity.Entity
@@ -40,11 +40,8 @@ import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
-import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.PartialModels
-import org.eln2.mc.client.render.foundation.color
-import org.eln2.mc.client.render.foundation.createPartInstance
-import org.eln2.mc.client.render.foundation.partOffsetTable
+import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.items.foundation.PartItem
 import org.eln2.mc.common.network.Networking
@@ -60,10 +57,8 @@ import org.lwjgl.glfw.GLFW
 import java.util.*
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.function.Supplier
-import kotlin.collections.ArrayList
-import kotlin.collections.HashMap
-import kotlin.collections.HashSet
 import kotlin.math.abs
+
 
 object SpecGeometry {
     fun mountingPointSpecial(specMountingPointWorld: Vector3d, partPositiveX: Direction, partPositiveZ: Direction, partMountingPointWorld: Vector3d) : Vector2d {
@@ -181,7 +176,7 @@ data class SpecUseInfo(
     val player: Player,
     val hand: InteractionHand,
     val playerViewRay: Ray3d,
-    val intersection: RayIntersection
+    val intersection: RayIntersection,
 )
 
 data class SpecCreateInfo(val id: ResourceLocation, val placement: SpecPlacementInfo)
@@ -842,11 +837,6 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
             val stack = event.poseStack
             stack.pushPose()
 
-            val pRed = 0.1f
-            val pGreen = 0.5f
-            val pBlue = 0.8f
-            val pAlpha = 0.9f
-
             stack.translate(
                 -event.camera.position.x + spec.placement.blockPos.x.toDouble(),
                 -event.camera.position.y + spec.placement.blockPos.y.toDouble(),
@@ -856,44 +846,21 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
             val (dx, dy, dz) = partOffsetTable[part.placement.face.get3DDataValue()]
             val (dx1, dy1, dz1) = spec.placement.mountingPointWorld - part.placement.mountingPointWorld
 
-            stack.translate(
-                dx + dx1,
-                dy + dy1,
-                dz + dz1
-            )
+            stack.translate(dx + dx1, dy + dy1, dz + dz1)
 
             stack.mulPose(part.placement.face.rotationFast)
             stack.mulPose(Quaternionf(part.placement.facing.rotation))
             stack.mulPose(Quaternionf().rotateY(spec.placement.orientation.ln().toFloat()))
             stack.translate(0.0, spec.placement.provider.placementCollisionSize.y * 0.5, 0.0)
 
-            val box = BoundingBox3d.fromCenterSize(
-                Vector3d.zero,
-                spec.placement.provider.placementCollisionSize
-            ).cast()
-
-            val pose: PoseStack.Pose = stack.last()
-            Shapes.create(box).forAllEdges { pX1: Double, pY1: Double, pZ1: Double, pX2: Double, pY2: Double, pZ2: Double ->
-                var f = (pX2 - pX1).toFloat()
-                var f1 = (pY2 - pY1).toFloat()
-                var f2 = (pZ2 - pZ1).toFloat()
-                val f3 = Mth.sqrt(f * f + f1 * f1 + f2 * f2)
-                f /= f3
-                f1 /= f3
-                f2 /= f3
-                pConsumer.vertex(
-                    pose.pose(),
-                    pX1.toFloat(),
-                    pY1.toFloat(),
-                    pZ1.toFloat()
-                ).color(pRed, pGreen, pBlue, pAlpha).normal(pose.normal(), f, f1, f2).endVertex()
-                pConsumer.vertex(
-                    pose.pose(),
-                    pX2.toFloat(),
-                    pY2.toFloat(),
-                    pZ2.toFloat()
-                ).color(pRed, pGreen, pBlue, pAlpha).normal(pose.normal(), f, f1, f2).endVertex()
-            }
+           pConsumer.eln2SubmitAABBLines(
+               stack.last(),
+               BoundingBox3d.fromCenterSize(
+                   Vector3d.zero,
+                   spec.placement.provider.placementCollisionSize
+               ),
+               0.1f, 0.5f, 0.8f, 0.9f
+           )
 
             stack.popPose()
         }
@@ -1028,6 +995,9 @@ class SpecItem(val provider: SpecProvider) : PartItem(PartRegistry.SPEC_CONTAINE
 abstract class SpecProvider {
     val id: ResourceLocation get() = SpecRegistry.getId(this)
 
+    // Maybe add context to select model based on stuff
+    open fun getModelForPreview() : PartialModel? = null
+
     abstract fun create(context: SpecPlacementInfo): Spec<*>
 
     abstract val placementCollisionSize: Vector3d
@@ -1036,14 +1006,19 @@ abstract class SpecProvider {
 }
 
 open class BasicSpecProvider(
+    val previewModel: PartialModel?,
     final override val placementCollisionSize: Vector3d,
     val factory: ((ci: SpecCreateInfo) -> Spec<*>),
 ) : SpecProvider() {
+    constructor(placementCollisionSize: Vector3d, factory: (ci: SpecCreateInfo) -> Spec<*>) : this(null, placementCollisionSize, factory)
+
+    override fun getModelForPreview(): PartialModel? = previewModel
+
     override fun create(context: SpecPlacementInfo) = factory(SpecCreateInfo(id, context))
 }
 
 /**
- * Parts are entity-like units that exist in a spec part container [Part]. They are similar to normal block entities,
+ * [Spec]s are entity-like units that exist in a [SpecContainerPart]. They are similar to normal block entities,
  * but many can exist in the same block space.
  * They are placed in a region on the substrate plane of a spec part container, with a custom orientation.
  * The position and orientation are not axis-aligned;
@@ -1320,7 +1295,7 @@ interface SpecRendererStateStorage {
 }
 
 data class SpecPlacementOverlayState(
-    val orientation: Rotation2d
+    val orientation: Rotation2d,
 )
 
 data class SpecOverlayMessage(val state: SpecPlacementOverlayState) {
@@ -1473,11 +1448,13 @@ object SpecPlacementOverlayServer {
 
 @ClientOnly
 object SpecPreviewRenderer {
-    private val CAN_PLACE_COLOR = Vector4d(0.1, 1.0, 0.15, 0.5)
-    private val CANNOT_PLACE_COLOR = Vector4d(1.0, 0.1, 0.2, 0.6)
+    private val CAN_PLACE_COLOR = RGBAFloat(0.1f, 1.0f, 0.15f, 0.5f)
+    private val CANNOT_PLACE_COLOR = RGBAFloat(1.0f, 0.1f, 0.2f, 0.6f)
+    private val CAN_PLACE_PREVIEW_COLOR = RGBAFloat(0.1f, 1.0f, 0.15f, 0.9f)
+    private val CANNOT_PLACE_PREVIEW_COLOR = RGBAFloat(1.0f, 0.1f, 0.2f, 0.2f)
     private const val AXIS_THICKNESS = 0.01
-    private const val CAN_PLACE_AXIS_ALPHA = 0.8
-    private const val CANNOT_PLACE_AXIS_ALPHA = 0.1
+    private const val CAN_PLACE_AXIS_ALPHA = 0.8f
+    private const val CANNOT_PLACE_AXIS_ALPHA = 0.1f
 
     fun render(event: RenderLevelStageEvent) {
         if(event.stage != RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) {
@@ -1520,15 +1497,7 @@ object SpecPreviewRenderer {
 
         val canPlace = specContainer?.canPlace(player, snapshot.orientation, item.provider) ?: true
 
-        val partFacing = if(specContainer != null) {
-            Quaternionf(specContainer.placement.facing.rotation)
-        }
-        else {
-            Quaternionf()
-        }
-
         val stack = event.poseStack
-        val pConsumer = Minecraft.getInstance().renderBuffers().bufferSource().getBuffer(RenderType.lines())
 
         stack.pushPose()
 
@@ -1541,92 +1510,94 @@ object SpecPreviewRenderer {
         val (dx, dy, dz) = partOffsetTable[face.get3DDataValue()]
         val (dx1, dy1, dz1) = mountingPoint - (blockPos.toVector3d() + Vector3d(0.5) - face.vector3d * 0.5)
 
-        stack.translate(
-            dx + dx1,
-            dy + dy1,
-            dz + dz1
-        )
+        stack.translate(dx + dx1, dy + dy1, dz + dz1)
 
         stack.mulPose(face.rotationFast)
-        stack.mulPose(partFacing)
+
+        stack.mulPose(
+            if (specContainer != null) {
+                Quaternionf(specContainer.placement.facing.rotation)
+            } else {
+                Quaternionf(MultipartBlockEntity.getHorizontalFacing(face, player).rotation)
+            }
+        )
+
         stack.mulPose(Quaternionf().rotateY(snapshot.orientation.ln().toFloat()))
         stack.translate(0.0, item.provider.placementCollisionSize.y * 0.5, 0.0)
 
-        val pose: PoseStack.Pose = stack.last()
-
-        fun submitShape(shape: BoundingBox3d, color: Vector4d) {
-            val pRed = color.x.toFloat()
-            val pGreen = color.y.toFloat()
-            val pBlue = color.z.toFloat()
-            val pAlpha = color.w.toFloat()
-
-            Shapes.create(shape.cast()).forAllEdges { pX1: Double, pY1: Double, pZ1: Double, pX2: Double, pY2: Double, pZ2: Double ->
-                var f = (pX2 - pX1).toFloat()
-                var f1 = (pY2 - pY1).toFloat()
-                var f2 = (pZ2 - pZ1).toFloat()
-                val f3 = Mth.sqrt(f * f + f1 * f1 + f2 * f2)
-                f /= f3
-                f1 /= f3
-                f2 /= f3
-                pConsumer.vertex(
-                    pose.pose(),
-                    pX1.toFloat(),
-                    pY1.toFloat(),
-                    pZ1.toFloat()
-                ).color(pRed, pGreen, pBlue, pAlpha).normal(pose.normal(), f, f1, f2).endVertex()
-                pConsumer.vertex(
-                    pose.pose(),
-                    pX2.toFloat(),
-                    pY2.toFloat(),
-                    pZ2.toFloat()
-                ).color(pRed, pGreen, pBlue, pAlpha).normal(pose.normal(), f, f1, f2).endVertex()
-            }
-        }
-
-        submitShape(
-            BoundingBox3d.fromCenterSize(
-                Vector3d.zero,
-                item.provider.placementCollisionSize
-            ),
-            if(canPlace) {
-                CAN_PLACE_COLOR
-            }
-            else {
-                CANNOT_PLACE_COLOR
-            }
+        submitBoxAndAxes(
+            stack.last(),
+            if (canPlace) CAN_PLACE_COLOR else CANNOT_PLACE_COLOR,
+            if (canPlace) CAN_PLACE_AXIS_ALPHA else CANNOT_PLACE_AXIS_ALPHA,
+            item.provider.placementCollisionSize
         )
 
-        val axisAlpha = if(canPlace) {
-            CAN_PLACE_AXIS_ALPHA
-        }
-        else {
-            CANNOT_PLACE_AXIS_ALPHA
-        }
+        stack.translate(-0.5, -item.provider.placementCollisionSize.y * 0.5, -0.5)
 
-        submitShape(
+        submitPreviewModel(
+            stack.last(),
+            if(canPlace) CAN_PLACE_PREVIEW_COLOR else CANNOT_PLACE_PREVIEW_COLOR,
+            item.provider
+        )
+
+        stack.popPose()
+    }
+
+    private fun submitBoxAndAxes(pose: PoseStack.Pose, placeColor: RGBAFloat, placeAlpha: Float, placementCollisionSize: Vector3d) {
+        val vertexConsumer = Minecraft.getInstance()
+            .renderBuffers()
+            .bufferSource()
+            .getBuffer(RenderType.lines())
+
+        vertexConsumer.eln2SubmitAABBLines(
+            pose,
+            BoundingBox3d.fromCenterSize(
+                Vector3d.zero,
+                placementCollisionSize
+            ),
+            placeColor
+        )
+
+        vertexConsumer.eln2SubmitAABBLines(
+            pose,
             BoundingBox3d.fromCenterSize(
                 Vector3d(0.5, 0.0, 0.0),
                 Vector3d(0.5, AXIS_THICKNESS, AXIS_THICKNESS)
             ),
-            Vector4d(1.0, 0.0, 0.0, axisAlpha)
+            RGBAFloat(1.0f, 0.0f, 0.0f, placeAlpha)
         )
 
-        submitShape(
+        vertexConsumer.eln2SubmitAABBLines(
+            pose,
             BoundingBox3d.fromCenterSize(
                 Vector3d(0.0, 0.5, 0.0),
                 Vector3d(AXIS_THICKNESS, 0.5, AXIS_THICKNESS)
             ),
-            Vector4d(0.0, 1.0, 0.0, axisAlpha)
+            RGBAFloat(0.0f, 1.0f, 0.0f, placeAlpha)
         )
 
-        submitShape(
+        vertexConsumer.eln2SubmitAABBLines(
+            pose,
             BoundingBox3d.fromCenterSize(
                 Vector3d(0.0, 0.0, 0.5),
                 Vector3d(AXIS_THICKNESS, AXIS_THICKNESS, 0.5)
             ),
-            Vector4d(0.0, 0.0, 1.0, axisAlpha)
+            RGBAFloat(0.0f, 0.0f, 1.0f, placeAlpha)
         )
+    }
 
-        stack.popPose()
+    private fun submitPreviewModel(pose: PoseStack.Pose, previewColor: RGBAFloat, provider: SpecProvider) {
+        val model = provider.getModelForPreview()
+            ?: return
+
+        val renderType = RenderType.solid()
+        val vertexConsumer = Minecraft.getInstance().renderBuffers().bufferSource().getBuffer(renderType)
+
+        vertexConsumer.eln2SubmitUnshadedBakedModelQuads(
+            renderType,
+            pose,
+            model.get(),
+            previewColor
+        )
     }
 }

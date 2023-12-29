@@ -11,15 +11,24 @@ import com.jozufozu.flywheel.core.materials.FlatLit
 import com.jozufozu.flywheel.core.materials.model.ModelData
 import com.jozufozu.flywheel.util.Color
 import com.jozufozu.flywheel.util.transform.Transform
+import com.mojang.blaze3d.vertex.PoseStack
+import com.mojang.blaze3d.vertex.VertexConsumer
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntArrayList
+import net.minecraft.client.renderer.RenderType
+import net.minecraft.client.renderer.texture.OverlayTexture
+import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.util.RandomSource
 import net.minecraft.world.level.LightLayer
 import net.minecraft.world.level.block.entity.BlockEntity
+import net.minecraft.world.phys.shapes.Shapes
+import net.minecraft.world.phys.shapes.VoxelShape
 import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
+import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
@@ -37,9 +46,12 @@ import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.common.specs.foundation.Spec
 import org.eln2.mc.common.specs.foundation.SpecPartRenderer
 import org.eln2.mc.common.specs.foundation.SpecRenderer
+import org.eln2.mc.extensions.cast
 import org.eln2.mc.extensions.rotationFast
 import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.requireIsOnRenderThread
 import kotlin.math.max
+import kotlin.math.sqrt
 
 fun createPartInstance(
     multipart: MultipartBlockEntityInstance,
@@ -522,4 +534,90 @@ open class BasicSpecRenderer(val spec: Spec<*>, val model: PartialModel) : SpecR
     override fun remove() {
         modelInstance?.delete()
     }
+}
+
+fun VertexConsumer.eln2SubmitUnshadedBakedModelQuads(
+    renderType: RenderType,
+    pose: PoseStack.Pose, // this is not a pose, Minecraft, because it is not in SE(3)
+    model: BakedModel,
+    r: Float,
+    g: Float,
+    b: Float,
+    a: Float,
+    packedLight: Int = 15728880,
+    overlayTexture: Int = OverlayTexture.NO_OVERLAY
+) {
+    requireIsOnRenderThread {
+        "eln2SubmitUnshadedBakedModelQuads"
+    }
+
+    val pQuads = model.getQuads(
+        null,
+        null,
+        RandomSource.create(),
+        net.minecraftforge.client.model.data.ModelData.EMPTY,
+        renderType
+    )
+
+    for (bakedQuad in pQuads) {
+        this.putBulkData(
+            pose,
+            bakedQuad,
+            r, g, b, a,
+            packedLight, overlayTexture,
+            true
+        )
+    }
+}
+
+fun VertexConsumer.eln2SubmitUnshadedBakedModelQuads(
+    renderType: RenderType,
+    pose: PoseStack.Pose, // this is not a pose, Minecraft, because it is not in SE(3)
+    model: BakedModel,
+    rgba: RGBAFloat,
+    packedLight: Int = 15728880,
+    overlayTexture: Int = OverlayTexture.NO_OVERLAY
+) = this.eln2SubmitUnshadedBakedModelQuads(renderType, pose, model, rgba.r, rgba.g, rgba.b, rgba.a, packedLight, overlayTexture)
+
+fun VertexConsumer.eln2SubmitVoxelShapeLines(pose: PoseStack.Pose, shape: VoxelShape, r: Float, g: Float, b: Float, a: Float) {
+    shape.forAllEdges { pX1: Double, pY1: Double, pZ1: Double, pX2: Double, pY2: Double, pZ2: Double ->
+        var nx = (pX2 - pX1).toFloat()
+        var ny = (pY2 - pY1).toFloat()
+        var nz = (pZ2 - pZ1).toFloat()
+
+        val norm = 1f / sqrt(nx * nx + ny * ny + nz * nz)
+
+        nx *= norm
+        ny *= norm
+        nz *= norm
+
+        val poseModel = pose.pose()
+        val poseNormal = pose.normal()
+
+        this.vertex(poseModel, pX1.toFloat(), pY1.toFloat(), pZ1.toFloat())
+            .color(r, g, b, a)
+            .normal(poseNormal, nx, ny, nz)
+            .endVertex()
+
+        this.vertex(poseModel, pX2.toFloat(), pY2.toFloat(), pZ2.toFloat())
+            .color(r, g, b, a)
+            .normal(poseNormal, nx, ny, nz)
+            .endVertex()
+    }
+}
+
+fun VertexConsumer.eln2SubmitAABBLines(pose: PoseStack.Pose, aabb: BoundingBox3d, r: Float, g: Float, b: Float, a: Float) {
+    this.eln2SubmitVoxelShapeLines(
+        pose,
+        Shapes.create(aabb.cast()),
+        r, g, b, a
+    )
+}
+
+fun VertexConsumer.eln2SubmitAABBLines(pose: PoseStack.Pose, aabb: BoundingBox3d, rgba: RGBAFloat) {
+    this.eln2SubmitAABBLines(
+        pose,
+        aabb,
+        rgba.r, rgba.g, rgba.b, rgba.a
+    )
 }
