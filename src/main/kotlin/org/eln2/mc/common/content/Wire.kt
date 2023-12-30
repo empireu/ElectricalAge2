@@ -34,6 +34,7 @@ import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.ImmutableIntArrayView
+import org.ageseries.libage.data.Locator
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Vector3d
@@ -364,8 +365,8 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
     var smokeTemperature: Double? = null
     private var renderInfo: Supplier<WireRenderInfo>? = null
     var connectionSize = Vector3d(2.0 / 16.0, 1.5 / 16.0, 6.25 / 16.0)
-    var wireShapes : Map<Pair<FaceLocator, Direction>, VoxelShape>? = null
-    var wireShapesFilled : Map<Pair<FaceLocator, Direction>, VoxelShape>? = null
+    var wireShapes : Map<Pair<Direction, Direction>, VoxelShape>? = null
+    var wireShapesFilled : Map<Pair<Direction, Direction>, VoxelShape>? = null
     var leakageParameters: ConnectionParameters = ConnectionParameters.DEFAULT
     var radiantDescription: RadiantBodyEmissionDescription? = null
 
@@ -390,8 +391,8 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
     )
 
     protected fun registerPart(properties: WireThermalProperties, provider: RegistryObject<CellProvider<C>>) {
-        fun createShapes(size: Vector3d) : HashMap<Pair<FaceLocator, Direction>, VoxelShape> {
-            val results = HashMap<Pair<FaceLocator, Direction>, VoxelShape>()
+        fun createShapes(size: Vector3d) : HashMap<Pair<Direction, Direction>, VoxelShape> {
+            val results = HashMap<Pair<Direction, Direction>, VoxelShape>()
 
             val boundingBox = AABB(
                 (-size / 2.0).toVec3(),
@@ -631,8 +632,8 @@ class WirePart<C : WireCell>(
     cellProvider: CellProvider<C>,
     val isIncandescent: Boolean,
     val smokeTemperature: Double,
-    val connectionBounds: Map<Pair<FaceLocator, Direction>, VoxelShape>,
-    val connectionBoundsFilled: Map<Pair<FaceLocator, Direction>, VoxelShape>,
+    val connectionBounds: Map<Pair<Direction, Direction>, VoxelShape>,
+    val connectionBoundsFilled: Map<Pair<Direction, Direction>, VoxelShape>,
     val renderInfo: Supplier<WireRenderInfo>?,
 ) : CellPart<C, WireRenderer<*>>(ci, cellProvider),
     InternalTemperatureConsumer,

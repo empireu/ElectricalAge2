@@ -4,10 +4,10 @@ package org.eln2.mc.data
 
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
-import net.minecraft.nbt.CompoundTag
-import net.minecraft.nbt.ListTag
-import org.ageseries.libage.data.ImmutableBiMapView
-import org.ageseries.libage.data.biMapOf
+import org.ageseries.libage.data.Locator
+import org.ageseries.libage.data.LocatorDispatcher
+import org.ageseries.libage.data.LocatorShardDefinition
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.electrical.mna.NEGATIVE
 import org.ageseries.libage.sim.electrical.mna.POSITIVE
 import org.eln2.mc.common.parts.foundation.getPartConnectionOrNull
@@ -15,185 +15,64 @@ import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.FacingDirection
+import java.nio.ByteBuffer
 
-typealias BlockLocator = BlockPos
-typealias FaceLocator = Direction
-
-data class FacingLocator(val facing: FacingDirection) {
-    override fun hashCode() = facing.direction.valueHashCode()
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as FacingLocator
-
-        return facing.direction == other.facing.direction
-    }
-}
-
-interface LocatorSerializer {
-    fun toNbt(obj: Any): CompoundTag
-    fun fromNbt(tag: CompoundTag): Any
-}
-
-fun classId(c: Class<*>): String = c.canonicalName
-fun locatorId(loc: Class<*>): String = "$${classId(loc)}"
-
-val locatorClassNames: ImmutableBiMapView<String, Class<*>> = biMapOf(
-    locatorId(BlockLocator::class.java) to BlockLocator::class.java,
-    locatorId(FacingLocator::class.java) to FacingLocator::class.java,
-    locatorId(FaceLocator::class.java) to FaceLocator::class.java
-)
-
-val locatorSerializers: ImmutableBiMapView<Class<*>, LocatorSerializer> = biMapOf(
-    BlockLocator::class.java to object : LocatorSerializer {
-        override fun toNbt(obj: Any): CompoundTag =
-            CompoundTag().apply { putBlockPos("Position", (obj as BlockLocator)) }
-
-        override fun fromNbt(tag: CompoundTag): BlockLocator =
-            BlockLocator(tag.getBlockPos("Position"))
-    },
-
-    FacingLocator::class.java to object : LocatorSerializer {
-        override fun toNbt(obj: Any): CompoundTag =
-            CompoundTag().apply { putHorizontalFacing("Forward", (obj as FacingLocator).facing) }
-
-        override fun fromNbt(tag: CompoundTag): Any =
-            FacingLocator(tag.getHorizontalFacing("Forward"))
-    },
-
-    FaceLocator::class.java to object : LocatorSerializer {
-        override fun toNbt(obj: Any): CompoundTag =
-            CompoundTag().apply { putDirection("Face", (obj as FaceLocator)) }
-
-        override fun fromNbt(tag: CompoundTag): Any =
-            tag.getDirection("Face")
-    }
-)
-
-fun getLocatorSerializer(locatorClass: Class<*>): LocatorSerializer {
-    return locatorSerializers.forward[locatorClass] ?: error("Failed to find serializer definition for $locatorClass")
-}
-
-class LocatorSetBuilder {
-    val locatorMap = HashMap<Class<*>, Any>()
-
-    val locators: Collection<Any> get() = locatorMap.values
-
-    fun bindLocators(): HashMap<Class<*>, Any> = locatorMap.bind()
-
-    fun withLocator(locator: Any): LocatorSetBuilder {
-        if (locatorMap.put(locator.javaClass, locator) != null) {
-            error("Duplicate locator $locator")
-        }
-
-        return this
+object Locators : LocatorDispatcher<Locators>() {
+    private fun writeBlockPos(blockPos: BlockPos, buffer: ByteBuffer) {
+        buffer.putInt(blockPos.x)
+        buffer.putInt(blockPos.y)
+        buffer.putInt(blockPos.z)
     }
 
-    fun build() = Locator.createImmutable(locatorMap)
-}
+    private fun readBlockPos(buffer: ByteBuffer) = BlockPos(
+        buffer.getInt(),
+        buffer.getInt(),
+        buffer.getInt()
+    )
 
-class Locator private constructor(val locatorMap: Map<Class<*>, Any>) {
-    fun <T> get(c: Class<T>): T? = locatorMap[c] as? T
+    private fun writeDirection(direction: Direction, buffer: ByteBuffer) { buffer.put(direction.get3DDataValue().toByte()) }
 
-    inline fun <reified T> get(): T? = get(T::class.java)
+    private fun readDirection(buffer: ByteBuffer) = Direction.from3DDataValue(buffer.get().toInt())
 
-    fun has(c: Class<*>): Boolean = get(c) != null
+    private fun writeFacingDirection(direction: FacingDirection, buffer: ByteBuffer) { buffer.put(direction.index.toByte()) }
 
-    inline fun <reified T> has(): Boolean = has(T::class.java)
+    private fun readFacingDirection(buffer: ByteBuffer) = FacingDirection.byIndex(buffer.get().toInt())
 
-    override fun equals(other: Any?): Boolean {
-        if (this === other) {
-            return true
-        }
-
-        if (javaClass != other?.javaClass) {
-            return false
-        }
-
-        other as Locator
-
-        if (locatorMap.size != other.locatorMap.size) {
-            return false
-        }
-
-        for (c in locatorMap.keys) {
-            val otherValue = other.locatorMap[c]
-                ?: return false
-
-            if (otherValue != locatorMap[c]!!) {
-                return false
-            }
-        }
-
-        return true
+    private fun writeVector3d(vector3d: Vector3d, buffer: ByteBuffer) {
+        buffer.putDouble(vector3d.x)
+        buffer.putDouble(vector3d.y)
+        buffer.putDouble(vector3d.z)
     }
 
-    override fun hashCode(): Int {
-        return locatorMap.hashCode()
-    }
+    private fun readVector3d(buffer: ByteBuffer) = Vector3d(
+        buffer.getDouble(),
+        buffer.getDouble(),
+        buffer.getDouble()
+    )
 
-    fun toNbt(): CompoundTag {
-        val result = CompoundTag()
-        val locatorList = ListTag()
+    val BLOCK = register<BlockPos>(
+        ::writeBlockPos,
+        ::readBlockPos,
+        3 * 4
+    )
 
-        locatorMap.forEach { (locatorClass, locatorInst) ->
-            val locatorCompound = CompoundTag()
+    val FACE = register<Direction>(
+        ::writeDirection,
+        ::readDirection,
+        1
+    )
 
-            locatorCompound.putString(
-                "Class",
-                locatorClassNames.backward[locatorClass] ?: error("Failed to get locator name for $locatorClass")
-            )
+    val FACING = register<FacingDirection>(
+        ::writeFacingDirection,
+        ::readFacingDirection,
+        1
+    )
 
-            val serializer = getLocatorSerializer(locatorClass)
-
-            locatorCompound.put("Locator", serializer.toNbt(locatorInst))
-            locatorList.add(locatorCompound)
-        }
-
-        result.put("Locators", locatorList)
-
-        return result
-    }
-
-    override fun toString() = buildString {
-        locatorMap.forEach { (locatorClass, locator) ->
-            appendLine("${locatorClass.name}: $locator")
-        }
-    }
-
-    companion object {
-        fun fromNbt(compoundTag: CompoundTag): Locator {
-            val builder = LocatorSetBuilder()
-            val list = compoundTag.get("Locators") as ListTag
-
-            list.forEach { tag ->
-                val locatorCompound = tag as CompoundTag
-
-                val locatorClassName = locatorCompound.getString("Class")
-
-                val locatorClass = locatorClassNames.forward[locatorClassName]
-                    ?: error("Failed to solve locator class $locatorClassName")
-
-                val serializer = getLocatorSerializer(locatorClass)
-
-                builder.withLocator(serializer.fromNbt(locatorCompound.getCompound("Locator")))
-            }
-
-            return Locator(builder.locatorMap)
-        }
-
-        fun createImmutable(source: Map<Class<*>, Any>) = Locator(source.toMap())
-    }
-}
-
-inline fun <reified T> Locator.requireLocator(noinline message: (() -> Any)? = null): T {
-    val result = this.get<T>()
-
-    if (message != null) require(result != null, message)
-    else require(result != null) { "Requirement of ${T::class.java} is not fulfilled" }
-
-    return result
+    val MOUNTING_POINT = register<Vector3d>(
+        ::writeVector3d,
+        ::readVector3d,
+        3 * 8
+    )
 }
 
 fun interface LocationRelationshipRule {
@@ -227,13 +106,13 @@ fun LocatorRelationRuleSet.withDirectionRulePart(mask: Base6Direction3dMask): Lo
 
 
 fun Locator.findDirActualPlanarOrNull(other: Locator): Base6Direction3d? {
-    val actualPosWorld = this.get<BlockLocator>() ?: return null
-    val actualIdWorld = this.get<FacingLocator>() ?: return null
-    val actualFaceWorld = this.get<FaceLocator>() ?: return null
-    val targetPosWorld = other.get<BlockLocator>() ?: return null
-    val dir = actualPosWorld.directionTo(targetPosWorld) ?: return null
+    val a = this.get(Locators.BLOCK) ?: return null
+    val b = this.get(Locators.FACING) ?: return null
+    val c = this.get(Locators.FACE) ?: return null
+    val d = other.get(Locators.BLOCK) ?: return null
+    val dir = a.directionTo(d) ?: return null
 
-    return Base6Direction3d.fromForwardUp(actualIdWorld.facing, actualFaceWorld, dir)
+    return Base6Direction3d.fromForwardUp(b, c, dir)
 }
 
 fun Locator.findDirActualPartOrNull(other: Locator): Base6Direction3d? {

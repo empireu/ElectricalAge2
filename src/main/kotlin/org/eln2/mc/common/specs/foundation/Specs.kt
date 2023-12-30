@@ -36,6 +36,7 @@ import net.minecraftforge.client.gui.overlay.ForgeGui
 import net.minecraftforge.client.gui.overlay.IGuiOverlay
 import net.minecraftforge.client.settings.KeyConflictContext
 import net.minecraftforge.network.NetworkEvent
+import org.ageseries.libage.data.put
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.utils.putUnique
@@ -48,6 +49,7 @@ import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.common.specs.SpecRegistry
+import org.eln2.mc.data.Locators
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.DebugComponentDisplay
@@ -58,7 +60,6 @@ import java.util.*
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.function.Supplier
 import kotlin.math.abs
-
 
 object SpecGeometry {
     fun mountingPointSpecial(specMountingPointWorld: Vector3d, partPositiveX: Direction, partPositiveZ: Direction, partMountingPointWorld: Vector3d) : Vector2d {
@@ -80,16 +81,6 @@ object SpecGeometry {
             .rotate(partFacing.rotation3d)
             .rotate(partFace.rotation3d)
             .rotation
-
-    fun transformWorldMounting(specMountingPointWorld: Vector3d, specHorizontalFacing: Rotation2d, partFacing: FacingDirection, partFace: Direction) =
-        Pose3d(
-            specMountingPointWorld,
-            rotationWorld(
-                specHorizontalFacing,
-                partFacing,
-                partFace
-            )
-        )
 
     fun transformWorldRaised(specMountingPointWorld: Vector3d, specHorizontalFacing: Rotation2d, specSize: Vector3d, partFacing: FacingDirection, partFace: Direction) =
         Pose3d(
@@ -153,6 +144,12 @@ data class SpecPlacementInfo(
             )
         )
     }
+
+    fun createLocator() = Locators.buildLocator {
+        it.put(BLOCK, blockPos)
+        it.put(FACE, face)
+        it.put(MOUNTING_POINT, mountingPointWorld)
+    }
 }
 
 enum class SpecUpdateType(val id: Int) {
@@ -182,6 +179,10 @@ data class SpecUseInfo(
 data class SpecCreateInfo(val id: ResourceLocation, val placement: SpecPlacementInfo)
 
 class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugComponentDisplay {
+    @ServerOnly
+    var containerID = UUID.randomUUID()
+        private set
+
     val substratePlane = Plane3d(placement.face.vector3d, placement.mountingPointWorld)
 
     private var lastPlacementId = 0
@@ -293,6 +294,8 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         .minByOrNull { ray3d.origin..ray3d.evaluate(it.first.entry) }
 
     fun pickSpec(player: Entity) = pickSpec(player.getViewRay())
+
+    fun getSpecByPlacementID(id: Int) = specs[id]
 
     /**
      * Adds the [spec] and notifies via [Spec.onAdded]
@@ -438,6 +441,8 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         val tag = CompoundTag()
 
         tag.putInt(PLACEMENT_ID, lastPlacementId)
+        tag.putUUID(CONTAINER_ID, containerID)
+
         saveSpecs(tag, SaveType.ServerData)
 
         return tag
@@ -446,6 +451,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
     @ServerOnly
     override fun loadServerSaveTag(tag: CompoundTag) {
         lastPlacementId = tag.getInt(PLACEMENT_ID)
+        containerID = tag.getUUID(CONTAINER_ID)
 
         loadSpecs(tag, SaveType.ServerData)
 
@@ -797,6 +803,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         private const val SPECIAL_POSE = "pose"
         private const val PLACEMENT_ID = "placementId"
         private const val TAG = "tag"
+        private const val CONTAINER_ID = "containerId"
 
         fun createSpecDropStack(id: ResourceLocation, saveTag: CompoundTag?, count: Int = 1): ItemStack {
             val item = SpecRegistry.getSpecItem(id)
@@ -835,34 +842,60 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
             val pConsumer: VertexConsumer = event.multiBufferSource.getBuffer(RenderType.lines())
 
             val stack = event.poseStack
-            stack.pushPose()
 
-            stack.translate(
-                -event.camera.position.x + spec.placement.blockPos.x.toDouble(),
-                -event.camera.position.y + spec.placement.blockPos.y.toDouble(),
-                -event.camera.position.z + spec.placement.blockPos.z.toDouble()
+            fun render(mountingPointWorld: Vector3d, lp: Quaternionf, size: Vector3d, color: RGBAFloat) {
+                stack.pushPose()
+
+                stack.translate(
+                    -event.camera.position.x + spec.placement.blockPos.x.toDouble(),
+                    -event.camera.position.y + spec.placement.blockPos.y.toDouble(),
+                    -event.camera.position.z + spec.placement.blockPos.z.toDouble()
+                )
+
+                val (dx, dy, dz) = partOffsetTable[part.placement.face.get3DDataValue()]
+                val (dx1, dy1, dz1) = mountingPointWorld - part.placement.mountingPointWorld
+
+                stack.translate(dx + dx1, dy + dy1, dz + dz1)
+
+                stack.mulPose(part.placement.face.rotationFast)
+                stack.mulPose(Quaternionf(part.placement.facing.rotation))
+                stack.mulPose(lp)
+                stack.translate(0.0, size.y * 0.5, 0.0)
+
+                pConsumer.eln2SubmitAABBLines(
+                    stack.last(),
+                    BoundingBox3d.fromCenterSize(
+                        Vector3d.zero,
+                        size
+                    ),
+                    color
+                )
+
+                stack.popPose()
+            }
+
+            render(
+                spec.placement.mountingPointWorld,
+                Quaternionf().rotateY(spec.placement.orientation.ln().toFloat()),
+                spec.placement.provider.placementCollisionSize,
+                RGBAFloat(0.1f, 0.5f, 0.8f, 0.9f)
             )
 
-            val (dx, dy, dz) = partOffsetTable[part.placement.face.get3DDataValue()]
-            val (dx1, dy1, dz1) = spec.placement.mountingPointWorld - part.placement.mountingPointWorld
+            if(spec is MicroGridSpec<*>) {
+                val terminal = spec.pickTerminal(player)
 
-            stack.translate(dx + dx1, dy + dy1, dz + dz1)
+                if(terminal != null && terminal is BoxTerminal) {
+                    val boundingBox = terminal.boundingBox
+                    val mountingPoint = boundingBox.center - boundingBox.transform.rotation * Vector3d(0.0, boundingBox.halfSize.y, 0.0)
 
-            stack.mulPose(part.placement.face.rotationFast)
-            stack.mulPose(Quaternionf(part.placement.facing.rotation))
-            stack.mulPose(Quaternionf().rotateY(spec.placement.orientation.ln().toFloat()))
-            stack.translate(0.0, spec.placement.provider.placementCollisionSize.y * 0.5, 0.0)
-
-           pConsumer.eln2SubmitAABBLines(
-               stack.last(),
-               BoundingBox3d.fromCenterSize(
-                   Vector3d.zero,
-                   spec.placement.provider.placementCollisionSize
-               ),
-               0.1f, 0.5f, 0.8f, 0.9f
-           )
-
-            stack.popPose()
+                    render(
+                        mountingPoint,
+                        (terminal.boundingBox.transform.rotation / SpecGeometry.rotationWorld(Rotation2d.identity, spec.placement.part.placement.facing, spec.placement.part.placement.face)).cast(),
+                        terminal.boundingBox.size,
+                        RGBAFloat(0.5f, 0.1f, 0.5f, 0.9f)
+                    )
+                }
+            }
         }
     }
 }
@@ -998,7 +1031,13 @@ abstract class SpecProvider {
     // Maybe add context to select model based on stuff
     open fun getModelForPreview() : PartialModel? = null
 
-    abstract fun create(context: SpecPlacementInfo): Spec<*>
+    fun create(context: SpecPlacementInfo): Spec<*> {
+        val instance = createCore(context)
+        instance.onCreated()
+        return instance
+    }
+
+    protected abstract fun createCore(context: SpecPlacementInfo) : Spec<*>
 
     abstract val placementCollisionSize: Vector3d
 
@@ -1014,7 +1053,7 @@ open class BasicSpecProvider(
 
     override fun getModelForPreview(): PartialModel? = previewModel
 
-    override fun create(context: SpecPlacementInfo) = factory(SpecCreateInfo(id, context))
+    override fun createCore(context: SpecPlacementInfo) = factory(SpecCreateInfo(id, context))
 }
 
 /**
@@ -1030,6 +1069,11 @@ abstract class Spec<Renderer : SpecRenderer>(ci: SpecCreateInfo) {
 
     var isRemoved = false
         private set
+
+    /**
+     * Called after the spec was constructed by the provider.
+     * */
+    open fun onCreated() { }
 
     /**
      * Saves data that should be persisted.

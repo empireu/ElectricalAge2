@@ -69,7 +69,7 @@ class TrackedSubscriberCollection(private val underlyingCollection: SubscriberCo
 data class CellEnvironment(val ambientTemperature: Quantity<Temperature>) {
     companion object {
         fun evaluate(level: Level, pos: Locator): CellEnvironment {
-            val position = pos.requireLocator<BlockLocator> {
+            val position = pos.requireLocator(Locators.BLOCK) {
                 "Biome Environments need a block pos locator"
             }
 
@@ -736,14 +736,8 @@ object CellConnections {
 
     fun disconnectCell(actualCell: Cell, actualContainer: CellContainer, notify: Boolean = true) {
         val manager = actualContainer.manager
-        val actualNeighborCells = actualContainer.neighborScan(actualCell).filter {
-            val isConnection = actualCell.connections.contains(it.neighbor)
-
-            if(!isConnection) {
-                LOG.warn("Found non-neighbor in query, did the world state change?")
-            }
-
-            isConnection
+        val actualNeighborCells = actualCell.connections.map {
+            CellNeighborInfo.of(it)
         }
 
         val graph = actualCell.graph
@@ -932,15 +926,15 @@ object CellConnections {
 }
 
 inline fun planarCellScan(level: Level, actualCell: Cell, searchDirection: Direction, consumer: ((CellNeighborInfo) -> Unit)) {
-    val actualPosWorld = actualCell.locator.requireLocator<BlockLocator> { "Planar Scan requires a block position" }
-    val actualFaceTarget = actualCell.locator.requireLocator<FaceLocator> { "Planar Scan requires a face" }
+    val actualPosWorld = actualCell.locator.requireLocator(Locators.BLOCK) { "Planar Scan requires a block position" }
+    val actualFaceTarget = actualCell.locator.requireLocator(Locators.FACE) { "Planar Scan requires a face" }
     val remoteContainer = level.getBlockEntity(actualPosWorld + searchDirection) as? CellContainer ?: return
 
     remoteContainer
         .getCells()
-        .filter { it.locator.has<BlockLocator>() && it.locator.has<FaceLocator>() }
+        .filter { it.locator.has(Locators.BLOCK) && it.locator.has(Locators.FACE) }
         .forEach { targetCell ->
-            val targetFaceTarget = targetCell.locator.requireLocator<FaceLocator>()
+            val targetFaceTarget = targetCell.locator.requireLocator(Locators.FACE)
 
             if (targetFaceTarget == actualFaceTarget) {
                 if (isConnectionAccepted(actualCell, targetCell)) {
@@ -963,8 +957,8 @@ inline fun wrappedCellScan(
     searchDirection: Direction,
     consumer: ((CellNeighborInfo) -> Unit),
 ) {
-    val actualPosWorld = actualCell.locator.requireLocator<BlockLocator> { "Wrapped Scan requires a block position" }
-    val actualFaceWorld = actualCell.locator.requireLocator<FaceLocator> { "Wrapped Scan requires a face" }
+    val actualPosWorld = actualCell.locator.requireLocator(Locators.BLOCK) { "Wrapped Scan requires a block position" }
+    val actualFaceWorld = actualCell.locator.requireLocator(Locators.FACE) { "Wrapped Scan requires a face" }
     val wrapDirection = actualFaceWorld.opposite
 
     if(!ALLOW_WRAPPED_DIAGONAL_WHATEVER) {
@@ -978,9 +972,9 @@ inline fun wrappedCellScan(
 
     remoteContainer
         .getCells()
-        .filter { it.locator.has<BlockLocator>() && it.locator.has<FaceLocator>() }
+        .filter { it.locator.has(Locators.BLOCK) && it.locator.has(Locators.FACE) }
         .forEach { targetCell ->
-            val targetFaceTarget = targetCell.locator.requireLocator<FaceLocator>()
+            val targetFaceTarget = targetCell.locator.requireLocator(Locators.FACE)
 
             if (targetFaceTarget == searchDirection) {
                 if (isConnectionAccepted(actualCell, targetCell)) {

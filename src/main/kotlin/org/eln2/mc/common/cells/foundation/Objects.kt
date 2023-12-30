@@ -1,6 +1,7 @@
 package org.eln2.mc.common.cells.foundation
 
 import net.minecraft.nbt.CompoundTag
+import org.ageseries.libage.data.Locator
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.approxEq
@@ -59,11 +60,11 @@ abstract class SimulationObject<C : Cell>(val cell: C) {
 
     /**
      * Implements locator-based rules. These rules are general to all objects.
-     * @param remoteDesc The locator of the remote object's cell.
+     * @param remoteLocator The locator of the remote object's cell.
      * @return True, if the connection is allowed. Otherwise, false. *This does not imply that the connection will be created; other filters might reject it down the line.*
      * */
-    open fun acceptsRemoteLocation(remoteDesc: Locator): Boolean {
-        return ruleSet.accepts(cell.locator, remoteDesc)
+    open fun acceptsRemoteLocation(remoteLocator: Locator): Boolean {
+        return ruleSet.accepts(cell.locator, remoteLocator)
     }
 }
 

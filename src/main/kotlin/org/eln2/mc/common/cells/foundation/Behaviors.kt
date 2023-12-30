@@ -231,7 +231,7 @@ class TemperatureExplosionBehavior private constructor(
                     return true
                 }
 
-                val part = container.getPart(cell.locator.requireLocator<FaceLocator>())
+                val part = container.getPart(cell.locator.requireLocator(Locators.FACE))
                     ?: return true
 
                 val level = (part.placement.level as ServerLevel)
@@ -282,7 +282,7 @@ class RadiantEmissionBehavior private constructor(val cell: Cell, bodies: Map<Th
 
         val instance = LightVolumeInstance(
             cell.graph.level,
-            cell.locator.requireLocator {
+            cell.locator.requireLocator(Locators.BLOCK) {
                 "Radiant Emission Behavior requires block pos locator"
             }
         )

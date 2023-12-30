@@ -34,9 +34,7 @@ import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraftforge.network.NetworkEvent
 import net.minecraftforge.registries.RegistryObject
-import org.ageseries.libage.data.MutableMapPairBiMap
-import org.ageseries.libage.data.MutableSetMapMultiMap
-import org.ageseries.libage.data.associateByMulti
+import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.*
 import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.sim.ChemicalElement
@@ -62,13 +60,13 @@ import org.eln2.mc.mathematics.*
 import java.util.*
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import java.util.function.Supplier
+import kotlin.collections.ArrayList
 import kotlin.collections.HashMap
 import kotlin.collections.HashSet
 import kotlin.concurrent.read
 import kotlin.concurrent.write
 import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.min
 
 /**
  * Grid connection material.
@@ -76,10 +74,64 @@ import kotlin.math.min
  * @param vertexColor Per-vertex color, applied when rendering.
  * @param physicalMaterial The physical properties of the grid cable.
  * */
-class GridMaterial(private val spriteSupplier: Supplier<TextureAtlasSprite>, val vertexColor: RGBFloat, val physicalMaterial: Material) {
+class GridMaterial(
+    private val spriteSupplier: Supplier<TextureAtlasSprite>,
+    val vertexColor: RGBFloat,
+    val physicalMaterial: Material,
+    val shape: Shape
+) {
     val id get() = GridMaterials.getId(this)
 
     val sprite get() = spriteSupplier.get()
+
+    private val factory = when(shape) {
+        is CatenaryShape -> {
+            { a: Vector3d, b: Vector3d ->
+                Cable3dA.Catenary(
+                    a, b,
+                    shape.circleVertices, shape.radius,
+                    shape.splitDistanceHint, shape.splitParameterHint,
+                    shape.slack,
+                    shape.splitRotIncrementMax
+                )
+            }
+        }
+        is StraightShape -> {
+            { a: Vector3d, b: Vector3d ->
+                Cable3dA.Straight(
+                    a, b,
+                    shape.circleVertices, shape.radius,
+                    shape.splitDistanceHint, shape.splitParameterHint
+                )
+            }
+        }
+        else -> error("Invalid shape $shape")
+    }
+
+    abstract class Shape(
+        val circleVertices: Int,
+        val radius: Double,
+        val splitDistanceHint: Double,
+        val splitParameterHint: Double
+    )
+
+    class CatenaryShape(
+        circleVertices: Int,
+        radius: Double,
+        splitDistanceHint: Double,
+        splitParameterHint: Double,
+        val slack: Double = 0.01,
+        val splitRotIncrementMax: Double = PI / 16.0
+    ) : Shape(circleVertices, radius, splitDistanceHint, splitParameterHint)
+
+    class StraightShape(
+        circleVertices: Int,
+        radius: Double,
+        splitDistanceHint: Double,
+        splitParameterHint: Double
+    ) : Shape(circleVertices, radius, splitDistanceHint, splitParameterHint)
+
+    fun create(a: Vector3d, b: Vector3d) = factory(a, b)
 }
 
 object GridMaterials {
@@ -98,30 +150,34 @@ object GridMaterials {
     private val NEUTRAL = gridAtlasSprite("neutral_cable")
     private val COPPER = gridAtlasSprite("copper_cable")
 
-    val NEUTRAL_AS_RUBBER_COPPER = register(
-        "neutral_rubber",
-        GridMaterial(
-            NEUTRAL,
-            RGBFloat(0.2f, 0.2f, 0.2f),
-            ChemicalElement.Copper.asMaterial
-        )
+    private val BIG_GRID_SHAPE = GridMaterial.CatenaryShape(
+        8, 0.1,
+        2.0 * PI * 0.1, 0.1
     )
 
-    val NEUTRAL_AS_STEEL_IRON = register(
-        "neutral_steel",
-        GridMaterial(
-            NEUTRAL,
-            RGBFloat(0.9f, 0.9f, 0.9f),
-            ChemicalElement.Iron.asMaterial
-        )
+    private val MICRO_GRID_SHAPE = GridMaterial.StraightShape(
+        8, 0.025,
+        2.0 * PI * 0.1, 0.1
     )
 
+    // what the frak is this name?
     val COPPER_AS_COPPER_COPPER = register(
         "copper",
         GridMaterial(
             COPPER,
             RGBFloat(1f, 1f, 1f),
-            ChemicalElement.Copper.asMaterial
+            ChemicalElement.Copper.asMaterial,
+            BIG_GRID_SHAPE
+        )
+    )
+
+    val COPPER_MICRO_GRID = register(
+        "micro_copper",
+        GridMaterial(
+            COPPER,
+            RGBFloat(1f, 1f, 1f),
+            ChemicalElement.Copper.asMaterial,
+            MICRO_GRID_SHAPE
         )
     )
 
@@ -132,13 +188,13 @@ object GridMaterials {
 }
 
 /**
- * [Cable3d] with extra information needed by grids.
+ * [Cable3dA] with extra information needed by grids.
  * @param id The unique ID of the connection.
  * @param wireCatenary Catenary that models the physical connection.
  * @param material The physical properties of the grid cable.
  * */
-data class GridConnectionCatenary(val id: Int, val wireCatenary: Cable3d, val material: GridMaterial) {
-    constructor(catenary: Cable3d, material: GridMaterial) : this(getUniqueId(), catenary, material)
+data class GridConnectionCatenary(val id: Int, val wireCatenary: Cable3dA, val material: GridMaterial) {
+    constructor(catenary: Cable3dA, material: GridMaterial) : this(getUniqueId(), catenary, material)
 
     /**
      * Gets the electrical resistance over the entire length of the cable.
@@ -158,7 +214,7 @@ data class GridConnectionCatenary(val id: Int, val wireCatenary: Cable3d, val ma
 
         fun fromNbt(tag: CompoundTag) = GridConnectionCatenary(
             tag.getInt(ID),
-            Cable3d.fromNbt(tag.get(CATENARY) as CompoundTag),
+            Cable3dA.fromNbt(tag.get(CATENARY) as CompoundTag),
             GridMaterials.getMaterial(tag.getResourceLocation(MATERIAL))
         )
     }
@@ -328,7 +384,7 @@ data class GridConnectionDeleteMessage(val id: Int) {
 @ServerOnly
 object GridConnectionManagerServer {
     fun createGridCatenary(pair: GridConnectionPair, material: GridMaterial) = GridConnectionCatenary(
-        Cable3d(
+        material.create(
             pair.a.attachment,
             pair.b.attachment
         ),
@@ -578,7 +634,7 @@ object GridConnectionManagerClient {
         }
     }
 
-    private fun scanUProgression(extrusion: SketchExtrusion, catenary: Cable3d, u0: Double, u1: Double) : Double2DoubleOpenHashMap {
+    private fun scanUProgression(extrusion: SketchExtrusion, catenary: Cable3dA, u0: Double, u1: Double) : Double2DoubleOpenHashMap {
         var p0 = extrusion.rmfProgression.first()
         var arcLength = 0.0
         val uCoordinates = Double2DoubleOpenHashMap(extrusion.rmfProgression.size)
@@ -879,14 +935,14 @@ class GridElectricalObject(cell: GridCell, val tapResistance: Double?) : Electri
  * @param material The material of the grid connection.
  * @param resistance The electrical resistance of the connection, a value dependent on the physical configuration of the game object.
  * */
-data class GridEndpointConnectionInfo(val material: GridMaterial, val resistance: Double)
+data class GridConnectionDescription(val material: GridMaterial, val resistance: Double)
 
 /**
  * Encapsulates information about a grid connection that is in-progress.
  * @param remoteCell The remote grid cell, that may or may not be directly (physically) connected to the actual cell container.
  * @param properties The properties of the grid connection.
  * */
-data class GridStagingInfo(val remoteCell: GridCell, val properties: GridEndpointConnectionInfo)
+data class GridStagingInfo(val remoteCell: GridCell, val properties: GridConnectionDescription)
 
 /**
  * Electrical-thermal cell that links power grids with standalone electrical circuits.
@@ -901,7 +957,7 @@ class GridCell(ci: CellCreateInfo, tapResistance: Double?) : Cell(ci) {
      * Gets the connections to remote grid cells, and the properties of the respective connections.
      * All these connections are with cells that are in the same graph (they are recorded after staging)
      * */
-    val endPoints = HashMap<GridEndpointInfo, GridEndpointConnectionInfo>()
+    val endPoints = HashMap<GridEndpointInfo, GridConnectionDescription>()
 
     /**
      * Gets or sets the staging information, used to link two disjoint graphs, when a grid connection is being made by the player.
@@ -978,7 +1034,7 @@ class GridCell(ci: CellCreateInfo, tapResistance: Double?) : Cell(ci) {
             val remoteEndPoint = GridEndpointInfo.fromNbt(endpointCompound.get(REMOTE_END_POINT) as CompoundTag)
             val material = GridMaterials.getMaterial(endpointCompound.getResourceLocation(MATERIAL))
             val resistance = endpointCompound.getDouble(RESISTANCE)
-            endPoints.putUnique(remoteEndPoint, GridEndpointConnectionInfo(material, resistance))
+            endPoints.putUnique(remoteEndPoint, GridConnectionDescription(material, resistance))
         }
     }
 
@@ -1267,7 +1323,7 @@ open class GridConnectItem(val material: GridMaterial) : Item(Properties()) {
                 }
             }
 
-            val connectionInfo = GridEndpointConnectionInfo(
+            val connectionInfo = GridConnectionDescription(
                 gridCatenary.material,
                 gridCatenary.resistance
             )
@@ -1405,24 +1461,22 @@ object GridRenderer {
 }
 
 /**
- * Models a cable using an arclength-parameterized catenary ([ArcReparamCatenary3d]).
+ * Models a cable using an arclength-parameterized catenary ([ArcReparamCatenary3d]) or a straight tube ([LinearSplineSegment3d])
  * @param a First support point.
  * @param b Second support point.
- * @param slack The wire "slack". This is used to calculate the arc length **(slack * d(a, b))**
- * @param splitDistanceHint The maximum distance between consecutive vertex rings (for rendering)
- * @param splitRotIncrementMax The maximum deviation between the tangents at consecutive vertex rings (for rendering)
+ * @param circleVertices The number of vertices in the mesh of a circle cross-section.
  * @param radius The radius of the cable (for rendering)
+ * @param splitDistanceHint The maximum distance between consecutive vertex rings (for rendering to look ~good and to have enough segments to map the texture)
+ * @param splitParameterHint The maximum parametric increments between consecutive vertex rings.
  * */
-class Cable3d(
+abstract class Cable3dA(
     val a: Vector3d,
     val b: Vector3d,
-    val slack: Double = 0.01,
+    val circleVertices: Int,
+    val radius: Double,
     val splitDistanceHint: Double = 0.5,
-    val splitRotIncrementMax: Double = PI / 16.0,
-    val circleVertices: Int = 8,
-    val radius: Double = 0.1
+    val splitParameterHint: Double = 0.1
 ) {
-    //val ringSegmentSize = Rotation2d.exp(0.0).direction * radius .. Rotation2d.exp(2.0 * PI * (1.0 / circleVertices.toDouble())).direction * radius
     /**
      * Gets the circumference of the tube, according to [radius].
      * */
@@ -1439,40 +1493,326 @@ class Cable3d(
     val supports = listOf(a, b).sortedBy { it.y }
 
     /**
-     * True if the connection was represented as a catenary. Otherwise, the connection was represented as a linear segment.
+     * Gets the arc length of the cable.
      * */
-    val isCatenary: Boolean
+    abstract val arcLength: Double
 
     /**
-     * Gets the arc length of the cable, factoring in the [slack], if [isCatenary]
+     * Gets the spline that characterises the wire.
      * */
-    val arcLength: Double
+    abstract val spline: Spline3d
 
     /**
-     * Gets the spline that characterises the wire. It may or may not be catenary, depending on [isCatenary].
+     * Gets a set of blocks that are intersected by the spline.
      * */
-    val spline: Spline3d
+    abstract val blocks: HashSet<BlockPos>
 
-    init {
-        val distance = a..b
-        val catenaryLength = distance * (1.0 + slack)
+    /**
+     * Gets a multimap of blocks intersected by the spline, and the chunks they belong to.
+     * */
+    abstract val chunks: MultiMap<ChunkPos, BlockPos>
 
-        val catenarySegment = ArcReparamCatenarySegment3d(
-            t0 = 0.0,
-            t1 = 1.0,
-            p0 = supports[0],
-            p1 = supports[1],
-            length = catenaryLength,
-            Vector3d.unitY
-        )
+    protected fun sketchCrossSection() = sketchCircle(circleVertices, radius)
 
-        if(catenarySegment.catenary.matchesParameters()) {
-            isCatenary = true
-            spline = Spline3d(catenarySegment)
-            arcLength = catenaryLength // ~approximately
+    fun toNbt(): CompoundTag {
+        val tag = CompoundTag()
+
+        tag.putVector3d(A, a)
+        tag.putVector3d(B, b)
+        tag.putInt(CIRCLE_VERTICES, circleVertices)
+        tag.putDouble(RADIUS, radius)
+        tag.putDouble(SPLIT_DISTANCE_HINT, splitDistanceHint)
+        tag.putDouble(SPLIT_PARAMETER_HINT, splitParameterHint)
+
+        val type = Type.determine(this)
+        tag.putInt(TYPE, type.ordinal)
+
+        when(type) {
+            Type.Catenary -> {
+                this as Catenary
+
+                tag.putDouble(SLACK, slack)
+                tag.putDouble(SPLIT_ROT_INCR_MAX, splitRotIncrementMax)
+            }
+            Type.Straight -> {
+                // empty
+            }
         }
-        else {
-            isCatenary = false
+
+        return tag
+    }
+
+    abstract fun mesh() : CatenaryCableMesh
+
+    private enum class Type {
+        Catenary,
+        Straight;
+
+        companion object {
+            fun determine(instance: Cable3dA) = when(instance) {
+                is Cable3dA.Catenary -> Catenary
+                is Cable3dA.Straight -> Straight
+                else -> error("Invalid cable 3d implementation $instance")
+            }
+        }
+    }
+
+    companion object {
+        private const val A = "a"
+        private const val B = "b"
+        private const val CIRCLE_VERTICES = "circleVertices"
+        private const val RADIUS = "radius"
+        private const val TYPE = "type"
+
+        private const val SLACK = "slack"
+        private const val SPLIT_DISTANCE_HINT = "splitDistanceHint"
+        private const val SPLIT_PARAMETER_HINT = "splitParameterHint"
+        private const val SPLIT_ROT_INCR_MAX = "splitRotIncrMax"
+
+        fun fromNbt(tag: CompoundTag) : Cable3dA {
+            val a = tag.getVector3d(A)
+            val b = tag.getVector3d(B)
+            val circleVertices = tag.getInt(CIRCLE_VERTICES)
+            val radius = tag.getDouble(RADIUS)
+            val splitDistanceHint = tag.getDouble(SPLIT_DISTANCE_HINT)
+            val splitParameterHint = tag.getDouble(SPLIT_PARAMETER_HINT)
+
+            return when(Type.entries[tag.getInt(TYPE)]) {
+                Type.Catenary -> {
+                    Catenary(
+                        a, b,
+                        circleVertices, radius,
+                        splitDistanceHint, splitParameterHint,
+                        tag.getDouble(SLACK), tag.getDouble(SPLIT_ROT_INCR_MAX)
+                    )
+                }
+                Type.Straight -> {
+                    Straight(
+                        a, b,
+                        circleVertices, radius,
+                        splitDistanceHint, splitParameterHint,
+                    )
+                }
+            }
+        }
+
+        private fun getBlocksFromSpline(radius: Double, spline: Spline3d) : HashSet<BlockPos> {
+            val blocks = HashSet<BlockPos>()
+            val radiusSqr = radius * radius
+
+            require(
+                spline.intersectGrid3d(0.0, 1.0, 0.1, 1024 * 1024) {
+                    val ordinate = spline.evaluate(it)
+                    val block = ordinate.floorBlockPos()
+
+                    if(blocks.add(block)) {
+                        for(i in -1..1) {
+                            val x = block.x + i
+
+                            for(j in -1..1) {
+                                val y = block.y + j
+
+                                for (k in -1..1) {
+                                    if(i == 0 && j == 0 && k == 0) {
+                                        continue
+                                    }
+
+                                    val z = block.z + k
+
+                                    val dx = ordinate.x - ordinate.x.coerceIn(x.toDouble(), x + 1.0)
+                                    val dy = ordinate.y - ordinate.y.coerceIn(y.toDouble(), y + 1.0)
+                                    val dz = ordinate.z - ordinate.z.coerceIn(z.toDouble(), z + 1.0)
+
+                                    val distanceSqr = dx * dx + dy * dy + dz * dz
+
+                                    if(distanceSqr < radiusSqr) {
+                                        blocks.add(BlockPos(x, y, z))
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                }
+            ) { "Failed to intersect $this" }
+
+            return blocks
+        }
+
+        private fun getChunksFromBlocks(blocks: HashSet<BlockPos>) = blocks.associateByMulti { ChunkPos(it) }
+
+        private fun meshExtrusion(spline: Spline3d, extrusion: SketchExtrusion) : CatenaryCableMesh {
+            val quads = ArrayList<CatenaryCableQuad>()
+
+            val mesh = extrusion.mesh
+
+            mesh.quadScan { baseQuad ->
+                val ptvVerticesParametric = baseQuad.indices.map { mesh.vertices[it] }
+                val ptvVerticesPositions = ptvVerticesParametric.map { it.value }
+
+                val ptvCenter = avg(ptvVerticesPositions)
+                val ptvParam = avg(ptvVerticesParametric.map { it.t })
+                val ordinate = spline.evaluate(ptvParam)
+                val ptvNormal = (ptvCenter - ordinate).normalized()
+                val ptvNormalWinding = polygralScan(ptvCenter, ptvVerticesPositions).normalized()
+
+                val ptv = if((ptvNormal o ptvNormalWinding) > 0.0) baseQuad
+                else baseQuad.rewind()
+
+                fun vert(vertexId: Int) : CatenaryCableVertex {
+                    val vertexParametric = mesh.vertices[vertexId]
+                    val vertexPosition = vertexParametric.value
+                    val vertexNormal = (vertexPosition - (spline.evaluate(vertexParametric.t))).normalized()
+
+                    return CatenaryCableVertex(vertexPosition, vertexNormal, vertexParametric.t)
+                }
+
+                val vertices = listOf(vert(ptv.a), vert(ptv.b), vert(ptv.c), vert(ptv.d))
+
+                quads.add(CatenaryCableQuad(ordinate.floorBlockPos(), vertices))
+            }
+
+            return CatenaryCableMesh(extrusion, quads)
+        }
+    }
+
+    /**
+     * Models a cable using an arclength-parameterized catenary ([ArcReparamCatenary3d]) or a straight tube ([LinearSplineSegment3d]), if the catenary cannot be used (is degenerate).
+     * @param a First support point.
+     * @param b Second support point.
+     * @param circleVertices The number of vertices in the mesh of a circle cross-section.
+     * @param radius The radius of the cable (for rendering)
+     * @param splitDistanceHint The maximum distance between consecutive vertex rings (for rendering to look ~good and to have enough segments to map the texture)
+     * @param splitParameterHint The maximum parametric increments between consecutive vertex rings.
+     * @param slack Cable slack. Arclength will be d(a, b) * (1 + slack).
+     * @param splitRotIncrementMax Maximum tangent deviation between consecutive rings.
+     * */
+    class Catenary(
+        a: Vector3d,
+        b: Vector3d,
+        circleVertices: Int,
+        radius: Double,
+        splitDistanceHint: Double,
+        splitParameterHint: Double,
+        val slack: Double,
+        val splitRotIncrementMax: Double
+    ) : Cable3dA(a, b, circleVertices, radius, splitDistanceHint, splitParameterHint) {
+        override val arcLength: Double
+        override val spline: Spline3d
+        override val blocks: HashSet<BlockPos>
+        override val chunks: MultiMap<ChunkPos, BlockPos>
+
+        /**
+         * True, if the connection was represented as a catenary.
+         * Otherwise, the connection was represented as a linear segment. This may happen if the catenary is degenerate and cannot be modeled.
+         * */
+        val isCatenary: Boolean
+
+        init {
+            val distance = a..b
+            val catenaryLength = distance * (1.0 + slack)
+
+            val catenarySegment = ArcReparamCatenarySegment3d(
+                t0 = 0.0,
+                t1 = 1.0,
+                p0 = supports[0],
+                p1 = supports[1],
+                length = catenaryLength,
+                Vector3d.unitY
+            )
+
+            if(catenarySegment.catenary.matchesParameters()) {
+                isCatenary = true
+                spline = Spline3d(catenarySegment)
+                arcLength = catenaryLength // ~approximately
+            }
+            else {
+                isCatenary = false
+                spline = Spline3d(
+                    LinearSplineSegment3d(
+                        t0 = 0.0,
+                        t1 = 1.0,
+                        p0 = supports[0],
+                        p1 = supports[1],
+                    )
+                )
+                arcLength = distance
+            }
+
+            blocks = getBlocksFromSpline(radius, spline)
+            chunks = getChunksFromBlocks(blocks)
+        }
+
+        override fun mesh(): CatenaryCableMesh {
+            val samples = spline.adaptscan(
+                0.0,
+                1.0,
+                splitParameterHint,
+                condition = differenceCondition3d(
+                    distMax = splitDistanceHint, //min(splitDistanceHint, circumference),
+                    rotIncrMax = splitRotIncrementMax
+                ),
+                iMax = 1024 * 32 // way too generous...
+            )
+
+            checkNotNull(samples) {
+                "Failed to get samples for catenary cable3d $this"
+            }
+
+            val extrusion = if(isCatenary) {
+                extrudeSketchFrenet(
+                    sketchCrossSection(),
+                    spline,
+                    samples
+                )
+            }
+            else {
+                Straight.linearExtrusion(
+                    sketchCrossSection(),
+                    spline,
+                    samples,
+                    supports
+                )
+            }
+
+            return meshExtrusion(spline, extrusion)
+        }
+
+        override fun toString() =
+            "from $a to $b, " +
+            "slack=$slack, " +
+            "splitDistance=$splitDistanceHint, " +
+            "splitParam=$splitParameterHint, " +
+            "splitRotIncrMax=$splitRotIncrementMax, " +
+            "circleVertices=$circleVertices, " +
+            "radius=$radius"
+    }
+
+    /**
+     * Models a cable using a straight tube ([LinearSplineSegment3d])
+     * @param a First support point.
+     * @param b Second support point.
+     * @param circleVertices The number of vertices in the mesh of a circle cross-section.
+     * @param radius The radius of the cable (for rendering)
+     * @param splitDistanceHint The maximum distance between consecutive vertex rings (for rendering to look ~good and to have enough segments to map the texture)
+     * @param splitParameterHint The maximum parametric increments between consecutive vertex rings.
+     * */
+    class Straight(
+        a: Vector3d,
+        b: Vector3d,
+        circleVertices: Int,
+        radius: Double,
+        splitDistanceHint: Double,
+        splitParameterHint: Double,
+    ) : Cable3dA(a, b, circleVertices, radius, splitDistanceHint, splitParameterHint) {
+        override val arcLength: Double
+        override val spline: Spline3d
+        override val blocks: HashSet<BlockPos>
+        override val chunks: MultiMap<ChunkPos, BlockPos>
+
+        init {
+            arcLength = a..b
+
             spline = Spline3d(
                 LinearSplineSegment3d(
                     t0 = 0.0,
@@ -1481,178 +1821,70 @@ class Cable3d(
                     p1 = supports[1],
                 )
             )
-            arcLength = distance
+
+            blocks = getBlocksFromSpline(radius, spline)
+            chunks = getChunksFromBlocks(blocks)
         }
-    }
 
-    /**
-     * Gets a set of blocks that are intersected by the spline.
-     * */
-    val blocks = run {
-        // Intersect with model:
+        override fun mesh(): CatenaryCableMesh {
+            val splitDistanceMax = splitDistanceHint * splitDistanceHint
 
-        val blocks = HashSet<BlockPos>()
-        val radiusSqr = radius * radius
-
-        require(
-            spline.intersectGrid3d(0.0, 1.0, 0.1, 1024 * 1024) {
-                val ordinate = spline.evaluate(it)
-                val block = ordinate.floorBlockPos()
-
-                if(blocks.add(block)) {
-                    for(i in -1..1) {
-                        val x = block.x + i
-
-                        for(j in -1..1) {
-                            val y = block.y + j
-
-                            for (k in -1..1) {
-                                if(i == 0 && j == 0 && k == 0) {
-                                    continue
-                                }
-
-                                val z = block.z + k
-
-                                val dx = ordinate.x - ordinate.x.coerceIn(x.toDouble(), x + 1.0)
-                                val dy = ordinate.y - ordinate.y.coerceIn(y.toDouble(), y + 1.0)
-                                val dz = ordinate.z - ordinate.z.coerceIn(z.toDouble(), z + 1.0)
-
-                                val distanceSqr = dx * dx + dy * dy + dz * dz
-
-                                if(distanceSqr < radiusSqr) {
-                                    blocks.add(BlockPos(x, y, z))
-                                }
-                            }
-                        }
-                    }
-                }
-
-            }
-        ) { "Failed to intersect $this" }
-
-        blocks
-    }
-
-    /**
-     * Gets a multimap of blocks intersected by the spline, and the chunks they belong to.
-     * */
-    val chunks = blocks.associateByMulti { ChunkPos(it) }
-
-    /**
-     * Creates a mesh of the wire.
-     * */
-    fun mesh() : CatenaryCableMesh {
-        val samples = checkNotNull(
-            spline.adaptscan(
+            val samples = spline.adaptscan(
                 0.0,
                 1.0,
-                0.1,
-                condition = differenceCondition3d(
-                    distMax = min(splitDistanceHint, circumference),
-                    rotIncrMax = splitRotIncrementMax
-                ),
+                splitParameterHint,
+                condition = { s, t0, t1 ->
+                    val a = s.evaluate(t0)
+                    val b = s.evaluate(t1)
+
+                    (a distanceToSqr b) > splitDistanceMax
+
+                },
                 iMax = 1024 * 32 // way too generous...
             )
-        ) { "Failed to mesh $this" }
 
-        val crossSectionSketch = sketchCircle(circleVertices, radius)
-
-        val extrusion = if(isCatenary) {
-            extrudeSketchFrenet(
-                crossSectionSketch,
-                spline,
-                samples
-            )
-        }
-        else {
-            val t = (supports[1] - supports[0]).normalized()
-            val n = t.perpendicular()
-            val b = (t x n).normalized()
-
-            val wx = Rotation3d.fromRotationMatrix(
-                Matrix3x3(
-                    t, n, b
-                )
-            )
-
-            extrudeSketch(
-                crossSectionSketch,
-                spline,
-                samples,
-                Pose3d(supports[0], wx),
-                Pose3d(supports[1], wx)
-            )
-        }
-
-        val quads = ArrayList<CatenaryCableQuad>()
-
-        val mesh = extrusion.mesh
-
-        mesh.quadScan { baseQuad ->
-            val ptvVerticesParametric = baseQuad.indices.map { mesh.vertices[it] }
-            val ptvVerticesPositions = ptvVerticesParametric.map { it.value }
-
-            val ptvCenter = avg(ptvVerticesPositions)
-            val ptvParam = avg(ptvVerticesParametric.map { it.t })
-            val ordinate = spline.evaluate(ptvParam)
-            val ptvNormal = (ptvCenter - ordinate).normalized()
-            val ptvNormalWinding = polygralScan(ptvCenter, ptvVerticesPositions).normalized()
-
-            val ptv = if((ptvNormal o ptvNormalWinding) > 0.0) baseQuad
-            else baseQuad.rewind()
-
-            fun vert(vertexId: Int) : CatenaryCableVertex {
-                val vertexParametric = mesh.vertices[vertexId]
-                val vertexPosition = vertexParametric.value
-                val vertexNormal = (vertexPosition - (spline.evaluate(vertexParametric.t))).normalized()
-
-                return CatenaryCableVertex(vertexPosition, vertexNormal, vertexParametric.t)
+            checkNotNull(samples) {
+                "Failed to get samples for linear cable3d $this"
             }
 
-            val vertices = listOf(vert(ptv.a), vert(ptv.b), vert(ptv.c), vert(ptv.d))
+            val extrusion = linearExtrusion(sketchCrossSection(), spline, samples, supports)
 
-            quads.add(CatenaryCableQuad(ordinate.floorBlockPos(), vertices))
+            return meshExtrusion(spline, extrusion)
         }
 
-        return CatenaryCableMesh(extrusion, quads)
-    }
+        override fun toString() =
+            "from $a to $b, " +
+            "splitDistance=$splitDistanceHint, " +
+            "splitParam=$splitParameterHint, " +
+            "circleVertices=$circleVertices, " +
+            "radius=$radius"
 
-    override fun toString() =
-        "from $a to $b, " +
-        "slack=$slack, " +
-        "splitDistance=$splitDistanceHint, " +
-        "splitRotIncrMax=$splitRotIncrementMax, " +
-        "circleVertices=$circleVertices, " +
-        "radius=$radius"
+        companion object {
+            fun linearExtrusion(
+                crossSectionSketch: Sketch,
+                spline: Spline3d,
+                samples: ArrayList<Double>,
+                supports: List<Vector3d>
+            ) : SketchExtrusion {
+                val t = (supports[1] - supports[0]).normalized()
+                val n = t.perpendicular()
+                val b = (t x n).normalized()
 
-    fun toNbt() = CompoundTag().also {
-        it.putVector3d(A, a)
-        it.putVector3d(B, b)
-        it.putDouble(SLACK, slack)
-        it.putDouble(SPLIT_DISTANCE_HINT, splitDistanceHint)
-        it.putDouble(SPLIT_ROT_INCR_MAX, splitRotIncrementMax)
-        it.putInt(CIRCLE_VERTICES, circleVertices)
-        it.putDouble(RADIUS, radius)
-    }
+                val wx = Rotation3d.fromRotationMatrix(
+                    Matrix3x3(
+                        t, n, b
+                    )
+                )
 
-    companion object {
-        private const val A = "a"
-        private const val B = "b"
-        private const val SLACK = "slack"
-        private const val SPLIT_DISTANCE_HINT = "splitDistanceHint"
-        private const val SPLIT_ROT_INCR_MAX = "splitRotIncrMax"
-        private const val CIRCLE_VERTICES = "circleVertices"
-        private const val RADIUS = "radius"
-
-        fun fromNbt(tag: CompoundTag) = Cable3d(
-            tag.getVector3d(A),
-            tag.getVector3d(B),
-            tag.getDouble(SLACK),
-            tag.getDouble(SPLIT_DISTANCE_HINT),
-            tag.getDouble(SPLIT_ROT_INCR_MAX),
-            tag.getInt(CIRCLE_VERTICES),
-            tag.getDouble(RADIUS)
-        )
+                return extrudeSketch(
+                    crossSectionSketch,
+                    spline,
+                    samples,
+                    Pose3d(supports[0], wx),
+                    Pose3d(supports[1], wx)
+                )
+            }
+        }
     }
 }
 

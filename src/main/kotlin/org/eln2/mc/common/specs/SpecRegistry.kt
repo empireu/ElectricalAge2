@@ -9,10 +9,7 @@ import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.common.parts.foundation.MySpec
-import org.eln2.mc.common.specs.foundation.BasicSpecProvider
-import org.eln2.mc.common.specs.foundation.Spec
-import org.eln2.mc.common.specs.foundation.SpecItem
-import org.eln2.mc.common.specs.foundation.SpecProvider
+import org.eln2.mc.common.specs.foundation.*
 import org.eln2.mc.resource
 import java.util.function.Supplier
 
@@ -67,8 +64,20 @@ object SpecRegistry {
         "test_spec",
         BasicSpecProvider(
             PartialModels.ELECTRICAL_WIRE_HUB,
-            Vector3d(3.5 / 16.0, 2.0 / 16.0, 3.5 / 16.0)) {
+            Vector3d(3.5 / 16.0, 2.0 / 16.0, 3.5 / 16.0))
+        {
             MySpec(it)
         }
     )
+
+    val MICRO_GRID = specAndItem(
+        "micro_grid_spec",
+        BasicSpecProvider(
+            PartialModels.ELECTRICAL_WIRE_HUB,
+            Vector3d(3.5 / 16.0, 2.0 / 16.0, 3.5 / 16.0))
+        {
+            TestMicroGridSpec(it)
+        }
+    )
+
 }

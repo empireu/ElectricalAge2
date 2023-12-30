@@ -19,6 +19,9 @@ import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.minecraft.world.phys.shapes.Shapes
 import net.minecraft.world.phys.shapes.VoxelShape
+import org.ageseries.libage.data.Locator
+import org.ageseries.libage.data.put
+import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
@@ -122,11 +125,11 @@ data class PartPlacementInfo(
 
     val mountingPointWorld = position.toVector3d() + Vector3d(0.5) - face.vector3d * 0.5
 
-    fun createLocator() = LocatorSetBuilder().apply {
-        withLocator(position)
-        withLocator(FacingLocator(facing))
-        withLocator(face)
-    }.build()
+    fun createLocator() = Locators.buildLocator {
+        it.put(BLOCK, position)
+        it.put(FACING, facing)
+        it.put(FACE, face)
+    }
 }
 
 enum class PartUpdateType(val id: Int) {
@@ -160,6 +163,11 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
     val placement = ci.placement
     val partProviderShape = Shapes.create(modelBoundingBox)
     var isRemoved = false
+
+    /**
+     * Called after the part was constructed by the provider.
+     * */
+    open fun onCreated() { }
 
     companion object {
         fun createPartDropStack(id: ResourceLocation, saveTag: CompoundTag?, count: Int = 1): ItemStack {
@@ -510,7 +518,13 @@ abstract class PartProvider {
      * @param context The placement context of this part.
      * @return Unique instance of the part.
      */
-    abstract fun create(context: PartPlacementInfo): Part<*>
+    fun create(context: PartPlacementInfo): Part<*> {
+        val instance = createCore(context)
+        instance.onCreated()
+        return instance
+    }
+
+    protected abstract fun createCore(context: PartPlacementInfo): Part<*>
 
     /**
      * This is the size used to validate placement. This is different from baseSize, because
@@ -529,7 +543,7 @@ open class BasicPartProvider(
     final override val placementCollisionSize: Vector3d,
     val factory: ((ci: PartCreateInfo) -> Part<*>),
 ) : PartProvider() {
-    override fun create(context: PartPlacementInfo) = factory(PartCreateInfo(id, context))
+    override fun createCore(context: PartPlacementInfo) = factory(PartCreateInfo(id, context))
 }
 
 
@@ -865,10 +879,10 @@ fun partY(facing: FacingDirection, faceWorld: Direction) = incrementFromForwardU
 fun partZ(facing: FacingDirection, faceWorld: Direction) = incrementFromForwardUp(facing, faceWorld, Direction.SOUTH)
 
 fun Locator.transformPartWorld(directionPart: Base6Direction3d) : Direction {
-    val facing = this.requireLocator<FacingLocator> { "Part -> World requires facing" }
-    val face = this.requireLocator<FaceLocator> { "Part -> World requires face" }
+    val facing = this.requireLocator(Locators.FACING) { "Part -> World requires facing" }
+    val face = this.requireLocator(Locators.FACE) { "Part -> World requires face" }
 
-    return incrementFromForwardUp(facing.facing, face, directionPart)
+    return incrementFromForwardUp(facing, face, directionPart)
 }
 
 @JvmInline
@@ -923,27 +937,21 @@ fun getPartConnection(actualCell: Cell, remoteCell: Cell): PartConnectionDirecti
 }
 
 fun getPartConnection(actualCell: Locator, remoteCell: Locator): PartConnectionDirection {
-    val actualPosWorld = actualCell.requireLocator<BlockLocator>()
-    val remotePosWorld = remoteCell.requireLocator<BlockLocator>()
-    val actualFaceWorld = actualCell.requireLocator<FaceLocator>()
-    val remoteFaceWorld = remoteCell.requireLocator<FaceLocator>()
-    val remoteFacingWorld = actualCell.requireLocator<FacingLocator>()
+    val a = actualCell.requireLocator(Locators.BLOCK)
+    val b = remoteCell.requireLocator(Locators.BLOCK)
+    val c = actualCell.requireLocator(Locators.FACE)
+    val d = remoteCell.requireLocator(Locators.FACE)
+    val e = actualCell.requireLocator(Locators.FACING)
 
-    return getPartConnection(
-        actualPosWorld,
-        remotePosWorld,
-        actualFaceWorld,
-        remoteFaceWorld,
-        remoteFacingWorld
-    )
+    return getPartConnection(a, b, c, d, e)
 }
 
 fun getPartConnectionOrNull(actualCell: Locator, remoteCell: Locator): PartConnectionDirection? {
-    val actualPosWorld = actualCell.get<BlockLocator>() ?: return null
-    val remotePosWorld = remoteCell.get<BlockLocator>() ?: return null
-    val actualFaceWorld = actualCell.get<FaceLocator>() ?: return null
-    val remoteFaceWorld = remoteCell.get<FaceLocator>() ?: return null
-    val remoteFacingWorld = actualCell.get<FacingLocator>() ?: return null
+    val actualPosWorld = actualCell.get(Locators.BLOCK) ?: return null
+    val remotePosWorld = remoteCell.get(Locators.BLOCK) ?: return null
+    val actualFaceWorld = actualCell.get(Locators.FACE) ?: return null
+    val remoteFaceWorld = remoteCell.get(Locators.FACE) ?: return null
+    val remoteFacingWorld = actualCell.get(Locators.FACING) ?: return null
 
     if (actualPosWorld == remotePosWorld) {
         if (actualFaceWorld == remoteFaceWorld) {
@@ -964,9 +972,9 @@ fun getPartConnectionOrNull(actualCell: Locator, remoteCell: Locator): PartConne
 fun getPartConnection(
     actualPosWorld: BlockPos,
     remotePosWorld: BlockPos,
-    actualFaceWorld: FaceLocator,
-    remoteFaceWorld: FaceLocator,
-    actualFacingWorld: FacingLocator
+    actualFaceWorld: Direction,
+    remoteFaceWorld: Direction,
+    actualFacingWorld: FacingDirection
 ) : PartConnectionDirection {
     val mode: CellPartConnectionMode
 
@@ -1017,7 +1025,7 @@ fun getPartConnection(
     return PartConnectionDirection(
         mode,
         Base6Direction3d.fromForwardUp(
-            actualFacingWorld.facing,
+            actualFacingWorld,
             actualFaceWorld,
             dir
         )

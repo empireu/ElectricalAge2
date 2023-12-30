@@ -9,6 +9,8 @@ import net.minecraftforge.registries.ForgeRegistries
 import net.minecraftforge.registries.RegistryObject
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
+import org.eln2.mc.common.content.GridMaterials
+import org.eln2.mc.common.specs.foundation.MicroGridConnectItem
 import java.util.function.Supplier
 
 object ItemRegistry {
@@ -27,5 +29,9 @@ object ItemRegistry {
     fun item(name: String, supplier: () -> Item): ItemRegistryItem {
         val item = ITEMS.register(name) { supplier() }
         return ItemRegistryItem(name, item)
+    }
+
+    val TEST_MICROGRID = item("micr_grid_connect") {
+        MicroGridConnectItem(GridMaterials.COPPER_MICRO_GRID)
     }
 }

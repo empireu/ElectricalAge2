@@ -18,6 +18,7 @@ import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.level.material.FluidState
+import org.ageseries.libage.data.put
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.common.cells.CellRegistry
@@ -212,11 +213,11 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
 
     //#endregion
 
-    private fun createCellLocator() = LocatorSetBuilder().apply {
-        withLocator(blockPos)
-        withLocator(cellFace)
-        withLocator(FacingLocator(blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing()))
-    }.build()
+    private fun createCellLocator() = Locators.buildLocator {
+        it.put(BLOCK, blockPos)
+        it.put(FACE, cellFace)
+        it.put(FACING, blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing())
+    }
 
     override fun getCells(): ArrayList<Cell> {
         return arrayListOf(cell)

@@ -2,10 +2,7 @@ package org.eln2.mc.common.content
 
 import net.minecraft.world.level.Level
 import net.minecraft.core.BlockPos
-import org.ageseries.libage.data.Area
-import org.ageseries.libage.data.Potential
-import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.WATT_PER_METER2
+import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.frac
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.electrical.mna.component.PowerVoltageSource
@@ -77,7 +74,7 @@ class PhotovoltaicBehavior(
     val normalSupplier: () -> Vector3d
 ) : CellBehavior {
     init {
-        cell.locator.requireLocator<BlockLocator>()
+        cell.locator.requireLocator(Locators.BLOCK)
     }
 
     override fun subscribe(subscribers: SubscriberCollection) {
@@ -86,7 +83,7 @@ class PhotovoltaicBehavior(
 
     fun irradianceFactor() = cell.graph.level.evaluateDiffuseIrradianceFactor(
         normalSupplier(),
-        cell.locator.requireLocator<BlockLocator>()
+        cell.locator.requireLocator(Locators.BLOCK)
     )
 
     private fun update(dt: Double, phase: SubscriberPhase) {

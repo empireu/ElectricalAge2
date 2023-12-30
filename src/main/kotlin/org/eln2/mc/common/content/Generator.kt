@@ -49,7 +49,6 @@ import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.control.PIDController
-import org.eln2.mc.data.Locator
 import org.eln2.mc.data.PoleMap
 import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.extensions.*

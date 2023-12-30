@@ -40,6 +40,7 @@ import net.minecraft.world.level.material.Fluids
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.shapes.*
+import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.MultipartBlockEntityInstance
@@ -47,12 +48,8 @@ import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.foundation.*
-import org.eln2.mc.data.FaceLocator
-import org.eln2.mc.data.requireLocator
+import org.eln2.mc.data.Locators
 import org.eln2.mc.extensions.*
-import org.eln2.mc.integration.ComponentDisplay
-import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.integration.DebugComponentDisplay
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.FacingDirection
 import org.eln2.mc.mathematics.toHorizontalFacing
@@ -1133,7 +1130,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     }
 
     override fun neighborScan(actualCell: Cell): List<CellNeighborInfo> {
-        val partFace = actualCell.locator.requireLocator<FaceLocator>()
+        val partFace = actualCell.locator.requireLocator(Locators.FACE)
 
         val part = parts[partFace]!!
 
@@ -1205,14 +1202,14 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     }
 
     override fun onCellConnected(actualCell: Cell, remoteCell: Cell) {
-        val innerFace = actualCell.locator.requireLocator<FaceLocator>()
+        val innerFace = actualCell.locator.requireLocator(Locators.FACE)
         val part = parts[innerFace] as PartCellContainer<*>
         part.onConnected(remoteCell)
         part.onConnectivityChanged()
     }
 
     override fun onCellDisconnected(actualCell: Cell, remoteCell: Cell) {
-        val part = parts[actualCell.locator.requireLocator<FaceLocator>()] as PartCellContainer<*>
+        val part = parts[actualCell.locator.requireLocator(Locators.FACE)] as PartCellContainer<*>
         part.onDisconnected(remoteCell)
         if (part.hasCell && !part.cell.isBeingRemoved) {
             part.onConnectivityChanged()

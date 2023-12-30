@@ -26,9 +26,7 @@ import net.minecraft.world.level.block.GlassBlock
 import net.minecraftforge.fml.ModWorkManager
 import net.minecraftforge.network.NetworkEvent
 import net.minecraftforge.registries.ForgeRegistries
-import org.ageseries.libage.data.Event
-import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.Resistance
+import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.*
 import org.ageseries.libage.mathematics.geometry.Ray3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
@@ -834,9 +832,9 @@ private inline fun rayOcclusionAnalyzer(voxel: Int, predicate: (Int) -> Boolean)
  * Implements a [LocatorLightVolumeProvider] parameterized by face.
  * It provides one light volume per orientation of the emitter; presumably, the light volume itself is an oriented shape.
  * */
-class FaceOrientedLightVolumeProvider(val volumesByFace: Map<FaceLocator, LightVolume>) : LocatorLightVolumeProvider {
+class FaceOrientedLightVolumeProvider(val volumesByFace: Map<Direction, LightVolume>) : LocatorLightVolumeProvider {
     override fun getVolume(locatorSet: Locator): LightVolume {
-        val face = locatorSet.requireLocator<FaceLocator> {
+        val face = locatorSet.requireLocator(Locators.FACE) {
             "Face-oriented lights require a face locator"
         }
 
@@ -844,7 +842,7 @@ class FaceOrientedLightVolumeProvider(val volumesByFace: Map<FaceLocator, LightV
     }
 
     companion object {
-        fun createWithoutCopy(variantsByState: Map<FaceLocator, Map<Int, Int2ByteMap>>) = FaceOrientedLightVolumeProvider(
+        fun createWithoutCopy(variantsByState: Map<Direction, Map<Int, Int2ByteMap>>) = FaceOrientedLightVolumeProvider(
             variantsByState.keys.associateWith {
                 LightVolume.createWitoutCopy(variantsByState[it]!!)
             }
@@ -881,8 +879,8 @@ object LightFieldPrimitives {
         return FaceOrientedLightVolumeProvider.createWithoutCopy(results)
     }
 
-    private fun coneTasks(increments: Int, strength: Double, deviationMax: Double, baseRadius: Int): Pair<List<Runnable>, HashMap<FaceLocator, HashMap<Int, Int2ByteOpenHashMap>>> {
-        val variantsByFace = HashMap<FaceLocator, HashMap<Int, Int2ByteOpenHashMap>>()
+    private fun coneTasks(increments: Int, strength: Double, deviationMax: Double, baseRadius: Int): Pair<List<Runnable>, HashMap<Direction, HashMap<Int, Int2ByteOpenHashMap>>> {
+        val variantsByFace = HashMap<Direction, HashMap<Int, Int2ByteOpenHashMap>>()
         val cosDeviationMax = cos(deviationMax)
 
         val tasks = ArrayList<Runnable>()
@@ -1243,7 +1241,7 @@ object LightFieldPrimitives {
     }
 
     private fun buildPerFaceVolumes(faces: Base6Direction3dMask, range: IntRange, build: (state: Int, face: Direction, map: Int2ByteOpenHashMap) -> Unit) : FaceOrientedLightVolumeProvider {
-        val variantsByFace = HashMap<FaceLocator, LightVolume>()
+        val variantsByFace = HashMap<Direction, LightVolume>()
 
         faces.directionList.forEach {
             variantsByFace.putUnique(

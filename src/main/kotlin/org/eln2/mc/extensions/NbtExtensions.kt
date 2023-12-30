@@ -4,6 +4,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.resources.ResourceLocation
+import org.ageseries.libage.data.Locator
 import org.ageseries.libage.mathematics.geometry.Pose2d
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Vector2d
@@ -11,7 +12,7 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.common.parts.foundation.CellPartConnectionMode
 import org.eln2.mc.common.parts.foundation.PartUpdateType
 import org.eln2.mc.common.specs.foundation.SpecUpdateType
-import org.eln2.mc.data.Locator
+import org.eln2.mc.data.Locators
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.FacingDirection
 
@@ -88,11 +89,15 @@ fun CompoundTag.getBlockPos(key: String): BlockPos {
 }
 
 fun CompoundTag.putLocatorSet(id: String, locator: Locator) {
-    this.put(id, locator.toNbt())
+    check(locator.dispatcher === Locators) {
+        "Not out locators"
+    }
+
+    this.putByteArray(id, locator.toImage())
 }
 
 fun CompoundTag.getLocatorSet(id: String): Locator {
-    return Locator.fromNbt(this.getCompound(id))
+    return Locators.fromImage(this.getByteArray(id))
 }
 
 fun CompoundTag.putResourceLocation(key: String, resourceLocation: ResourceLocation) {

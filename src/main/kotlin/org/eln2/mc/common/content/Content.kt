@@ -277,7 +277,7 @@ object Content {
 
             CellFactory {
                 PhotovoltaicGeneratorCell(it, surface, model) { cell ->
-                    cell.locator.requireLocator<FaceLocator>().vector3d
+                    cell.locator.requireLocator(Locators.FACE).vector3d
                 }
             }
         }
