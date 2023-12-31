@@ -6,6 +6,7 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.packs.resources.Resource
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.common.MinecraftForge
+import net.minecraftforge.eventbus.api.EventPriority
 import net.minecraftforge.eventbus.api.IEventBus
 import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.fml.ModLoadingContext
@@ -28,9 +29,7 @@ import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.SpecRegistry
-import org.eln2.mc.common.specs.foundation.SpecContainerPart
-import org.eln2.mc.common.specs.foundation.SpecPlacementOverlayClient
-import org.eln2.mc.common.specs.foundation.SpecPreviewRenderer
+import org.eln2.mc.common.specs.foundation.*
 import java.io.InputStream
 import java.nio.charset.Charset
 import java.nio.file.Files
@@ -84,7 +83,8 @@ class Eln2 {
         modEventBus.addListener(KeyMappingRegistry::register)
 
         forgeEventBus.addListener(Eln2Config::registerClientCommands);
-        forgeEventBus.addListener(SpecContainerPart::renderHighlightEvent)
+        forgeEventBus.addListener(EventPriority.LOWEST, SpecContainerPart::renderHighlightEvent)
+        forgeEventBus.addListener(MicroGridHighlightRenderer::render)
         forgeEventBus.addListener(SpecPlacementOverlayClient::onScroll)
         forgeEventBus.addListener(SpecPlacementOverlayClient::onCycleOrientation)
         forgeEventBus.addListener(SpecPreviewRenderer::render)

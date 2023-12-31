@@ -15,6 +15,8 @@ import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntArrayList
+import net.minecraft.client.Camera
+import net.minecraft.client.renderer.LevelRenderer
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.client.resources.model.BakedModel
@@ -29,6 +31,7 @@ import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.geometry.BoundingBox3d
+import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
@@ -621,3 +624,30 @@ fun VertexConsumer.eln2SubmitAABBLines(pose: PoseStack.Pose, aabb: BoundingBox3d
         rgba.r, rgba.g, rgba.b, rgba.a
     )
 }
+
+fun VertexConsumer.eln2SubmitOBBAtLevelStage(stack: PoseStack, obb: OrientedBoundingBox3d, rgba: RGBAFloat, camX: Double, camY: Double, camZ: Double) {
+    stack.pushPose()
+
+    stack.translate(-camX, -camY, -camZ)
+    stack.translate(obb.transform.translation.x, obb.transform.translation.y, obb.transform.translation.z)
+    stack.mulPose(obb.transform.rotation.cast())
+
+    val min = -obb.halfSize
+    val max = +obb.halfSize
+
+    LevelRenderer.renderLineBox(
+        stack,
+        this,
+        min.x, min.y, min.z,
+        max.x, max.y, max.z,
+        rgba.r, rgba.g, rgba.b, rgba.a,
+        rgba.r, rgba.g, rgba.b
+    )
+
+    stack.popPose()
+}
+
+fun VertexConsumer.eln2SubmitOBBAtLevelStage(stack: PoseStack, obb: OrientedBoundingBox3d, rgba: RGBAFloat, camera: Camera) = this.eln2SubmitOBBAtLevelStage(
+    stack, obb, rgba,
+    camera.position.x, camera.position.y, camera.position.z
+)

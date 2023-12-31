@@ -834,68 +834,17 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
             val part = multipart.pickPart(player) as? SpecContainerPart
                 ?: return
 
-            event.isCanceled = true
+            event.isCanceled = true // Prevent collider bounding box
 
             val spec = part.pickSpec(player)?.second
                 ?: return
 
-            val pConsumer: VertexConsumer = event.multiBufferSource.getBuffer(RenderType.lines())
-
-            val stack = event.poseStack
-
-            fun render(mountingPointWorld: Vector3d, lp: Quaternionf, size: Vector3d, color: RGBAFloat) {
-                stack.pushPose()
-
-                stack.translate(
-                    -event.camera.position.x + spec.placement.blockPos.x.toDouble(),
-                    -event.camera.position.y + spec.placement.blockPos.y.toDouble(),
-                    -event.camera.position.z + spec.placement.blockPos.z.toDouble()
-                )
-
-                val (dx, dy, dz) = partOffsetTable[part.placement.face.get3DDataValue()]
-                val (dx1, dy1, dz1) = mountingPointWorld - part.placement.mountingPointWorld
-
-                stack.translate(dx + dx1, dy + dy1, dz + dz1)
-
-                stack.mulPose(part.placement.face.rotationFast)
-                stack.mulPose(Quaternionf(part.placement.facing.rotation))
-                stack.mulPose(lp)
-                stack.translate(0.0, size.y * 0.5, 0.0)
-
-                pConsumer.eln2SubmitAABBLines(
-                    stack.last(),
-                    BoundingBox3d.fromCenterSize(
-                        Vector3d.zero,
-                        size
-                    ),
-                    color
-                )
-
-                stack.popPose()
-            }
-
-            render(
-                spec.placement.mountingPointWorld,
-                Quaternionf().rotateY(spec.placement.orientation.ln().toFloat()),
-                spec.placement.provider.placementCollisionSize,
-                RGBAFloat(0.1f, 0.5f, 0.8f, 0.9f)
+            event.multiBufferSource.getBuffer(RenderType.lines()).eln2SubmitOBBAtLevelStage(
+                event.poseStack,
+                spec.placement.orientedBoundingBoxWorld,
+                RGBAFloat(0.1f, 0.5f, 0.8f, 0.9f),
+                event.camera
             )
-
-            if(spec is MicroGridSpec<*>) {
-                val terminal = spec.pickTerminal(player)
-
-                if(terminal != null && terminal is BoxTerminal) {
-                    val boundingBox = terminal.boundingBox
-                    val mountingPoint = boundingBox.center - boundingBox.transform.rotation * Vector3d(0.0, boundingBox.halfSize.y, 0.0)
-
-                    render(
-                        mountingPoint,
-                        (terminal.boundingBox.transform.rotation / SpecGeometry.rotationWorld(Rotation2d.identity, spec.placement.part.placement.facing, spec.placement.part.placement.face)).cast(),
-                        terminal.boundingBox.size,
-                        RGBAFloat(0.5f, 0.1f, 0.5f, 0.9f)
-                    )
-                }
-            }
         }
     }
 }
