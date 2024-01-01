@@ -46,7 +46,12 @@ import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.partAndItem
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.transformPartWorld
-import org.eln2.mc.data.*
+import org.eln2.mc.common.specs.SpecRegistry.specAndItem
+import org.eln2.mc.common.specs.foundation.*
+import org.eln2.mc.data.Locators
+import org.eln2.mc.data.cylinderResistance
+import org.eln2.mc.data.directionPoleMapPlanar
+import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
@@ -666,6 +671,41 @@ object Content {
     )
 
     val FURNACE_MENU = menu("furnace_menu", ::FurnaceMenu)
+
+    //#endregion
+
+    //#region Micro-Grid
+
+    val MICRO_GRID_CONNECT = item("microgrid_connect") {
+        MicroGridConnectItem(GridMaterials.COPPER_MICRO_GRID)
+    }
+
+    val MICROGRID_ANCHOR_CELL = cell(
+        "microgrid_anchor",
+        BasicCellProvider(::MicroGridAnchorCell)
+    )
+
+    val MICROGRID_ANCHOR_SPEC = specAndItem(
+        "microgrid_anchor",
+        BasicSpecProvider(
+            PartialModels.MICRO_GRID_ANCHOR,
+            Vector3d(4.0 / 16.0),
+            ::MicroGridAnchorSpec
+        )
+    )
+
+    val MICROGRID_INTERFACE_CELL = cell(
+        "microgrid_interface",
+        BasicCellProvider(::MicroGridInterfaceCell)
+    )
+
+    val MICROGRID_INTERFACE_PART = partAndItem(
+        "microgrid_interface",
+        BasicPartProvider(
+            Vector3d(4.0 / 16.0),
+            ::MicroGridInterfacePart
+        )
+    )
 
     //#endregion
 

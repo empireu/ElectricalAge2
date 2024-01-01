@@ -3,13 +3,17 @@ package org.eln2.mc
 import java.lang.reflect.Field
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.KClass
-import kotlin.reflect.KProperty
 import kotlin.reflect.KProperty1
 import kotlin.reflect.full.isSubclassOf
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.jvm.javaField
 
 fun noop(){}
+
+@Suppress("FunctionName")
+fun DEBUGGER_BREAK(){
+    noop()
+}
 
 private fun defaultHandleInvalid(property: KProperty1<*, *>) {
     error("Invalid field $property")

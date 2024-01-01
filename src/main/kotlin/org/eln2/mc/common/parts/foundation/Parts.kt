@@ -26,7 +26,6 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
-import org.eln2.mc.client.render.foundation.BasicSpecRenderer
 import org.eln2.mc.client.render.foundation.MultipartBlockEntityInstance
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.cells.foundation.*
@@ -35,9 +34,6 @@ import org.eln2.mc.common.network.serverToClient.PacketHandler
 import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.PartMessage
 import org.eln2.mc.common.parts.PartRegistry
-import org.eln2.mc.common.specs.foundation.Spec
-import org.eln2.mc.common.specs.foundation.SpecCreateInfo
-import org.eln2.mc.common.specs.foundation.SpecUseInfo
 import org.eln2.mc.data.*
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3d
@@ -163,6 +159,12 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
     val placement = ci.placement
     val partProviderShape = Shapes.create(modelBoundingBox)
     var isRemoved = false
+
+    /**
+     * Called to check if the part item should drop, just after it is destroyed.
+     * */
+    @ServerOnly
+    open fun shouldDrop() : Boolean = true
 
     /**
      * Called after the part was constructed by the provider.
@@ -546,26 +548,14 @@ open class BasicPartProvider(
     override fun createCore(context: PartPlacementInfo) = factory(PartCreateInfo(id, context))
 }
 
-
-class MySpec(ci: SpecCreateInfo) : Spec<BasicSpecRenderer>(ci) {
-    override fun createRenderer(): BasicSpecRenderer {
-        return BasicSpecRenderer(this, PartialModels.ELECTRICAL_WIRE_HUB)
-    }
-
-    override fun onUsedBy(context: SpecUseInfo): InteractionResult {
-        println("use")
-        return super.onUsedBy(context)
-    }
-}
-
 /**
  * Represents a part that has a cell.
  * */
-interface PartCellContainer<C : Cell> {
+interface PartWithCell<C : Cell> {
     /**
      * This is the cell owned by the part.
      * */
-    val cell: Cell
+    val cell: C
 
     /**
      * Indicates if the cell is available (loaded).
@@ -610,7 +600,19 @@ interface PartCellContainer<C : Cell> {
      * */
     fun onConnectivityChanged() { }
 
-    fun addExtraConnections(results: MutableSet<CellNeighborInfo>) { }
+    fun addExtraConnections(results: MutableSet<CellAndContainerHandle>) { }
+}
+
+/**
+ * Represents a part that is a fully featured cell container.
+ * Some lifecycle hooks are provided for consistency with [PartWithCell].
+ *
+ * **Cells must have [Locators.FACE] to resolve the part properly.**
+ * */
+interface PartCellContainer : CellContainer {
+    fun cellUnbindAndDestroySuggested()
+    fun cellConnectionsInsertFreshSuggested()
+    fun cellBindGameObjectsSuggested()
 }
 
 /**
@@ -619,7 +621,7 @@ interface PartCellContainer<C : Cell> {
 abstract class CellPart<C: Cell, R : PartRenderer>(
     ci: PartCreateInfo,
     final override val provider: CellProvider<C>,
-) : Part<R>(ci), PartCellContainer<C> {
+) : Part<R>(ci), PartWithCell<C> {
     companion object {
         private const val GRAPH_ID = "GraphID"
         private const val CUSTOM_SIMULATION_DATA = "SimulationData"
@@ -635,9 +637,9 @@ abstract class CellPart<C: Cell, R : PartRenderer>(
     final override val cell: C get() = cellField
         ?: error(
             if(placement.level.isClientSide) {
-                "TRIED TO ACCESS CELL ON CLIENT"
+                "TRIED TO ACCESS PART CELL ON CLIENT"
             } else {
-                "Tried to get cell before it is set $this"
+                "Tried to get spec cell before it is set $this"
             }
         )
 
@@ -655,16 +657,12 @@ abstract class CellPart<C: Cell, R : PartRenderer>(
     @ServerOnly
     private var customSimulationData: CompoundTag? = null
 
-    protected var isAlive = false // FIXME remove, replace with Part#isRemoved
-        private set
-
     /**
-     * Notifies the cell of the new container.
+     * Creates the cell, sets [Cell.container] and notifies via [onCellAcquired].
      * */
     override fun onPlaced() {
         cellField = provider.create(locator, CellEnvironment.evaluate(placement.level, locator))
         cell.container = placement.multipart
-        isAlive = true
         onCellAcquired()
     }
 
@@ -673,20 +671,13 @@ abstract class CellPart<C: Cell, R : PartRenderer>(
      * */
     override fun onUnloaded() {
         if (hasCell) {
-            requireIsOnServerThread() { "onUnloaded cell!=null"}
+            requireIsOnServerThread { "onUnloaded part cell is null $this" }
             cell.onContainerUnloading()
             cell.container = null
             cell.onContainerUnloaded()
             cell.unbindGameObjects()
-            isAlive = false
             onCellReleased()
         }
-    }
-
-    override fun onRemoved() {
-        super.onRemoved()
-
-        isAlive = false
     }
 
     /**
@@ -694,7 +685,7 @@ abstract class CellPart<C: Cell, R : PartRenderer>(
      * */
     override fun getServerSaveTag(): CompoundTag? {
         if (!hasCell) {
-            LOG.error("Saving, but cell not initialized!")
+            LOG.fatal("Part saving, but cell not initialized!")
             return null
         }
 
@@ -719,7 +710,7 @@ abstract class CellPart<C: Cell, R : PartRenderer>(
         }
 
         if (tag.contains(GRAPH_ID)) {
-            loadGraphId = tag.getUUID("GraphID")
+            loadGraphId = tag.getUUID(GRAPH_ID)
         } else {
             LOG.info("Part at $locator did not have saved data")
         }
@@ -737,8 +728,8 @@ abstract class CellPart<C: Cell, R : PartRenderer>(
         }
 
         cellField = if (!this::loadGraphId.isInitialized) {
-            LOG.error("Part cell not initialized!")
-            // Should we blow up the game?
+            LOG.fatal("Part cell not initialized!")
+            // Should we blow up the game or make the cell fresh?
             provider.create(locator, CellEnvironment.evaluate(placement.level, locator))
         } else {
             CellGraphManager.getFor(placement.level as ServerLevel)
@@ -753,7 +744,6 @@ abstract class CellPart<C: Cell, R : PartRenderer>(
             loadCustomSimDataPre(customSimulationData!!)
         }
 
-        isAlive = true
         onCellAcquired()
 
         if (this.customSimulationData != null) {

@@ -9,6 +9,7 @@ import org.ageseries.libage.data.mutableBiMapOf
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
+import org.eln2.mc.common.items.blacklistCreativeTab
 import org.eln2.mc.common.items.foundation.PartItem
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.PartProvider
@@ -75,17 +76,17 @@ object PartRegistry {
 
     val SPEC_CONTAINER_PART = partAndItem(
         "spec_container",
-        BasicPartProvider(Vector3d(1.0, 0.1, 1.0)) {
+        BasicPartProvider(Vector3d(0.9, 0.1, 0.9)) {
             SpecContainerPart(it)
         }
-    )
+    ).blacklistCreativeTab()
 
     val SAVING_LIFECYCLE_TEST_PART = partAndItem(
         "saving_lifecycle_test_part",
         BasicPartProvider(Vector3d(1.0)) {
             SavingLifecycleTestPart(it)
         }
-    )
+    ).blacklistCreativeTab()
 
     fun finalize() {
         for (it in PART_ITEMS.entries) {

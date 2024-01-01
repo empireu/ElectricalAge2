@@ -8,6 +8,7 @@ import net.minecraft.world.item.CreativeModeTab
 import net.minecraft.world.item.CreativeModeTab.ItemDisplayParameters
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.level.block.Block
 import net.minecraftforge.eventbus.api.IEventBus
 import net.minecraftforge.registries.DeferredRegister
 import net.minecraftforge.registries.RegistryObject
@@ -17,6 +18,7 @@ import org.eln2.mc.MODID
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.content.Content
 import org.eln2.mc.common.parts.PartRegistry
+import org.eln2.mc.common.specs.SpecRegistry
 import java.util.function.Supplier
 
 object CreativeTabRegistry {
@@ -28,8 +30,14 @@ object CreativeTabRegistry {
         LOG.info("Prepared creative tab registry.")
     }
 
-    private val BLACKLIST by lazy {
-        setOf<Item>()
+    private val BLACKLIST = mutableSetOf<Supplier<Item>>()
+
+    fun<T : Item> blacklistTab(supplier: Supplier<T>) {
+        check(!realized)
+
+        BLACKLIST.add {
+            supplier.get()
+        }
     }
 
     private var realized = false
@@ -58,11 +66,13 @@ object CreativeTabRegistry {
                     variantLookup[stack.item].add(stack)
                 }
 
+                val blacklisted = BLACKLIST.mapTo (HashSet()) { it.get() }
+
                 fun map(registry: DeferredRegister<Item>) {
                     output.acceptAll(
                         registry.entries
                             .map { it.get() }
-                            .filter { !BLACKLIST.contains(it) }
+                            .filter { !blacklisted.contains(it) }
                             .flatMap { variantLookup.map.remove(it) ?: listOf(ItemStack(it)) }
                     )
                 }
@@ -70,10 +80,21 @@ object CreativeTabRegistry {
                 map(ItemRegistry.ITEMS)
                 map(BlockRegistry.BLOCK_ITEMS)
                 map(PartRegistry.PART_ITEMS)
+                map(SpecRegistry.SPEC_ITEMS)
 
                 if(variantLookup.map.isNotEmpty()) {
                     LOG.error("Did not map variants $variantLookup")
                 }
             }.build()
     }
+}
+
+fun<T : Block> BlockRegistry.BlockRegistryItem<T>.blacklistCreativeTab() : BlockRegistry.BlockRegistryItem<T> {
+    CreativeTabRegistry.blacklistTab(this.item)
+    return this
+}
+
+fun PartRegistry.PartRegistryItem.blacklistCreativeTab() : PartRegistry.PartRegistryItem {
+    CreativeTabRegistry.blacklistTab(this.item)
+    return this
 }

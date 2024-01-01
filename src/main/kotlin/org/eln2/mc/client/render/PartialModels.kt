@@ -40,7 +40,7 @@ object PartialModels {
     val SOLAR_PANEL_ONE_BLOCK = partialBlock("solar_panel_one_block")
 
     val GRID_TAP_BODY = partialBlock("grid_tap_body")
-    val GRID_TAP_CONNECTION = patchPartial("grid_tap_connection")
+    val STANDARD_CONNECTION = patchPartial("standard_connection")
 
     val SMALL_GARDEN_LIGHT = partialBlock("small_garden_light/full")
     val TALL_GARDEN_LIGHT_EMITTER = partialBlock("tall_garden_light/emitter")
@@ -49,6 +49,9 @@ object PartialModels {
     val POLE_TEMPORARY = partialBlock("pole")
 
     val SPEC_PART_FRAME = partialBlock("spec_part_frame")
+
+    val MICRO_GRID_ANCHOR = partialBlock("microgrid_anchor")
+    val MICRO_GRID_INTERFACE = partialBlock("microgrid_interface")
 
     private fun partial(path: String) = PartialModel(resource(path))
 

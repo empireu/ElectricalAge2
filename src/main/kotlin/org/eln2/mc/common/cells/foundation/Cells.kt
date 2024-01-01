@@ -33,6 +33,7 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
+import kotlin.collections.HashSet
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 import kotlin.reflect.KClass
@@ -158,7 +159,7 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
         LocatorRelationRuleSet()
     }
 
-    fun allowsConnection(remote: Cell): Boolean {
+    open fun allowsConnection(remote: Cell): Boolean {
         val result = cellConnectionPredicate(remote) && objectConnectionPredicate(remote)
 
         // Discuss with me if you want more info
@@ -583,6 +584,12 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
      * @return True if this cell has the required object. Otherwise, false.
      * */
     fun hasObject(type: SimulationObjectType) = objects.hasObject(type)
+
+    /**
+     * Called when the solver is built, before the simulation is started.
+     * */
+    @OnServerThread
+    open fun buildFinished() { }
 }
 
 fun Cell.self() = this
@@ -625,7 +632,14 @@ object CellConnections {
 
     fun connectCell(insertedCell: Cell, container: CellContainer) {
         val manager = container.manager
-        val neighborInfoList = container.neighborScan(insertedCell)
+        val neighborInfoList = container.neighborScan(insertedCell).also { neighbors ->
+            val testSet = neighbors.mapTo(HashSet(neighbors.size)) { it.neighbor }
+
+            if(testSet.size != neighbors.size) {
+                LOG.fatal("UNEXPECTED MULTIPLE CELLS")
+                DEBUGGER_BREAK()
+            }
+        }
         val neighborCells = neighborInfoList.map { it.neighbor }.toHashSet()
 
         // Stop all running simulations
@@ -649,7 +663,7 @@ object CellConnections {
 
         neighborInfoList.forEach { neighborInfo ->
             neighborInfo.neighbor.connections.add(insertedCell)
-            neighborInfo.neighborContainer.onCellConnected(
+            neighborInfo.container.onCellConnected(
                 neighborInfo.neighbor,
                 insertedCell
             )
@@ -737,13 +751,13 @@ object CellConnections {
     fun disconnectCell(actualCell: Cell, actualContainer: CellContainer, notify: Boolean = true) {
         val manager = actualContainer.manager
         val actualNeighborCells = actualCell.connections.map {
-            CellNeighborInfo.of(it)
+            CellAndContainerHandle.captureInScope(it)
         }
 
         val graph = actualCell.graph
 
         if(!graph.isSimulating) {
-            noop()
+            DEBUGGER_BREAK()
         }
 
         // Stop Simulation
@@ -790,7 +804,7 @@ object CellConnections {
             // Case 1. Destroy this circuit.
 
             // Make sure we don't make any logic errors somewhere else.
-            assert(graph.size == 1)
+            check(graph.size == 1)
 
             graph.destroy()
         } else if (actualNeighborCells.size == 1) {
@@ -828,7 +842,7 @@ object CellConnections {
      * Checks whether the cells share the same graph.
      * @return True, if the specified cells share the same graph. Otherwise, false.
      * */
-    private fun isCommonGraph(neighbors: List<CellNeighborInfo>): Boolean {
+    private fun isCommonGraph(neighbors: List<CellAndContainerHandle>): Boolean {
         if (neighbors.size < 2) {
             return true
         }
@@ -852,7 +866,7 @@ object CellConnections {
      * Keep in mind that the simulation logic likely won't complete in constant time, in any case.
      * */
     private fun rebuildTopologies(
-        neighborInfoList: List<CellNeighborInfo>,
+        neighborInfoList: List<CellAndContainerHandle>,
         removedCell: Cell,
         manager: CellGraphManager,
     ) {
@@ -897,13 +911,13 @@ object CellConnections {
                 // Enqueue neighbors (excluding the cell we are removing) for processing
                 cell.connections.forEach { connCell ->
                     // This must be handled above.
-                    assert(connCell != removedCell)
+                    check(connCell != removedCell)
 
                     bfsQueue.add(connCell)
                 }
             }
 
-            assert(bfsQueue.isEmpty())
+            check(bfsQueue.isEmpty())
 
             // Refit cells
             graph.forEach { cell ->
@@ -925,7 +939,7 @@ object CellConnections {
     }
 }
 
-inline fun planarCellScan(level: Level, actualCell: Cell, searchDirection: Direction, consumer: ((CellNeighborInfo) -> Unit)) {
+inline fun planarCellScan(level: Level, actualCell: Cell, searchDirection: Direction, consumer: ((CellAndContainerHandle) -> Unit)) {
     val actualPosWorld = actualCell.locator.requireLocator(Locators.BLOCK) { "Planar Scan requires a block position" }
     val actualFaceTarget = actualCell.locator.requireLocator(Locators.FACE) { "Planar Scan requires a face" }
     val remoteContainer = level.getBlockEntity(actualPosWorld + searchDirection) as? CellContainer ?: return
@@ -938,7 +952,7 @@ inline fun planarCellScan(level: Level, actualCell: Cell, searchDirection: Direc
 
             if (targetFaceTarget == actualFaceTarget) {
                 if (isConnectionAccepted(actualCell, targetCell)) {
-                    consumer(CellNeighborInfo(targetCell, remoteContainer))
+                    consumer(CellAndContainerHandle.captureInScope(targetCell))
                 }
             }
         }
@@ -955,7 +969,7 @@ inline fun wrappedCellScan(
     level: Level,
     actualCell: Cell,
     searchDirection: Direction,
-    consumer: ((CellNeighborInfo) -> Unit),
+    consumer: ((CellAndContainerHandle) -> Unit),
 ) {
     val actualPosWorld = actualCell.locator.requireLocator(Locators.BLOCK) { "Wrapped Scan requires a block position" }
     val actualFaceWorld = actualCell.locator.requireLocator(Locators.FACE) { "Wrapped Scan requires a face" }
@@ -978,7 +992,7 @@ inline fun wrappedCellScan(
 
             if (targetFaceTarget == searchDirection) {
                 if (isConnectionAccepted(actualCell, targetCell)) {
-                    consumer(CellNeighborInfo(targetCell, remoteContainer))
+                    consumer(CellAndContainerHandle.captureInScope(targetCell))
                 }
             }
         }
@@ -986,7 +1000,7 @@ inline fun wrappedCellScan(
 
 interface CellContainer {
     fun getCells(): List<Cell>
-    fun neighborScan(actualCell: Cell): List<CellNeighborInfo>
+    fun neighborScan(actualCell: Cell): List<CellAndContainerHandle>
     fun onCellConnected(actualCell: Cell, remoteCell: Cell)
     fun onCellDisconnected(actualCell: Cell, remoteCell: Cell)
     fun onTopologyChanged()
@@ -997,9 +1011,31 @@ interface CellContainer {
 /**
  * Encapsulates information about a neighbor cell.
  * */
-data class CellNeighborInfo(val neighbor: Cell, val neighborContainer: CellContainer) {
+data class CellAndContainerHandle @Deprecated("Use [of]") constructor(val neighbor: Cell, val container: CellContainer) {
     companion object {
-        fun of(cell: Cell) = CellNeighborInfo(cell, cell.container ?: error("Cannot create CellNeighborInfo of $cell"))
+        @Suppress("DEPRECATION")
+        fun captureInScope(cell: Cell) = CellAndContainerHandle(
+            cell,
+            cell.container ?: error("Did not have container for $cell")
+        )
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as CellAndContainerHandle
+
+        if (neighbor !== other.neighbor) return false
+        if (container !== other.container) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = neighbor.hashCode()
+        result = 31 * result + container.hashCode()
+        return result
     }
 }
 
@@ -1250,6 +1286,8 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         }
 
         electricalSims.forEach { postProcessCircuit(it) }
+
+        cells.forEach { it.buildFinished() }
     }
 
     /**
@@ -1309,7 +1347,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         val results = ArrayList<TComponent>()
 
         while (pending.size > 0) {
-            assert(queue.size == 0)
+            check(queue.size == 0)
 
             visited.clear()
 
@@ -1458,7 +1496,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
             try {
                 cellTag.put(NBT_CELL_DATA, cell.createTag())
             } catch (t: Throwable) {
-                LOG.error("Cell save error: $t")
+                LOG.fatal("CELL SAVE ERROR: $t")
             }
 
             cellListTag.add(cellTag)
@@ -1513,6 +1551,11 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
             },
             ::createThread
         )
+
+        fun makePool() {
+            requireIsOnServerThread()
+            pool
+        }
 
         fun fromNbt(graphCompound: CompoundTag, manager: CellGraphManager, level: ServerLevel): CellGraph {
             val graphId = graphCompound.getUUID(NBT_ID)

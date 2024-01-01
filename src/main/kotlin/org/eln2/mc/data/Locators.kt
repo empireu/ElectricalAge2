@@ -18,6 +18,10 @@ import org.eln2.mc.mathematics.FacingDirection
 import java.nio.ByteBuffer
 
 object Locators : LocatorDispatcher<Locators>() {
+    private fun writeInt(int: Int, buffer: ByteBuffer) { buffer.putInt(int) }
+
+    private fun readInt(buffer: ByteBuffer) = buffer.getInt()
+
     private fun writeBlockPos(blockPos: BlockPos, buffer: ByteBuffer) {
         buffer.putInt(blockPos.x)
         buffer.putInt(blockPos.y)
@@ -72,6 +76,12 @@ object Locators : LocatorDispatcher<Locators>() {
         ::writeVector3d,
         ::readVector3d,
         3 * 8
+    )
+
+    val PLACEMENT_ID = register<Int>(
+        ::writeInt,
+        ::readInt,
+        4
     )
 }
 

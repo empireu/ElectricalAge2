@@ -4,12 +4,11 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraftforge.eventbus.api.IEventBus
 import net.minecraftforge.registries.*
 import org.ageseries.libage.data.mutableBiMapOf
-import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
-import org.eln2.mc.client.render.PartialModels
-import org.eln2.mc.common.parts.foundation.MySpec
-import org.eln2.mc.common.specs.foundation.*
+import org.eln2.mc.common.specs.foundation.Spec
+import org.eln2.mc.common.specs.foundation.SpecItem
+import org.eln2.mc.common.specs.foundation.SpecProvider
 import org.eln2.mc.resource
 import java.util.function.Supplier
 
@@ -59,25 +58,4 @@ object SpecRegistry {
     fun getSpecItem(id: ResourceLocation): SpecItem {
         return ForgeRegistries.ITEMS.getValue(id) as SpecItem
     }
-
-    val TEST = specAndItem(
-        "test_spec",
-        BasicSpecProvider(
-            PartialModels.ELECTRICAL_WIRE_HUB,
-            Vector3d(3.5 / 16.0, 2.0 / 16.0, 3.5 / 16.0))
-        {
-            MySpec(it)
-        }
-    )
-
-    val MICRO_GRID = specAndItem(
-        "micro_grid_spec",
-        BasicSpecProvider(
-            PartialModels.ELECTRICAL_WIRE_HUB,
-            Vector3d(3.5 / 16.0, 2.0 / 16.0, 3.5 / 16.0))
-        {
-            TestMicroGridSpec(it)
-        }
-    )
-
 }

@@ -5,6 +5,7 @@ import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.level.BlockEvent
 import net.minecraftforge.event.level.ChunkWatchEvent
 import net.minecraftforge.event.level.LevelEvent
+import net.minecraftforge.event.server.ServerStartingEvent
 import net.minecraftforge.event.server.ServerStoppingEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import net.minecraftforge.fml.common.Mod
@@ -14,6 +15,7 @@ import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.common.blocks.BlockRegistry
+import org.eln2.mc.common.cells.foundation.CellGraph
 import org.eln2.mc.common.cells.foundation.CellGraphManager
 import org.eln2.mc.common.content.GridConnectionManagerClient
 import org.eln2.mc.common.content.GridConnectionManagerServer
@@ -29,9 +31,11 @@ object ModEvents {
 
     @SubscribeEvent @JvmStatic
     fun loadCompletedEvent(event: FMLLoadCompleteEvent) {
-        isFullyLoaded = true
-        BlockRegistry.finalize()
-        PartRegistry.finalize()
+        event.enqueueWork {
+            isFullyLoaded = true
+            BlockRegistry.finalize()
+            PartRegistry.finalize()
+        }
     }
 }
 
@@ -52,6 +56,12 @@ object ForgeEvents {
             val graphManager = CellGraphManager.getFor(it)
             user(graphManager)
         }
+    }
+
+    @SubscribeEvent @JvmStatic
+    fun onServerStarting(event: ServerStartingEvent) {
+        LOG.info("Making ELN2 thread pool")
+        CellGraph.makePool()
     }
 
     @SubscribeEvent @JvmStatic

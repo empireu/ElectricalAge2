@@ -223,10 +223,10 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
         return arrayListOf(cell)
     }
 
-    override fun neighborScan(actualCell: Cell): List<CellNeighborInfo> {
+    override fun neighborScan(actualCell: Cell): List<CellAndContainerHandle> {
         val level = this.level ?: error("Level is null in queryNeighbors")
 
-        val results = HashSet<CellNeighborInfo>()
+        val results = HashSet<CellAndContainerHandle>()
 
         Base6Direction3dMask.HORIZONTALS.directionList.forEach { searchDir ->
             planarCellScan(level, cell, searchDir) {
@@ -241,7 +241,7 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
         return results.toList()
     }
 
-    protected open fun addExtraConnections(results: MutableSet<CellNeighborInfo>) { }
+    protected open fun addExtraConnections(results: MutableSet<CellAndContainerHandle>) { }
 
     override fun onCellConnected(actualCell: Cell, remoteCell: Cell) {
         LOG.debug("Cell Block recorded connection from {} to {}", actualCell, remoteCell)

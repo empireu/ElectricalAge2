@@ -113,11 +113,21 @@ enum class FacingDirection(val angle: Double, val direction: Direction) {
     NORTH(0.0, Direction.NORTH),
     EAST(-PI / 2.0, Direction.EAST);
 
-    val clockWise = direction.clockWise.toHorizontalFacing()
-    val counterClockWise = direction.counterClockWise.toHorizontalFacing()
+    val clockWise get() = when(this) {
+        SOUTH -> WEST
+        WEST -> NORTH
+        NORTH -> EAST
+        EAST -> SOUTH
+    }
+
+    val counterClockWise get() = when(this) {
+        SOUTH -> EAST
+        WEST -> SOUTH
+        NORTH -> WEST
+        EAST -> NORTH
+    }
 
     val index get() = direction.get2DDataValue()
-
     val rotation = Quaternionf().rotateY(angle.toFloat()) as Quaternionfc
     val rotation2d = Rotation2d.exp(angle)
     val rotation3d = Rotation3d.exp(Vector3d.unitY * angle)

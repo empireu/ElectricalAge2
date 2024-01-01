@@ -844,6 +844,7 @@ object GridConnectionManagerClient {
 class GridElectricalObject(cell: GridCell, val tapResistance: Double?) : ElectricalObject<GridCell>(cell) {
     private val gridResistors = HashMap<GridElectricalObject, VirtualResistor>()
 
+    // Is this useful?
     val totalCurrent get() = gridResistors.values.sumOf { abs(it.current) }
     val totalPower get() = gridResistors.values.sumOf { abs(it.power) }
 
@@ -1075,15 +1076,15 @@ private object GridCellOperations {
 
     fun createEndpointInfo(cell: GridCell, attachment: Vector3d) = GridEndpointInfo(cell.endpointId, attachment, cell.locator)
 
-    fun addExtraConnections(cell: GridCell, results: MutableSet<CellNeighborInfo>) {
+    fun addExtraConnections(cell: GridCell, results: MutableSet<CellAndContainerHandle>) {
         if(cell.stagingInfo != null) {
-            results.add(CellNeighborInfo.of(cell.stagingInfo!!.remoteCell))
+            results.add(CellAndContainerHandle.captureInScope(cell.stagingInfo!!.remoteCell))
         }
 
         if(cell.hasGraph) {
             cell.endPoints.keys.forEach { remoteEndPoint ->
                 results.add(
-                    CellNeighborInfo.of(
+                    CellAndContainerHandle.captureInScope(
                         cell.graph.getCellByLocator(remoteEndPoint.locator)
                     )
                 )
@@ -1145,7 +1146,7 @@ abstract class GridCellPart<R : PartRenderer>(ci: PartCreateInfo, provider: Cell
     override val cellContainer: CellContainer
         get() = placement.multipart
 
-    override fun addExtraConnections(results: MutableSet<CellNeighborInfo>) = GridCellOperations.addExtraConnections(cell, results)
+    override fun addExtraConnections(results: MutableSet<CellAndContainerHandle>) = GridCellOperations.addExtraConnections(cell, results)
 
     override fun onLoaded() {
         super.onLoaded()
@@ -1159,7 +1160,7 @@ class GridTapPart(ci: PartCreateInfo, provider: CellProvider<GridCell>) : GridCe
     override fun createRenderer() = ConnectedPartRenderer(
         this,
         PartialModels.GRID_TAP_BODY,
-        PartialModels.GRID_TAP_CONNECTION
+        PartialModels.STANDARD_CONNECTION
     )
 
     override fun getSyncTag() = this.getConnectedPartTag()
@@ -1201,7 +1202,7 @@ class GridPoleBlockEntity(private val representativeBlock: GridPoleBlock, pos: B
     override val delegateMap: MultiblockDelegateMap
         get() = representativeBlock.delegateMap
 
-    override fun addExtraConnections(results: MutableSet<CellNeighborInfo>) = GridCellOperations.addExtraConnections(cell, results)
+    override fun addExtraConnections(results: MutableSet<CellAndContainerHandle>) = GridCellOperations.addExtraConnections(cell, results)
 
     override fun onCellAcquired() {
         lazyLoadConnection(level!!)

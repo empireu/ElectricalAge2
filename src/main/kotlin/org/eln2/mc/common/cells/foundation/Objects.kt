@@ -208,7 +208,9 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
      * Called by the cell when a valid connection candidate is discovered.
      * */
     open fun addConnection(remoteObj: ElectricalObject<*>) {
-        require(!connections.contains(remoteObj)) { "Duplicate connection" }
+        require(!connections.contains(remoteObj)) {
+            "Duplicate connection"
+        }
 
         connections.add(remoteObj)
     }

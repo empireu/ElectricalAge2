@@ -145,6 +145,10 @@ class MultipartBlock : BaseEntityBlock(
     }
 
     private fun spawnDrop(pLevel: ServerLevel, removedPart: Part<*>, saveTag: CompoundTag) {
+        if(!removedPart.shouldDrop()) {
+            return
+        }
+
         val center = removedPart.worldShape.bounds().center
 
         pLevel.addItem(center.x, center.y, center.z, Part.createPartDropStack(removedPart.id, saveTag))
@@ -595,16 +599,24 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
 
         part.onPlaced()
 
-        if (part is PartCellContainer<*>) {
+        if (part is PartWithCell<*>) {
             CellConnections.insertFresh(this, part.cell)
+        }
+
+        if(part is PartCellContainer) {
+            part.cellConnectionsInsertFreshSuggested()
         }
 
         if (part is ItemPersistent && part.order == ItemPersistentLoadOrder.AfterSim) {
             part.loadFromItemNbt(saveTag)
         }
 
-        if (part is PartCellContainer<*>) {
+        if (part is PartWithCell<*>) {
             part.cell.bindGameObjects(listOf(this, part))
+        }
+
+        if(part is PartCellContainer) {
+            part.cellBindGameObjectsSuggested()
         }
 
         setChanged()
@@ -648,9 +660,13 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             "Tried to break part $part which was not present"
         }
 
-        if (part is PartCellContainer<*>) {
+        if (part is PartWithCell<*>) {
             part.cell.unbindGameObjects()
             CellConnections.destroy(part.cell, this)
+        }
+
+        if(part is PartCellContainer) {
+            part.cellUnbindAndDestroySuggested()
         }
 
         if (part is ItemPersistent && saveTag != null) {
@@ -1121,98 +1137,129 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         val results = ArrayList<Cell>()
 
         parts.values.forEach { part ->
-            if (part is PartCellContainer<*>) {
+            if (part is PartWithCell<*>) {
                 results.add(part.cell)
+            }
+
+            if(part is PartCellContainer) {
+                results.addAll(part.getCells())
             }
         }
 
         return results
     }
 
-    override fun neighborScan(actualCell: Cell): List<CellNeighborInfo> {
+    override fun neighborScan(actualCell: Cell): List<CellAndContainerHandle> {
         val partFace = actualCell.locator.requireLocator(Locators.FACE)
 
-        val part = parts[partFace]!!
+        val results = when (val part = parts[partFace]!!) {
+            is PartWithCell<*> -> {
+                val values = LinkedHashSet<CellAndContainerHandle>()
 
-        if (part !is PartCellContainer<*>) {
-            error("FATAL! Queried neighbors for non-cell part!")
+                val level = this.level ?: error("Level null in queryNeighbors")
+
+                Base6Direction3dMask.perpendicular(partFace).process { searchDirection ->
+                    fun innerCellScan() {
+                        // Inner scan does not make sense outside multiparts, so I did not move it to CellScanner
+
+                        val innerFace = searchDirection.opposite
+
+                        val innerPart = parts[innerFace]
+                            ?: return
+
+                        if (innerPart !is PartWithCell<*>) {
+                            return
+                        }
+
+                        if (!innerPart.allowInnerConnections) {
+                            return
+                        }
+
+                        val innerCell = innerPart.cell
+
+                        if (!isConnectionAccepted(actualCell, innerCell)) {
+                            return
+                        }
+
+                        values.add(CellAndContainerHandle.captureInScope(innerCell))
+                    }
+
+                    if (part.allowInnerConnections) {
+                        innerCellScan()
+                    }
+
+                    if (part.allowPlanarConnections) {
+                        planarCellScan(
+                            level,
+                            part.cell,
+                            searchDirection,
+                            values::add
+                        )
+                    }
+
+                    if (part.allowWrappedConnections) {
+                        wrappedCellScan(
+                            level,
+                            part.cell,
+                            searchDirection,
+                            values::add
+                        )
+                    }
+                }
+
+                part.addExtraConnections(values)
+
+                values.toList()
+            }
+
+            is PartCellContainer -> {
+                part.neighborScan(actualCell)
+            }
+
+            else -> {
+                error("Queried cells for invalid part $part")
+            }
         }
 
-        val results = LinkedHashSet<CellNeighborInfo>()
-
-        val level = this.level ?: error("Level null in queryNeighbors")
-
-        Base6Direction3dMask.perpendicular(partFace).process { searchDirection ->
-            fun innerCellScan() {
-                // Inner scan does not make sense outside multiparts, so I did not move it to CellScanner
-
-                val innerFace = searchDirection.opposite
-
-                val innerPart = parts[innerFace]
-                    ?: return
-
-                if (innerPart !is PartCellContainer<*>) {
-                    return
-                }
-
-                if (!innerPart.allowInnerConnections) {
-                    return
-                }
-
-                val innerCell = innerPart.cell
-
-                if (!isConnectionAccepted(actualCell, innerCell)) {
-                    return
-                }
-
-                results.add(
-                    CellNeighborInfo(
-                        innerCell,
-                        this
-                    )
-                )
-            }
-
-            if (part.allowInnerConnections) {
-                innerCellScan()
-            }
-
-            if (part.allowPlanarConnections) {
-                planarCellScan(
-                    level,
-                    part.cell,
-                    searchDirection,
-                    results::add
-                )
-            }
-
-            if (part.allowWrappedConnections) {
-                wrappedCellScan(
-                    level,
-                    part.cell,
-                    searchDirection,
-                    results::add
-                )
-            }
-        }
-
-        part.addExtraConnections(results)
-
-        return results.toList()
+        return results
     }
 
     override fun onCellConnected(actualCell: Cell, remoteCell: Cell) {
         val innerFace = actualCell.locator.requireLocator(Locators.FACE)
-        val part = parts[innerFace] as PartCellContainer<*>
-        part.onConnected(remoteCell)
-        part.onConnectivityChanged()
+
+        when(val part = parts[innerFace]) {
+            is PartWithCell<*> -> {
+                part.onConnected(remoteCell)
+                part.onConnectivityChanged()
+            }
+
+            is PartCellContainer -> {
+                part.onCellConnected(actualCell, remoteCell)
+            }
+
+            else -> {
+                error("onCellConnected invalid part $part")
+            }
+        }
+
     }
 
     override fun onCellDisconnected(actualCell: Cell, remoteCell: Cell) {
-        val part = parts[actualCell.locator.requireLocator(Locators.FACE)] as PartCellContainer<*>
-        part.onDisconnected(remoteCell)
-        if (part.hasCell && !part.cell.isBeingRemoved) {
-            part.onConnectivityChanged()
+        when(val part = parts[actualCell.locator.requireLocator(Locators.FACE)]) {
+            is PartWithCell<*> -> {
+                part.onDisconnected(remoteCell)
+                if (part.hasCell && !part.cell.isBeingRemoved) {
+                    part.onConnectivityChanged()
+                }
+            }
+
+            is PartCellContainer -> {
+                part.onCellDisconnected(actualCell, remoteCell)
+            }
+
+            else -> {
+                error("onCellDisconnected invalid part $part")
+            }
         }
     }
 
@@ -1222,9 +1269,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
 
     @ServerOnly
     override val manager: CellGraphManager
-        get() = CellGraphManager.getFor(
-            level as? ServerLevel ?: error("Tried to get multipart cell provider on the client")
-        )
+        get() = CellGraphManager.getFor(level as? ServerLevel ?: error("Tried to get multipart cell graph manager on $level"))
 
     fun use(player: Player, hand: InteractionHand): InteractionResult {
         val part = pickPart(player)

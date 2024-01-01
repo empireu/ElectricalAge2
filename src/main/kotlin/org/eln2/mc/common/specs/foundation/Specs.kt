@@ -4,7 +4,6 @@ import com.jozufozu.flywheel.core.PartialModel
 import com.jozufozu.flywheel.core.materials.model.ModelData
 import com.mojang.blaze3d.platform.InputConstants
 import com.mojang.blaze3d.vertex.PoseStack
-import com.mojang.blaze3d.vertex.VertexConsumer
 import it.unimi.dsi.fastutil.objects.ReferenceArraySet
 import net.minecraft.client.KeyMapping
 import net.minecraft.client.Minecraft
@@ -37,6 +36,7 @@ import net.minecraftforge.client.gui.overlay.IGuiOverlay
 import net.minecraftforge.client.settings.KeyConflictContext
 import net.minecraftforge.network.NetworkEvent
 import org.ageseries.libage.data.put
+import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.utils.putUnique
@@ -44,6 +44,9 @@ import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
+import org.eln2.mc.common.cells.foundation.Cell
+import org.eln2.mc.common.cells.foundation.CellConnections
+import org.eln2.mc.common.cells.foundation.CellGraphManager
 import org.eln2.mc.common.items.foundation.PartItem
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.parts.PartRegistry
@@ -149,6 +152,7 @@ data class SpecPlacementInfo(
         it.put(BLOCK, blockPos)
         it.put(FACE, face)
         it.put(MOUNTING_POINT, mountingPointWorld)
+        it.put(PLACEMENT_ID, placementId)
     }
 }
 
@@ -178,12 +182,16 @@ data class SpecUseInfo(
 
 data class SpecCreateInfo(val id: ResourceLocation, val placement: SpecPlacementInfo)
 
-class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugComponentDisplay {
+class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugComponentDisplay, PartCellContainer {
     @ServerOnly
     var containerID = UUID.randomUUID()
         private set
 
     val substratePlane = Plane3d(placement.face.vector3d, placement.mountingPointWorld)
+
+    override fun shouldDrop(): Boolean {
+        return false
+    }
 
     private var lastPlacementId = 0
         get() {
@@ -375,6 +383,18 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
 
         spec.onPlaced()
 
+        if (spec is SpecWithCell<*>) {
+            CellConnections.insertFresh(this, spec.cell)
+        }
+
+        if (spec is ItemPersistent && spec.order == ItemPersistentLoadOrder.AfterSim) {
+            spec.loadFromItemNbt(saveTag)
+        }
+
+        if (spec is SpecWithCell<*>) {
+            spec.cell.bindGameObjects(listOf(this, spec))
+        }
+
         setSaveDirty()
         setSyncDirty()
 
@@ -403,7 +423,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         if(!placement.level.isClientSide) {
             specs.values.toList().forEach {
                 val tag = CompoundTag()
-                breakSpec(it, tag)
+                breakSpec(it, tag, true)
                 spawnDrop(placement.level as ServerLevel, it, tag)
             }
         }
@@ -414,11 +434,19 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
      * Notifies via [Spec.onBroken].
      * @param spec The spec to remove.
      * @param saveTag A tag to save part data, if required (for [ItemPersistent]s).
+     * @param isContainerBreak If true, this means the container part is being destroyed. Cell specs got cleaned up by [PartCellContainer.cellUnbindAndDestroySuggested] so we must not clean them up here.
      * */
     @ServerOnly
-    fun breakSpec(spec: Spec<*>, saveTag: CompoundTag? = null) {
+    fun breakSpec(spec: Spec<*>, saveTag: CompoundTag? = null, isContainerBreak: Boolean = false) {
         require(specs.values.contains(spec)) {
             "Tried to break spec $spec which was not present"
+        }
+
+        if(!isContainerBreak) {
+            if (spec is SpecWithCell<*>) {
+                spec.cell.unbindGameObjects()
+                CellConnections.destroy(spec.cell, this)
+            }
         }
 
         if (spec is ItemPersistent && saveTag != null) {
@@ -460,6 +488,12 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         }
 
         rebuildCollider()
+    }
+
+    override fun onUnloaded() {
+        specs.values.forEach {
+            it.onUnloaded()
+        }
     }
 
     override fun getClientSaveTag(): CompoundTag {
@@ -847,6 +881,63 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
             )
         }
     }
+
+    private inline fun forEachCellSpec(action: (SpecWithCell<*>) -> Unit) {
+        specs.values.forEach {
+            if(it is SpecWithCell<*>) {
+                action(it)
+            }
+        }
+    }
+
+    override fun cellUnbindAndDestroySuggested() {
+        forEachCellSpec {
+            it.cell.unbindGameObjects()
+            CellConnections.destroy(it.cell, this)
+        }
+    }
+
+    // These 2 probably don't get called:
+
+    override fun cellConnectionsInsertFreshSuggested() {
+        forEachCellSpec {
+            CellConnections.insertFresh(this, it.cell)
+        }
+    }
+
+    override fun cellBindGameObjectsSuggested() {
+        forEachCellSpec {
+            it.cell.bindGameObjects(listOf(this, it))
+        }
+    }
+
+    private fun getCellSpec(actualCell: Cell): SpecWithCell<*> {
+        val placementId = actualCell.locator.requireLocator(Locators.PLACEMENT_ID) {
+            "actual cell did not have placement ID!"
+        }
+
+        val spec = checkNotNull(specs[placementId]) {
+            "Actual cell had placement id that is not in this container!"
+        }
+
+        check(spec is SpecWithCell<*>) {
+            "Cell had spec that is not a cell spec!"
+        }
+
+        return spec
+    }
+
+    override fun getCells() = specs.values.mapNotNull { (it as? SpecWithCell<*>)?.cell }
+    override fun neighborScan(actualCell: Cell) = getCellSpec(actualCell).neighborScan()
+    override fun onCellConnected(actualCell: Cell, remoteCell: Cell) = getCellSpec(actualCell).onConnected(remoteCell)
+    override fun onCellDisconnected(actualCell: Cell, remoteCell: Cell) = getCellSpec(actualCell).onDisconnected(remoteCell)
+
+    override fun onTopologyChanged() {
+        setSaveDirty()
+    }
+
+    override val manager: CellGraphManager
+        get() = CellGraphManager.getFor(placement.level as? ServerLevel ?: error("Tried to get spec cell graph manager on ${placement.level}"))
 }
 
 class SpecPartRenderer(val specPart: SpecContainerPart) : PartRenderer() {
@@ -856,7 +947,7 @@ class SpecPartRenderer(val specPart: SpecContainerPart) : PartRenderer() {
 
     override fun setupRendering() {
         frameInstance?.delete()
-        frameInstance = createPartInstance(multipart, PartialModels.SPEC_PART_FRAME, specPart, 0.0)
+        //frameInstance = createPartInstance(multipart, PartialModels.SPEC_PART_FRAME, specPart, 0.0)
         multipart.relightModels(frameInstance)
         specPart.bindRenderer(this)
     }
@@ -1477,9 +1568,11 @@ object SpecPreviewRenderer {
 
         clipResult as BlockHitResult
 
-        val specContainer = (level.getBlockEntity(clipResult.blockPos)
+        val part = (level.getBlockEntity(clipResult.blockPos)
             as? MultipartBlockEntity ?: level.getBlockEntity(clipResult.blockPos + clipResult.direction) as? MultipartBlockEntity)
-            ?.getPart(clipResult.direction) as? SpecContainerPart
+            ?.getPart(clipResult.direction)
+
+        val specContainer = part as? SpecContainerPart
 
         val mountingPoint = clipResult.location.cast()
 
@@ -1488,7 +1581,7 @@ object SpecPreviewRenderer {
 
         val snapshot = SpecPlacementOverlayClient.createSnapshot()
 
-        val canPlace = specContainer?.canPlace(player, snapshot.orientation, item.provider) ?: true
+        val canPlace = specContainer?.canPlace(player, snapshot.orientation, item.provider) ?: (part == null && MultipartBlockEntity.isValidSubstrateBlock(level, clipResult.blockPos))
 
         val stack = event.poseStack
 
