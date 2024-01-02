@@ -24,6 +24,7 @@ import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.context.UseOnContext
+import net.minecraft.world.level.Level
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.shapes.BooleanOp
@@ -41,7 +42,6 @@ import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
-import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.cells.foundation.Cell
@@ -62,6 +62,7 @@ import org.lwjgl.glfw.GLFW
 import java.util.*
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.function.Supplier
+import kotlin.collections.HashSet
 import kotlin.math.abs
 
 object SpecGeometry {
@@ -256,16 +257,20 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
             provider
         )
 
-        for (spec in specs.values) {
-            if(spec.placement.orientedBoundingBoxWorld intersectsWith boundingBox) {
-                return true
+        placement.multipart.parts.values.forEach { container ->
+            if(container is SpecContainerPart) {
+                for (spec in container.specs.values) {
+                    if(spec.placement.orientedBoundingBoxWorld intersectsWith boundingBox) {
+                        return true
+                    }
+                }
             }
         }
 
         return false
     }
 
-    fun createSpecPlacementInfo(player: LivingEntity, desiredOrientation: Rotation2d, provider: SpecProvider) : SpecPlacementInfo {
+    private fun createSpecPlacementInfo(player: LivingEntity, desiredOrientation: Rotation2d, provider: SpecProvider) : SpecPlacementInfo {
         val mountingPointWorld = getSpecMountingPointWorld(player)
 
         val id = if(placement.level.isClientSide) {
@@ -328,16 +333,6 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         return true
     }
 
-    fun canPlace(player: LivingEntity, desiredOrientation: Rotation2d, provider: SpecProvider) : Boolean {
-        if(placementCollides(player, desiredOrientation, provider)) {
-            return false
-        }
-
-        val context = createSpecPlacementInfo(player, desiredOrientation, provider)
-
-        return provider.canPlace(context)
-    }
-
     /**
      * Attempts to place a spec.
      * @param isFreshlyPlacedSpecContainer If true, then the placement update shall be dropped.
@@ -346,7 +341,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
      * @return True, if the spec was placed successfully. Otherwise, false.
      * */
     @ServerOnly
-    fun place(
+    fun placeSpec(
         player: LivingEntity,
         desiredOrientation: Rotation2d,
         provider: SpecProvider,
@@ -362,10 +357,6 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         }
 
         val context = createSpecPlacementInfo(player, desiredOrientation, provider)
-
-        if(!provider.canPlace(context)) {
-            return false
-        }
 
         val spec = provider.create(context)
 
@@ -1000,51 +991,45 @@ class SpecPartRenderer(val specPart: SpecContainerPart) : PartRenderer() {
 class SpecItem(val provider: SpecProvider) : PartItem(PartRegistry.SPEC_CONTAINER_PART.part) {
     override fun useOn(pContext: UseOnContext): InteractionResult {
         val player = pContext.player
+            ?: return InteractionResult.FAIL
 
-        if(player == null) {
-            LOG.error("Player null")
-            return InteractionResult.FAIL
+        val level = pContext.level
+        val substratePos = pContext.clickedPos
+        val face = pContext.clickedFace
+        val multipartPos = substratePos + face
+
+        fun getPart() : SpecContainerPart? {
+            val blockEntity = level.getBlockEntity(multipartPos) as? MultipartBlockEntity
+                ?: return null
+
+            return blockEntity.getPart(face) as? SpecContainerPart
         }
 
-        fun getPart() = (pContext.level.getBlockEntity(pContext.clickedPos)
-            as? MultipartBlockEntity ?: pContext.level.getBlockEntity(pContext.clickedPos + pContext.clickedFace) as? MultipartBlockEntity)
-            ?.getPart(pContext.clickedFace) as? SpecContainerPart
-
-        var isNew = false
+        var isNewPart = false
 
         if(getPart() == null) {
             if(pContext.level.isClientSide) {
-                return InteractionResult.SUCCESS
+                return InteractionResult.SUCCESS // Assume it works out
             }
 
-            super.useOn(pContext)
-
-            isNew = true
+            super.useOn(pContext) // Place container part
+            isNewPart = true
         }
 
         val part = getPart()
            ?: return InteractionResult.FAIL
 
-        val overlayState = if(pContext.level.isClientSide) {
-            SpecPlacementOverlayClient.createSnapshot()
-        }
-        else {
-            SpecPlacementOverlayServer.getState(player as ServerPlayer)
-        }
+        val overlayState = SpecPlacementOverlay.getSnapshot(level, player)
 
         fun cleanupNew() {
-            if(isNew) {
+            if(isNewPart) {
                 check(!pContext.level.isClientSide)
-
-                val level = pContext.level as ServerLevel
-                level.destroyPart(part, false)
-
+                (level as ServerLevel).destroyPart(part, false)
                 LOG.debug("destroy new")
             }
         }
 
-        if(!part.canPlace(player, overlayState.orientation, provider)) {
-            LOG.debug("Cannot place")
+        if(part.placementCollides(player, overlayState.orientation, provider)) {
             cleanupNew()
             return InteractionResult.FAIL
         }
@@ -1052,10 +1037,10 @@ class SpecItem(val provider: SpecProvider) : PartItem(PartRegistry.SPEC_CONTAINE
         LOG.debug("Placing")
         
         if(pContext.level.isClientSide) {
-            return InteractionResult.SUCCESS
+            return InteractionResult.SUCCESS // Assume it works out
         }
 
-        if(!part.place(player, overlayState.orientation, provider, isFreshlyPlacedSpecContainer = isNew)) {
+        if(!part.placeSpec(player, overlayState.orientation, provider, isFreshlyPlacedSpecContainer = isNewPart)) {
             LOG.debug("Did not place")
             cleanupNew()
             return InteractionResult.FAIL
@@ -1080,8 +1065,6 @@ abstract class SpecProvider {
     protected abstract fun createCore(context: SpecPlacementInfo) : Spec<*>
 
     abstract val placementCollisionSize: Vector3d
-
-    open fun canPlace(context: SpecPlacementInfo): Boolean = true
 }
 
 open class BasicSpecProvider(
@@ -1530,6 +1513,15 @@ object SpecPlacementOverlayServer {
     }
 }
 
+object SpecPlacementOverlay {
+    fun getSnapshot(level: Level, player: Player) = if(level.isClientSide) {
+        SpecPlacementOverlayClient.createSnapshot()
+    }
+    else {
+        SpecPlacementOverlayServer.getState(player as ServerPlayer)
+    }
+}
+
 @ClientOnly
 object SpecPreviewRenderer {
     private val CAN_PLACE_COLOR = RGBAFloat(0.1f, 1.0f, 0.15f, 0.5f)
@@ -1568,33 +1560,55 @@ object SpecPreviewRenderer {
 
         clipResult as BlockHitResult
 
-        val part = (level.getBlockEntity(clipResult.blockPos)
-            as? MultipartBlockEntity ?: level.getBlockEntity(clipResult.blockPos + clipResult.direction) as? MultipartBlockEntity)
-            ?.getPart(clipResult.direction)
+        val substratePos = clipResult.blockPos
+        val face = clipResult.direction
+        val multipartPos = substratePos + face
 
-        val specContainer = part as? SpecContainerPart
+        val blockEntity = level.getBlockEntity(multipartPos)
+        val specContainer = (blockEntity as? MultipartBlockEntity)?.getPart(face) as? SpecContainerPart
 
         val mountingPoint = clipResult.location.cast()
 
-        val blockPos = clipResult.blockPos
-        val face = clipResult.direction
-
         val snapshot = SpecPlacementOverlayClient.createSnapshot()
 
-        val canPlace = specContainer?.canPlace(player, snapshot.orientation, item.provider) ?: (part == null && MultipartBlockEntity.isValidSubstrateBlock(level, clipResult.blockPos))
+        val canPlace = run {
+            if(blockEntity != null) {
+                if(blockEntity !is MultipartBlockEntity) {
+                    return@run false
+                }
+
+                if(specContainer != null) {
+                    return@run !specContainer.placementCollides(player, snapshot.orientation, item.provider)
+                }
+            }
+
+            if(!MultipartBlockEntity.canPlacePartInSubstrate(level, substratePos, face, item.partProvider.value, player)) {
+                return@run false
+            }
+
+            if(blockEntity != null && (blockEntity as MultipartBlockEntity).placementCollides(player, face, item.partProvider.value)) {
+                return@run false
+            }
+
+            if(!item.partProvider.value.canPlace(level, substratePos, face)) {
+                return@run false
+            }
+
+            return@run true
+        }
 
         val stack = event.poseStack
 
         stack.pushPose()
 
         stack.translate(
-            -event.camera.position.x + blockPos.x.toDouble(),
-            -event.camera.position.y + blockPos.y.toDouble(),
-            -event.camera.position.z + blockPos.z.toDouble()
+            -event.camera.position.x + substratePos.x.toDouble(),
+            -event.camera.position.y + substratePos.y.toDouble(),
+            -event.camera.position.z + substratePos.z.toDouble()
         )
 
         val (dx, dy, dz) = partOffsetTable[face.get3DDataValue()]
-        val (dx1, dy1, dz1) = mountingPoint - (blockPos.toVector3d() + Vector3d(0.5) - face.vector3d * 0.5)
+        val (dx1, dy1, dz1) = mountingPoint - (substratePos.toVector3d() + Vector3d(0.5) - face.vector3d * 0.5)
 
         stack.translate(dx + dx1, dy + dy1, dz + dz1)
 

@@ -534,7 +534,7 @@ abstract class PartProvider {
      * */
     abstract val placementCollisionSize: Vector3d
 
-    open fun canPlace(context: PartPlacementInfo): Boolean = true
+    open fun canPlace(level: Level, substratePos: BlockPos, face: Direction): Boolean = true
 }
 
 /**

@@ -432,7 +432,6 @@ object GridConnectionManagerServer {
         removeEndpointById(endpointId)
     }
 
-    @JvmStatic
     fun clipsBlock(level: ServerLevel, blockPos: BlockPos) : Boolean = invoke(level) {
         clips(blockPos)
     }
@@ -805,7 +804,6 @@ object GridConnectionManagerClient {
         return result
     }
 
-    @JvmStatic
     fun clipsBlock(blockPos: BlockPos) : Boolean {
         var result = false
 
@@ -834,6 +832,18 @@ object GridConnectionManagerClient {
         val blocks = HashSet<BlockPos>()
 
         val isVisual get() = quads.isNotEmpty()
+    }
+}
+
+object GridCollisions {
+    /**
+     * Checks if the grid intersects the voxel at [blockPos].
+     * */
+    @JvmStatic
+    fun collidesBlock(level: Level, blockPos: BlockPos) = if(level.isClientSide) {
+        GridConnectionManagerClient.clipsBlock(blockPos)
+    } else {
+        GridConnectionManagerServer.clipsBlock(level as ServerLevel, blockPos)
     }
 }
 

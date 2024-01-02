@@ -76,7 +76,7 @@ object PartRegistry {
 
     val SPEC_CONTAINER_PART = partAndItem(
         "spec_container",
-        BasicPartProvider(Vector3d(0.9, 0.1, 0.9)) {
+        BasicPartProvider(Vector3d.zero) {
             SpecContainerPart(it)
         }
     ).blacklistCreativeTab()

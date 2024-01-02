@@ -41,11 +41,13 @@ import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.shapes.*
 import org.ageseries.libage.data.requireLocator
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.MultipartBlockEntityInstance
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.content.GridCollisions
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.data.Locators
@@ -256,7 +258,7 @@ class MultipartBlock : BaseEntityBlock(
             if(!pLevel.isClientSide) {
                 pLevel as ServerLevel
 
-                if(MultipartBlockEntity.isValidSubstrateBlock(pLevel, pFromPos)) {
+                if(MultipartBlockEntity.isValidPartSubstrateBlock(pLevel, pFromPos)) {
                     // Replaced substrate (e.g. dirt -> grass)
                     return
                 }
@@ -409,7 +411,9 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     // This is set to TRUE when this block first ticks. We only update the ticker if this is set to true.
     private var worldLoaded = false
 
-    private val parts = HashMap<Direction, Part<*>>()
+    private val partsInternal = HashMap<Direction, Part<*>>()
+
+    val parts: Map<Direction, Part<*>> get() = partsInternal
 
     // Used for part sync:
     private val dirtyParts = HashSet<Direction>()
@@ -426,7 +430,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     private var tickingRemoveQueue = HashSet<TickablePart>()
     private var animationRemoveQueue = HashSet<AnimatedPart>()
 
-    val isEmpty get() = parts.isEmpty()
+    val isEmpty get() = partsInternal.isEmpty()
 
     // Used for rendering:
     @ClientOnly
@@ -439,7 +443,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * Gets the part on the specified [face] or null, if a part does not exist there.
      * */
     fun getPart(face: Direction): Part<*>? {
-        return parts[face]
+        return partsInternal[face]
     }
 
     /**
@@ -447,7 +451,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * Throws if a part already exists on that face.
      * */
     private fun addPart(face: Direction, part: Part<*>) {
-        parts.putUnique(face, part)
+        partsInternal.putUnique(face, part)
         part.onAdded()
     }
 
@@ -456,7 +460,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * @return The removed part or null, if there is no part on [face].
      * */
     private fun removePart(face: Direction): Part<*>? {
-        val result = parts.remove(face)
+        val result = partsInternal.remove(face)
             ?: return null
 
         tickingParts.removeIf { it == result }
@@ -499,7 +503,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     fun pickPart(entity: LivingEntity) = clipScene(
         entity,
         { it.first },
-        parts.values.flatMap { part ->
+        partsInternal.values.flatMap { part ->
             part.worldShapeParts.map { aabb ->
                 Pair(aabb, part)
             }
@@ -510,7 +514,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * Checks if placement of this part collides with an existing part.
      * */
     fun placementCollides(entity: Player, face: Direction, provider: PartProvider) : Boolean {
-        if(parts.containsKey(face)) {
+        if(partsInternal.containsKey(face)) {
             return true
         }
 
@@ -521,7 +525,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             pos
         )
 
-        return parts.values.any { part ->
+        return partsInternal.values.any { part ->
             part.worldBoundingBox.intersects(worldBoundingBox)
         }
     }
@@ -545,13 +549,17 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
 
         val level = entity.level() as ServerLevel
 
-        if (parts.containsKey(face)) {
+        if (partsInternal.containsKey(face)) {
             return false
         }
 
         val neighborPos = pos - face
-        if (!isValidSubstrateBlock(level, neighborPos)) {
+        if (!isValidPartSubstrateBlock(level, neighborPos)) {
             LOG.debug("Cannot place on non-full block")
+            return false
+        }
+
+        if (!provider.canPlace(level, neighborPos, face)) {
             return false
         }
 
@@ -574,15 +582,11 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             placementContext.position
         )
 
-        val collides = parts.values.any { part ->
+        val collides = partsInternal.values.any { part ->
             part.worldBoundingBox.intersects(worldBoundingBox)
         }
 
         if (collides) {
-            return false
-        }
-
-        if (!provider.canPlace(placementContext)) {
             return false
         }
 
@@ -656,7 +660,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * */
     @ServerOnly
     fun breakPart(part: Part<*>, saveTag: CompoundTag? = null) {
-        require(parts.values.contains(part)) {
+        require(partsInternal.values.contains(part)) {
             "Tried to break part $part which was not present"
         }
 
@@ -695,7 +699,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         val direction = neighborPos.directionTo(pos)
             ?: return null
 
-        val part = parts[direction]
+        val part = partsInternal[direction]
 
         if (part != null) {
             breakPart(part, saveTag)
@@ -717,7 +721,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     fun rebuildCollider() {
         collisionShape = Shapes.empty()
 
-        parts.values.forEach { part ->
+        partsInternal.values.forEach { part ->
             collisionShape = Shapes.joinUnoptimized(collisionShape, part.modelShape, BooleanOp.OR)
         }
 
@@ -738,7 +742,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         val tag = CompoundTag()
         saveParts(tag, SaveType.ClientData)
 
-        parts.values.forEach {
+        partsInternal.values.forEach {
             it.onSyncSuggested()
         }
 
@@ -764,7 +768,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
 
         loadParts(tag, SaveType.ClientData)
 
-        parts.values.forEach { part ->
+        partsInternal.values.forEach { part ->
             clientAddPart(part)
         }
 
@@ -834,7 +838,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         val partUpdatesTag = ListTag()
 
         dirtyParts.forEach { face ->
-            val part = parts[face]
+            val part = partsInternal[face]
 
             if (part == null) {
                 LOG.debug("Multipart at {} part {} requested update, but was null", pos, face)
@@ -892,7 +896,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
                     val newPartTag = updateTag.get("NewPart") as CompoundTag
                     val part = unpackPart(newPartTag, SaveType.ClientData)
 
-                    if (parts.put(part.placement.face, part) != null) {
+                    if (partsInternal.put(part.placement.face, part) != null) {
                         LOG.error("Client received new part, but a part was already present on the ${part.placement.face} face!")
                     }
 
@@ -925,7 +929,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
 
             val face = compound.getDirection("Face")
 
-            val part = parts[face]
+            val part = partsInternal[face]
 
             if (part == null) {
                 LOG.error("Multipart at $pos received update on $face, but part is null!")
@@ -1000,7 +1004,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             if (this.savedTag != null) {
                 loadParts(savedTag!!, SaveType.ServerData)
 
-                parts.values.forEach { part ->
+                partsInternal.values.forEach { part ->
                     part.onLoaded()
                 }
 
@@ -1022,7 +1026,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     override fun onChunkUnloaded() {
         super.onChunkUnloaded()
 
-        parts.values.forEach { part ->
+        partsInternal.values.forEach { part ->
             part.onUnloaded()
         }
     }
@@ -1065,7 +1069,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
 
         val partsTag = ListTag()
 
-        parts.values.forEach { part ->
+        partsInternal.values.forEach { part ->
             partsTag.add(savePartCommon(part, type))
         }
 
@@ -1136,7 +1140,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     override fun getCells(): ArrayList<Cell> {
         val results = ArrayList<Cell>()
 
-        parts.values.forEach { part ->
+        partsInternal.values.forEach { part ->
             if (part is PartWithCell<*>) {
                 results.add(part.cell)
             }
@@ -1152,7 +1156,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     override fun neighborScan(actualCell: Cell): List<CellAndContainerHandle> {
         val partFace = actualCell.locator.requireLocator(Locators.FACE)
 
-        val results = when (val part = parts[partFace]!!) {
+        val results = when (val part = partsInternal[partFace]!!) {
             is PartWithCell<*> -> {
                 val values = LinkedHashSet<CellAndContainerHandle>()
 
@@ -1164,7 +1168,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
 
                         val innerFace = searchDirection.opposite
 
-                        val innerPart = parts[innerFace]
+                        val innerPart = partsInternal[innerFace]
                             ?: return
 
                         if (innerPart !is PartWithCell<*>) {
@@ -1227,7 +1231,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     override fun onCellConnected(actualCell: Cell, remoteCell: Cell) {
         val innerFace = actualCell.locator.requireLocator(Locators.FACE)
 
-        when(val part = parts[innerFace]) {
+        when(val part = partsInternal[innerFace]) {
             is PartWithCell<*> -> {
                 part.onConnected(remoteCell)
                 part.onConnectivityChanged()
@@ -1245,7 +1249,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     }
 
     override fun onCellDisconnected(actualCell: Cell, remoteCell: Cell) {
-        when(val part = parts[actualCell.locator.requireLocator(Locators.FACE)]) {
+        when(val part = partsInternal[actualCell.locator.requireLocator(Locators.FACE)]) {
             is PartWithCell<*> -> {
                 part.onDisconnected(remoteCell)
                 if (part.hasCell && !part.cell.isBeingRemoved) {
@@ -1283,7 +1287,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * We use this to send the current parts to the renderer.
      * */
     fun bindRenderer(instance: MultipartBlockEntityInstance) {
-        parts.values.forEach { part ->
+        partsInternal.values.forEach { part ->
             renderUpdates.add(PartUpdate(part, PartUpdateType.Add))
         }
     }
@@ -1297,7 +1301,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             error("Illegal ticker add before level is available")
         }
 
-        if (!parts.values.any { it == part }) {
+        if (!partsInternal.values.any { it == part }) {
             error("Cannot register ticker for a part that is not added!")
         }
 
@@ -1329,7 +1333,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     fun addAnimated(part: AnimatedPart): Boolean {
         requireIsOnRenderThread { "Tried to add part $part as animate on ${Thread.currentThread()}" }
 
-        if (!parts.values.any { it == part }) {
+        if (!partsInternal.values.any { it == part }) {
             error("Cannot register animate for a part that is not added!")
         }
 
@@ -1364,9 +1368,50 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             DEFAULT_HORIZONTAL_FACING
         }
 
-        fun isValidSubstrateBlock(pLevel: Level, substratePos: BlockPos) = pLevel.getBlockState(substratePos).let {
+        fun isValidPartSubstrateBlock(pLevel: Level, substratePos: BlockPos) = pLevel.getBlockState(substratePos).let {
             !it.isAir && it.isCollisionShapeFullBlock(pLevel, substratePos)
         }
+
+        /**
+         * Checks if the part can be placed in the substrate. This does not check collisions with existing parts or if the provider allows the placement.
+         * It merely checks if:
+         * - the substrate is valid (can support the part)
+         * - the grid doesn't collide with the part, if it were to be placed there
+         * - there isn't some other block there
+         *
+         * @return True, if the part could be placed there. This implies that a multipart already exists there or can be placed.
+         * */
+        fun canPlacePartInSubstrate(level: Level, substratePos: BlockPos, facingDirection: FacingDirection, face: Direction, size: Vector3d) : Boolean {
+            if (!isValidPartSubstrateBlock(level, substratePos)) {
+                return false
+            }
+
+            val multipartPos = substratePos + face
+            val blockEntity = level.getBlockEntity(multipartPos)
+
+            if (blockEntity == null) {
+                val state = level.getBlockState(multipartPos)
+
+                if(!state.isAir && !state.`is`(Blocks.WATER)) {
+                    return false
+                }
+            }
+            else {
+                if(blockEntity !is MultipartBlockEntity) {
+                    return false
+                }
+            }
+
+            return !GridCollisions.collidesBlock(level, multipartPos)
+        }
+
+        fun canPlacePartInSubstrate(level: Level, substratePos: BlockPos, face: Direction, provider: PartProvider, player: Player) : Boolean = MultipartBlockEntity.canPlacePartInSubstrate(
+            level,
+            substratePos,
+            getHorizontalFacing(face, player),
+            face,
+            provider.placementCollisionSize
+        )
 
         fun <T : BlockEntity> serverTick(level: Level?, pos: BlockPos?, state: BlockState?, entity: T?) {
             if (entity !is MultipartBlockEntity) {
