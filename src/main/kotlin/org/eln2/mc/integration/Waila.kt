@@ -68,7 +68,7 @@ class Eln2WailaPlugin : IWailaPlugin {
                 val part = blockEntity.pickPart(p1.player)
 
                 if(part is SpecContainerPart) {
-                    return part.pickSpec(p1.player) as? T
+                    return part.pickSpec(p1.player)?.second as? T
                 }
 
                 return part as? T

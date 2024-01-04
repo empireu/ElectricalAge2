@@ -10,12 +10,67 @@ import org.ageseries.libage.data.LocatorShardDefinition
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.electrical.mna.NEGATIVE
 import org.ageseries.libage.sim.electrical.mna.POSITIVE
+import org.eln2.mc.common.network.serverToClient.getBlockPos
+import org.eln2.mc.common.network.serverToClient.putBlockPos
 import org.eln2.mc.common.parts.foundation.getPartConnectionOrNull
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.FacingDirection
 import java.nio.ByteBuffer
+import java.util.UUID
+
+class SortedUUIDPair private constructor(val a: UUID, val b: UUID) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as SortedUUIDPair
+
+        if (a != other.a) return false
+        if (b != other.b) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = a.hashCode()
+        result = 31 * result + b.hashCode()
+        return result
+    }
+
+    companion object {
+        fun write(pair: SortedUUIDPair, buffer: ByteBuffer) {
+            val a = pair.a
+            buffer.putLong(a.mostSignificantBits)
+            buffer.putLong(a.leastSignificantBits)
+
+            val b = pair.b
+            buffer.putLong(b.mostSignificantBits)
+            buffer.putLong(b.leastSignificantBits)
+        }
+
+        fun read(buffer: ByteBuffer) : SortedUUIDPair {
+            val a = UUID(buffer.getLong(), buffer.getLong())
+            val b = UUID(buffer.getLong(), buffer.getLong())
+
+            return SortedUUIDPair(a, b)
+        }
+
+        fun create(a: UUID, b: UUID) : SortedUUIDPair {
+            require(a != b) {
+                "Duplicate UUID pair"
+            }
+
+            return if(a < b) {
+                SortedUUIDPair(a, b)
+            }
+            else {
+                SortedUUIDPair(b, a)
+            }
+        }
+    }
+}
 
 object Locators : LocatorDispatcher<Locators>() {
     private fun writeInt(int: Int, buffer: ByteBuffer) { buffer.putInt(int) }
@@ -48,6 +103,16 @@ object Locators : LocatorDispatcher<Locators>() {
         buffer.putDouble(vector3d.z)
     }
 
+    private fun writeBlockPair(pair: Pair<BlockPos, BlockPos>, buffer: ByteBuffer) {
+        buffer.putBlockPos(pair.first)
+        buffer.putBlockPos(pair.second)
+    }
+
+    private fun readBlockPair(buffer: ByteBuffer) = Pair(
+        buffer.getBlockPos(),
+        buffer.getBlockPos()
+    )
+
     private fun readVector3d(buffer: ByteBuffer) = Vector3d(
         buffer.getDouble(),
         buffer.getDouble(),
@@ -57,7 +122,7 @@ object Locators : LocatorDispatcher<Locators>() {
     val BLOCK = register<BlockPos>(
         ::writeBlockPos,
         ::readBlockPos,
-        3 * 4
+        12
     )
 
     val FACE = register<Direction>(
@@ -75,13 +140,25 @@ object Locators : LocatorDispatcher<Locators>() {
     val MOUNTING_POINT = register<Vector3d>(
         ::writeVector3d,
         ::readVector3d,
-        3 * 8
+        24
     )
 
     val PLACEMENT_ID = register<Int>(
         ::writeInt,
         ::readInt,
         4
+    )
+
+    val GRID_ENDPOINT_PAIR = register<SortedUUIDPair>(
+        SortedUUIDPair::write,
+        SortedUUIDPair::read,
+        32
+    )
+
+    val BLOCK_RANGE = register<Pair<BlockPos, BlockPos>>(
+        ::writeBlockPair,
+        ::readBlockPair,
+        24
     )
 }
 

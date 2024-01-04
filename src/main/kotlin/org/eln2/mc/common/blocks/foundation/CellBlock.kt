@@ -78,6 +78,12 @@ abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirection
 open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetType: BlockEntityType<*>) : BlockEntity(targetType, pos, state), CellContainer {
     open val cellFace = Direction.UP
 
+    val locator = Locators.buildLocator {
+        it.put(BLOCK, blockPos)
+        it.put(FACE, cellFace)
+        it.put(FACING, blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing())
+    }
+
     private lateinit var graphManager: CellGraphManager
     private lateinit var cellProvider: CellProvider<C>
     private lateinit var savedGraphID: UUID
@@ -89,7 +95,7 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
     @ServerOnly
     val cell: C get() = cellField ?: error("Tried to get cell too early! $this")
 
-    fun setPlacedBy(level: Level, cellProvider: CellProvider<C>) {
+    open fun setPlacedBy(level: Level, cellProvider: CellProvider<C>) {
         this.cellProvider = cellProvider
 
         if (level.isClientSide) {
@@ -98,12 +104,7 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
 
         // Create the cell based on the provider.
 
-        val cellPos = createCellLocator()
-
-        cellField = cellProvider.create(
-            cellPos,
-            CellEnvironment.evaluate(level, cellPos)
-        )
+        cellField = cellProvider.create(locator, CellEnvironment.evaluate(level, locator))
 
         cell.container = this
 
@@ -198,7 +199,7 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
             // fetch cell instance
             println("Loading cell at location $blockPos")
 
-            cellField = graph.getCellByLocator(createCellLocator()) as C
+            cellField = graph.getCellByLocator(locator) as C
 
             cellProvider = CellRegistry.getCellProvider(cell.id) as CellProvider<C>
             cell.container = this
@@ -212,12 +213,6 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
     protected open fun onCellAcquired() { }
 
     //#endregion
-
-    private fun createCellLocator() = Locators.buildLocator {
-        it.put(BLOCK, blockPos)
-        it.put(FACE, cellFace)
-        it.put(FACING, blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing())
-    }
 
     override fun getCells(): ArrayList<Cell> {
         return arrayListOf(cell)

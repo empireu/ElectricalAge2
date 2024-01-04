@@ -10,6 +10,7 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.saveddata.SavedData
 import net.minecraftforge.server.ServerLifecycleHooks
+import net.minecraft.core.BlockPos
 import org.ageseries.libage.data.*
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Simulator
@@ -33,6 +34,7 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
+import kotlin.collections.ArrayList
 import kotlin.collections.HashSet
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
@@ -70,17 +72,30 @@ class TrackedSubscriberCollection(private val underlyingCollection: SubscriberCo
 data class CellEnvironment(val ambientTemperature: Quantity<Temperature>) {
     companion object {
         fun evaluate(level: Level, pos: Locator): CellEnvironment {
-            val position = pos.requireLocator(Locators.BLOCK) {
-                "Biome Environments need a block pos locator"
+            val positions : Iterable<BlockPos> = if(pos.has(Locators.BLOCK)) {
+                listOf(pos.requireLocator(Locators.BLOCK))
+            }
+            else if(pos.has(Locators.BLOCK_RANGE)) {
+                val (a, b) = pos.requireLocator(Locators.BLOCK_RANGE)
+                BlockPos.betweenClosed(a, b)
+            }
+            else {
+                error("Locator $pos is not enough for environment")
             }
 
-            val biome = level.getBiome(position).value()
+            val average = Average()
 
-            val temperature = Datasets
-                .MINECRAFT_TEMPERATURE_CELSIUS
-                .evaluate(biome.baseTemperature.toDouble())
+            positions.forEach {
+                val biome = level.getBiome(it).value()
 
-            return CellEnvironment(Quantity(temperature, CELSIUS))
+                val temperature = Datasets
+                    .MINECRAFT_TEMPERATURE_CELSIUS
+                    .evaluate(biome.baseTemperature.toDouble())
+
+                average.add(temperature)
+            }
+
+            return CellEnvironment(Quantity(average.value, CELSIUS))
         }
     }
 }
@@ -141,6 +156,8 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     }
 
     constructor(ci: CellCreateInfo) : this(ci.locator, ci.id, ci.environment)
+
+    open fun beginDestroy() { }
 
     val uniqueCellId = ID_ATOMIC.getAndIncrement()
 
@@ -532,6 +549,8 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
         objects.forEachObject { it.clear() }
     }
 
+    open fun buildStarted() { }
+
     /**
      * Called when the solver is being built, in order to record all object-object connections.
      * */
@@ -626,6 +645,7 @@ object CellConnections {
      * Removes a cell from the graph. It may cause topological changes to the graph, as outlined in the top document.
      * */
     fun destroy(cellInfo: Cell, container: CellContainer) {
+        cellInfo.beginDestroy()
         disconnectCell(cellInfo, container)
         cellInfo.destroy()
     }
@@ -1001,11 +1021,60 @@ inline fun wrappedCellScan(
 interface CellContainer {
     fun getCells(): List<Cell>
     fun neighborScan(actualCell: Cell): List<CellAndContainerHandle>
-    fun onCellConnected(actualCell: Cell, remoteCell: Cell)
-    fun onCellDisconnected(actualCell: Cell, remoteCell: Cell)
-    fun onTopologyChanged()
+    fun onCellConnected(actualCell: Cell, remoteCell: Cell) {}
+    fun onCellDisconnected(actualCell: Cell, remoteCell: Cell) {}
+    fun onTopologyChanged() {}
 
     val manager: CellGraphManager
+}
+
+class StagingCellContainer(val level: ServerLevel) : CellContainer {
+    val cells = HashSet<Cell>()
+    val neighbors = HashSet<Cell>()
+
+    override fun getCells() = cells.toList()
+    override fun neighborScan(actualCell: Cell) = neighbors.map { CellAndContainerHandle.captureInScope(it) }
+
+    override val manager = CellGraphManager.getFor(level)
+
+    companion object {
+        class FakeCellStage<T : Cell>(level: ServerLevel, val provider: CellProvider<T>) {
+            private val container = StagingCellContainer(level)
+            private var staged = false
+
+            private fun validateUsage() {
+                check(!staged) {
+                    "Already staged"
+                }
+            }
+
+            fun withNeighbor(cell: Cell) : FakeCellStage<T> {
+                validateUsage()
+
+                require(container.neighbors.add(cell)) {
+                    "Duplicate neighbor $cell"
+                }
+
+                return this
+            }
+
+            fun stage(locator: Locator, environment: CellEnvironment) : T {
+                validateUsage()
+                staged = true
+
+                val cell = provider.create(locator, environment)
+                cell.container = container
+                CellConnections.insertFresh(container, cell)
+
+                cell.onContainerUnloading()
+                cell.container = null
+                cell.onContainerUnloaded()
+                cell.unbindGameObjects()
+
+                return cell
+            }
+        }
+    }
 }
 
 /**
@@ -1262,6 +1331,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         validateMutationAccess()
 
         cells.forEach { it.clearObjectConnections() }
+        cells.forEach { it.buildStarted() }
         cells.forEach { it.recordObjectConnections() }
 
         val circuitBuilders = realizeElectrical()
@@ -1485,11 +1555,11 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
 
             cell.connections.forEach { conn ->
                 val connectionCompound = CompoundTag()
-                connectionCompound.putLocatorSet(NBT_POSITION, conn.locator)
+                connectionCompound.putLocator(NBT_POSITION, conn.locator)
                 connectionsTag.add(connectionCompound)
             }
 
-            cellTag.putLocatorSet(NBT_POSITION, cell.locator)
+            cellTag.putLocator(NBT_POSITION, cell.locator)
             cellTag.putString(NBT_ID, cell.id.toString())
             cellTag.put(NBT_CONNECTIONS, connectionsTag)
 
@@ -1575,7 +1645,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
 
             cellListTag.forEach { cellNbt ->
                 val cellCompound = cellNbt as CompoundTag
-                val pos = cellCompound.getLocatorSet(NBT_POSITION)
+                val pos = cellCompound.getLocator(NBT_POSITION)
                 val cellId = ResourceLocation.tryParse(cellCompound.getString(NBT_ID))!!
 
                 val connectionPositions = ArrayList<Locator>()
@@ -1583,7 +1653,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
 
                 connectionsTag.forEach {
                     val connectionCompound = it as CompoundTag
-                    val connectionPos = connectionCompound.getLocatorSet(NBT_POSITION)
+                    val connectionPos = connectionCompound.getLocator(NBT_POSITION)
                     connectionPositions.add(connectionPos)
                 }
 

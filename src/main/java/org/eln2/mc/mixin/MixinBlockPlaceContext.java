@@ -2,7 +2,7 @@ package org.eln2.mc.mixin;
 
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
-import org.eln2.mc.common.content.GridCollisions;
+import org.eln2.mc.common.GridCollisions;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;

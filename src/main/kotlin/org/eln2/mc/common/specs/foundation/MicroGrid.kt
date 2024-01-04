@@ -2,6 +2,8 @@ package org.eln2.mc.common.specs.foundation
 
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.RenderType
+import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.network.chat.Component
@@ -14,6 +16,9 @@ import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.HorizontalDirectionalBlock
+import net.minecraft.world.level.block.entity.BlockEntityType
+import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraftforge.client.event.RenderHighlightEvent
@@ -22,28 +27,33 @@ import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Ray3d
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Vector3d
-import org.ageseries.libage.utils.addUnique
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.RGBAFloat
 import org.eln2.mc.client.render.foundation.eln2SubmitOBBAtLevelStage
+import org.eln2.mc.common.*
+import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.content.*
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.common.parts.foundation.PartRenderer
+import org.eln2.mc.data.Notifier
 import org.eln2.mc.extensions.*
+import org.eln2.mc.mathematics.toHorizontalFacing
 import java.util.*
 import java.util.function.Supplier
+import kotlin.collections.ArrayList
 import kotlin.collections.HashMap
+import kotlin.collections.HashSet
 import kotlin.math.*
 
 /**
- * Holds a reference to a [MicroGridTerminal].
+ * Holds a reference to a [MicroGridTerminalCommon].
  * @param terminal The terminal to handle.
  * */
-abstract class MicroGridTerminalHandle(val terminal: MicroGridTerminal) {
+abstract class MicroGridTerminalHandle(val terminal: MicroGridTerminalCommon) {
     /**
      * Checks if the container handling this terminal is the same as the container handling [other].
      * */
@@ -56,21 +66,22 @@ abstract class MicroGridTerminalHandle(val terminal: MicroGridTerminal) {
     }
 
     /**
-     * Used to store all information necessary to get the [MicroGridTerminal] from the world at a later time.
-     * This is how [MicroGridTerminal] edges are meant to be stored long-term.
-     * A reference to [MicroGridTerminal] should not be stored directly; usually, the [MicroGridTerminal] will reference its game object and will keep it in-scope, even though it shouldn't (e.g. the chunk gets unloaded).
+     * Used to store all information necessary to get the [MicroGridTerminalCommon] from the world at a later time.
+     * This is how [MicroGridTerminalCommon] edges are meant to be stored long-term.
+     * A reference to [MicroGridTerminalCommon] should not be stored directly; usually, the [MicroGridTerminalCommon] will reference its game object and will keep it in-scope, even though it shouldn't (e.g. the chunk gets unloaded).
      * */
     abstract fun toNbt() : CompoundTag
 
     enum class Type {
         Spec,
-        Part
+        Part,
+        BlockEntity
     }
 
     /**
      * Handle for a [MicroGridNode] implemented by a [MicroGridSpec].
      * */
-    class SpecHandle(terminal: MicroGridTerminal, val part: SpecContainerPart, val spec: MicroGridSpec<*>) : MicroGridTerminalHandle(terminal) {
+    class SpecHandle(terminal: MicroGridTerminalCommon, val part: SpecContainerPart, val spec: MicroGridSpec<*>) : MicroGridTerminalHandle(terminal) {
         override fun toNbt(): CompoundTag {
             val tag = CompoundTag()
 
@@ -85,7 +96,7 @@ abstract class MicroGridTerminalHandle(val terminal: MicroGridTerminal) {
         }
     }
 
-    class PartHandle(terminal: MicroGridTerminal, val part: MicroGridCellPart<*, *>) : MicroGridTerminalHandle(terminal) {
+    class PartHandle(terminal: MicroGridTerminalCommon, val part: MicroGridCellPart<*, *>) : MicroGridTerminalHandle(terminal) {
         override fun toNbt(): CompoundTag {
             val tag = CompoundTag()
 
@@ -93,6 +104,19 @@ abstract class MicroGridTerminalHandle(val terminal: MicroGridTerminal) {
             tag.putBlockPos(BLOCK_POS, part.placement.position)
             tag.putDirection(FACE, part.placement.face)
             tag.putUUID(CONTAINER_ID, part.containerID)
+            tag.putUUID(ENDPOINT_ID, terminal.gridEndpointInfo.id)
+
+            return tag
+        }
+    }
+
+    class BlockEntityHandle(terminal: MicroGridTerminalCommon, val blockEntity: MicroGridCellBlockEntity<*>) : MicroGridTerminalHandle(terminal) {
+        override fun toNbt(): CompoundTag {
+            val tag = CompoundTag()
+
+            tag.putInt(TYPE, Type.BlockEntity.ordinal)
+            tag.putBlockPos(BLOCK_POS, blockEntity.blockPos)
+            tag.putUUID(CONTAINER_ID, blockEntity.containerID)
             tag.putUUID(ENDPOINT_ID, terminal.gridEndpointInfo.id)
 
             return tag
@@ -155,7 +179,23 @@ abstract class MicroGridTerminalHandle(val terminal: MicroGridTerminal) {
                     val terminal = part.getTerminalByEndpointID(tag.getUUID(ENDPOINT_ID))
                         ?: return null
 
-                    PartHandle(terminal, part,)
+                    PartHandle(terminal, part)
+                }
+
+                Type.BlockEntity -> {
+                    val pos = tag.getBlockPos(BLOCK_POS)
+
+                    val blockEntity = pLevel.getBlockEntity(pos) as? MicroGridCellBlockEntity<*>
+                        ?: return null
+
+                    if(blockEntity.containerID != tag.getUUID(CONTAINER_ID)) {
+                        return null
+                    }
+
+                    val terminal = blockEntity.getTerminalByEndpointID(tag.getUUID(ENDPOINT_ID))
+                        ?: return null
+
+                    BlockEntityHandle(terminal, blockEntity)
                 }
             }
         }
@@ -193,7 +233,14 @@ abstract class MicroGridTerminalHandle(val terminal: MicroGridTerminal) {
                 ?: return null
 
             if(targetBlockEntity !is MultipartBlockEntity) {
-                return null
+                if(targetBlockEntity !is MicroGridCellBlockEntity<*>) {
+                    return null
+                }
+
+                val terminal = targetBlockEntity.pickTerminal(pPlayer)
+                    ?: return null
+
+                return BlockEntityHandle(terminal, targetBlockEntity)
             }
 
             val part = targetBlockEntity.pickPart(pPlayer)
@@ -226,8 +273,8 @@ abstract class MicroGridTerminalHandle(val terminal: MicroGridTerminal) {
 }
 
 /**
- * Holds information about a remote [MicroGridTerminal].
- * @param endpointInfo The [MicroGridTerminal.gridEndpointInfo] of the remote terminal.
+ * Holds information about a remote [MicroGridTerminalCommon].
+ * @param endpointInfo The [MicroGridTerminalCommon.gridEndpointInfo] of the remote terminal.
  * @param snapshot A capture of the remote terminal, that can be restored to fetch the terminal from the world.
  * */
 data class MicroGridRemote(val endpointInfo: GridEndpointInfo, val snapshot: CompoundTag)
@@ -250,78 +297,200 @@ fun MicroGridConnectionDescription.capture() = MicroGridRemote(handle.terminal.g
  * Terminal (connection point) for *micro-grid connections*.
  * Usually managed by a game object.
  * */
-interface MicroGridTerminal {
-    /**
-     * Gets the endpoint information that describes this terminal.
-     * **Must return the same value every time!**
-     * */
-    val gridEndpointInfo: GridEndpointInfo
-
-    /**
-     * Checks if the terminal has a connection with the remote end point with id [endpointID].
-     * @return True, if a connection with [endpointID] exists. Otherwise, false.
-     * */
-    fun hasConnectionWith(endpointID: UUID): Boolean
-
-    /**
-     * Adds a connection to the terminal described by [info].
-     * This will be called once per remote.
-     * It is recommended to validate that with an exception.
-     * */
-    fun addConnection(info: MicroGridConnectionDescription)
-
-    /**
-     * Removes the connection to the remote end point with id [remoteEndpointID].
-     * This will be called once per remote, and only for remotes that are known to be connected to this terminal.
-     * It is recommended to validate that with an exception.
-     * */
-    fun removeConnection(remoteEndpointID: UUID)
-
-    /**
-     * Called on some primary terminal when a connection is being made between two terminals.
-     * Called after the edge sets of both terminals have been updated.
-     * */
-    fun primaryStageConnect() {}
-
-    /**
-     * Called when a terminal is being destroyed.
-     * Called after the edge sets of both terminals have been updated.
-     * */
-    fun primaryStageDestroy() {}
-
-    fun getServerSaveTag(): CompoundTag? = null
-    fun getClientSaveTag(): CompoundTag? = null
-
-    /**
-     * Called when the game object is destroyed. This should clean up the edges from the remotes and any rendering-related stuff.
-     * */
-    fun destroy()
+abstract class MicroGridTerminalCommon(
+    val gridTerminalSystem: GridTerminalSystem,
+    val terminalID: Int,
+    uuid: UUID,
+    locator: Locator,
+    attachment: Vector3d
+) {
+    val gridEndpointInfo = GridEndpointInfo(uuid, attachment, locator)
 
     /**
      * Gets the closest point of intersection with [ray].
      * @return The point of intersection or null, if no intersection occurs.
      * */
-    fun intersect(ray: Ray3d) : Vector3d?
+    abstract fun intersect(ray: Ray3d) : Vector3d?
+
+    open fun destroy() { }
+}
+
+abstract class MicroGridTerminalClient(
+    ci: TerminalCreateInfoClient,
+    locator: Locator,
+    attachment: Vector3d
+) : MicroGridTerminalCommon(
+    ci.gridTerminalSystem,
+    ci.terminalID,
+    ci.uuid,
+    locator,
+    attachment
+)
+{
+    init {
+        require(ci.level.isClientSide) {
+            "Client terminal is illegal on server!"
+        }
+    }
+}
+
+abstract class MicroGridTerminalServer(
+    ci: TerminalCreateInfoServer,
+    locator: Locator,
+    attachment: Vector3d,
+) : MicroGridTerminalCommon(
+    ci.gridTerminalSystem,
+    ci.terminalID,
+    ci.uuid,
+    locator,
+    attachment
+) {
+    val categories = HashSet<GridMaterialCategory>()
+
+    val connectionsChanged = Notifier()
+
+    val level = ci.level
+    val remoteEndPoints = HashMap<MicroGridRemote, GridConnectionDescription>()
+
+    /**
+     * Deserializes the connections from the tag, if on the server side.
+     * */
+    init {
+        if(ci.serverTag != null) {
+            val list = ci.serverTag.getListTag(ENDPOINTS)
+
+            list.forEachCompound { endpointCompound ->
+                val info = GridEndpointInfo.fromNbt(endpointCompound.getCompound(INFO))
+                val snapshot = endpointCompound.getCompound(SNAPSHOT)
+                val material = GridMaterials.getMaterial(endpointCompound.getResourceLocation(MATERIAL))
+                val resistance = endpointCompound.getDouble(RESISTANCE)
+
+                val endpoint = MicroGridRemote(info, snapshot)
+                val description = GridConnectionDescription(material, resistance)
+
+                remoteEndPoints.putUnique(endpoint, description)
+
+                initializeEdge(endpoint.endpointInfo, description)
+            }
+        }
+    }
+
+    protected open fun initializeEdge(remoteInfo: GridEndpointInfo, description: GridConnectionDescription) {
+        GridConnectionManagerServer.createPairIfAbsent(
+            level,
+            GridEndpointPair.create(this.gridEndpointInfo, remoteInfo),
+            description.material
+        )
+    }
+
+    fun hasConnectionWith(endpointID: UUID) = remoteEndPoints.keys.any {
+        it.endpointInfo.id == endpointID
+    }
+
+    private var stagingInfo: MicroGridConnectionDescription? = null
+
+    open fun beginConnectStaging(info: MicroGridConnectionDescription) {
+        check(stagingInfo == null)
+        this.stagingInfo = info
+    }
+
+    /**
+     * Adds a connection by capturing the state of the handle (does not hold a reference to the remote game object).
+     * Only legal on the server.
+     * Throws an exception if a connection with the same ID exists.
+     * */
+    @ServerOnly
+    open fun addConnection() {
+        requireIsOnServerThread {
+            "Cannot add connection on non-server"
+        }
+
+        val info = checkNotNull(stagingInfo)
+
+        requireNotNull(!remoteEndPoints.keys.any { it.endpointInfo.id == info.handle.terminal.gridEndpointInfo.id }) {
+            "Duplicate connection with id ${info.handle.terminal.gridEndpointInfo.id}"
+        }
+
+        remoteEndPoints.putUnique(info.capture(), info.description)
+    }
+
+    open fun endConnectStaging() {
+        checkNotNull(this.stagingInfo)
+        this.stagingInfo = null
+        connectionsChanged.run()
+    }
+
+    /**
+     * Removes a connection.
+     * Only legal on the server.
+     * Throws an exception if no connection with [remoteEndpointID] exists.
+     * */
+    @ServerOnly
+    fun removeConnection(remoteEndpointID: UUID) {
+        requireIsOnServerThread {
+            "Cannot remove connection on non-server"
+        }
+
+        val key = requireNotNull(remoteEndPoints.keys.firstOrNull { it.endpointInfo.id == remoteEndpointID }) {
+            "Did not have expected connection"
+        }
+
+        remoteEndPoints.remove(key)
+        connectionsChanged.run()
+    }
+
+    /**
+     * Destroys this terminal. Valid to call from both sides.
+     * On the server, it restores the handles to the remote terminals and removes the edge, and also destroys the edges from [GridConnectionManagerServer].
+     * */
+    override fun destroy() {
+        requireIsOnServerThread {
+            "destroyTerminal is illegal to call on non-server"
+        }
+
+        val remotes = remoteEndPoints.keys.toList()
+        remoteEndPoints.clear()
+
+        val handles = remotes.mapNotNull {
+            val result = MicroGridTerminalHandle.restoreImmediate(level, it.snapshot)
+
+            if(result == null) {
+                LOG.warn("Failed to restore end point") // not as severe, may happen
+            }
+
+            result
+        }
+
+        handles.forEach {
+            destroyForRemote(it)
+        }
+
+        GridConnectionManagerServer.removeEndpointById(level, gridEndpointInfo.id)
+    }
+
+    protected open fun destroyForRemote(remote: MicroGridTerminalHandle) {
+        (remote.terminal as MicroGridTerminalServer).removeConnection(gridEndpointInfo.id)
+    }
+
+    open fun getServerSaveTag(): CompoundTag? = null
+    open fun getClientSaveTag(): CompoundTag? = null
+
+    /**
+     * Checks if the terminal or overall container accepts connections made of [material].
+     * */
+    open fun acceptsMaterial(player: LivingEntity, material: GridMaterial) = categories.contains(material.category)
+
+    companion object {
+        private const val ENDPOINTS = "endpoints"
+        private const val INFO = "info"
+        private const val SNAPSHOT = "snapshot"
+        private const val MATERIAL = "material"
+        private const val RESISTANCE = "resistance"
+    }
 }
 
 /**
- * Fake [MicroGridTerminal]. Meant to be used on the client exclusively for intersections (highlight).
- * Methods will throw when called (they are never called on the client), except [destroy] and [intersect].
- * The [gridEndpointInfo] must be implemented though.
- * */
-@ClientOnly
-interface FakeMicroGridTerminal : MicroGridTerminal {
-    override fun hasConnectionWith(endpointID: UUID) = error("Cannot check hasConnectionWith on fake terminal")
-    override fun addConnection(info: MicroGridConnectionDescription) = error("Cannot add connections on fake terminal")
-    override fun removeConnection(remoteEndpointID: UUID) = error("Cannot remote connections on fake terminal")
-    override fun primaryStageConnect() = error("Cannot stage connect on fake terminal")
-    override fun primaryStageDestroy() = error("Cannot stage destroy on fake terminal")
-    override fun getServerSaveTag() = error("Cannot save server data on fake terminal")
-    override fun getClientSaveTag() = error("Cannot save client data on fake terminal")
-}
-
-/**
- * Container of multiple [MicroGridTerminal]s.
+ * Container of multiple [MicroGridTerminalCommon]s.
  * Usually implemented by a game object.
  * */
 interface MicroGridNode {
@@ -329,29 +498,38 @@ interface MicroGridNode {
      * Gets the terminal selected by [player].
      * @return The terminal selected by [player] or null, if the player's view does not intersect any terminals.
      * */
-    fun pickTerminal(player: LivingEntity) : MicroGridTerminal?
+    fun pickTerminal(player: LivingEntity) : MicroGridTerminalCommon?
 
     /**
      * Gets the terminal by its [endpointID].
-     * @return The terminal whose [MicroGridTerminal.gridEndpointInfo]'s id is [endpointID] or null, if there is no such terminal.
+     * @return The terminal whose [MicroGridTerminalCommon.gridEndpointInfo]'s id is [endpointID] or null, if there is no such terminal.
      * */
-    fun getTerminalByEndpointID(endpointID: UUID) : MicroGridTerminal?
+    fun getTerminalByEndpointID(endpointID: UUID) : MicroGridTerminalCommon?
 }
 
-/**
- * Factory for terminals. Called after the grid terminal system is defined, and the grid terminal system is initialized fresh or from saved data.
- * @param server The factory for the server-side terminal.
- * @param client The factory for the client-side terminal.
- *
- * The two factories may be one and the same. This separation is useful because some terminals may want to store some specific data on the server (e.g. cell-related things) and only show a "fake" terminal on the client for highlighting.
- * */
-data class TerminalFactories<Terminal : MicroGridTerminal>(
-    val server: (level: ServerLevel, uuid: UUID, serverTag: CompoundTag?) -> Terminal,
-    val client: (level: Level, uuid: UUID, clientTag: CompoundTag?) -> Terminal,
+data class TerminalCreateInfoServer(
+    val gridTerminalSystem: GridTerminalSystem,
+    val terminalID: Int,
+    val level: ServerLevel,
+    val uuid: UUID,
+    val serverTag: CompoundTag?
+)
+
+data class TerminalCreateInfoClient(
+    val gridTerminalSystem: GridTerminalSystem,
+    val terminalID: Int,
+    val level: Level,
+    val uuid: UUID,
+    val clientTag: CompoundTag?
+)
+
+data class TerminalFactories(
+    val server: (TerminalCreateInfoServer) -> MicroGridTerminalServer,
+    val client: (TerminalCreateInfoClient) -> MicroGridTerminalClient,
 )
 
 /**
- * State management for a collection of [MicroGridTerminal]s.
+ * State management for a collection of [MicroGridTerminalCommon]s.
  * Usage is as follows:
  * - [GridTerminalSystem] is initialized in a field
  * - Following that, the desired terminals are deferred for creation using the [defineTerminal] methods. The results are also stored in fields.
@@ -359,8 +537,8 @@ data class TerminalFactories<Terminal : MicroGridTerminal>(
  * - After that, no more terminals may be created
  * */
 class GridTerminalSystem(val level: Level) {
-    private val factories = HashMap<Int, TerminalFactories<MicroGridTerminal>>()
-    private val instances = MutableMapPairBiMap<Int, MicroGridTerminal>()
+    private val factories = HashMap<Int, TerminalFactories>()
+    private val instances = MutableMapPairBiMap<Int, MicroGridTerminalCommon>()
     private var currentID = 0
     private var isInitialized = false
     private var isDestroyed = false
@@ -368,7 +546,7 @@ class GridTerminalSystem(val level: Level) {
     /**
      * Gets the instances. Valid to call after initialization.
      * */
-    fun getInstances(): Map<Int, MicroGridTerminal> {
+    fun getInstances(): Map<Int, MicroGridTerminalCommon> {
         check(isInitialized) {
             "Tried to get instances before initialized"
         }
@@ -392,13 +570,31 @@ class GridTerminalSystem(val level: Level) {
         return results
     }
 
+    inline fun<reified T> forEachTerminalOfType(use: (T) -> Unit) = getInstances().values.forEach {
+        if(it is T) {
+            use(it)
+        }
+    }
+
     inline fun<reified T> terminalsOfType() : List<T> = getInstances().values.mapNotNull { it as? T }
 
-    private fun create(factories: TerminalFactories<*>, uuid: UUID, tag: CompoundTag?) = if(level.isClientSide) {
-        factories.client(level, uuid, tag)
+    private fun create(factories: TerminalFactories, id: Int, uuid: UUID, tag: CompoundTag?) = if(level.isClientSide) {
+        factories.client(TerminalCreateInfoClient(
+            this,
+            id,
+            level,
+            uuid,
+            tag
+        ))
     }
     else {
-        factories.server(level as ServerLevel, uuid, tag)
+        factories.server(TerminalCreateInfoServer(
+            this,
+            id,
+            level as ServerLevel,
+            uuid,
+            tag
+        ))
     }
 
     /**
@@ -417,7 +613,7 @@ class GridTerminalSystem(val level: Level) {
         isInitialized = true
 
         factories.forEach { (id, factories) ->
-            val terminal = create(factories, UUID.randomUUID(), null)
+            val terminal = create(factories, id, UUID.randomUUID(), null)
             instances.add(id, terminal)
         }
 
@@ -463,7 +659,7 @@ class GridTerminalSystem(val level: Level) {
                 "Mis-matched terminal $terminalID in saved data"
             }
 
-            val terminal = create(factories, endpointID, customTag)
+            val terminal = create(factories, terminalID, endpointID, customTag)
 
             instances.add(terminalID, terminal)
 
@@ -497,7 +693,7 @@ class GridTerminalSystem(val level: Level) {
 
     /**
      * Saves the state of the terminals to a [CompoundTag]. This is meant to be loaded with [initializeSaved] at a later time.
-     * @param saveType The destination of the data. [SaveType.Server] saves using [MicroGridTerminal.getServerSaveTag] and [SaveType.Client] saves using [MicroGridTerminal.getClientSaveTag].
+     * @param saveType The destination of the data. [SaveType.Server] saves using [MicroGridTerminalCommon.getServerSaveTag] and [SaveType.Client] saves using [MicroGridTerminalCommon.getClientSaveTag].
      * */
     @ServerOnly
     fun save(saveType: SaveType) : CompoundTag {
@@ -517,6 +713,8 @@ class GridTerminalSystem(val level: Level) {
         val list = ListTag()
 
         instances.forward.forEach { (terminalID, terminal) ->
+            terminal as MicroGridTerminalServer
+
             val terminalCompound = CompoundTag()
 
             terminalCompound.putInt(TERMINAL_ID, terminalID)
@@ -544,7 +742,7 @@ class GridTerminalSystem(val level: Level) {
      * @param factory The factories to create the terminal.
      * @return A supplier that will return the instance of the terminal. Only valid to use after [initializeFresh] or [initializeSaved] was called.
      * */
-    fun <T : MicroGridTerminal> defineTerminal(factory: TerminalFactories<T>): Supplier<T> {
+    fun <T : MicroGridTerminalCommon> defineTerminal(factory: TerminalFactories): Supplier<T> {
         check(!isInitialized) {
             "Tried to define terminal after initialized"
         }
@@ -556,11 +754,11 @@ class GridTerminalSystem(val level: Level) {
         val id = currentID++
 
         factories.putUnique(id, TerminalFactories(
-            { level, uuid, tag ->
-                factory.server(level, uuid, tag)
+            { pCreateInfo ->
+                factory.server(pCreateInfo)
             },
-            { level, uuid, tag ->
-                factory.client(level, uuid, tag)
+            { pCreateInfo ->
+                factory.client(pCreateInfo)
             }
         ))
 
@@ -577,19 +775,10 @@ class GridTerminalSystem(val level: Level) {
     }
 
     /**
-     * Defines a terminal for deferred creation.
-     * @param factory The factory to create the terminal. This is used on both server and client. You may just check [Level.isClientSide] instead of using two different functions.
-     * @return A supplier that will return the instance of the terminal. Only valid to use after [initializeFresh] or [initializeSaved] was called.
-     * */
-    fun <T : MicroGridTerminal> defineTerminal(factory: (level: Level, uuid: UUID, tag: CompoundTag?) -> T) : Supplier<T> = defineTerminal(
-        TerminalFactories(factory, factory)
-    )
-
-    /**
      * Gets the terminal [player] is looking at.
      * @return The terminal intersected by [player]'s view or null, if no terminals intersect.
      * */
-    fun pick(player: LivingEntity) : MicroGridTerminal? {
+    fun pick(player: LivingEntity) : MicroGridTerminalCommon? {
         check(isInitialized) {
             "Tried to pick micro grid terminal before initialized"
         }
@@ -608,7 +797,7 @@ class GridTerminalSystem(val level: Level) {
 
     fun getByEndpointID(endpointID: UUID) = instances.forward.values.firstOrNull { it.gridEndpointInfo.id == endpointID }
 
-    fun idOf(terminal: MicroGridTerminal) : Int {
+    fun idOf(terminal: MicroGridTerminalCommon) : Int {
         check(isInitialized) {
             "Cannot get ID of terminal before initialized"
         }
@@ -630,11 +819,8 @@ class GridTerminalSystem(val level: Level) {
     }
 }
 
-/**
- * Implemented by a [FakeMicroGridTerminal] that should be highlighted on the client.
- * */
 @ClientOnly
-interface MicroGridBoxTerminalHighlight<Self> where Self : MicroGridBoxTerminalHighlight<Self>, Self : FakeMicroGridTerminal {
+interface GridTerminalHighlight<Self> where Self : GridTerminalHighlight<Self>, Self : MicroGridTerminalClient {
     /**
      * If not null, the terminal will be highlighted this frame when the player is looking at it, with the [highlightColor].
      * */
@@ -658,7 +844,7 @@ object MicroGridHighlightRenderer {
         val handle = MicroGridTerminalHandle.pick(level, player)
             ?: return
 
-        if(handle.terminal !is MicroGridBoxTerminalHighlight<*>) {
+        if(handle.terminal !is GridTerminalHighlight<*>) {
             return
         }
 
@@ -676,141 +862,42 @@ object MicroGridHighlightRenderer {
     }
 }
 
-/**
- * [MicroGridTerminal] that is responsible for managing its set of edges, and its volume is defined by an oriented bounding box.
- * Also handles creating the grid connection for rendering, with [GridConnectionManagerServer].
- * Meant to be used by a game object (in a [Level]).
- * @param level The level. Can be client or server.
- * @param locator A locator that describes the configuration of the game object, for [gridEndpointInfo].
- * @param boundingBox The bounding box, in the world's frame.
- * @param uuid The endpoint ID (from the [TerminalFactories]), for [gridEndpointInfo].
- * @param tag The load tag (from the [TerminalFactories]).
- * @param changedNotifier Function to call when the connections change. This is useful if you need save your things.
- * */
 @ServerOnly
-open class StandaloneBoxTerminal(
-    val level: ServerLevel,
-    val locator: Locator,
+open class ServerBoxTerminal(
+    ci: TerminalCreateInfoServer,
+    locator: Locator,
     val boundingBox: OrientedBoundingBox3d,
-    uuid: UUID,
-    tag: CompoundTag?,
-    private val changedNotifier: (() -> Unit)?
-) : MicroGridTerminal {
-    override val gridEndpointInfo = GridEndpointInfo(uuid, boundingBox.center, locator)
-    val remoteEndPoints = HashMap<MicroGridRemote, GridConnectionDescription>()
-
+    attachment: Vector3d? = null,
+) : MicroGridTerminalServer(ci, locator, attachment ?: boundingBox.center) {
     /**
-     * Deserializes the connections from the tag, if on the server side.
+     * Gets the intersection distance with the [boundingBox].
      * */
+    override fun intersect(ray: Ray3d): Vector3d? {
+        val intersection = (ray intersectionWith boundingBox)
+            ?: return null
+
+        return ray.evaluate(intersection.entry)
+    }
+}
+
+@ClientOnly
+open class ClientBoxTerminal(
+    ci: TerminalCreateInfoClient,
+    locator: Locator,
+    final override val boundingBox: OrientedBoundingBox3d,
+    attachment: Vector3d? = null,
+    override var highlightColor: RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f),
+) : MicroGridTerminalClient(ci, locator, attachment ?: boundingBox.center), GridTerminalHighlight<ClientBoxTerminal> {
     init {
-        if(tag != null) {
-            val list = tag.getListTag(ENDPOINTS)
+        require(ci.level.isClientSide) {
+            "Fake box terminal is illegal on server!"
+        }
 
-            list.forEachCompound { endpointCompound ->
-                val info = GridEndpointInfo.fromNbt(endpointCompound.getCompound(INFO))
-                val snapshot = endpointCompound.getCompound(SNAPSHOT)
-                val material = GridMaterials.getMaterial(endpointCompound.getResourceLocation(MATERIAL))
-                val resistance = endpointCompound.getDouble(RESISTANCE)
-
-                val endpoint = MicroGridRemote(info, snapshot)
-                val description = GridConnectionDescription(material, resistance)
-
-                remoteEndPoints.putUnique(endpoint, description)
-
-                MicroGridOperations.initializeEdge(
-                    level,
-                    this,
-                    endpoint.endpointInfo,
-                    description
-                )
+        if(ci.clientTag != null) {
+            require(ci.clientTag.isEmpty) {
+                "Fake box terminal shouldn't have any data!"
             }
         }
-    }
-
-    /**
-     * Saved all edges to a compound tag.
-     * */
-    @ServerOnly
-    override fun getServerSaveTag(): CompoundTag {
-        requireIsOnServerThread {
-            "Cannot get server save tag on non-server"
-        }
-
-        val tag = CompoundTag()
-        val list = ListTag()
-
-        remoteEndPoints.forEach { (endpoint, description) ->
-            val endpointCompound = CompoundTag()
-
-            endpointCompound.put(INFO, endpoint.endpointInfo.toNbt())
-            endpointCompound.put(SNAPSHOT, endpoint.snapshot)
-            endpointCompound.putResourceLocation(MATERIAL, description.material.id)
-            endpointCompound.putDouble(RESISTANCE, description.resistance)
-
-            list.add(endpointCompound)
-        }
-
-        tag.put(ENDPOINTS, list)
-
-        return tag
-    }
-
-    override fun hasConnectionWith(endpointID: UUID) = remoteEndPoints.keys.any {
-        it.endpointInfo.id == endpointID
-    }
-
-    /**
-     * Adds a connection by capturing the state of the handle (does not hold a reference to the remote game object).
-     * Only legal on the server.
-     * Throws an exception if a connection with the same ID exists.
-     * */
-    @ServerOnly
-    override fun addConnection(info: MicroGridConnectionDescription) {
-        requireIsOnServerThread {
-            "Cannot add connection on non-server"
-        }
-
-        requireNotNull(!remoteEndPoints.keys.any { it.endpointInfo.id == info.handle.terminal.gridEndpointInfo.id }) {
-            "Duplicate connection with id ${info.handle.terminal.gridEndpointInfo.id}"
-        }
-
-        remoteEndPoints.putUnique(info.capture(), info.description)
-
-        changedNotifier?.invoke()
-    }
-
-    /**
-     * Removes a connection.
-     * Only legal on the server.
-     * Throws an exception if no connection with [remoteEndpointID] exists.
-     * */
-    @ServerOnly
-    override fun removeConnection(remoteEndpointID: UUID) {
-        requireIsOnServerThread {
-            "Cannot remove connection on non-server"
-        }
-
-        val key = requireNotNull(remoteEndPoints.keys.firstOrNull { it.endpointInfo.id == remoteEndpointID }) {
-            "Did not have expected connection"
-        }
-
-        remoteEndPoints.remove(key)
-
-        changedNotifier?.invoke()
-    }
-
-    /**
-     * Destroys this terminal. Valid to call from both sides.
-     * On the server, it restores the handles to the remote terminals and removes the edge, and also destroys the edges from [GridConnectionManagerServer].
-     * */
-    override fun destroy() {
-        val remotes = remoteEndPoints.keys.toList()
-        remoteEndPoints.clear()
-        MicroGridOperations.destroyTerminal(
-            level,
-            this,
-            remotes
-        )
     }
 
     /**
@@ -822,92 +909,23 @@ open class StandaloneBoxTerminal(
 
         return ray.evaluate(intersection.entry)
     }
-
-    companion object {
-        private const val ENDPOINTS = "endpoints"
-        private const val INFO = "info"
-        private const val SNAPSHOT = "snapshot"
-        private const val MATERIAL = "material"
-        private const val RESISTANCE = "resistance"
-    }
-}
-
-/**
- * Fake version of [StandaloneBoxTerminal]. It is illegal to call any of the saving or connection methods.
- * Only legal on the client.
- * */
-@ClientOnly
-open class FakeBoxTerminal(
-    val level: Level,
-    val locator: Locator,
-    final override val boundingBox: OrientedBoundingBox3d,
-    uuid: UUID,
-    tag: CompoundTag?,
-    override var highlightColor: RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f),
-) : FakeMicroGridTerminal, MicroGridBoxTerminalHighlight<FakeBoxTerminal> {
-    override val gridEndpointInfo = GridEndpointInfo(uuid, boundingBox.center, locator)
-
-    init {
-        require(level.isClientSide) {
-            "Fake box terminal is illegal on server!"
-        }
-
-        if(tag != null) {
-            require(tag.isEmpty) {
-                "Fake box terminal shouldn't have any data!"
-            }
-        }
-    }
-
-    override fun intersect(ray: Ray3d): Vector3d? {
-        val intersection = (ray intersectionWith boundingBox)
-            ?: return null
-
-        return ray.evaluate(intersection.entry)
-    }
-
-    override fun destroy() { }
 }
 
 @ServerOnly
-open class StandaloneCellBoxTerminal(
-    level: ServerLevel,
+open class CellBoxTerminal(
+    ci: TerminalCreateInfoServer,
     locator: Locator,
     obb: OrientedBoundingBox3d,
-    uuid: UUID,
-    tag: CompoundTag?,
-    changedNotifier: (() -> Unit)?,
-    val gridTerminalSystem: GridTerminalSystem,
-    val cellAccessor: () -> MicroGridCell
-) : StandaloneBoxTerminal(level, locator, obb, uuid, tag, changedNotifier), MicroGridCellTerminal {
-    override fun addConnection(info: MicroGridConnectionDescription) {
-        super.addConnection(info)
-        cell.addTerminalConnection(info, gridTerminalSystem.idOf(this))
-    }
+    attachment: Vector3d? = null,
+    val cellAccessor: () -> GridNodeCell
+) : ServerBoxTerminal(ci, locator, obb, attachment), MicroGridCellTerminal {
+    override var stagingCell: GridConnectionCell? = null
 
-    override fun removeConnection(remoteEndpointID: UUID) {
-        super.removeConnection(remoteEndpointID)
-        cell.removeTerminalConnection(remoteEndpointID, gridTerminalSystem.idOf(this))
-    }
-
-    override val cell: MicroGridCell
+    override val cell: GridNodeCell
         get() = cellAccessor.invoke()
 
-    // This is a bit inefficient. Is it an issue?
-    override val remoteCells: List<Cell>
-        get() = remoteEndPoints.keys.mapNotNull {
-            val handle = MicroGridTerminalHandle.restoreImmediate(level, it.snapshot)
-
-            if(handle == null) {
-                LOG.fatal("FAILED TO RESTORE HANDLE FOR CELL TERMINAL!")
-            }
-
-            (handle?.terminal as? MicroGridCellTerminal)?.cell
-        }
-
-    override fun primaryStageConnect() {
-        val container = CellAndContainerHandle.captureInScope(cell).container
-        CellConnections.retopologize(cell, container)
+    override fun initializeEdge(remoteInfo: GridEndpointInfo, description: GridConnectionDescription) {
+        // ignored
     }
 }
 
@@ -921,18 +939,19 @@ abstract class MicroGridSpec<Renderer : SpecRenderer>(ci: SpecCreateInfo) : Spec
 
     /**
      * Defines a simple bounding box terminal.
-     * Uses [FakeBoxTerminal] on the client and [StandaloneBoxTerminal] on the server.
+     * Uses [ClientBoxTerminal] on the client and [ServerBoxTerminal] on the server.
      * */
-    protected fun defineBoxTerminal(box3d: OrientedBoundingBox3d, highlightColor : RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f)) = gridTerminalSystem.defineTerminal { level, uuid, compoundTag ->
-        if(level.isClientSide) {
-            FakeBoxTerminal(placement.level, locator, box3d, uuid, compoundTag, highlightColor)
-        }
-        else {
-            StandaloneBoxTerminal(placement.level as ServerLevel, locator, box3d, uuid, compoundTag) {
-                this.setSaveDirty()
-            }
-        }
-    }
+    protected fun defineBoxTerminal(box3d: OrientedBoundingBox3d, attachment: Vector3d? = null, highlightColor : RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f)) = gridTerminalSystem.defineTerminal<MicroGridTerminalCommon>(
+        TerminalFactories(
+            { ci ->
+                ServerBoxTerminal(ci, locator, box3d, attachment).also {
+                    it.connectionsChanged += {
+                        this.setSaveDirty()
+                    }
+                } },
+            { ClientBoxTerminal(it, locator, box3d, attachment, highlightColor) }
+        )
+    )
 
     /**
      * Creates a bounding box in the world frame.
@@ -967,8 +986,9 @@ abstract class MicroGridSpec<Renderer : SpecRenderer>(ci: SpecCreateInfo) : Spec
         x: Double, y: Double, z: Double,
         sizeX: Double, sizeY: Double, sizeZ: Double,
         orientation: Rotation2d = Rotation2d.identity,
+        attachment: Vector3d? = null,
         highlightColor: RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f),
-    ) = defineBoxTerminal(boundingBox(x, y, z, sizeX, sizeY, sizeZ, orientation), highlightColor)
+    ) = defineBoxTerminal(boundingBox(x, y, z, sizeX, sizeY, sizeZ, orientation), attachment, highlightColor)
 
     @ServerOnly
     override fun onPlaced() {
@@ -1002,7 +1022,6 @@ abstract class MicroGridSpec<Renderer : SpecRenderer>(ci: SpecCreateInfo) : Spec
         gridTerminalSystem.destroy()
     }
 }
-
 
 /**
  * Represents a part that has a cell.
@@ -1041,228 +1060,13 @@ interface SpecWithCell<C : Cell> {
     fun neighborScan() : List<CellAndContainerHandle>
 }
 
-/**
- * Terminal for connecting cells.
- * */
 @ServerOnly
 interface MicroGridCellTerminal {
-    /**
-     * Gets the cell exposed by this terminal.
-     * */
-    val cell: Cell
-
-    /**
-     * Gets the remote cells connected to this terminal.
-     * */
-    val remoteCells: List<Cell>
+    val cell: GridNodeCell
+    var stagingCell: GridConnectionCell?
 }
 
-/**
- * Cell meant to be used with the micro-grid system.
- * This just does some extra bookkeeping to track which terminals bring which connections.
- * This sort of information is stored in the cell and cannot really be gotten on loading because of different lifecycles of the world and the simulation.
- * */
-abstract class MicroGridCell(ci: CellCreateInfo) : Cell(ci) {
-    data class TerminalConnection(
-        val terminalID: Int,
-        val resistance: Double,
-        val material: GridMaterial
-    )
-
-    private val connectionsByRemoteLocator = MutableSetMapMultiMap<Locator, TerminalConnection>()
-    private val remoteEndpointAndRemoteLocator = MutableMapPairBiMap<Locator, UUID>()
-
-    /**
-     * Checks if this cell has a microgrid connection to the remote with the specified [endpointID].
-     * @return True, if a microgrid connection with [remoteEndpointID] exists. Otherwise, false (may still be connected trough non-microgrid).
-     * */
-    fun hasRemote(remoteEndpointID: UUID) = remoteEndpointAndRemoteLocator.backward.contains(remoteEndpointID)
-
-    /**
-     * Filters connections using the default rule *and* checking if the [remote] is connected through the microgrid (rejects non-microgrid connections).
-     * */
-    override fun cellConnectionPredicate(remote: Cell): Boolean {
-        return super.cellConnectionPredicate(remote) && connectionsByRemoteLocator.contains(remote.locator)
-    }
-
-    override fun saveCellData(): CompoundTag {
-        val remoteInfoList = ListTag()
-
-        connectionsByRemoteLocator.map.forEach { (remoteLocator, connections) ->
-            if(connections.isEmpty()) {
-                return@forEach // Grissess please :(
-            }
-
-            val remoteInfoCompound = CompoundTag()
-
-            remoteInfoCompound.putLocatorSet(REMOTE_LOCATOR, remoteLocator)
-
-            remoteInfoCompound.putUUID(REMOTE_ENDPOINT_ID, checkNotNull(remoteEndpointAndRemoteLocator.forward[remoteLocator]) {
-                "Expected remote ID"
-            })
-
-            val connectionList = ListTag()
-
-            connections.forEach { connection ->
-                val connectionCompound = CompoundTag()
-
-                connectionCompound.putInt(TERMINAL_ID, connection.terminalID)
-                connectionCompound.putDouble(RESISTANCE, connection.resistance)
-                connectionCompound.putResourceLocation(MATERIAL, connection.material.id)
-
-                connectionList.add(connectionCompound)
-            }
-
-            remoteInfoCompound.put(CONNECTION_LIST, connectionList)
-
-            remoteInfoList.add(remoteInfoCompound)
-        }
-
-        val tag = CompoundTag()
-        tag.put(REMOTE_INFO_LIST, remoteInfoList)
-
-        return tag
-    }
-
-    override fun loadCellData(tag: CompoundTag) {
-        val remoteInfoList = tag.getListTag(REMOTE_INFO_LIST)
-
-        remoteInfoList.forEachCompound { remoteInfoCompound ->
-            val remoteLocator = remoteInfoCompound.getLocatorSet(REMOTE_LOCATOR)
-            val remoteEndpointID = remoteInfoCompound.getUUID(REMOTE_ENDPOINT_ID)
-
-            remoteEndpointAndRemoteLocator.add(remoteLocator, remoteEndpointID)
-
-            val connectionList = remoteInfoCompound.getListTag(CONNECTION_LIST)
-
-            connectionList.forEachCompound { connectionCompound ->
-                val terminalId = connectionCompound.getInt(TERMINAL_ID)
-                val resistance = connectionCompound.getDouble(RESISTANCE)
-                val material = GridMaterials.getMaterial(connectionCompound.getResourceLocation(MATERIAL))
-
-                connectionsByRemoteLocator[remoteLocator].addUnique(
-                    TerminalConnection(
-                        terminalId,
-                        resistance,
-                        material
-                    )
-                )
-
-                check(connections.any { it.locator == remoteLocator }) {
-                    "Saved data had microgrid info for $remoteLocator which does not exist"
-                }
-            }
-        }
-    }
-
-    fun addTerminalConnection(info: MicroGridConnectionDescription, terminalID: Int) {
-        if(info.handle.terminal is MicroGridCellTerminal) {
-            val remoteCell = info.handle.terminal.cell
-
-            val connection = TerminalConnection(
-                terminalID,
-                info.description.resistance,
-                info.description.material
-            )
-
-            connectionsByRemoteLocator[remoteCell.locator].addUnique(connection) {
-                "Duplicate record $connection"
-            }
-
-            if(remoteEndpointAndRemoteLocator.forward.contains(remoteCell.locator)) {
-                check(remoteEndpointAndRemoteLocator.forward[remoteCell.locator] == info.handle.terminal.gridEndpointInfo.id) {
-                    "Remote end point ID changed!"
-                }
-            }
-            else {
-                remoteEndpointAndRemoteLocator.add(
-                    remoteCell.locator,
-                    info.handle.terminal.gridEndpointInfo.id
-                )
-            }
-
-            setChanged()
-        }
-    }
-
-    fun removeTerminalConnection(remoteEndpointID: UUID, terminalID: Int) {
-        if(hasRemote(remoteEndpointID)) {
-            val locator = checkNotNull(remoteEndpointAndRemoteLocator.backward[remoteEndpointID]) {
-                "Did not have endpoint id $remoteEndpointID"
-            }
-
-            val set = connectionsByRemoteLocator[locator]
-
-            check(set.removeIf { it.terminalID == terminalID }) {
-                "Did not have terminal id $remoteEndpointID $terminalID"
-            }
-
-            if(set.isEmpty()) {
-                remoteEndpointAndRemoteLocator.removeForward(locator)
-            }
-
-            setChanged()
-        }
-    }
-
-    /**
-     * Gets the terminals connecting [remote] to this cell.
-     * */
-    fun terminalsOf(remote: Cell) = connectionsByRemoteLocator[remote.locator]
-
-    /**
-     * Gets the terminal connecting [remote] to this cell. There must be exactly one such terminal.
-     * */
-    fun terminalOf(remote: Cell) : TerminalConnection {
-        val terminals = terminalsOf(remote)
-
-        check(terminals.size == 1) {
-            "Expected exactly one terminal"
-        }
-
-        return terminals.first()
-    }
-
-    /**
-     * Checks if the [cell] is connected to this one through the micro-grid.
-     * @return True, if [cell] is connected trough microgrid. Otherwise, false.
-     * */
-    fun isMicroGrid(cell: Cell) = remoteEndpointAndRemoteLocator.forward.contains(cell.locator)
-
-    /**
-     * Validates to see if all connections are accounted for (if they came through the micro-grid).
-     * If you allow non-micro-grid connections, override this and don't allow this validation to happen (it will fail).
-     * */
-    override fun buildFinished() {
-        connections.forEach {
-            check(isMicroGrid(it)) {
-                "Did not have all remotes after build is finished"
-            }
-
-            check(connectionsByRemoteLocator[it.locator].isNotEmpty()) {
-                "No terminals were recorded for remote"
-            }
-        }
-    }
-
-    companion object {
-        private const val REMOTE_INFO_LIST = "remotes"
-        private const val REMOTE_LOCATOR = "remoteLocator"
-        private const val REMOTE_ENDPOINT_ID = "remoteTerminalID"
-        private const val CONNECTION_LIST = "connections"
-        private const val TERMINAL_ID = "terminalId"
-        private const val RESISTANCE = "resistance"
-        private const val MATERIAL = "material"
-    }
-}
-
-/**
- * Gets the resistance that an object with a resistor should use when connecting to another object with a resistor via a grid connection.
- * This is half of the resistance of the grid cable. The two resistor will be in series which works out.
- * */
-val MicroGridCell.TerminalConnection.resistanceSection get() = 0.5 * this.resistance
-
-abstract class CellMicroGridSpec<C : MicroGridCell, R : SpecRenderer>(
+abstract class CellMicroGridSpec<C : GridNodeCell, R : SpecRenderer>(
     ci: SpecCreateInfo,
     final override val provider: CellProvider<C>
 ) : MicroGridSpec<R>(ci), SpecWithCell<C> {
@@ -1306,6 +1110,7 @@ abstract class CellMicroGridSpec<C : MicroGridCell, R : SpecRenderer>(
         super.onPlaced()
         cellField = provider.create(locator, CellEnvironment.evaluate(placement.level, locator))
         cell.container = placement.part
+        cell.mapFromGridTerminalSystem(gridTerminalSystem)
         onCellAcquired()
     }
 
@@ -1426,46 +1231,210 @@ abstract class CellMicroGridSpec<C : MicroGridCell, R : SpecRenderer>(
     open fun onCellAcquired() {}
     open fun onCellReleased() {}
 
-    override fun neighborScan() = gridTerminalSystem.terminalsOfType<MicroGridCellTerminal>().flatMap {
-        it.remoteCells.map { cell ->
-            CellAndContainerHandle.captureInScope(cell)
+    override fun neighborScan() : List<CellAndContainerHandle> {
+        val results = ArrayList<CellAndContainerHandle>()
+
+        gridTerminalSystem.forEachTerminalOfType<MicroGridCellTerminal> {
+            if(it.stagingCell != null) {
+                results.add(CellAndContainerHandle.captureInScope(it.stagingCell!!))
+            }
         }
+
+        cell.getGridMapping().forward.keys.forEach {
+            results.add(CellAndContainerHandle.captureInScope(it))
+        }
+
+        return results
     }
 
-    /**
-     * Defines a simple bounding box terminal that connects cells.
-     * */
-    protected fun defineCellBoxTerminal(box3d: OrientedBoundingBox3d, highlightColor : RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f)) = gridTerminalSystem.defineTerminal { level, uuid, compoundTag ->
-        if(level.isClientSide) {
-            FakeBoxTerminal(placement.level, locator, box3d, uuid, compoundTag, highlightColor)
-        }
-        else {
-            StandaloneCellBoxTerminal(
-                placement.level as ServerLevel,
-                locator,
-                box3d,
-                uuid,
-                compoundTag,
-                changedNotifier = { this.setSaveDirty() },
-                gridTerminalSystem,
-                this::cell
-            )
-        }
+    protected fun defineCellBoxTerminal(box3d: OrientedBoundingBox3d, attachment: Vector3d? = null, highlightColor : RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f), categories: List<GridMaterialCategory>) = gridTerminalSystem.defineTerminal<MicroGridTerminalCommon>(
+        TerminalFactories(
+            { ci ->
+                CellBoxTerminal(ci, locator, box3d, attachment) { this.cell }.also {
+                    it.connectionsChanged += {
+                        this.setSaveDirty()
+                    }
+
+                    it.categories.addAll(categories)
+                }
+            },
+            { ClientBoxTerminal(it, locator, box3d, attachment, highlightColor) }
+        )
+    )
+    protected fun defineCellBoxTerminal(
+        x: Double, y: Double, z: Double,
+        sizeX: Double, sizeY: Double, sizeZ: Double,
+        orientation: Rotation2d = Rotation2d.identity,
+        attachment: Vector3d? = null,
+        highlightColor: RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f),
+        categories: List<GridMaterialCategory>
+    ) = defineCellBoxTerminal(boundingBox(x, y, z, sizeX, sizeY, sizeZ, orientation), attachment, highlightColor, categories)
+}
+
+abstract class MicroGridCellBlockEntity<C : GridNodeCell>(pos: BlockPos, state: BlockState, targetType: BlockEntityType<*>) : CellBlockEntity<C>(pos, state, targetType), MicroGridNode {
+    var containerID = UUID.randomUUID()
+        private set
+
+    private var gridTerminalSystemField: GridTerminalSystem? = null
+    // FRAK YOU!
+    val gridTerminalSystem get() = checkNotNull(gridTerminalSystemField) {
+        "Grid terminal system is not initialized yet!"
     }
+
+    val positiveX get() = blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing().rotation3d * Vector3d.unitX
+    val positiveZ get() = blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing().rotation3d * Vector3d.unitZ
+
+    /**
+     * Creates a bounding box in the world frame.
+     * @param x Center X in the local frame.
+     * @param y Center Y in the local frame.
+     * @param z Center Z in the local frame.
+     * @param sizeX Size along X in the local frame.
+     * @param sizeY Size along Y in the local frame.
+     * @param sizeZ Size along Z in the local frame.
+     * @return A bounding box in the world frame.
+     * */
+    protected fun boundingBox(
+        x: Double,
+        y: Double,
+        z: Double,
+        sizeX: Double,
+        sizeY: Double,
+        sizeZ: Double,
+        orientation: Rotation2d = Rotation2d.identity,
+    ) = SpecGeometry.boundingBox(
+        blockPos.toVector3d() + Vector3d(0.5, 0.0, 0.5) +
+            positiveX * x +
+            Vector3d.unitY * y +
+            positiveZ * z,
+        orientation * blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing().rotation2d,
+        Vector3d(sizeX, sizeY, sizeZ),
+        blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing(),
+        Direction.UP
+    )
+
+    protected fun defineCellBoxTerminal(box3d: OrientedBoundingBox3d, attachment: Vector3d? = null, highlightColor : RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f), categories: List<GridMaterialCategory>) = gridTerminalSystem.defineTerminal<MicroGridTerminalCommon>(
+        TerminalFactories(
+            { ci ->
+                CellBoxTerminal(ci, locator, box3d, attachment) { this.cell }.also {
+                    it.connectionsChanged += {
+                        this.setChanged()
+                    }
+
+                    it.categories.addAll(categories)
+                }
+            },
+            { ClientBoxTerminal(it, locator, box3d, attachment, highlightColor) }
+        )
+    )
 
     protected fun defineCellBoxTerminal(
         x: Double, y: Double, z: Double,
         sizeX: Double, sizeY: Double, sizeZ: Double,
         orientation: Rotation2d = Rotation2d.identity,
+        attachment: Vector3d? = null,
         highlightColor: RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f),
-    ) = defineCellBoxTerminal(boundingBox(x, y, z, sizeX, sizeY, sizeZ, orientation), highlightColor)
+        categories: List<GridMaterialCategory>
+    ) = defineCellBoxTerminal(boundingBox(x, y, z, sizeX, sizeY, sizeZ, orientation), attachment, highlightColor, categories)
+
+
+    private var gridTerminalSystemTag: CompoundTag? = null
+
+    override fun setPlacedBy(level: Level, cellProvider: CellProvider<C>) {
+        gridTerminalSystem.initializeFresh()
+        super.setPlacedBy(level, cellProvider)
+
+        if(!level.isClientSide) {
+            cell.mapFromGridTerminalSystem(gridTerminalSystem)
+        }
+    }
+
+    override fun saveAdditional(pTag: CompoundTag) {
+        super.saveAdditional(pTag)
+
+        pTag.putUUID(CONTAINER_ID, containerID)
+        pTag.put(GRID_TERMINAL_SYSTEM, gridTerminalSystem.save(GridTerminalSystem.SaveType.Server))
+    }
+
+    override fun getUpdateTag(): CompoundTag {
+        val tag = CompoundTag()
+        tag.put(GRID_TERMINAL_SYSTEM, gridTerminalSystem.save(GridTerminalSystem.SaveType.Client))
+        return tag
+    }
+
+    override fun handleUpdateTag(tag: CompoundTag?) {
+        if(tag == null) {
+            return
+        }
+
+        if(tag.contains(GRID_TERMINAL_SYSTEM)) {
+            gridTerminalSystem.initializeSaved(tag.getCompound(GRID_TERMINAL_SYSTEM))
+        }
+    }
+
+    override fun load(pTag: CompoundTag) {
+        super.load(pTag)
+
+        if(pTag.contains(CONTAINER_ID)) {
+            containerID = pTag.getUUID(CONTAINER_ID)
+        }
+
+        if(pTag.contains(GRID_TERMINAL_SYSTEM)) {
+            gridTerminalSystemTag = pTag.getCompound(GRID_TERMINAL_SYSTEM)
+        }
+    }
+
+    override fun setLevel(pLevel: Level) {
+        check(gridTerminalSystemField == null) {
+            "Grid terminal system was present in setLevel"
+        }
+
+        gridTerminalSystemField = GridTerminalSystem(pLevel)
+        createTerminals()
+
+        super.setLevel(pLevel)
+
+        if(gridTerminalSystemTag != null) {
+            check(!pLevel.isClientSide)
+            gridTerminalSystem.initializeSaved(gridTerminalSystemTag!!)
+            gridTerminalSystemTag = null
+        }
+    }
+
+    protected abstract fun createTerminals()
+
+    override fun pickTerminal(player: LivingEntity) = gridTerminalSystem.pick(player)
+
+    override fun getTerminalByEndpointID(endpointID: UUID) = gridTerminalSystem.getByEndpointID(endpointID)
+
+    override fun setDestroyed() {
+        super.setDestroyed()
+        gridTerminalSystem.destroy()
+    }
+
+    override fun addExtraConnections(results: MutableSet<CellAndContainerHandle>) {
+        gridTerminalSystem.forEachTerminalOfType<MicroGridCellTerminal> {
+            if(it.stagingCell != null) {
+                results.add(CellAndContainerHandle.captureInScope(it.stagingCell!!))
+            }
+        }
+
+        cell.getGridMapping().forward.keys.forEach {
+            results.add(CellAndContainerHandle.captureInScope(it))
+        }
+    }
+
+    companion object {
+        private const val CONTAINER_ID = "containerID"
+        private const val GRID_TERMINAL_SYSTEM = "gridTerminalSystem"
+    }
 }
 
-abstract class MicroGridCellPart<C : MicroGridCell, R : PartRenderer>(
+abstract class MicroGridCellPart<C : GridNodeCell, R : PartRenderer>(
     ci: PartCreateInfo,
     provider: CellProvider<C>
 ) : CellPart<C, R>(ci, provider), MicroGridNode {
-    var containerID = UUID.randomUUID()
+    var containerID: UUID = UUID.randomUUID()
         private set
 
     val gridTerminalSystem = GridTerminalSystem(placement.level)
@@ -1473,6 +1442,7 @@ abstract class MicroGridCellPart<C : MicroGridCell, R : PartRenderer>(
     override fun onPlaced() {
         super.onPlaced()
         gridTerminalSystem.initializeFresh()
+        cell.mapFromGridTerminalSystem(gridTerminalSystem)
     }
 
     override fun getServerSaveTag(): CompoundTag? {
@@ -1536,43 +1506,43 @@ abstract class MicroGridCellPart<C : MicroGridCell, R : PartRenderer>(
         placement.face
     )
 
-    /**
-     * Defines a simple bounding box terminal that connects cells.
-     * */
-    protected fun defineCellBoxTerminal(box3d: OrientedBoundingBox3d, highlightColor : RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f)) = gridTerminalSystem.defineTerminal { level, uuid, compoundTag ->
-        if(level.isClientSide) {
-            FakeBoxTerminal(placement.level, locator, box3d, uuid, compoundTag, highlightColor)
-        }
-        else {
-            StandaloneCellBoxTerminal(
-                placement.level as ServerLevel,
-                locator,
-                box3d,
-                uuid,
-                compoundTag,
-                changedNotifier = { this.setSaveDirty() },
-                gridTerminalSystem,
-                this::cell
-            )
-        }
-    }
+    protected fun defineCellBoxTerminal(box3d: OrientedBoundingBox3d, attachment: Vector3d? = null, highlightColor : RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f), categories: List<GridMaterialCategory>) = gridTerminalSystem.defineTerminal<MicroGridTerminalCommon>(
+        TerminalFactories(
+            { ci ->
+                CellBoxTerminal(ci, locator, box3d, attachment) { this.cell }.also {
+                    it.connectionsChanged += {
+                        this.setSaveDirty()
+                    }
+
+                    it.categories.addAll(categories)
+                }
+            },
+            { ClientBoxTerminal(it, locator, box3d, attachment, highlightColor) }
+        )
+    )
 
     protected fun defineCellBoxTerminal(
         x: Double, y: Double, z: Double,
         sizeX: Double, sizeY: Double, sizeZ: Double,
         orientation: Rotation2d = Rotation2d.identity,
-        highlightColor: RGBAFloat? = RGBAFloat(1f, 0.8f, 0.44f, 0.8f),
-    ) = defineCellBoxTerminal(boundingBox(x, y, z, sizeX, sizeY, sizeZ, orientation), highlightColor)
+        attachment: Vector3d? = null,
+        highlightColor: RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f),
+        categories: List<GridMaterialCategory>
+    ) = defineCellBoxTerminal(boundingBox(x, y, z, sizeX, sizeY, sizeZ, orientation), attachment, highlightColor, categories)
 
     override fun pickTerminal(player: LivingEntity) = gridTerminalSystem.pick(player)
 
     override fun getTerminalByEndpointID(endpointID: UUID) = gridTerminalSystem.getByEndpointID(endpointID)
 
     override fun addExtraConnections(results: MutableSet<CellAndContainerHandle>) {
-        gridTerminalSystem.terminalsOfType<MicroGridCellTerminal>().forEach { terminal ->
-            terminal.remoteCells.forEach {
-                results.add(CellAndContainerHandle.captureInScope(it))
+        gridTerminalSystem.forEachTerminalOfType<MicroGridCellTerminal> {
+            if(it.stagingCell != null) {
+                results.add(CellAndContainerHandle.captureInScope(it.stagingCell!!))
             }
+        }
+
+        cell.getGridMapping().forward.keys.forEach {
+            results.add(CellAndContainerHandle.captureInScope(it))
         }
     }
 
@@ -1586,63 +1556,7 @@ abstract class MicroGridCellPart<C : MicroGridCell, R : PartRenderer>(
     }
 }
 
-object MicroGridOperations {
-    /**
-     * Call when the [terminal] is destroyed.
-     * @param terminal The terminal being destroyed.
-     * @param remotes All connected terminals.
-     *
-     * The remote terminals are restored and their connections are updated to remove [terminal].
-     * Then, [terminal] is [MicroGridTerminal.primaryStageConnect] is called, if [stage] is true.
-     * Finally, [GridConnectionManagerServer] is notified of the removed end point.
-     * */
-    @ServerOnly
-    fun destroyTerminal(level: ServerLevel, terminal: MicroGridTerminal, remotes: List<MicroGridRemote>, stage: Boolean = true) {
-        requireIsOnServerThread {
-            "destroyTerminal is illegal to call on non-server"
-        }
-
-        val handles = remotes.mapNotNull {
-            val result = MicroGridTerminalHandle.restoreImmediate(level, it.snapshot)
-
-            if(result == null) {
-                LOG.warn("Failed to restore end point") // not as severe, may happen
-            }
-
-            result
-        }
-
-        handles.forEach {
-            it.terminal.removeConnection(terminal.gridEndpointInfo.id)
-        }
-
-        if(stage) {
-            terminal.primaryStageDestroy()
-        }
-
-        GridConnectionManagerServer.removeEndpointById(level, terminal.gridEndpointInfo.id)
-    }
-
-    /**
-     * Initializes the connection between [terminal] and [remoteInfo]. Meant to be called when [terminal]'s game object is loaded.
-     * This just creates the pair in [GridConnectionManagerServer], if necessary.
-     * If [terminal] is a remote to some other terminal that is being removed, the edge will be initialized already by the temrinal being removed, so nothing will be done.
-     * */
-    @ServerOnly
-    fun initializeEdge(level: ServerLevel, terminal: MicroGridTerminal, remoteInfo: GridEndpointInfo, description: GridConnectionDescription) {
-        requireIsOnServerThread {
-            "initialize is illegal to call on non-server"
-        }
-
-        GridConnectionManagerServer.createPairIfAbsent(
-            level,
-            GridConnectionPair.create(terminal.gridEndpointInfo, remoteInfo),
-            description.material
-        )
-    }
-}
-
-open class MicroGridConnectItem(val material: GridMaterial) : Item(Properties()) {
+open class GridConnectItem(val material: GridMaterial) : Item(Properties()) {
     override fun use(pLevel: Level, pPlayer: Player, pUsedHand: InteractionHand): InteractionResultHolder<ItemStack> {
         val actualStack = pPlayer.getItemInHand(pUsedHand)
 
@@ -1673,6 +1587,10 @@ open class MicroGridConnectItem(val material: GridMaterial) : Item(Properties())
         val hTarget = MicroGridTerminalHandle.pick(pLevel, pPlayer)
             ?: return fail("No valid terminal selected!")
 
+        if(!(hTarget.terminal as MicroGridTerminalServer).acceptsMaterial(pPlayer, material)) {
+            return fail("Incompatible material!")
+        }
+
         if (actualStack.tag != null && !actualStack.tag!!.isEmpty) {
             val tag = actualStack.tag!!
 
@@ -1687,6 +1605,9 @@ open class MicroGridConnectItem(val material: GridMaterial) : Item(Properties())
                 return fail("Can't connect a terminal with itself!")
             }
 
+            hTarget.terminal as MicroGridTerminalServer
+            hRemote.terminal as MicroGridTerminalServer
+
             if (hTarget.terminal.hasConnectionWith(hRemote.terminal.gridEndpointInfo.id)) {
                 check(hRemote.terminal.hasConnectionWith(hTarget.terminal.gridEndpointInfo.id)) {
                     "Invalid reciprocal state - missing remote"
@@ -1699,21 +1620,30 @@ open class MicroGridConnectItem(val material: GridMaterial) : Item(Properties())
                 }
             }
 
-            val pair = GridConnectionPair.create(
-                hTarget.terminal.gridEndpointInfo,
-                hRemote.terminal.gridEndpointInfo
-            )
-
-            val gridCatenary = GridConnectionManagerServer.createGridCatenary(pair, material)
+            val pair = GridEndpointPair.create(hTarget.terminal.gridEndpointInfo, hRemote.terminal.gridEndpointInfo)
+            val gridCatenary = GridConnectionManagerServer.createCable(pair, material)
 
             val connectionInfo = GridConnectionDescription(
                 gridCatenary.material,
                 gridCatenary.resistance
             )
 
-            hTarget.terminal.addConnection(MicroGridConnectionDescription(hRemote, connectionInfo))
-            hRemote.terminal.addConnection(MicroGridConnectionDescription(hTarget, connectionInfo))
-            hTarget.terminal.primaryStageConnect()
+            hTarget.terminal.beginConnectStaging(MicroGridConnectionDescription(hRemote, connectionInfo))
+            hRemote.terminal.beginConnectStaging(MicroGridConnectionDescription(hTarget, connectionInfo))
+
+            if(hTarget.terminal is MicroGridCellTerminal && hRemote.terminal is MicroGridCellTerminal) {
+                GridConnectionCell.beginStaging(hTarget.terminal, hRemote.terminal, pLevel, gridCatenary)
+            }
+
+            hTarget.terminal.addConnection()
+            hRemote.terminal.addConnection()
+
+            if(hTarget.terminal is MicroGridCellTerminal && hRemote.terminal is MicroGridCellTerminal) {
+                GridConnectionCell.endStaging(hTarget.terminal, hRemote.terminal)
+            }
+
+            hTarget.terminal.endConnectStaging()
+            hRemote.terminal.endConnectStaging()
 
             GridConnectionManagerServer.createPair(pLevel, pair, gridCatenary)
 
@@ -1725,29 +1655,5 @@ open class MicroGridConnectItem(val material: GridMaterial) : Item(Properties())
         tell("Start recorded!")
 
         return InteractionResultHolder.success(actualStack)
-    }
-}
-
-/**
- * Implemented by [ElectricalObject]s which make a resistor to represent the connection to another object.
- * [MicroGridHubObject]s must know to half the resistance of their resistor if they are connecting to other [MicroGridHubObject]s objects.
- * */
-interface MicroGridHubObject<Self, Cell : MicroGridCell> where Self : MicroGridHubObject<Self, Cell>, Self : ElectricalObject<Cell> {
-    private val obj get() = this as ElectricalObject<*>
-    private val cell get() = obj.cell as MicroGridCell
-
-    /**
-     * Evaluates the resistance to [remote]. You must check if [remote] is connected via the micro-grid beforehand.
-     * Currently, only one connection is handled.
-     * */
-    fun microgridResistanceTo(remote: ElectricalObject<*>) : Double {
-        val connection = cell.terminalOf(remote.cell)
-
-        return if(remote is MicroGridHubObject<*, *>) {
-            connection.resistanceSection
-        }
-        else {
-            connection.resistance
-        }
     }
 }

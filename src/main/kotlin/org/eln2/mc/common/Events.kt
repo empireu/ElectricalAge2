@@ -17,8 +17,6 @@ import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.CellGraph
 import org.eln2.mc.common.cells.foundation.CellGraphManager
-import org.eln2.mc.common.content.GridConnectionManagerClient
-import org.eln2.mc.common.content.GridConnectionManagerServer
 import org.eln2.mc.common.events.schedulePost
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.foundation.SpecPlacementOverlayServer

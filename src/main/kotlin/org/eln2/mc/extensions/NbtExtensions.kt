@@ -88,7 +88,7 @@ fun CompoundTag.getBlockPos(key: String): BlockPos {
     return BlockPos(x, y, z)
 }
 
-fun CompoundTag.putLocatorSet(id: String, locator: Locator) {
+fun CompoundTag.putLocator(id: String, locator: Locator) {
     check(locator.dispatcher === Locators) {
         "Not out locators"
     }
@@ -96,7 +96,7 @@ fun CompoundTag.putLocatorSet(id: String, locator: Locator) {
     this.putByteArray(id, locator.toImage())
 }
 
-fun CompoundTag.getLocatorSet(id: String): Locator {
+fun CompoundTag.getLocator(id: String): Locator {
     return Locators.fromImage(this.getByteArray(id))
 }
 

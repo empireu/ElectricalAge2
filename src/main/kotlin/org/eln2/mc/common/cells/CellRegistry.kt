@@ -10,6 +10,7 @@ import org.ageseries.libage.data.mutableBiMapOf
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.GridConnectionCell
 import org.eln2.mc.resource
 import java.util.function.Supplier
 
@@ -40,4 +41,8 @@ object CellRegistry {
     fun getCellProvider(id: ResourceLocation): CellProvider<*> {
         return cellRegistry.get().getValue(id) ?: error("Could not get cell provider with id $id")
     }
+
+    val GRID_CONNECTION = cell("grid_connection", BasicCellProvider {
+        GridConnectionCell(it)
+    })
 }

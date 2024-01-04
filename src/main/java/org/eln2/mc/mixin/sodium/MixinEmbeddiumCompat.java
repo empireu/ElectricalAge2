@@ -10,8 +10,8 @@ import net.minecraft.util.Mth;
 import net.minecraftforge.common.MinecraftForge;
 import org.eln2.mc.client.render.foundation.CachingLightReader;
 import org.eln2.mc.client.render.foundation.NeighborLightReader;
-import org.eln2.mc.common.content.GridConnectionManagerClient;
-import org.eln2.mc.common.content.GridRenderer;
+import org.eln2.mc.common.GridConnectionManagerClient;
+import org.eln2.mc.common.GridRenderer;
 import org.embeddedt.embeddium.api.ChunkMeshEvent;
 import org.embeddedt.embeddium.api.MeshAppender;
 import org.embeddedt.embeddium.compat.EmbeddiumCompat;
@@ -51,7 +51,7 @@ public abstract class MixinEmbeddiumCompat {
 
         ChunkVertexEncoder.Vertex[] pPushArray = new ChunkVertexEncoder.Vertex[1];
 
-        GridRenderer.submitSection(section, lightReader, neighborLights, ( pX, pY, pZ, pRed, pGreen, pBlue, pTexU, pTexV, pOverlayUV, pLightmapUV, pNormalX, pNormalY, pNormalZ) -> {
+        GridRenderer.submitSection(section, lightReader, neighborLights, (pX, pY, pZ, pRed, pGreen, pBlue, pTexU, pTexV, pOverlayUV, pLightmapUV, pNormalX, pNormalY, pNormalZ) -> {
             ChunkVertexEncoder.Vertex sodiumVertex = new ChunkVertexEncoder.Vertex();
             sodiumVertex.x = pX;
             sodiumVertex.y = pY;

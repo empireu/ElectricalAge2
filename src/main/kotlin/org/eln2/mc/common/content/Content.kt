@@ -27,9 +27,7 @@ import org.eln2.mc.client.render.foundation.BasicPartRenderer
 import org.eln2.mc.client.render.foundation.TestBlockEntityInstance
 import org.eln2.mc.client.render.foundation.defaultRadiantBodyColor
 import org.eln2.mc.client.render.solid
-import org.eln2.mc.common.LightBulbItem
-import org.eln2.mc.common.LightFieldPrimitives
-import org.eln2.mc.common.LightModel
+import org.eln2.mc.common.*
 import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
@@ -450,102 +448,6 @@ object Content {
 
     //#endregion
 
-    //#region Grid
-
-    val GRID_TAP_CELL = cell(
-        "grid_tap",
-        BasicCellProvider {
-            GridCell(
-                ci = it,
-                tapResistance = !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
-                    L = Quantity(10.0, CENTIMETER),
-                    A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
-                )
-            )
-        }
-    )
-
-    val GRID_PASS_TROUGH_CELL = cell(
-        "grid_pass",
-        BasicCellProvider {
-            GridCell(
-                ci = it,
-                tapResistance = null
-            )
-        }
-    )
-
-    val GRID_TAP_PART = partAndItem(
-        "grid_tap",
-        BasicPartProvider(Vector3d(4.0 / 16.0, 0.5, 4.0 / 16.0)) { ci ->
-            GridTapPart(ci, GRID_TAP_CELL.get())
-        }
-    )
-
-    val GRID_POLE_DELEGATE_MAP = defineDelegateMap("grid_pole") {
-        val column = registerDelegateOf(
-            AABB(
-                0.35, 0.0, 0.35,
-                0.65, 1.0, 0.65
-            )
-        )
-
-        principal(0, 1, 0, column)
-        principal(0, 2, 0, column)
-    }
-
-    private fun registerGridPole(
-        name: String,
-        delegateMap: Lazy<MultiblockDelegateMap>,
-        attachment: Vector3d,
-        cell: RegistryObject<CellProvider<GridCell>>
-    ) : RegistryObject<BlockEntityType<GridPoleBlockEntity>> {
-        val block = blockOnly(name) {
-            GridPoleBlock(
-                delegateMap.value,
-                attachment,
-                cell
-            )
-        }
-
-        val blockEntity = blockEntityOnly(name, block) { pos, state ->
-            GridPoleBlockEntity(
-                representativeBlock = block.get(),
-                pos,
-                state
-            )
-        }
-
-        blockItemOnly(name) {
-            BigBlockItem(
-                delegateMap.value,
-                block.get()
-            )
-        }
-
-        return blockEntity
-    }
-
-    val GRID_PASS_TROUGH_POLE_BLOCK_ENTITY = registerGridPole(
-        "grid_pass_pole",
-        GRID_POLE_DELEGATE_MAP,
-        Vector3d(0.5, 2.5, 0.5),
-        GRID_PASS_TROUGH_CELL
-    )
-
-    val GRID_TAP_POLE_BLOCK_ENTITY = registerGridPole(
-        "grid_tap_pole",
-        GRID_POLE_DELEGATE_MAP,
-        Vector3d(0.5, 2.5, 0.5),
-        GRID_TAP_CELL
-    )
-
-    val GRID_CONNECT_COPPER = item("grid_connect_copper") {
-        GridConnectItem(GridMaterials.COPPER_AS_COPPER_COPPER)
-    }
-
-    //#endregion
-
     //#region Heat Generator
 
     val HEAT_GENERATOR_CELL = cell(
@@ -674,37 +576,145 @@ object Content {
 
     //#endregion
 
-    //#region Micro-Grid
+    //#region Grid
 
     val MICRO_GRID_CONNECT = item("microgrid_connect") {
-        MicroGridConnectItem(GridMaterials.COPPER_MICRO_GRID)
+        GridConnectItem(GridMaterials.COPPER_MICRO_GRID)
+    }
+
+    val POWER_GRID_CONNECT = item("power_grid_connect") {
+        GridConnectItem(GridMaterials.COPPER_POWER_GRID)
     }
 
     val MICROGRID_ANCHOR_CELL = cell(
         "microgrid_anchor",
-        BasicCellProvider(::MicroGridAnchorCell)
+        BasicCellProvider {
+            GridAnchorCell(
+                it,
+                !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
+                    L = Quantity(1.0, CENTIMETER),
+                    A = Quantity(PI * Quantity(2.0, CENTIMETER).value.pow(2))
+                )
+            )
+        }
     )
 
     val MICROGRID_ANCHOR_SPEC = specAndItem(
         "microgrid_anchor",
-        BasicSpecProvider(
-            PartialModels.MICRO_GRID_ANCHOR,
-            Vector3d(4.0 / 16.0),
-            ::MicroGridAnchorSpec
-        )
+        BasicSpecProvider(PartialModels.MICRO_GRID_ANCHOR, Vector3d(4.0 / 16.0)) {
+            GridAnchorSpec(
+                it,
+                Vector3d(2.0 / 16.0, 4.0 / 16.0, 2.0 / 16.0),
+                listOf(GridMaterialCategory.MicroGrid)
+            )
+        }
     )
 
     val MICROGRID_INTERFACE_CELL = cell(
         "microgrid_interface",
-        BasicCellProvider(::MicroGridInterfaceCell)
+        BasicCellProvider {
+            GridInterfaceCell(
+                it,
+                !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
+                    L = Quantity(2.5, CENTIMETER),
+                    A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
+                ),
+                !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
+                    L = Quantity(1.5, CENTIMETER),
+                    A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
+                )
+            )
+        }
     )
 
     val MICROGRID_INTERFACE_PART = partAndItem(
         "microgrid_interface",
-        BasicPartProvider(
-            Vector3d(4.0 / 16.0),
-            ::MicroGridInterfacePart
+        BasicPartProvider(Vector3d(4.0 / 16.0)) {
+            GridInterfacePart(
+                it,
+                Vector3d(2.0 / 16.0, 4.0 / 16.0, 2.0 / 16.0),
+                listOf(GridMaterialCategory.MicroGrid)
+            ) { PartialModels.MICRO_GRID_INTERFACE }
+        }
+    )
+
+    val POWER_GRID_INTERFACE_CELL = cell(
+        "power_grid_interface",
+        BasicCellProvider {
+            GridInterfaceCell(
+                it,
+                !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
+                    L = Quantity(10.0, CENTIMETER),
+                    A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
+                ),
+                !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
+                    L = Quantity(2.5, CENTIMETER),
+                    A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
+                )
+            )
+        }
+    )
+
+    val POWER_GRID_INTERFACE_PART = partAndItem(
+        "power_grid_interface",
+        BasicPartProvider(Vector3d(4.0 / 16.0, 8.0 / 16.0, 4.0 / 16.0)) {
+            GridInterfacePart(
+                it,
+                Vector3d(4.0 / 16.0, 8.0 / 16.0, 4.0 / 16.0) * 1.01,
+                listOf(GridMaterialCategory.BIG)
+            ) { PartialModels.GRID_TAP_BODY }
+        }
+    )
+
+    val GRID_POLE_DELEGATE_MAP = defineDelegateMap("grid_pole") {
+        val column = registerDelegateOf(
+            AABB(
+                0.35, 0.0, 0.35,
+                0.65, 1.0, 0.65
+            )
         )
+
+        principal(0, 1, 0, column)
+        principal(0, 2, 0, column)
+    }
+
+    private fun registerGridPole(
+        name: String,
+        delegateMap: Lazy<MultiblockDelegateMap>,
+        attachment: Vector3d,
+        cell: RegistryObject<CellProvider<GridAnchorCell>>
+    ) : RegistryObject<BlockEntityType<GridPoleBlockEntity>> {
+        val block = blockOnly(name) {
+            GridPoleBlock(
+                delegateMap.value,
+                attachment,
+                cell
+            )
+        }
+
+        val blockEntity = blockEntityOnly(name, block) { pos, state ->
+            GridPoleBlockEntity(
+                representativeBlock = block.get(),
+                pos,
+                state
+            )
+        }
+
+        blockItemOnly(name) {
+            BigBlockItem(
+                delegateMap.value,
+                block.get()
+            )
+        }
+
+        return blockEntity
+    }
+
+    val GRID_PASS_TROUGH_POLE_BLOCK_ENTITY = registerGridPole(
+        "grid_pass_pole",
+        GRID_POLE_DELEGATE_MAP,
+        Vector3d(0.5, 2.5, 0.5),
+        MICROGRID_ANCHOR_CELL
     )
 
     //#endregion
@@ -724,7 +734,7 @@ object Content {
     }
 
     private fun setupFlywheel() {
-        listOf(GRID_PASS_TROUGH_POLE_BLOCK_ENTITY, GRID_TAP_POLE_BLOCK_ENTITY).forEach {
+        listOf(GRID_PASS_TROUGH_POLE_BLOCK_ENTITY).forEach {
             InstancedRenderRegistry.configure(it.get())
                 .alwaysSkipRender()
                 .factory { manager, entity ->

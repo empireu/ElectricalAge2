@@ -47,7 +47,7 @@ import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.MultipartBlockEntityInstance
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.content.GridCollisions
+import org.eln2.mc.common.GridCollisions
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.data.Locators
