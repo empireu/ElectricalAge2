@@ -1,6 +1,7 @@
 package org.eln2.mc.common
 
 import it.unimi.dsi.fastutil.doubles.Double2DoubleOpenHashMap
+import it.unimi.dsi.fastutil.floats.FloatArrayList
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.ChunkBufferBuilderPack
 import net.minecraft.client.renderer.LightTexture
@@ -27,6 +28,7 @@ import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.electrical.mna.VirtualResistor
+import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.*
 import org.eln2.mc.client.render.*
 import org.eln2.mc.client.render.foundation.*
@@ -49,6 +51,7 @@ import kotlin.collections.HashSet
 import kotlin.concurrent.read
 import kotlin.concurrent.write
 import kotlin.math.PI
+import kotlin.math.floor
 
 enum class GridMaterialCategory {
     MicroGrid,
@@ -692,24 +695,22 @@ object GridConnectionManagerClient {
                 }
             }
 
-            quads.forEach { quad ->
-                val processedQuad = Quad()
+            for (quad in quads) {
+                val sectionData = getSlice(quad.principal)
 
-                quad.vertices.forEachIndexed { vertexIndex, vertex ->
+                quad.vertices.forEach { vertex ->
                     val orientation = extrusion.rmfLookup.get(vertex.param)!!.rotation
                     val phase = vertex.normal angle orientation.invoke().c2
 
                     val u = uCoordinates.get(vertex.param)
                     val v = map(phase, -PI, PI, v0, v1)
 
-                    processedQuad.positions[vertexIndex] = vertex.position
-                    processedQuad.normals[vertexIndex] = vertex.normal
-                    processedQuad.uvs[vertexIndex] = Pair(u.toFloat(), v.toFloat())
+                    sectionData.vertices.add(
+                        vertex.position,
+                        vertex.normal,
+                        u, v
+                    )
                 }
-
-                val sectionData = getSlice(quad.principal)
-
-                sectionData.quads.add(processedQuad)
             }
 
             connection.cable.blocks.forEach { block ->
@@ -745,13 +746,17 @@ object GridConnectionManagerClient {
     // fill it on the lock, and then exit and call user with
     // the stuff in the array list and then return to pool
     @JvmStatic
-    fun read(sectionPos: SectionPos, user: (GridMaterial, Quad) -> Unit) {
+    fun read(sectionPos: SectionPos, user: (GridMaterial, VertexList) -> Unit) {
+        val slices = ArrayList<ConnectionSectionSlice>()
+
         lock.read {
-            slicesBySection[sectionPos].forEach { slice ->
-                slice.quads.forEach { quad ->
-                    user(slice.material, quad)
-                }
+            slicesBySection[sectionPos].forEach {
+                slices.add(it)
             }
+        }
+
+        slices.forEach {
+            user(it.material, it.vertices)
         }
     }
 
@@ -809,19 +814,29 @@ object GridConnectionManagerClient {
         return result
     }
 
-    // todo optimize storage
+    class VertexList(sectionPos: SectionPos) {
+        val originX = sectionPos.minBlockX()
+        val originY = sectionPos.minBlockY()
+        val originZ = sectionPos.minBlockZ()
+        val storage = FloatArrayList()
 
-    class Quad {
-        val positions = Array(4) { Vector3d.zero }
-        val normals = Array(4) { Vector3d.zero }
-        val uvs = Array(4) { Pair(0f, 0f) }
+        fun add(position: Vector3d, normal: Vector3d, u: Double, v: Double) {
+            storage.add((position.x - originX).toFloat())
+            storage.add((position.y - originY).toFloat())
+            storage.add((position.z - originZ).toFloat())
+            storage.add(normal.x.toFloat())
+            storage.add(normal.y.toFloat())
+            storage.add(normal.z.toFloat())
+            storage.add(u.toFloat())
+            storage.add(v.toFloat())
+        }
     }
 
     private class ConnectionSectionSlice(val material: GridMaterial, val sectionPos: SectionPos) {
-        val quads = ArrayList<Quad>()
+        val vertices = VertexList(sectionPos)
         val blocks = HashSet<BlockPos>()
 
-        val isVisual get() = quads.isNotEmpty()
+        val isVisual get() = vertices.storage.isNotEmpty()
     }
 }
 
@@ -887,45 +902,48 @@ object GridRenderer {
 
     @JvmStatic
     fun submitSection(section: SectionPos, lightReader: CachingLightReader, neighborLights: NeighborLightReader, consumer: GridRendererVertexConsumer) {
-        val originX = section.minBlockX()
-        val originY = section.minBlockY()
-        val originZ = section.minBlockZ()
+        GridConnectionManagerClient.read(section) { material, vertexList ->
+            val (r, g, b) = material.vertexColor
 
-        GridConnectionManagerClient.read(section) { material, quad ->
-            for (i in 0 until 4) {
-                val position = quad.positions[i]
-                val blockPosition = position.floorBlockPos()
+            val originX = vertexList.originX
+            val originY = vertexList.originY
+            val originZ = vertexList.originZ
 
-                val localLight = lightReader.getLightColor(blockPosition)
-                val localBlockLight = unpackBlockLight(localLight).toDouble()
-                val localSkyLight = unpackSkyLight(localLight).toDouble()
+            var i = 0
+            val storage = vertexList.storage
+            val storageSize = storage.size
 
-                neighborLights.load(blockPosition)
+            while (i < storageSize) {
+                val px = storage.getFloat(i + 0)
+                val py = storage.getFloat(i + 1)
+                val pz = storage.getFloat(i + 2)
+                val nx = storage.getFloat(i + 3)
+                val ny = storage.getFloat(i + 4)
+                val nz = storage.getFloat(i + 5)
+                val u = storage.getFloat(i + 6)
+                val v = storage.getFloat(i + 7)
+                i += 8
 
-                val normal = quad.normals[i]
-                val normalX = normal.x.toFloat()
-                val normalY = normal.y.toFloat()
-                val normalZ = normal.z.toFloat()
+                val blockX = floor(px).toInt() + originX
+                val blockY = floor(py).toInt() + originY
+                val blockZ = floor(pz).toInt() + originZ
+                neighborLights.load(blockX, blockY, blockZ)
 
-                val (u, v) = quad.uvs[i]
-
-                val light = LightTexture.pack(
-                    combineLight(0, neighborLights, normal, localBlockLight),
-                    combineLight(1, neighborLights, normal, localSkyLight)
+                val localLight = lightReader.getLightColor(
+                    BlockPos.asLong(blockX, blockY, blockZ)
                 )
 
-                val xSection = (position.x - originX).toFloat()
-                val ySection = (position.y - originY).toFloat()
-                val zSection = (position.z - originZ).toFloat()
-
-                val (r, g, b) = material.vertexColor
+                val light = LightTexture.pack(
+                    combineLight(0, neighborLights, nx, ny, nz, unpackBlockLight(localLight).toDouble()),
+                    combineLight(1, neighborLights, nx, ny, nz, unpackSkyLight(localLight).toDouble())
+                )
 
                 consumer.vertex(
-                    xSection, ySection, zSection,
+                    px, py, pz,
                     r, g, b,
                     u, v,
                     OverlayTexture.NO_OVERLAY, light,
-                    normalX, normalY, normalZ
+                    nx, ny, nz
                 )
             }
         }
