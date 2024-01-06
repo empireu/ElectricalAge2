@@ -1,5 +1,6 @@
 package org.eln2.mc.extensions
 
+import com.mojang.blaze3d.vertex.PoseStack
 import net.minecraft.client.renderer.block.model.BakedQuad
 import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.client.resources.model.SimpleBakedModel
@@ -75,6 +76,13 @@ fun Entity.getViewRay(): Ray3d {
     val start = Vector3d(this.x, this.eyeY, this.z)
 
     return Ray3d(start, viewDirection.normalized())
+}
+
+fun Entity.getViewLine(): Line3d {
+    val ray = this.getViewRay()
+    val (a, b) = this.getClipStartEnd()
+
+    return Line3d(ray.origin, ray.direction, a.distanceTo(b))
 }
 
 fun AABB.viewClip(entity: LivingEntity): Optional<Vec3> {
@@ -513,11 +521,23 @@ fun CompoundTag.getListTag(key: String) : ListTag = checkNotNull(this.get(key) a
 
 fun Rotation3d.cast() = Quaternionf().set(this.x.toFloat(), this.y.toFloat(), this.z.toFloat(), this.w.toFloat())
 
+fun Vector3d.cast() = Vector3f().set(this.x, this.y, this.z)
+
 fun Quaternionf.cast() = Rotation3d(this.x.toDouble(), this.y.toDouble(), this.z.toDouble(), this.w.toDouble())
 
 fun BoundingBox3d.cast() = AABB(this.min.toVec3(), this.max.toVec3())
 
+fun AABB.cast() = BoundingBox3d(Vector3d(minX, minY, minZ), Vector3d(maxX, maxY, maxZ))
+
 fun Vec3.cast() = Vector3d(this.x, this.y, this.z)
+
+fun PoseStack.mulPose(r: Rotation3d) {
+    this.mulPose(r.cast())
+}
+
+fun PoseStack.translate(t: Vector3d) {
+    this.translate(t.x, t.y, t.z)
+}
 
 fun FriendlyByteBuf.writeVector2d(vector2d: Vector2d) {
     this.writeDouble(vector2d.x)

@@ -36,6 +36,7 @@ data class Vector2F(val x: Float, val y: Float) {
 }
 
 fun Vector3d.floorBlockPos() = BlockPos(floor(this.x).toInt(), floor(this.y).toInt(), floor(this.z).toInt())
+fun Vector3d.ceilBlockPos() = BlockPos(ceil(this.x).toInt(), ceil(this.y).toInt(), ceil(this.z).toInt())
 
 /**
  * Computes the surface area of a cylinder with specified [length] and [radius].

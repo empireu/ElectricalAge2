@@ -25,6 +25,7 @@ import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.context.UseOnContext
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.shapes.BooleanOp
@@ -43,6 +44,7 @@ import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.*
+import org.eln2.mc.common.GridCollisions
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.cells.foundation.Cell
 import org.eln2.mc.common.cells.foundation.CellConnections
@@ -210,7 +212,9 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
             field = value
         }
 
-    private val specs = HashMap<Int, Spec<*>>()
+    private val specsInternal = HashMap<Int, Spec<*>>()
+
+    val specs : Map<Int, Spec<*>> get() = specsInternal
 
     @ServerOnly
     private val dirtySpecs = HashSet<Spec<*>>()
@@ -259,7 +263,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
 
         placement.multipart.parts.values.forEach { container ->
             if(container is SpecContainerPart) {
-                for (spec in container.specs.values) {
+                for (spec in container.specsInternal.values) {
                     if(spec.placement.orientedBoundingBoxWorld intersectsWith boundingBox) {
                         return true
                     }
@@ -297,7 +301,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         )
     }
 
-    fun pickSpec(ray3d: Ray3d) = specs.values
+    fun pickSpec(ray3d: Ray3d) = specsInternal.values
         .mapNotNull {
             val intersection = (ray3d intersectionWith it.placement.orientedBoundingBoxWorld)
                 ?: return@mapNotNull null
@@ -308,14 +312,14 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
 
     fun pickSpec(player: Entity) = pickSpec(player.getViewRay())
 
-    fun getSpecByPlacementID(id: Int) = specs[id]
+    fun getSpecByPlacementID(id: Int) = specsInternal[id]
 
     /**
      * Adds the [spec] and notifies via [Spec.onAdded]
      * Throws if the [spec] is already added.
      * */
     private fun addSpec(spec: Spec<*>) {
-        specs.putUnique(spec.placement.placementId, spec)
+        specsInternal.putUnique(spec.placement.placementId, spec)
         spec.onAdded()
     }
 
@@ -324,7 +328,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
      * @return True if the spec was removed. Otherwise, false.
      * */
     private fun removeSpec(spec: Spec<*>) : Boolean {
-        if(specs.remove(spec.placement.placementId) == null) {
+        if(specsInternal.remove(spec.placement.placementId) == null) {
             return false
         }
 
@@ -407,12 +411,12 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
             }
         }
 
-        return specs.isEmpty()
+        return specsInternal.isEmpty()
     }
 
     override fun onBroken() {
         if(!placement.level.isClientSide) {
-            specs.values.toList().forEach {
+            specsInternal.values.toList().forEach {
                 val tag = CompoundTag()
                 breakSpec(it, tag, true)
                 spawnDrop(placement.level as ServerLevel, it, tag)
@@ -429,7 +433,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
      * */
     @ServerOnly
     fun breakSpec(spec: Spec<*>, saveTag: CompoundTag? = null, isContainerBreak: Boolean = false) {
-        require(specs.values.contains(spec)) {
+        require(specsInternal.values.contains(spec)) {
             "Tried to break spec $spec which was not present"
         }
 
@@ -474,7 +478,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
 
         loadSpecs(tag, SaveType.ServerData)
 
-        specs.values.forEach {
+        specsInternal.values.forEach {
             it.onLoaded()
         }
 
@@ -482,7 +486,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
     }
 
     override fun onUnloaded() {
-        specs.values.forEach {
+        specsInternal.values.forEach {
             it.onUnloaded()
         }
     }
@@ -496,7 +500,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
     override fun loadClientSaveTag(tag: CompoundTag) {
         loadSpecs(tag, SaveType.ClientData)
 
-        specs.values.forEach {
+        specsInternal.values.forEach {
             clientAddSpec(it)
         }
 
@@ -504,7 +508,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
     }
 
     override fun onSyncSuggested() {
-        specs.values.forEach {
+        specsInternal.values.forEach {
             it.onSyncSuggested()
         }
     }
@@ -572,19 +576,19 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
                     val newSpecTag = updateTag.get(NEW_SPEC) as CompoundTag
                     val placementId = newSpecTag.getInt(PLACEMENT_ID)
 
-                    if(specs.containsKey(placementId)) {
+                    if(specsInternal.containsKey(placementId)) {
                         LOG.error("Duplicate spec placement update!")
                     }
                     else {
                         val spec = unpackSpec(newSpecTag, SaveType.ClientData)
                         check(placementId == spec.placement.placementId)
-                        specs.putUnique(placementId, spec)
+                        specsInternal.putUnique(placementId, spec)
                         clientAddSpec(spec)
                     }
                 }
                 SpecUpdateType.Remove -> {
                     val id = updateTag.getInt(REMOVED_ID)
-                    val spec = specs[id]
+                    val spec = specsInternal[id]
 
                     if(spec == null) {
                         LOG.error("Client received broken spec on $id, but there was no spec present!")
@@ -611,7 +615,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         val partUpdatesTag = ListTag()
 
         dirtySpecs.forEach { spec ->
-            if(!specs.containsKey(spec.placement.placementId)) {
+            if(!specsInternal.containsKey(spec.placement.placementId)) {
                 LOG.warn("Update for removed spec $spec")
                 return@forEach
             }
@@ -644,7 +648,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
 
             val placementId = compound.getInt(PLACEMENT_ID)
 
-            val spec = specs[placementId]
+            val spec = specsInternal[placementId]
 
             if (spec == null) {
                 LOG.error("Spec container $this $placement received update on $placementId, but spec is null!")
@@ -690,7 +694,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
 
         val specsTag = ListTag()
 
-        specs.values.forEach { spec ->
+        specsInternal.values.forEach { spec ->
             specsTag.add(saveSpecCommon(spec, saveType))
         }
 
@@ -762,14 +766,14 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
     }
 
     private fun rebuildCollider() {
-        var shape = if(specs.isEmpty()) {
+        var shape = if(specsInternal.isEmpty()) {
             partProviderShape
         }
         else {
             Shapes.empty()
         }
 
-        specs.values.forEach {
+        specsInternal.values.forEach {
             shape = Shapes.joinUnoptimized(
                 shape,
                 Shapes.create(it.placement.shapeBoundingBox.cast()),
@@ -785,7 +789,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
     }
 
     fun bindRenderer(instance: SpecPartRenderer) {
-        specs.values.forEach {
+        specsInternal.values.forEach {
             renderUpdates.add(SpecUpdate(it, SpecUpdateType.Add))
         }
     }
@@ -813,7 +817,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
     }
 
     override fun submitDebugDisplay(builder: ComponentDisplayList) {
-        builder.debug("Specs: ${specs.size}")
+        builder.debug("Specs: ${specsInternal.size}")
     }
 
     companion object {
@@ -829,6 +833,40 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         private const val PLACEMENT_ID = "placementId"
         private const val TAG = "tag"
         private const val CONTAINER_ID = "containerId"
+
+        fun canPlaceSpecInSubstrate(
+            level: Level,
+            substratePos: BlockPos,
+            mountingPointWorld: Vector3d,
+            facing: FacingDirection,
+            face: Direction,
+            orientation: Rotation2d,
+            collisionSize: Vector3d,
+        ) : Boolean {
+            if (!MultipartBlockEntity.isValidPartSubstrateBlock(level, substratePos)) {
+                return false
+            }
+
+            val multipartPos = substratePos + face
+            val blockEntity = level.getBlockEntity(multipartPos)
+
+            if (blockEntity == null) {
+                val state = level.getBlockState(multipartPos)
+
+                if(!state.isAir && !state.`is`(Blocks.WATER)) {
+                    return false
+                }
+            }
+            else {
+                if(blockEntity !is MultipartBlockEntity) {
+                    return false
+                }
+            }
+
+            val box = SpecGeometry.boundingBox(mountingPointWorld, orientation, collisionSize, facing, face)
+
+            return !GridCollisions.intersects(level, box)
+        }
 
         fun createSpecDropStack(id: ResourceLocation, saveTag: CompoundTag?, count: Int = 1): ItemStack {
             val item = SpecRegistry.getSpecItem(id)
@@ -874,7 +912,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
     }
 
     private inline fun forEachCellSpec(action: (SpecWithCell<*>) -> Unit) {
-        specs.values.forEach {
+        specsInternal.values.forEach {
             if(it is SpecWithCell<*>) {
                 action(it)
             }
@@ -907,7 +945,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
             "actual cell did not have placement ID!"
         }
 
-        val spec = checkNotNull(specs[placementId]) {
+        val spec = checkNotNull(specsInternal[placementId]) {
             "Actual cell had placement id that is not in this container!"
         }
 
@@ -918,7 +956,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
         return spec
     }
 
-    override fun getCells() = specs.values.mapNotNull { (it as? SpecWithCell<*>)?.cell }
+    override fun getCells() = specsInternal.values.mapNotNull { (it as? SpecWithCell<*>)?.cell }
     override fun neighborScan(actualCell: Cell) = getCellSpec(actualCell).neighborScan()
     override fun onCellConnected(actualCell: Cell, remoteCell: Cell) = getCellSpec(actualCell).onConnected(remoteCell)
     override fun onCellDisconnected(actualCell: Cell, remoteCell: Cell) = getCellSpec(actualCell).onDisconnected(remoteCell)
@@ -997,6 +1035,22 @@ class SpecItem(val provider: SpecProvider) : PartItem(PartRegistry.SPEC_CONTAINE
         val substratePos = pContext.clickedPos
         val face = pContext.clickedFace
         val multipartPos = substratePos + face
+        val overlayState = SpecPlacementOverlay.getSnapshot(level, player)
+        val partMountingPoint = multipartPos.toVector3d() + Vector3d(0.5) - face.vector3d * 0.5
+        val substratePlane = Plane3d(face.vector3d, partMountingPoint)
+        val mountingPoint = player.getViewRay() intersectionWith substratePlane
+
+        if(!SpecContainerPart.canPlaceSpecInSubstrate(
+                level,
+                substratePos,
+                mountingPoint,
+                MultipartBlockEntity.getHorizontalFacing(face, player),
+                face,
+                overlayState.orientation,
+                provider.placementCollisionSize
+        )) {
+            return InteractionResult.FAIL
+        }
 
         fun getPart() : SpecContainerPart? {
             val blockEntity = level.getBlockEntity(multipartPos) as? MultipartBlockEntity
@@ -1019,7 +1073,6 @@ class SpecItem(val provider: SpecProvider) : PartItem(PartRegistry.SPEC_CONTAINE
         val part = getPart()
            ?: return InteractionResult.FAIL
 
-        val overlayState = SpecPlacementOverlay.getSnapshot(level, player)
 
         fun cleanupNew() {
             if(isNewPart) {
@@ -1569,16 +1622,28 @@ object SpecPreviewRenderer {
 
         val mountingPoint = clipResult.location.cast()
 
-        val snapshot = SpecPlacementOverlayClient.createSnapshot()
+        val overlayState = SpecPlacementOverlayClient.createSnapshot()
 
         val canPlace = run {
+            if(!SpecContainerPart.canPlaceSpecInSubstrate(
+                    level,
+                    substratePos,
+                    mountingPoint,
+                    MultipartBlockEntity.getHorizontalFacing(face, player),
+                    face,
+                    overlayState.orientation,
+                    item.provider.placementCollisionSize
+            )) {
+                return@run false
+            }
+
             if(blockEntity != null) {
                 if(blockEntity !is MultipartBlockEntity) {
                     return@run false
                 }
 
                 if(specContainer != null) {
-                    return@run !specContainer.placementCollides(player, snapshot.orientation, item.provider)
+                    return@run !specContainer.placementCollides(player, overlayState.orientation, item.provider)
                 }
             }
 
@@ -1622,7 +1687,7 @@ object SpecPreviewRenderer {
             }
         )
 
-        stack.mulPose(Quaternionf().rotateY(snapshot.orientation.ln().toFloat()))
+        stack.mulPose(Quaternionf().rotateY(overlayState.orientation.ln().toFloat()))
         stack.translate(0.0, item.provider.placementCollisionSize.y * 0.5, 0.0)
 
         submitBoxAndAxes(

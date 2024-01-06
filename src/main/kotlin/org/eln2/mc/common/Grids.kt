@@ -1,5 +1,6 @@
 package org.eln2.mc.common
 
+import com.jozufozu.flywheel.util.Color
 import it.unimi.dsi.fastutil.doubles.Double2DoubleOpenHashMap
 import it.unimi.dsi.fastutil.floats.FloatArrayList
 import net.minecraft.client.Minecraft
@@ -19,8 +20,13 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.inventory.InventoryMenu
+import net.minecraft.world.item.BlockItem
+import net.minecraft.world.item.context.BlockPlaceContext
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.entity.BlockEntity
+import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.phys.AABB
 import net.minecraftforge.network.NetworkEvent
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.*
@@ -28,30 +34,33 @@ import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.electrical.mna.VirtualResistor
-import org.ageseries.libage.utils.Stopwatch
+import org.ageseries.libage.utils.addUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.*
 import org.eln2.mc.client.render.foundation.*
+import org.eln2.mc.common.GridMaterial.Catenary
+import org.eln2.mc.common.GridMaterial.Straight
+import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockEntity
+import org.eln2.mc.common.blocks.foundation.MultipartBlock
+import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.items.foundation.PartItem
 import org.eln2.mc.common.network.Networking
-import org.eln2.mc.common.specs.foundation.GridTerminalSystem
-import org.eln2.mc.common.specs.foundation.MicroGridCellTerminal
-import org.eln2.mc.common.specs.foundation.MicroGridTerminalServer
+import org.eln2.mc.common.parts.foundation.Part
+import org.eln2.mc.common.specs.foundation.*
 import org.eln2.mc.data.Locators
 import org.eln2.mc.data.SortedUUIDPair
 import org.eln2.mc.extensions.*
+import org.eln2.mc.mathematics.ceilBlockPos
 import org.eln2.mc.mathematics.floorBlockPos
 import java.util.*
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import java.util.function.Supplier
-import kotlin.collections.ArrayList
-import kotlin.collections.HashMap
-import kotlin.collections.HashSet
 import kotlin.concurrent.read
 import kotlin.concurrent.write
-import kotlin.math.PI
-import kotlin.math.floor
+import kotlin.math.*
+
 
 enum class GridMaterialCategory {
     MicroGrid,
@@ -70,7 +79,7 @@ class GridMaterial(
     val vertexColor: RGBFloat,
     val physicalMaterial: Material,
     val shape: Shape,
-    val category: GridMaterialCategory
+    val category: GridMaterialCategory,
 ) {
     val id get() = GridMaterials.getId(this)
 
@@ -104,7 +113,7 @@ class GridMaterial(
         val circleVertices: Int,
         val radius: Double,
         val splitDistanceHint: Double,
-        val splitParameterHint: Double
+        val splitParameterHint: Double,
     )
 
     class Catenary(
@@ -113,14 +122,14 @@ class GridMaterial(
         splitDistanceHint: Double,
         splitParameterHint: Double,
         val slack: Double = 0.01,
-        val splitRotIncrementMax: Double = PI / 16.0
+        val splitRotIncrementMax: Double = PI / 16.0,
     ) : Shape(circleVertices, radius, splitDistanceHint, splitParameterHint)
 
     class Straight(
         circleVertices: Int,
         radius: Double,
         splitDistanceHint: Double,
-        splitParameterHint: Double
+        splitParameterHint: Double,
     ) : Shape(circleVertices, radius, splitDistanceHint, splitParameterHint)
 
     fun create(a: Vector3d, b: Vector3d) = factory(a, b)
@@ -425,17 +434,25 @@ object GridConnectionManagerServer {
         removeEndpointById(endpointId)
     }
 
-    fun clipsBlock(level: ServerLevel, blockPos: BlockPos) : Boolean = invoke(level) {
-        clips(blockPos)
+    fun intersects(level: ServerLevel, box: BoundingBox3d) = invoke(level) {
+        intersects(box)
+    }
+
+    fun intersects(level: ServerLevel, box: OrientedBoundingBox3d) = invoke(level) {
+        intersects(box)
+    }
+
+    fun pick(level: ServerLevel, line: Line3d) = invoke(level) {
+        pick(line)
     }
 
     class LevelGridData(val level: ServerLevel) {
         private val handles = HashSet<Handle>()
         private val handlesByChunk = MutableSetMapMultiMap<ChunkPos, Handle>()
         private val watchedChunksByPlayer = MutableSetMapMultiMap<ServerPlayer, ChunkPos>()
-
         private val pairMap = PairMap()
         private val handlesByPair = HashMap<GridEndpointPair, GridConnectionHandle>()
+        private val collider = GridPruningStructure()
 
         fun watch(player: ServerPlayer, chunkPos: ChunkPos) {
             if(watchedChunksByPlayer[player].add(chunkPos)) {
@@ -463,15 +480,9 @@ object GridConnectionManagerServer {
             Networking.send(GridConnectionDeleteMessage(handle.connection.id), player)
         }
 
-        fun clips(blockPos: BlockPos) : Boolean {
-            for (handle in handlesByChunk[ChunkPos(blockPos)]) {
-                if(handle.connection.cable.blocks.contains(blockPos)) {
-                    return true
-                }
-            }
-
-            return false
-        }
+        fun intersects(box: BoundingBox3d) = collider.intersects(box)
+        fun intersects(box: OrientedBoundingBox3d) = collider.intersects(box)
+        fun pick(line: Line3d) = collider.pick(line)
 
         private fun createHandle(connection: GridConnectionCable) : GridConnectionHandle {
             val handle = Handle(connection)
@@ -527,6 +538,10 @@ object GridConnectionManagerServer {
         }
 
         private inner class Handle(override val connection: GridConnectionCable) : GridConnectionHandle {
+            init {
+                collider.add(connection)
+            }
+
             private val players = MutableSetMapMultiMap<ServerPlayer, ChunkPos>()
 
             fun addPlayer(player: ServerPlayer, chunkPos: ChunkPos) : Boolean {
@@ -551,6 +566,8 @@ object GridConnectionManagerServer {
                     players.keys.forEach { player ->
                         sendDeletedConnection(player, this)
                     }
+
+                    collider.remove(connection.id)
                 }
             }
         }
@@ -618,12 +635,44 @@ object GridConnectionManagerClient {
     private val lock = ReentrantReadWriteLock()
     private val slicesByConnection = MutableSetMapMultiMap<Int, ConnectionSectionSlice>()
     private val slicesBySection = MutableSetMapMultiMap<SectionPos, ConnectionSectionSlice>()
+    private val collider = GridPruningStructure()
 
     fun clear() {
         lock.write {
             slicesByConnection.map.clear()
             slicesBySection.map.clear()
+            collider.clear()
         }
+    }
+
+    fun intersects(box: BoundingBox3d) : Boolean {
+        val result: Boolean
+
+        lock.read {
+            result = collider.intersects(box)
+        }
+
+        return result
+    }
+
+    fun intersects(box: OrientedBoundingBox3d) : Boolean {
+        val result: Boolean
+
+        lock.read {
+            result = collider.intersects(box)
+        }
+
+        return result
+    }
+
+    fun pick(line: Line3d) : Pair<GridPruningStructure.Segment, RayIntersection>? {
+        var result: Pair<GridPruningStructure.Segment, RayIntersection>?
+
+        lock.read {
+            result = collider.pick(line)
+        }
+
+        return result
     }
 
     private fun scanUProgression(extrusion: SketchExtrusion, catenary: Cable3dA, u0: Double, u1: Double) : Double2DoubleOpenHashMap {
@@ -666,67 +715,77 @@ object GridConnectionManagerClient {
     }
 
     fun addConnection(connection: GridConnectionCable) {
-        val sections = HashSet<SectionPos>()
+        DebugVisualizer.lineCylinder(*connection.cable.segments.toTypedArray()).withRemover {
+            var result: Boolean
 
-        lock.write {
-            val catenary = connection.cable
-            val (extrusion, quads) = catenary.mesh()
-            val sprite = connection.material.sprite
-
-            LOG.info("Generated ${quads.size} quads")
-
-            val uCoordinates = scanUProgression(
-                extrusion,
-                catenary,
-                sprite.u0.toDouble(),
-                sprite.u1.toDouble()
-            )
-
-            val v0 = sprite.v0.toDouble()
-            val v1 = sprite.v1.toDouble()
-
-            val slicesBySection = HashMap<SectionPos, ConnectionSectionSlice>()
-
-            fun getSlice(blockPos: BlockPos) : ConnectionSectionSlice {
-                val section = SectionPos.of(blockPos)
-
-                return slicesBySection.computeIfAbsent(section) {
-                    ConnectionSectionSlice(connection.material, section)
-                }
+            lock.read {
+                result = !slicesByConnection.contains(connection.id)
             }
 
-            for (quad in quads) {
-                val sectionData = getSlice(quad.principal)
+            result
+        }
 
-                quad.vertices.forEach { vertex ->
-                    val orientation = extrusion.rmfLookup.get(vertex.param)!!.rotation
-                    val phase = vertex.normal angle orientation.invoke().c2
+        val cable = connection.cable
+        val (extrusion, quads) = cable.mesh()
+        val sprite = connection.material.sprite
 
-                    val u = uCoordinates.get(vertex.param)
-                    val v = map(phase, -PI, PI, v0, v1)
+        LOG.info("Generated ${quads.size} quads")
 
-                    sectionData.vertices.add(
-                        vertex.position,
-                        vertex.normal,
-                        u, v
-                    )
-                }
-            }
+        val uCoordinates = scanUProgression(
+            extrusion,
+            cable,
+            sprite.u0.toDouble(),
+            sprite.u1.toDouble()
+        )
 
-            connection.cable.blocks.forEach { block ->
-                val slice = getSlice(block)
+        val v0 = sprite.v0.toDouble()
+        val v1 = sprite.v1.toDouble()
 
-                slice.blocks.add(block)
-            }
+        val slicesBySection = HashMap<SectionPos, ConnectionSectionSlice>()
 
-            slicesBySection.forEach { (sectionPos, sectionSlice) ->
-                slicesByConnection[connection.id].add(sectionSlice)
-                this.slicesBySection[sectionPos].add(sectionSlice)
-                sections.add(sectionPos)
+        fun getSlice(blockPos: BlockPos) : ConnectionSectionSlice {
+            val section = SectionPos.of(blockPos)
+
+            return slicesBySection.computeIfAbsent(section) {
+                ConnectionSectionSlice(
+                    connection.material,
+                    section
+                )
             }
         }
 
-        sections.forEach {
+        for (quad in quads) {
+            val sectionData = getSlice(quad.principal)
+
+            quad.vertices.forEach { vertex ->
+                val orientation = extrusion.rmfLookup.get(vertex.param)!!.rotation
+                val phase = vertex.normal angle orientation.invoke().c2
+
+                val u = uCoordinates.get(vertex.param)
+                val v = map(phase, -PI, PI, v0, v1)
+
+                sectionData.vertices.add(
+                    vertex.position,
+                    vertex.normal,
+                    u, v
+                )
+            }
+        }
+
+        connection.cable.blocks.forEach { block ->
+            getSlice(block).blocks.add(block)
+        }
+
+        lock.write {
+            slicesBySection.forEach { (sectionPos, sectionSlice) ->
+                slicesByConnection[connection.id].add(sectionSlice)
+                this.slicesBySection[sectionPos].add(sectionSlice)
+            }
+
+            collider.add(connection)
+        }
+
+        slicesBySection.keys.forEach {
             setDirty(it)
         }
     }
@@ -739,12 +798,11 @@ object GridConnectionManagerClient {
             }
 
             slicesByConnection.clear(id)
+
+            collider.remove(id)
         }
     }
-    // Kind of waiting on this lock when parallel meshing, what to do?
-    // Maybe add a concurrent object pool (to libage), get a temporary array list,
-    // fill it on the lock, and then exit and call user with
-    // the stuff in the array list and then return to pool
+
     @JvmStatic
     fun read(sectionPos: SectionPos, user: (GridMaterial, VertexList) -> Unit) {
         val slices = ArrayList<ConnectionSectionSlice>()
@@ -841,14 +899,150 @@ object GridConnectionManagerClient {
 }
 
 object GridCollisions {
-    /**
-     * Checks if the grid intersects the voxel at [blockPos].
-     * */
+    fun intersects(level: Level, boundingBox: BoundingBox3d) = if(level.isClientSide) {
+        GridConnectionManagerClient.intersects(boundingBox)
+    }
+    else {
+        GridConnectionManagerServer.intersects(level as ServerLevel, boundingBox)
+    }
+
+    fun intersects(level: Level, boundingBox: OrientedBoundingBox3d) = if(level.isClientSide) {
+        GridConnectionManagerClient.intersects(boundingBox)
+    }
+    else {
+        GridConnectionManagerServer.intersects(level as ServerLevel, boundingBox)
+    }
+
     @JvmStatic
-    fun collidesBlock(level: Level, blockPos: BlockPos) = if(level.isClientSide) {
-        GridConnectionManagerClient.clipsBlock(blockPos)
-    } else {
-        GridConnectionManagerServer.clipsBlock(level as ServerLevel, blockPos)
+    fun intersectsPlacementBlock(context: BlockPlaceContext) : Boolean {
+        val item = context.itemInHand.item
+
+        if(item !is BlockItem) {
+            return false
+        }
+
+        if(item is PartItem) {
+            return false
+        }
+
+        val blockPos = context.clickedPos
+        val blockState = item.block.getStateForPlacement(context)
+            ?: return false
+
+        return intersectsPlacementBlock(context.level, blockPos, blockState)
+    }
+
+    fun intersectsPlacementBlock(level: Level, blockPos: BlockPos, blockState: BlockState) = blockState.getCollisionShape(level, blockPos).toBoxList().any {
+        intersects(level, it.move(blockPos).cast())
+    }
+
+    fun cablePlacementIntersects(level: Level, cable: Cable3dA, h1: MicroGridTerminalHandle, h2: MicroGridTerminalHandle) : Boolean {
+        fun isCollidable(any: Any) = any != h1.gameObject && any != h2.gameObject && run {
+            if(any !is MultiblockDelegateBlockEntity) {
+                true
+            }
+            else {
+                if(any.representativePos != null) {
+                    val representative = level.getBlockEntity(any.representativePos!!)
+
+                    representative != h1.gameObject && representative != h2.gameObject
+                }
+                else {
+                    true
+                }
+            }
+        }
+
+        return cablePlacementIntersects(
+            level,
+            ::isCollidable, ::isCollidable, ::isCollidable,
+            cable
+        )
+    }
+
+    private fun cablePlacementIntersects(
+        level: Level,
+        checkBlockEntity: (ent: BlockEntity) -> Boolean,
+        checkPart: (part: Part<*>) -> Boolean,
+        checkSpec: (spec: Spec<*>) -> Boolean,
+        cable: Cable3dA
+    ) : Boolean {
+        fun prev(box: OrientedBoundingBox3d, a: Boolean) {
+            DebugVisualizer.lineOrientedBox(box, color = if(a) Color(255, 0, 0, 255) else Color(0, 255, 0, 255))
+                .removeAfter(5.0)
+        }
+
+        for (cylinder in cable.segments) {
+            val segmentAligned = BoundingBox3d.fromCylinder(cylinder)
+
+            for (blockPos in BlockPos.betweenClosed(segmentAligned.min.floorBlockPos(), segmentAligned.max.ceilBlockPos())) {
+                val voxelBoundingBox = AABB(blockPos).cast()
+
+                if(!cylinder.intersectsWith(voxelBoundingBox)) {
+                    continue
+                }
+
+                val state = level.getBlockState(blockPos)
+
+                if(state.isAir) {
+                    continue
+                }
+
+                if(state.block is MultipartBlock) {
+                    val multipart = level.getBlockEntity(blockPos) as? MultipartBlockEntity
+                        ?: continue
+
+                    for (part in multipart.parts.values) {
+                        if(part is SpecContainerPart) {
+                            for(spec in part.specs.values) {
+                                if(!checkSpec(spec)) {
+                                    continue
+                                }
+
+                                if(cylinder intersectsWith spec.placement.orientedBoundingBoxWorld) {
+                                    prev(spec.placement.orientedBoundingBoxWorld, true)
+                                    return true
+                                } else {
+                                    prev(spec.placement.orientedBoundingBoxWorld, false)
+                                }
+                            }
+                        } else {
+                            if(!checkPart(part)) {
+                                continue
+                            }
+
+                            if(cylinder intersectsWith part.worldBoundingBox.cast()) {
+                                prev(OrientedBoundingBox3d.createFromBoundingBox(part.worldBoundingBox.cast()), true)
+                                return true
+                            } else {
+                                prev(OrientedBoundingBox3d.createFromBoundingBox(part.worldBoundingBox.cast()), false)
+                            }
+                        }
+                    }
+                }
+                else {
+                    val blockEntity = level.getBlockEntity(blockPos)
+
+                    if(blockEntity != null && !checkBlockEntity(blockEntity)) {
+                        continue
+                    }
+
+                    for (boxModel in state.getCollisionShape(level, blockPos).toBoxList()) {
+                        val box = boxModel.move(blockPos)
+
+                        if(cylinder intersectsWith box.cast()) {
+                            prev(OrientedBoundingBox3d.createFromBoundingBox(box.cast()), true)
+                            return true
+                        }
+                        else {
+                            prev(OrientedBoundingBox3d.createFromBoundingBox(box.cast()), false)
+                        }
+                    }
+                }
+            }
+        }
+
+        return false
     }
 }
 
@@ -866,7 +1060,7 @@ fun interface GridRendererVertexConsumer {
         pRed: Float, pGreen: Float, pBlue: Float,
         pTexU: Float, pTexV: Float,
         pOverlayUV: Int, pLightmapUV: Int,
-        pNormalX: Float, pNormalY: Float, pNormalZ: Float
+        pNormalX: Float, pNormalY: Float, pNormalZ: Float,
     )
 }
 
@@ -950,6 +1144,117 @@ object GridRenderer {
     }
 }
 
+class GridPruningStructure {
+    private var boundingBoxTree = BoundingBoxTree3d<Segment>()
+    private var cables = MutableSetMapMultiMap<Int, Segment>()
+
+    fun add(connection: GridConnectionCable) {
+        require(!cables.contains(connection.id)) {
+            "Duplicate add $connection"
+        }
+
+        val set = cables[connection.id]
+
+        connection.cable.segments.forEach {
+            val segment = Segment(it, connection)
+            set.addUnique(segment)
+            boundingBoxTree.insert(segment, BoundingBox3d.fromCylinder(it))
+        }
+    }
+
+    fun remove(id: Int) {
+        val set = checkNotNull(cables.map.remove(id)) {
+            "Did not have connection $id"
+        }
+
+        set.forEach {
+            boundingBoxTree.remove(it)
+        }
+    }
+
+    /**
+     * Checks if any cables intersect the [box].
+     * */
+    fun intersects(box: BoundingBox3d) : Boolean {
+        var result = false
+
+        boundingBoxTree.queryIntersecting({ it.box intersectsWith box}) {
+            val cylinder = it.data!!.cylinder
+
+            if(cylinder intersectsWith box) {
+                result = true
+                false
+            }
+            else {
+                true
+            }
+        }
+
+        return result
+    }
+
+    /**
+     * Checks if any cables intersect the [box].
+     * */
+    fun intersects(box: OrientedBoundingBox3d) : Boolean {
+        var result = false
+
+        val boxAligned = BoundingBox3d.fromOrientedBoundingBox(box)
+
+        boundingBoxTree.queryIntersecting({ it.box intersectsWith boxAligned }) {
+            val cylinder = it.data!!.cylinder
+
+            if(cylinder intersectsWith box) {
+                result = true
+                false
+            }
+            else {
+                true
+            }
+        }
+
+        return result
+    }
+
+    /**
+     * Gets the closest segment intersected by [line].
+     * @return The closest segment intersected by [line] and the [RayIntersection], or null, if no segments intersect.
+     * */
+    fun pick(line: Line3d) : Pair<Segment, RayIntersection>? {
+        var bestSegment: Segment? = null
+        var bestIntersection: RayIntersection? = null
+
+        boundingBoxTree.queryIntersecting({ line intersectsWith it.box }) {
+            val segment = it.data!!
+
+            val intersection = line intersectionWith segment.cylinder
+
+            if(intersection != null) {
+                if(bestIntersection == null || bestIntersection!!.entry > intersection.entry) {
+                    bestSegment = segment
+                    bestIntersection = intersection
+                }
+            }
+
+            true
+        }
+
+        return if(bestIntersection == null) {
+            null
+        }
+        else {
+            Pair(bestSegment!!, bestIntersection!!)
+        }
+    }
+
+    fun clear() {
+        boundingBoxTree = BoundingBoxTree3d()
+        cables = MutableSetMapMultiMap()
+    }
+
+    class Segment(val cylinder: Cylinder3d, val cable: GridConnectionCable)
+}
+
 /**
  * Models a cable using an arclength-parameterized catenary ([ArcReparamCatenary3d]) or a straight tube ([LinearSplineSegment3d])
  * @param a First support point.
@@ -965,7 +1270,7 @@ abstract class Cable3dA(
     val circleVertices: Int,
     val radius: Double,
     val splitDistanceHint: Double = 0.5,
-    val splitParameterHint: Double = 0.1
+    val splitParameterHint: Double = 0.1,
 ) {
     /**
      * Gets the circumference of the tube, according to [radius].
@@ -1001,6 +1306,12 @@ abstract class Cable3dA(
      * Gets a multimap of blocks intersected by the spline, and the chunks they belong to.
      * */
     abstract val chunks: MultiMap<ChunkPos, BlockPos>
+
+    /**
+     * Gets cylindrical segments of the cable.
+     * This is funny; we approximate the shape of cylinders with these segments, and here, we approximate the shape of these segments with cylinders.
+     * */
+    abstract val segments: List<Cylinder3d>
 
     protected fun sketchCrossSection() = sketchCircle(circleVertices, radius)
 
@@ -1185,7 +1496,7 @@ abstract class Cable3dA(
         splitDistanceHint: Double,
         splitParameterHint: Double,
         val slack: Double,
-        val splitRotIncrementMax: Double
+        val splitRotIncrementMax: Double,
     ) : Cable3dA(a, b, circleVertices, radius, splitDistanceHint, splitParameterHint) {
         override val arcLength: Double
         override val spline: Spline3d
@@ -1233,8 +1544,8 @@ abstract class Cable3dA(
             chunks = getChunksFromBlocks(blocks)
         }
 
-        override fun mesh(): CableMesh3d {
-            val samples = spline.adaptscan(
+        private val samples = checkNotNull(
+            spline.adaptscan(
                 0.0,
                 1.0,
                 splitParameterHint,
@@ -1244,11 +1555,36 @@ abstract class Cable3dA(
                 ),
                 iMax = 1024 * 32 // way too generous...
             )
+        ) { "Failed to get samples for catenary cable3d $this" }
 
-            checkNotNull(samples) {
-                "Failed to get samples for catenary cable3d $this"
+        override val segments = run {
+            if(samples.size < 2) {
+                // what?
+                DEBUGGER_BREAK()
+                return@run emptyList<Cylinder3d>()
             }
 
+            val cylinders = ArrayList<Cylinder3d>(samples.size - 1)
+
+            var previous = spline.evaluate(samples[0])
+
+            for (i in 1 until samples.size) {
+                val p0 = previous
+                val p1 = spline.evaluate(samples[i])
+                previous = p1
+
+                cylinders.add(
+                    Cylinder3d(
+                        Line3d.fromStartEnd(p0, p1),
+                        radius
+                    )
+                )
+            }
+
+            cylinders
+        }
+
+        override fun mesh(): CableMesh3d {
             val extrusion = if(isCatenary) {
                 extrudeSketchFrenet(
                     sketchCrossSection(),
@@ -1316,6 +1652,13 @@ abstract class Cable3dA(
             chunks = getChunksFromBlocks(blocks)
         }
 
+        override val segments = listOf(
+            Cylinder3d(
+                Line3d.fromStartEnd(a, b),
+                radius
+            )
+        )
+
         override fun mesh(): CableMesh3d {
             val splitDistanceMax = splitDistanceHint * splitDistanceHint
 
@@ -1354,7 +1697,7 @@ abstract class Cable3dA(
                 crossSectionSketch: Sketch,
                 spline: Spline3d,
                 samples: ArrayList<Double>,
-                supports: List<Vector3d>
+                supports: List<Vector3d>,
             ) : SketchExtrusion {
                 val t = (supports[1] - supports[0]).normalized()
                 val n = t.perpendicular()
@@ -1534,7 +1877,7 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci) {
         level: ServerLevel,
         a: GridNodeCell, terminalA: Int,
         b: GridNodeCell, terminalB: Int,
-        cable: GridConnectionCable
+        cable: GridConnectionCable,
     ) {
         check(stateField == null) {
             "Multiple initializations"
@@ -1701,7 +2044,7 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci) {
         val cable: GridConnectionCable,
         val pair: GridEndpointPair,
         val terminalA: Int,
-        val terminalB: Int
+        val terminalB: Int,
     )
 
     inner class StagingContainer(val level: ServerLevel, val a: Cell, val b: Cell) : CellContainer {
@@ -1747,7 +2090,7 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci) {
             terminalA: Int,
             endpointB: UUID,
             terminalB: Int,
-            cable: GridConnectionCable
+            cable: GridConnectionCable,
         ) : GridConnectionCell {
             val locator =  Locators.buildLocator {
                 it.put(GRID_ENDPOINT_PAIR, SortedUUIDPair.create(endpointA, endpointB))
@@ -1779,7 +2122,7 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci) {
             terminalA: MicroGridCellTerminal,
             terminalB: MicroGridCellTerminal,
             level: ServerLevel,
-            cable: GridConnectionCable
+            cable: GridConnectionCable,
         ) {
             terminalA as MicroGridTerminalServer
             terminalB as MicroGridTerminalServer
@@ -1801,7 +2144,7 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci) {
 
         fun endStaging(
             terminalA: MicroGridCellTerminal,
-            terminalB: MicroGridCellTerminal
+            terminalB: MicroGridCellTerminal,
         ) {
             check(terminalA.stagingCell === terminalB.stagingCell)
             val cell = checkNotNull(terminalA.stagingCell)

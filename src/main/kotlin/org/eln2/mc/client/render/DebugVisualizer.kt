@@ -12,14 +12,14 @@ import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.core.Direction
 import net.minecraft.world.phys.AABB
-import org.ageseries.libage.mathematics.geometry.BoundingBox3d
-import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
-import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.mathematics.geometry.*
+import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.extensions.*
 import org.joml.Quaternionf
+import kotlin.math.PI
 
 @ClientOnly
 object DebugVisualizer {
@@ -164,19 +164,8 @@ object DebugVisualizer {
             pPoseStack.pushPose()
 
             pPoseStack.translate(-pCamX, -pCamY, -pCamZ)
-
-            pPoseStack.translate(
-                obb.transform.translation.x,
-                obb.transform.translation.y,
-                obb.transform.translation.z
-            )
-
-            pPoseStack.mulPose(
-                Quaternionf().run {
-                    val (x, y, z, w) = obb.transform.rotation
-                    set(x.toFloat(), y.toFloat(), z.toFloat(), w.toFloat())
-                }
-            )
+            pPoseStack.translate(obb.transform.translation)
+            pPoseStack.mulPose(obb.transform.rotation)
 
             val min = -obb.halfSize
             val max = +obb.halfSize
@@ -202,6 +191,108 @@ object DebugVisualizer {
             pPoseStack.popPose()
         }
 
+    }
+
+    private class LineCylinder(val cylinder: Cylinder3d, val color: Color) : RenderElement() {
+        companion object {
+            private const val LINES = 16
+        }
+
+        override fun render(
+            pPoseStack: PoseStack,
+            pBufferSource: MultiBufferSource.BufferSource,
+            pCamX: Double,
+            pCamY: Double,
+            pCamZ: Double,
+            level: ClientLevel,
+            player: LocalPlayer,
+        ) {
+            pPoseStack.pushPose()
+
+            pPoseStack.translate(-pCamX, -pCamY, -pCamZ)
+
+            pPoseStack.translate(cylinder.center)
+            pPoseStack.mulPose(Rotation3d.createFromTwoVectors(Vector3d.unitY, cylinder.extent.direction))
+
+            val matrix4f = pPoseStack.last().pose()
+            val matrix3f = pPoseStack.last().normal()
+
+            val vertexConsumer = pBufferSource.getBuffer(RenderType.lines())
+            val r = color.redAsFloat
+            val g = color.greenAsFloat
+            val b = color.blueAsFloat
+            val a = color.alphaAsFloat
+
+            val radius = cylinder.radius.toFloat()
+            val y1 = (-cylinder.extent.length / 2.0).toFloat()
+            val y2 = (+cylinder.extent.length / 2.0).toFloat()
+
+            for (i in 1 .. LINES) {
+                val r1 = Rotation2d.exp(
+                    map(
+                        (i - 1).toDouble(),
+                        0.0, LINES.toDouble(),
+                        0.0, 2.0 * PI
+                    )
+                )
+
+                val r2 = Rotation2d.exp(
+                    map(
+                        i.toDouble(),
+                        0.0, LINES.toDouble(),
+                        0.0, 2.0 * PI
+                    )
+                )
+
+                val re1 = r1.re.toFloat()
+                val im1 = r1.im.toFloat()
+                val re2 = r2.re.toFloat()
+                val im2 = r2.im.toFloat()
+
+                val x1 = radius * re1
+                val z1 = radius * im1
+                val x2 = radius * re2
+                val z2 = radius * im2
+
+                vertexConsumer
+                    .vertex(matrix4f, x1, y1, z1)
+                    .color(r, g, b, a)
+                    .normal(matrix3f, re1, 0.0f, im1)
+                    .endVertex()
+
+                vertexConsumer
+                    .vertex(matrix4f, x2, y1, z2)
+                    .color(r, g, b, a)
+                    .normal(matrix3f, re1, 0.0f, im1)
+                    .endVertex()
+
+                vertexConsumer
+                    .vertex(matrix4f, x1, y2, z1)
+                    .color(r, g, b, a)
+                    .normal(matrix3f, re1, 0.0f, im1)
+                    .endVertex()
+
+                vertexConsumer
+                    .vertex(matrix4f, x2, y2, z2)
+                    .color(r, g, b, a)
+                    .normal(matrix3f, re1, 0.0f, im1)
+                    .endVertex()
+
+                vertexConsumer
+                    .vertex(matrix4f, x1, y1, z1)
+                    .color(r, g, b, a)
+                    .normal(matrix3f, re1, 0.0f, im1)
+                    .endVertex()
+
+                vertexConsumer
+                    .vertex(matrix4f, x1, y2, z1)
+                    .color(r, g, b, a)
+                    .normal(matrix3f, re1, 0.0f, im1)
+                    .endVertex()
+            }
+
+            pPoseStack.popPose()
+        }
     }
 
     @JvmStatic
@@ -261,6 +352,9 @@ object DebugVisualizer {
     fun createLineOrientedBox(vararg obbs: OrientedBoundingBox3d, color: Color = Color.WHITE) =
         createCompositionOf(*obbs.map { LineOBB(it, color) }.toTypedArray())
 
+    fun createLineCylinder(vararg cylinders: Cylinder3d, color: Color = Color.WHITE) =
+        createCompositionOf(*cylinders.map { LineCylinder(it, color) }.toTypedArray())
+
     fun createDirection(origin: Vector3d, direction: Direction, size: Double = 0.01, color: Color = Color.WHITE) : RenderElement {
         val t = size / 2.0
 
@@ -318,6 +412,9 @@ object DebugVisualizer {
 
     fun lineOrientedBox(vararg obbs: OrientedBoundingBox3d, color: Color = Color.WHITE) =
         add(createLineOrientedBox(*obbs, color = color))
+
+    fun lineCylinder(vararg cylinders: Cylinder3d, color: Color = Color.WHITE) =
+        add(createLineCylinder(*cylinders, color = color))
 
     fun direction(origin: Vector3d, direction: Direction, size: Double = 0.05, color: Color = Color.WHITE) =
         add(createDirection(origin, direction, size, color))

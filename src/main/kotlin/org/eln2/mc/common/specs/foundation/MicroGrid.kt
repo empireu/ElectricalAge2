@@ -54,6 +54,8 @@ import kotlin.math.*
  * @param terminal The terminal to handle.
  * */
 abstract class MicroGridTerminalHandle(val terminal: MicroGridTerminalCommon) {
+    abstract val gameObject: Any
+
     /**
      * Checks if the container handling this terminal is the same as the container handling [other].
      * */
@@ -82,6 +84,9 @@ abstract class MicroGridTerminalHandle(val terminal: MicroGridTerminalCommon) {
      * Handle for a [MicroGridNode] implemented by a [MicroGridSpec].
      * */
     class SpecHandle(terminal: MicroGridTerminalCommon, val part: SpecContainerPart, val spec: MicroGridSpec<*>) : MicroGridTerminalHandle(terminal) {
+        override val gameObject: Any
+            get() = spec
+
         override fun toNbt(): CompoundTag {
             val tag = CompoundTag()
 
@@ -97,6 +102,9 @@ abstract class MicroGridTerminalHandle(val terminal: MicroGridTerminalCommon) {
     }
 
     class PartHandle(terminal: MicroGridTerminalCommon, val part: MicroGridCellPart<*, *>) : MicroGridTerminalHandle(terminal) {
+        override val gameObject: Any
+            get() = part
+
         override fun toNbt(): CompoundTag {
             val tag = CompoundTag()
 
@@ -111,6 +119,9 @@ abstract class MicroGridTerminalHandle(val terminal: MicroGridTerminalCommon) {
     }
 
     class BlockEntityHandle(terminal: MicroGridTerminalCommon, val blockEntity: MicroGridCellBlockEntity<*>) : MicroGridTerminalHandle(terminal) {
+        override val gameObject: Any
+            get() = blockEntity
+
         override fun toNbt(): CompoundTag {
             val tag = CompoundTag()
 
@@ -1622,6 +1633,10 @@ open class GridConnectItem(val material: GridMaterial) : Item(Properties()) {
 
             val pair = GridEndpointPair.create(hTarget.terminal.gridEndpointInfo, hRemote.terminal.gridEndpointInfo)
             val gridCatenary = GridConnectionManagerServer.createCable(pair, material)
+
+            if(GridCollisions.cablePlacementIntersects(pLevel, gridCatenary.cable, hTarget, hRemote)) {
+                return fail("Stuff in the way!")
+            }
 
             val connectionInfo = GridConnectionDescription(
                 gridCatenary.material,

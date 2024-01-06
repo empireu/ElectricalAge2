@@ -22,8 +22,11 @@ import net.minecraft.world.phys.shapes.VoxelShape
 import org.ageseries.libage.data.Locator
 import org.ageseries.libage.data.put
 import org.ageseries.libage.data.requireLocator
+import org.ageseries.libage.mathematics.geometry.Cylinder3d
+import org.ageseries.libage.mathematics.geometry.Line3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.*
+import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
 import org.eln2.mc.client.render.foundation.MultipartBlockEntityInstance
@@ -1159,5 +1162,12 @@ class SavingLifecycleTestPart(ci: PartCreateInfo) : Part<BasicPartRenderer>(ci) 
 
     override fun loadClientSaveTag(tag: CompoundTag) {
         print("loadClientSaveTag ${tag.getString("Client")} ${tag.size()}")
+    }
+
+    override fun onAddedToClient() {
+        DebugVisualizer.lineCylinder(Cylinder3d(
+            Line3d.fromStartEnd(placement.mountingPointWorld, placement.mountingPointWorld + placement.positiveY.vector3d),
+            0.5
+        )).withinScopeOf(this)
     }
 }

@@ -1,12 +1,15 @@
 package org.eln2.mc.common
 
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.item.context.BlockPlaceContext
+import net.minecraft.world.level.Level
 import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.level.BlockEvent
 import net.minecraftforge.event.level.ChunkWatchEvent
 import net.minecraftforge.event.level.LevelEvent
 import net.minecraftforge.event.server.ServerStartingEvent
 import net.minecraftforge.event.server.ServerStoppingEvent
+import net.minecraftforge.eventbus.api.EventPriority
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.event.lifecycle.FMLLoadCompleteEvent
@@ -134,7 +137,7 @@ object ForgeEvents {
 
     @SubscribeEvent @JvmStatic
     fun onEntityPlaceEvent(event: BlockEvent.EntityPlaceEvent) { // not called client side?
-        if(!event.level.isClientSide && GridConnectionManagerServer.clipsBlock(event.level as ServerLevel, event.pos)) {
+        if(event.level is Level && GridCollisions.intersectsPlacementBlock(event.level as Level, event.pos, event.state)) {
             event.isCanceled = true
         }
 

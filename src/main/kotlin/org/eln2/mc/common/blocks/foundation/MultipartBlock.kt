@@ -1,5 +1,6 @@
 package org.eln2.mc.common.blocks.foundation
 
+import com.jozufozu.flywheel.util.Color
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.core.BlockPos
@@ -44,6 +45,7 @@ import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
+import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.foundation.MultipartBlockEntityInstance
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.*
@@ -1402,10 +1404,12 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
                 }
             }
 
-            return !GridCollisions.collidesBlock(level, multipartPos)
+            val worldBoundingBox = PartGeometry.worldBoundingBox(size, facingDirection, face, multipartPos)
+
+            return !GridCollisions.intersects(level, worldBoundingBox.cast())
         }
 
-        fun canPlacePartInSubstrate(level: Level, substratePos: BlockPos, face: Direction, provider: PartProvider, player: Player) : Boolean = MultipartBlockEntity.canPlacePartInSubstrate(
+        fun canPlacePartInSubstrate(level: Level, substratePos: BlockPos, face: Direction, provider: PartProvider, player: Player) : Boolean = canPlacePartInSubstrate(
             level,
             substratePos,
             getHorizontalFacing(face, player),
