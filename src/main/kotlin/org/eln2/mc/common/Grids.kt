@@ -1,6 +1,5 @@
 package org.eln2.mc.common
 
-import com.jozufozu.flywheel.util.Color
 import it.unimi.dsi.fastutil.doubles.Double2DoubleOpenHashMap
 import it.unimi.dsi.fastutil.floats.FloatArrayList
 import net.minecraft.client.Minecraft
@@ -19,12 +18,12 @@ import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.world.InteractionResult
 import net.minecraft.world.inventory.InventoryMenu
 import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.context.BlockPlaceContext
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.Level
-import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
 import net.minecraftforge.network.NetworkEvent
@@ -47,7 +46,6 @@ import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.items.foundation.PartItem
 import org.eln2.mc.common.network.Networking
-import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.common.specs.foundation.*
 import org.eln2.mc.data.Locators
 import org.eln2.mc.data.SortedUUIDPair
@@ -191,7 +189,7 @@ object GridMaterials {
 
 /**
  * [Cable3dA] with extra information needed for syncing and state management.
- * @param id The unique ID of the connection. This is used for replication to clients.
+ * @param id The unique ID of the connection. This is used for replication to clients. This ID should never be saved, it is a runtime-only thing.
  * @param cable The 3D model data.
  * @param material The physical properties of the grid cable.
  * */
@@ -214,6 +212,7 @@ data class GridConnectionCable(val id: Int, val cable: Cable3dA, val material: G
         private const val CATENARY = "catenary"
         private const val MATERIAL = "material"
 
+        @ClientOnly
         fun fromNbt(tag: CompoundTag) = GridConnectionCable(
             tag.getInt(ID),
             Cable3dA.fromNbt(tag.get(CATENARY) as CompoundTag),
@@ -223,10 +222,12 @@ data class GridConnectionCable(val id: Int, val cable: Cable3dA, val material: G
 }
 
 interface GridConnectionHandle {
+    val pair: GridEndpointPair
     val connection: GridConnectionCable
     val level: ServerLevel
+    val owner: GridConnectionOwner?
 
-    fun destroy()
+    fun remove()
 }
 
 // Required that attachment and locator do not change if ID does not change
@@ -383,6 +384,10 @@ data class GridConnectionDeleteMessage(val id: Int) {
     }
 }
 
+interface GridConnectionOwner {
+    fun knife(knife: GridKnifeItem) : InteractionResult
+}
+
 @ServerOnly
 object GridConnectionManagerServer {
     fun createCable(pair: GridEndpointPair, material: GridMaterial) = GridConnectionCable(
@@ -426,8 +431,8 @@ object GridConnectionManagerServer {
         createPairIfAbsent(pair, material)
     }
 
-    fun createPair(level: ServerLevel, pair: GridEndpointPair, connection: GridConnectionCable) = invoke(level) {
-        createPair(pair, connection)
+    fun createPair(level: ServerLevel, pair: GridEndpointPair, connection: GridConnectionCable, owner: GridConnectionOwner? = null) = invoke(level) {
+        createPair(pair, connection, owner)
     }
 
     fun removeEndpointById(level: ServerLevel, endpointId: UUID) = invoke(level) {
@@ -446,12 +451,18 @@ object GridConnectionManagerServer {
         pick(line)
     }
 
+    fun getHandle(level: ServerLevel, id: Int) = invoke(level) {
+        getHandle(id)
+    }
+
+    fun getOwner(level: ServerLevel, id: Int) = getHandle(level, id)?.owner
+
     class LevelGridData(val level: ServerLevel) {
-        private val handles = HashSet<Handle>()
+        private val handles = MutableMapPairBiMap<Int, Handle>()
         private val handlesByChunk = MutableSetMapMultiMap<ChunkPos, Handle>()
         private val watchedChunksByPlayer = MutableSetMapMultiMap<ServerPlayer, ChunkPos>()
         private val pairMap = PairMap()
-        private val handlesByPair = HashMap<GridEndpointPair, GridConnectionHandle>()
+        private val handlesByPair = HashMap<GridEndpointPair, Handle>()
         private val collider = GridPruningStructure()
 
         fun watch(player: ServerPlayer, chunkPos: ChunkPos) {
@@ -483,11 +494,12 @@ object GridConnectionManagerServer {
         fun intersects(box: BoundingBox3d) = collider.intersects(box)
         fun intersects(box: OrientedBoundingBox3d) = collider.intersects(box)
         fun pick(line: Line3d) = collider.pick(line)
+        fun getHandle(id: Int) : GridConnectionHandle? = handles.forward[id]
 
-        private fun createHandle(connection: GridConnectionCable) : GridConnectionHandle {
-            val handle = Handle(connection)
+        private fun createHandle(pair: GridEndpointPair, connection: GridConnectionCable, owner: GridConnectionOwner?) : Handle {
+            val handle = Handle(pair, connection, owner)
 
-            handles.add(handle)
+            handles.add(connection.id, handle)
 
             connection.cable.chunks.keys.forEach { chunkPos ->
                 handlesByChunk[chunkPos].add(handle)
@@ -514,9 +526,11 @@ object GridConnectionManagerServer {
             return handle
         }
 
-        fun createPair(pair: GridEndpointPair, connection: GridConnectionCable) {
+        fun createPair(pair: GridEndpointPair, connection: GridConnectionCable, owner: GridConnectionOwner?) : GridConnectionHandle {
             pairMap.addPair(pair)
-            handlesByPair[pair] = createHandle(connection)
+            val handle = createHandle(pair, connection, owner)
+            handlesByPair[pair] = handle
+            return handle
         }
 
         fun createPairIfAbsent(pair: GridEndpointPair, material: GridMaterial) : GridConnectionCable {
@@ -526,39 +540,54 @@ object GridConnectionManagerServer {
 
             val result = createCable(pair, material)
 
-            createPair(pair, result)
+            createPair(pair, result, null)
 
             return result
         }
 
         fun removeEndpointById(endPointId: UUID) {
             pairMap.removePairsById(endPointId).forEach { pair ->
-                handlesByPair.remove(pair)!!.destroy()
+                handlesByPair.remove(pair)!!.cleanup()
             }
         }
 
-        private inner class Handle(override val connection: GridConnectionCable) : GridConnectionHandle {
+        private inner class Handle(override val pair: GridEndpointPair, override val connection: GridConnectionCable, override val owner: GridConnectionOwner?) : GridConnectionHandle {
             init {
                 collider.add(connection)
             }
 
+            private var isDestroyed = false
+
             private val players = MutableSetMapMultiMap<ServerPlayer, ChunkPos>()
 
             fun addPlayer(player: ServerPlayer, chunkPos: ChunkPos) : Boolean {
+                check(!isDestroyed) {
+                    "addPlayer isDestroyed"
+                }
+
                 val result = !players.contains(player)
                 players[player].add(chunkPos)
                 return result
             }
 
-            fun removePlayer(player: ServerPlayer, chunkPos: ChunkPos) = players.remove(player, chunkPos)
+            fun removePlayer(player: ServerPlayer, chunkPos: ChunkPos) {
+                check(!isDestroyed) {
+                    "removePlayer isDestroyed"
+                }
+                return players.remove(player, chunkPos)
+            }
 
             override val level: ServerLevel
                 get() = this@LevelGridData.level
 
-            override fun destroy() {
+            fun cleanup() {
+                check(!isDestroyed) {
+                    "cleanup isDestroyed"
+                }
+
                 validateUsage()
 
-                if(handles.remove(this)) {
+                if(handles.removeBackward(this)) {
                     connection.cable.chunks.keys.forEach { chunk ->
                         handlesByChunk[chunk].remove(this)
                     }
@@ -569,6 +598,17 @@ object GridConnectionManagerServer {
 
                     collider.remove(connection.id)
                 }
+            }
+
+            override fun remove() {
+                check(!isDestroyed) {
+                    "Tried to remove multiple times"
+                }
+
+                pairMap.removePair(pair)
+                check(handlesByPair.remove(pair) === this)
+                cleanup()
+                isDestroyed = true
             }
         }
 
@@ -598,7 +638,10 @@ object GridConnectionManagerServer {
             fun hasPair(pair: GridEndpointPair) = pairs.contains(pair)
 
             fun addPair(pair: GridEndpointPair) {
-                check(pairs.add(pair))
+                check(pairs.add(pair)) {
+                    "Duplicate add $pair"
+                }
+
                 pairsByEndpoint[pair.a].add(pair)
                 pairsByEndpoint[pair.b].add(pair)
                 putId(pair.a)
@@ -937,41 +980,24 @@ object GridCollisions {
     }
 
     fun cablePlacementIntersects(level: Level, cable: Cable3dA, h1: MicroGridTerminalHandle, h2: MicroGridTerminalHandle) : Boolean {
-        fun isCollidable(any: Any) = any != h1.gameObject && any != h2.gameObject && run {
-            if(any !is MultiblockDelegateBlockEntity) {
-                true
+        return intersectRange(level, cable) {
+            if(it == h1.gameObject || it == h2.gameObject) {
+                return@intersectRange true
             }
-            else {
-                if(any.representativePos != null) {
-                    val representative = level.getBlockEntity(any.representativePos!!)
 
-                    representative != h1.gameObject && representative != h2.gameObject
-                }
-                else {
-                    true
+            if(it is MultiblockDelegateBlockEntity && it.representativePos != null) {
+                val representative = level.getBlockEntity(it.representativePos!!)
+
+                if(representative == h1.gameObject || representative == h2.gameObject) {
+                    return@intersectRange true
                 }
             }
+
+            return@intersectRange false
         }
-
-        return cablePlacementIntersects(
-            level,
-            ::isCollidable, ::isCollidable, ::isCollidable,
-            cable
-        )
     }
 
-    private fun cablePlacementIntersects(
-        level: Level,
-        checkBlockEntity: (ent: BlockEntity) -> Boolean,
-        checkPart: (part: Part<*>) -> Boolean,
-        checkSpec: (spec: Spec<*>) -> Boolean,
-        cable: Cable3dA
-    ) : Boolean {
-        fun prev(box: OrientedBoundingBox3d, a: Boolean) {
-            DebugVisualizer.lineOrientedBox(box, color = if(a) Color(255, 0, 0, 255) else Color(0, 255, 0, 255))
-                .removeAfter(5.0)
-        }
-
+    private fun intersectRange(level: Level, cable: Cable3dA, skip: (gameObject: Any) -> Boolean) : Boolean {
         for (cylinder in cable.segments) {
             val segmentAligned = BoundingBox3d.fromCylinder(cylinder)
 
@@ -995,27 +1021,22 @@ object GridCollisions {
                     for (part in multipart.parts.values) {
                         if(part is SpecContainerPart) {
                             for(spec in part.specs.values) {
-                                if(!checkSpec(spec)) {
+                                if(skip(spec)) {
                                     continue
                                 }
 
                                 if(cylinder intersectsWith spec.placement.orientedBoundingBoxWorld) {
-                                    prev(spec.placement.orientedBoundingBoxWorld, true)
                                     return true
-                                } else {
-                                    prev(spec.placement.orientedBoundingBoxWorld, false)
                                 }
                             }
-                        } else {
-                            if(!checkPart(part)) {
+                        }
+                        else {
+                            if(skip(part)) {
                                 continue
                             }
 
                             if(cylinder intersectsWith part.worldBoundingBox.cast()) {
-                                prev(OrientedBoundingBox3d.createFromBoundingBox(part.worldBoundingBox.cast()), true)
                                 return true
-                            } else {
-                                prev(OrientedBoundingBox3d.createFromBoundingBox(part.worldBoundingBox.cast()), false)
                             }
                         }
                     }
@@ -1023,7 +1044,7 @@ object GridCollisions {
                 else {
                     val blockEntity = level.getBlockEntity(blockPos)
 
-                    if(blockEntity != null && !checkBlockEntity(blockEntity)) {
+                    if(blockEntity != null && skip(blockEntity)) {
                         continue
                     }
 
@@ -1031,11 +1052,7 @@ object GridCollisions {
                         val box = boxModel.move(blockPos)
 
                         if(cylinder intersectsWith box.cast()) {
-                            prev(OrientedBoundingBox3d.createFromBoundingBox(box.cast()), true)
                             return true
-                        }
-                        else {
-                            prev(OrientedBoundingBox3d.createFromBoundingBox(box.cast()), false)
                         }
                     }
                 }
@@ -1043,6 +1060,13 @@ object GridCollisions {
         }
 
         return false
+    }
+
+    fun pick(level: Level, line: Line3d) = if(level.isClientSide) {
+        GridConnectionManagerClient.pick(line)
+    }
+    else {
+        GridConnectionManagerServer.pick(level as ServerLevel, line)
     }
 }
 
@@ -1762,20 +1786,31 @@ abstract class GridNodeCell(ci: CellCreateInfo) : Cell(ci) {
 
         connections.forEach {
             if (it is GridConnectionCell) {
-                results.add(
-                    it, if (it.cellA === this) {
-                        it.cellB
-                    } else if (it.cellB === this) {
-                        it.cellA
-                    } else {
-                        error("Expected this cell to be one from the pair")
-                    }
-                )
+                results.add(it, it.getOtherCell(this))
             }
         }
 
         return results
     }
+
+    /**
+     * Gets the connection cell to the endpoint [remoteEndpointID] and its cell, if exists.
+     * */
+    fun getPathwayTo(remoteEndpointID: UUID) : Pair<GridConnectionCell, GridConnectionCell.NodeInfo>? = connections.firstNotNullOfOrNull {
+        val connectionCell = it as? GridConnectionCell
+            ?: return@firstNotNullOfOrNull null
+
+        val other = connectionCell.getOtherCellWithFullMetadata(this)
+
+        if(other.endpointInfo.id == remoteEndpointID) {
+            connectionCell to other
+        }
+        else {
+            null
+        }
+    }
+
+    fun hasConnectionWith(remoteEndpointID: UUID) = getPathwayTo(remoteEndpointID) != null
 
     /**
      * Destroys all [GridConnectionCell]s.
@@ -1862,9 +1897,11 @@ class GridConnectionElectricalObject(cell: GridConnectionCell) : ElectricalObjec
 }
 
 /**
- * Represents a connection between two [GridNodeCell]s. This is not owned by a game object; it is a containerless, game-object-less, positionless cell.
+ * Represents a connection between two [GridNodeCell]s.
+ * This is not owned by a game object; it is a container-less, game-object-less, position-less cell.
+ * This cell owns the [GridConnectionCable]. It will check if [GridConnectionManagerServer] already has a connection between the two endpoints, and if so, it will error out.
  * */
-class GridConnectionCell(ci: CellCreateInfo) : Cell(ci) {
+class GridConnectionCell(ci: CellCreateInfo) : Cell(ci), GridConnectionOwner {
     private var stateField: State? = null
 
     var isRemoving = false
@@ -1872,6 +1909,8 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci) {
     val state get() = checkNotNull(stateField) {
         "Grid connection cell state was not initialized!"
     }
+
+    private var handle: GridConnectionHandle? = null
 
     private fun initializeFromStaging(
         level: ServerLevel,
@@ -1883,7 +1922,9 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci) {
             "Multiple initializations"
         }
 
-        check(container == null)
+        check(container == null) {
+            "Expected container to not be set when initializing from staging"
+        }
 
         container = StagingContainer(level, a, b)
 
@@ -1911,12 +1952,42 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci) {
     private var cellAField: GridNodeCell? = null
     private var cellBField: GridNodeCell? = null
 
+    /**
+     * Gets the cell of the first endpoint.
+     * */
     val cellA get() = checkNotNull(cellAField) {
         "Cell A was not initialized"
     }
 
+    /**
+     * Gets the cell of the second endpoint.
+     * */
     val cellB get() = checkNotNull(cellBField) {
         "Cell B was not initialized"
+    }
+
+    /**
+     * Gets the other cell in the pair. [cell] must be either [cellA] or [cellB].
+     * @return [cellA], if [cell] is [cellB]. [cellB] is [cell] is [cellA]. Otherwise, error.
+     * */
+    fun getOtherCell(cell: GridNodeCell) = if (cellA === cell) {
+        cellB
+    } else if (cellB === cell) {
+        cellA
+    } else {
+        error("Expected cell to be one from the pair")
+    }
+
+    /**
+     * Gets the other cell in the pair, along with grid information. [cell] must be either [cellA] or [cellB].
+     * @return [cellA], if [cell] is [cellB]. [cellB] is [cell] is [cellA]. Otherwise, error.
+     * */
+    fun getOtherCellWithFullMetadata(cell: GridNodeCell) = if (cellA === cell) {
+        NodeInfo(cellB, state.terminalB, state.pair.b)
+    } else if (cellB === cell) {
+        NodeInfo(cellA, state.terminalA, state.pair.a)
+    } else {
+        error("Expected cell to be one from the pair")
     }
 
     override fun buildStarted() {
@@ -1985,19 +2056,15 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci) {
         }
     }
 
-    private fun setPermanent() {
+    private fun setupPermanent() {
         this.container = PermanentContainer()
+        handle = GridConnectionManagerServer.createPair(graph.level, state.pair, state.cable, this)
     }
 
     override fun onWorldLoadedPreSolver() {
         check(this.container == null)
-        setPermanent()
-
-        GridConnectionManagerServer.createPair(
-            graph.level,
-            state.pair,
-            state.cable
-        )
+        check(this.handle == null)
+        setupPermanent()
     }
 
     override fun saveCellData(): CompoundTag {
@@ -2040,13 +2107,33 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci) {
         electrical.initialize()
     }
 
+    override fun knife(knife: GridKnifeItem) : InteractionResult {
+        isRemoving = true
+        CellConnections.destroy(this, this.container!!)
+        return InteractionResult.SUCCESS
+    }
+
+    override fun onDestroyed() {
+        super.onDestroyed()
+        handle?.remove()
+    }
+
     data class State(
         val cable: GridConnectionCable,
         val pair: GridEndpointPair,
         val terminalA: Int,
-        val terminalB: Int,
+        val terminalB: Int
     )
 
+    data class NodeInfo(
+        val cell: GridNodeCell,
+        val terminal: Int,
+        val endpointInfo: GridEndpointInfo
+    )
+
+    /**
+     * Fake container used when staging the connections.
+     * */
     inner class StagingContainer(val level: ServerLevel, val a: Cell, val b: Cell) : CellContainer {
         override fun getCells() = listOf(this@GridConnectionCell)
 
@@ -2058,6 +2145,9 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci) {
         override val manager = CellGraphManager.getFor(level)
     }
 
+    /**
+     * Fake container used throughout the lifetime of the cell.
+     * */
     inner class PermanentContainer : CellContainer {
         override fun getCells() = listOf(this@GridConnectionCell)
 
@@ -2079,7 +2169,9 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci) {
     companion object {
         private const val MATERIAL = "material"
         private const val TERMINAL_A = "termA"
+        private const val HANDLE_A = "handleA"
         private const val TERMINAL_B = "termB"
+        private const val HANDLE_B = "handleB"
         private const val PAIR = "pair"
 
         fun createStaging(
@@ -2119,14 +2211,11 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci) {
         }
 
         fun beginStaging(
-            terminalA: MicroGridCellTerminal,
-            terminalB: MicroGridCellTerminal,
+            terminalA: CellTerminal,
+            terminalB: CellTerminal,
             level: ServerLevel,
             cable: GridConnectionCable,
         ) {
-            terminalA as MicroGridTerminalServer
-            terminalB as MicroGridTerminalServer
-
             val cell = createStaging(
                 terminalA.cell,
                 terminalB.cell,
@@ -2143,8 +2232,8 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci) {
         }
 
         fun endStaging(
-            terminalA: MicroGridCellTerminal,
-            terminalB: MicroGridCellTerminal,
+            terminalA: CellTerminal,
+            terminalB: CellTerminal,
         ) {
             check(terminalA.stagingCell === terminalB.stagingCell)
             val cell = checkNotNull(terminalA.stagingCell)
@@ -2152,7 +2241,7 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci) {
             CellConnections.insertFresh(cell.container!!, cell)
             terminalA.stagingCell = null
             terminalB.stagingCell = null
-            cell.setPermanent()
+            cell.setupPermanent()
 
             check(terminalA.cell.graph === terminalB.cell.graph) {
                 "Staging failed - terminals did not have same graph"

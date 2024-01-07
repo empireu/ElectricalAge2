@@ -39,7 +39,7 @@ object PartialModels {
 
     val SOLAR_PANEL_ONE_BLOCK = partialBlock("solar_panel_one_block")
 
-    val GRID_TAP_BODY = partialBlock("grid_tap_body")
+    val POWER_GRID_INTERFACE = partialBlock("power_grid_interface")
     val STANDARD_CONNECTION = patchPartial("standard_connection")
 
     val SMALL_GARDEN_LIGHT = partialBlock("small_garden_light/full")

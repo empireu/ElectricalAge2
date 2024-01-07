@@ -16,7 +16,7 @@ import org.eln2.mc.common.GridMaterialCategory
 import org.eln2.mc.common.GridNodeCell
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
-import org.eln2.mc.common.specs.foundation.CellMicroGridSpec
+import org.eln2.mc.common.specs.foundation.CellGridSpec
 import org.eln2.mc.common.specs.foundation.MicroGridCellPart
 import org.eln2.mc.common.specs.foundation.SpecCreateInfo
 import org.eln2.mc.data.UnsafeLazyResettable
@@ -64,7 +64,7 @@ class GridAnchorCell(ci: CellCreateInfo, crossResistance: Double) : GridNodeCell
     }
 }
 
-class GridAnchorSpec(ci: SpecCreateInfo, terminalSize: Vector3d, categories: List<GridMaterialCategory>) : CellMicroGridSpec<GridAnchorCell, BasicSpecRenderer>(ci, Content.MICROGRID_ANCHOR_CELL.get()), ComponentDisplay {
+class GridAnchorSpec(ci: SpecCreateInfo, terminalSize: Vector3d, categories: List<GridMaterialCategory>) : CellGridSpec<GridAnchorCell, BasicSpecRenderer>(ci, Content.MICROGRID_ANCHOR_CELL.get()), ComponentDisplay {
     val terminal = defineCellBoxTerminal(
         0.0, 0.0, 0.0,
         terminalSize.x, terminalSize.y, terminalSize.z,

@@ -578,6 +578,10 @@ object Content {
 
     //#region Grid
 
+    val GRID_KNIFE = item("grid_knife") {
+        GridKnifeItem()
+    }
+
     val MICRO_GRID_CONNECT = item("microgrid_connect") {
         GridConnectItem(GridMaterials.COPPER_MICRO_GRID)
     }
@@ -662,7 +666,7 @@ object Content {
                 it,
                 Vector3d(4.0 / 16.0, 8.0 / 16.0, 4.0 / 16.0) * 1.01,
                 listOf(GridMaterialCategory.BIG)
-            ) { PartialModels.GRID_TAP_BODY }
+            ) { PartialModels.POWER_GRID_INTERFACE }
         }
     )
 
