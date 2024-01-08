@@ -4,9 +4,9 @@ import me.jellysquid.mods.sodium.client.model.quad.properties.ModelQuadFacing;
 import me.jellysquid.mods.sodium.client.render.chunk.terrain.material.DefaultMaterials;
 import me.jellysquid.mods.sodium.client.render.chunk.vertex.builder.ChunkMeshBufferBuilder;
 import me.jellysquid.mods.sodium.client.render.chunk.vertex.format.ChunkVertexEncoder;
+import net.caffeinemc.mods.sodium.api.util.ColorABGR;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.SectionPos;
-import net.minecraft.util.Mth;
 import net.minecraftforge.common.MinecraftForge;
 import org.eln2.mc.client.render.foundation.CachingLightReader;
 import org.eln2.mc.client.render.foundation.NeighborLightReader;
@@ -57,11 +57,12 @@ public abstract class MixinEmbeddiumCompat {
             sodiumVertex.y = pY;
             sodiumVertex.z = pZ;
 
-            sodiumVertex.color =
-                ((int)(0.5 + 0xff) & 0xff) << 24 |
-                ((int) (0.5 + 0xff * Mth.clamp(pRed, 0, 1)) & 0xff) << 16 |
-                ((int) (0.5 + 0xff * Mth.clamp(pGreen, 0, 1)) & 0xff) << 8 |
-                (int) (0.5 + 0xff * Mth.clamp(pBlue, 0, 1)) & 0xff;
+            sodiumVertex.color = ColorABGR.pack(
+                (int)(pRed * 255),
+                (int)(pGreen * 255),
+                (int)(pBlue * 255),
+                255
+            );
 
             sodiumVertex.u = pTexU;
             sodiumVertex.v = pTexV;

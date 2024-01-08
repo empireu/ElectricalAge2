@@ -8,10 +8,7 @@ import net.minecraftforge.network.NetworkDirection
 import net.minecraftforge.network.NetworkRegistry
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
-import org.eln2.mc.common.GhostLightChunkDataMessage
-import org.eln2.mc.common.GhostLightCommandMessage
-import org.eln2.mc.common.GridConnectionCreateMessage
-import org.eln2.mc.common.GridConnectionDeleteMessage
+import org.eln2.mc.common.*
 import org.eln2.mc.common.network.serverToClient.*
 import org.eln2.mc.common.specs.foundation.SpecOverlayMessage
 import java.util.*
@@ -74,6 +71,15 @@ object Networking {
             GridConnectionDeleteMessage::encode,
             GridConnectionDeleteMessage::decode,
             GridConnectionDeleteMessage::handle,
+            Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        )
+
+        channel.registerMessage(
+            id(),
+            GridConnectionUpdateRenderMessage::class.java,
+            GridConnectionUpdateRenderMessage::encode,
+            GridConnectionUpdateRenderMessage::decode,
+            GridConnectionUpdateRenderMessage::handle,
             Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         )
 

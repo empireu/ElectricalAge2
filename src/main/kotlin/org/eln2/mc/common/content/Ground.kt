@@ -13,7 +13,7 @@ import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.Base6Direction3dMask
 
 class GroundObject(cell: Cell) : ElectricalObject<Cell>(cell) {
-    private val resistors = resistorBundle(0.01)
+    private val resistors = resistorBundle(1e-5)
 
     val totalCurrent get() = resistors.totalCurrent
     val totalPower get() = resistors.totalPower

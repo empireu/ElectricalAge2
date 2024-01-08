@@ -144,6 +144,8 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
      * */
     open fun acceptsRemoteObject(remote: ThermalObject<*>) = true
 
+    protected open fun getParameters(remote: ThermalObject<*>) = ConnectionParameters.DEFAULT
+
     fun build() {
         if (simulation == null) {
             error("Tried to build thermal obj with null simulation")
@@ -155,7 +157,7 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
             simulation!!.connect(
                 this.offerComponent(remote).body,
                 remote.offerComponent(this).body,
-                ConnectionParameters.DEFAULT
+                getParameters(remote)
             )
         }
     }

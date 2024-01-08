@@ -586,8 +586,16 @@ object Content {
         GridConnectItem(GridMaterials.COPPER_MICRO_GRID)
     }
 
+    val MICRO_GRID_CONNECT_IRON = item("microgrid_iron_connect") {
+        GridConnectItem(GridMaterials.IRON_MICRO_GRID)
+    }
+
     val POWER_GRID_CONNECT = item("power_grid_connect") {
         GridConnectItem(GridMaterials.COPPER_POWER_GRID)
+    }
+
+    val POWER_GRID_CONNECT_IRON = item("power_grid_iron_connect") {
+        GridConnectItem(GridMaterials.IRON_POWER_GRID)
     }
 
     val MICROGRID_ANCHOR_CELL = cell(

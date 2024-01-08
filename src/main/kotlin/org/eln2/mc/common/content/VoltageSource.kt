@@ -21,7 +21,7 @@ import org.eln2.mc.mathematics.Base6Direction3dMask
  * */
 class VoltageSourceObject(cell: Cell) : ElectricalObject<Cell>(cell) {
     val source = VoltageSource()
-    val resistors = resistorBundle(0.01)
+    val resistors = resistorBundle(1e-4)
 
     override fun offerComponent(remote: ElectricalObject<*>): ElectricalComponentInfo {
         return resistors.getOfferedResistor(remote)

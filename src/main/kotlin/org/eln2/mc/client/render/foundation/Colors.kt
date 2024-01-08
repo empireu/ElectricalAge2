@@ -39,6 +39,12 @@ data class RGBFloat(val r: Float, val g: Float, val b: Float) {
     companion object {
         val zero = RGBFloat(0f, 0f, 0f)
         val one = RGBFloat(1f, 1f, 1f)
+
+        fun createClamped(r: Float, g: Float, b: Float) = RGBFloat(
+            r.coerceIn(0f, 1f),
+            g.coerceIn(0f, 1f),
+            b.coerceIn(0f, 1f)
+        )
     }
 }
 

@@ -1563,8 +1563,6 @@ open class GridKnifeItem : Item(Properties()) {
         val owner = GridConnectionManagerServer.getOwner(pLevel as ServerLevel, pick.first.cable.id)
             ?: return InteractionResultHolder.fail(itemStack)
 
-        DebugVisualizer.lineBox(BoundingBox3d.fromCylinder(pick.first.cylinder))
-
         return InteractionResultHolder(owner.knife(this), itemStack)
     }
 }
