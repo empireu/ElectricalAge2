@@ -62,12 +62,26 @@ fun interface FieldReader<I : Any> {
     fun get(inst: I): Any?
 }
 
-private val classId = HashMap<KClass<*>, Int>()
+private val kClassId = HashMap<KClass<*>, Int>()
+private val classId = HashMap<Class<*>, Int>()
 
 val KClass<*>.reflectId: Int
+    get() = synchronized(kClassId) {
+        kClassId.getOrPut(this) {
+            val result = (this.qualifiedName ?: error("k Failed to get name of $this")).hashCode()
+
+            if (kClassId.values.any { it == result }) {
+                error("k reflect ID collision $this")
+            }
+
+            result
+        }
+    }
+
+val Class<*>.reflectId: Int
     get() = synchronized(classId) {
         classId.getOrPut(this) {
-            val result = (this.qualifiedName ?: error("Failed to get name of $this")).hashCode()
+            val result = (this.canonicalName ?: error("Failed to get name of $this")).hashCode()
 
             if (classId.values.any { it == result }) {
                 error("reflect ID collision $this")

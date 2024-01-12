@@ -1,3 +1,3 @@
 {
-    "parent": "eln2:block/grid_tap"
+    "parent": "eln2:block/power_grid_interface"
 }

@@ -208,7 +208,7 @@ class HeatGeneratorCell(ci: CellCreateInfo, thermalDef: ThermalMassDefinition, l
         return CompoundTag().withSubTag(BURNER_BEHAVIOR, burner.saveNbt())
     }
 
-    override fun getContactTemperature(other: Locator) = thermalWire.thermalBody.temperature
+    override fun getContactTemperature(other: Cell) = thermalWire.thermalBody.temperature
 }
 
 class HeatGeneratorBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<HeatGeneratorCell>(pos, state, Content.HEAT_GENERATOR_BLOCK_ENTITY.get()), ComponentDisplay {

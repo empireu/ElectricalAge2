@@ -84,7 +84,7 @@ class Eln2 {
 
         forgeEventBus.addListener(Eln2Config::registerClientCommands);
         forgeEventBus.addListener(EventPriority.LOWEST, SpecContainerPart::renderHighlightEvent)
-        forgeEventBus.addListener(MicroGridHighlightRenderer::render)
+        forgeEventBus.addListener(TerminalHighlightRenderer::render)
         forgeEventBus.addListener(SpecPlacementOverlayClient::onScroll)
         forgeEventBus.addListener(SpecPlacementOverlayClient::onCycleOrientation)
         forgeEventBus.addListener(SpecPreviewRenderer::render)

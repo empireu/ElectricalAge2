@@ -24,6 +24,7 @@ import org.eln2.mc.LOG
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.cutout
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
+import org.eln2.mc.client.render.foundation.BasicSpecRenderer
 import org.eln2.mc.client.render.foundation.TestBlockEntityInstance
 import org.eln2.mc.client.render.foundation.defaultRadiantBodyColor
 import org.eln2.mc.client.render.solid
@@ -55,6 +56,7 @@ import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.requireIsOnRenderThread
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.pow
 
 /**
@@ -174,61 +176,96 @@ object Content {
 
     //#region Batteries
 
-    val LEAD_ACID_BATTERY_CELL_12V = cell(
-        "lead_acid_battery_12v",
+    private fun leadAcid12Model(
+        capacity: Quantity<Energy>,
+        internalResistance: Quantity<Resistance>,
+        mass: Quantity<Mass>,
+        surfaceArea: Quantity<Area>,
+        currentMultiplier: Double) = BatteryModel(
+        voltageFunction = {
+            val voltageDataset = Datasets.LEAD_ACID_VOLTAGE
+            val temperature = it.temperature
+
+            if (it.charge > it.model.damageChargeThreshold) {
+                Quantity(voltageDataset.evaluate(it.charge, !temperature), VOLT)
+            } else {
+                val datasetCeiling = voltageDataset.evaluate(it.model.damageChargeThreshold, !temperature)
+
+                Quantity(
+                    lerp(
+                        0.0,
+                        datasetCeiling,
+                        map(
+                            it.charge,
+                            0.0,
+                            it.model.damageChargeThreshold,
+                            0.0,
+                            1.0
+                        )
+                    ), VOLT)
+            }
+        },
+        resistanceFunction = {
+            internalResistance
+        },
+        damageFunction = { battery, dt ->
+            var damage = 0.0
+
+            damage += dt * (1.0 / 3.0) * 1e-6 // 1 month
+            damage += !(abs(battery.energyIncrement) / (!battery.model.energyCapacity * 50.0))
+            damage += dt * abs(battery.current).pow(1.12783256261) * currentMultiplier *
+                if(battery.safeCharge > 0.0) 1.0
+                else map(battery.charge, 0.0, battery.model.damageChargeThreshold, 1.0, 5.0)
+
+            //println("T: ${battery.life / (damage / dt)}")
+
+            damage
+        },
+        capacityFunction = { battery ->
+            battery.life.pow(0.5)
+        },
+        energyCapacity = capacity,
+        0.5,
+        BatteryMaterials.LEAD_ACID_BATTERY,
+        mass,
+        surfaceArea
+    )
+
+    val LEAD_ACID_BATTERY_CELL_12V_2200Wh = cell(
+        "lead_acid_battery_12v_2200wh",
         BasicCellProvider.setup {
-            val model =  BatteryModel(
-                voltageFunction = {
-                    val voltageDataset = Datasets.LEAD_ACID_VOLTAGE
-                    val temperature = it.temperature
+            val model = leadAcid12Model(
+                Quantity(1.5, KILO * WATT_HOUR),
+                Quantity(23.0, MILLI * OHM),
+                Quantity(12.0, KILOGRAM),
+                Quantity(0.1, METER2),
+                1e-7
+            )
 
-                    if (it.charge > it.model.damageChargeThreshold) {
-                        Quantity(voltageDataset.evaluate(it.charge, !temperature), VOLT)
-                    } else {
-                        val datasetCeiling = voltageDataset.evaluate(it.model.damageChargeThreshold, !temperature)
+            val plusDir = Base6Direction3d.Front
+            val minusDir = Base6Direction3d.Back
 
-                        Quantity(
-                            lerp(
-                                0.0,
-                                datasetCeiling,
-                                map(
-                                    it.charge,
-                                    0.0,
-                                    it.model.damageChargeThreshold,
-                                    0.0,
-                                    1.0
-                                )
-                            ), VOLT)
-                    }
-                },
-                resistanceFunction = {
-                    Quantity(20.0, MILLI * OHM)
-                },
-                damageFunction = { battery, dt ->
-                    var damage = 0.0
+            CellFactory {
+                val cell = PolarBatteryCell(it, model, directionPoleMapPlanar(plusDir, minusDir))
+                cell.energy = cell.model.energyCapacity * 0.9
+                cell
+            }
+        }
+    )
 
-                    damage += dt * (1.0 / 3.0) * 1e-6 // 1 month
-                    damage += !(abs(battery.energyIncrement) / (!battery.model.energyCapacity * 50.0))
-                    damage += dt * kotlin.math.abs(battery.current).pow(1.12783256261) * 1e-7 *
-                        if(battery.safeCharge > 0.0) 1.0
-                        else map(battery.charge, 0.0, battery.model.damageChargeThreshold, 1.0, 5.0)
-
-                    //println("T: ${battery.life / (damage / dt)}")
-
-                    damage
-                },
-                capacityFunction = { battery ->
-                    battery.life.pow(0.5)
-                },
-                energyCapacity = Quantity(2.2, KILO * WATT_HOUR),
-                0.5,
-                BatteryMaterials.LEAD_ACID_BATTERY,
-                Quantity(10.0, KILOGRAM),
-                Quantity(6.0, METER2)
+    val GRID_LEAD_ACID_BATTERY_CELL_12V_80Wh = cell(
+        "lead_acid_battery_12v_80wh",
+        BasicCellProvider.setup {
+            val model = leadAcid12Model(
+                Quantity(80.0, WATT_HOUR),
+                Quantity(26.0, MILLI * OHM),
+                Quantity(2.6, KILOGRAM),
+                Quantity(0.0006, METER2),
+                1e-6
             )
 
             CellFactory {
-                val cell = BatteryCell(it, model)
+                val cell = TerminalBatteryCell(it, model)
                 cell.energy = cell.model.energyCapacity * 0.9
                 cell
             }
@@ -238,8 +275,17 @@ object Content {
     val BATTERY_PART_12V = partAndItem(
         "lead_acid_battery_12v",
         BasicPartProvider(Vector3d(6.0 / 16.0, 7.0 / 16.0, 10.0 / 16.0)) { ci ->
-            BatteryPart(ci, LEAD_ACID_BATTERY_CELL_12V.get()) { part ->
+            BatteryPart(ci, LEAD_ACID_BATTERY_CELL_12V_2200Wh.get()) { part ->
                 BasicPartRenderer(part, PartialModels.BATTERY)
+            }
+        }
+    )
+
+    val BATTERY_SPEC_12V = specAndItem(
+        "microgrid_lead_acid_battery_12v",
+        BasicSpecProvider(Vector3d(3.5 / 16.0, 2.0 / 16.0, 3.5 / 16.0)) { ci ->
+            BatterySpec(ci, GRID_LEAD_ACID_BATTERY_CELL_12V_80Wh.get()) { spec ->
+                BasicSpecRenderer(spec, PartialModels.ELECTRICAL_WIRE_HUB)
             }
         }
     )
@@ -722,7 +768,7 @@ object Content {
         return blockEntity
     }
 
-    val GRID_PASS_TROUGH_POLE_BLOCK_ENTITY = registerGridPole(
+    val GRID_PASS_THROUGH_POLE_BLOCK_ENTITY = registerGridPole(
         "grid_pass_pole",
         GRID_POLE_DELEGATE_MAP,
         Vector3d(0.5, 2.5, 0.5),
@@ -746,7 +792,7 @@ object Content {
     }
 
     private fun setupFlywheel() {
-        listOf(GRID_PASS_TROUGH_POLE_BLOCK_ENTITY).forEach {
+        listOf(GRID_PASS_THROUGH_POLE_BLOCK_ENTITY).forEach {
             InstancedRenderRegistry.configure(it.get())
                 .alwaysSkipRender()
                 .factory { manager, entity ->

@@ -8,14 +8,12 @@ import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Simulator
 import org.ageseries.libage.sim.ThermalMass
-import org.ageseries.libage.sim.electrical.mna.Circuit
-import org.ageseries.libage.sim.electrical.mna.CircuitBuilder
-import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
-import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
+import org.ageseries.libage.sim.electrical.mna.*
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.electrical.mna.component.Term
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.eln2.mc.*
+import org.eln2.mc.common.GridConnectionCell
 import org.eln2.mc.data.*
 import org.eln2.mc.extensions.getQuantity
 import org.eln2.mc.extensions.putQuantity
@@ -71,7 +69,7 @@ abstract class SimulationObject<C : Cell>(val cell: C) {
 data class ThermalComponentInfo(val body: ThermalMass)
 
 interface ThermalContactInfo {
-    fun getContactTemperature(other: Locator) : Quantity<Temperature>?
+    fun getContactTemperature(other: Cell) : Quantity<Temperature>?
 }
 
 abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
@@ -163,7 +161,8 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     }
 }
 
-data class ElectricalComponentInfo(val component: Term, val index: Int)
+
+data class TermRef(val component: Term, val index: Int)
 
 abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     /**
@@ -174,7 +173,7 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     var circuit: Circuit? = null
         private set
 
-    protected val connections = ArrayList<ElectricalObject<*>>()
+    val connections = ArrayList<ElectricalObject<*>>()
 
     val connectionList get() = connections as List<ElectricalObject<*>>
 
@@ -189,12 +188,6 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
 
         return index
     }
-
-    /**
-     * Called by electrical objects to fetch a connection candidate.
-     * The same component and pin **must** be returned by subsequent calls to this method, during same re-building moment.
-     * */
-    abstract fun offerComponent(remote: ElectricalObject<*>): ElectricalComponentInfo
 
     /**
      * Called by the building logic when the electrical object is made part of a circuit.
@@ -236,13 +229,46 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     protected open fun clearComponents() { }
 
     /**
+     * Called by electrical objects to fetch a connection candidate.
+     * The same component and pin **must** be returned by subsequent calls to this method, during same re-building moment.
+     * */
+    fun offerComponent(remote: ElectricalObject<*>) : TermRef? {
+        val remoteCell = remote.cell
+
+        return if(remoteCell is GridConnectionCell) {
+            offerTerminal(remoteCell, remoteCell.getFullMetadata(cell))
+        }
+        else {
+            offerPolar(remote)
+        }
+    }
+
+
+    /**
+     * Called by electrical objects to fetch a connection candidate.
+     * The same component and pin **must** be returned by subsequent calls to this method, during same re-building moment.
+     * */
+    protected open fun offerPolar(remote: ElectricalObject<*>): TermRef? = null
+
+    /**
+     * Called by the grid connection cell's electrical object to fetch a connection candidate, for the specified terminal [m0].
+     * The same component and pin **must** be returned by subsequent calls to this method, during same re-building moment.
+     * */
+    protected open fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo): TermRef? = null
+
+    /**
      * Called when the circuit must be updated with the components owned by this object.
      * This is called before build.
-     * By default, offers for all [connections] are gathered using [offerComponent], and the offered components are all added to the [circuit]
+     * By default, offers for all [connections] are gathered using [offerPolar], and the offered components are all added to the [circuit]
      * */
     protected open fun addComponents(circuit: ElectricalComponentSet) {
-        connections.forEach { connection ->
-            val offer = offerComponent(connection)
+        for (remote in connections) {
+            val offer = offerComponent(remote)
+                ?: continue
+
+            remote.offerComponent(this)
+                ?: continue
+
             circuit.add(offer.component)
         }
     }
@@ -256,13 +282,15 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
 
     /**
      * Builds the connections, after the circuit was acquired in [setNewCircuit] and the components were added in [addComponents].
-     * By default, offers for all [connections] are gathered using [offerComponent], and the components are connected using the pins indicated in the offers.
      * */
     open fun build(map: ElectricalConnectivityMap) {
-        // Suggested by Grissess (and should have crossed my mind too, shame on me):
-        connections.forEach { remote ->
-            val localInfo = offerComponent(remote)
+        for (remote in connections) {
+            val localInfo = this.offerComponent(remote)
+                ?: continue
+
             val remoteInfo = remote.offerComponent(this)
+                ?: continue
+
             map.join(localInfo, remoteInfo)
         }
     }
@@ -351,7 +379,7 @@ class ThermalBipoleObject<C : Cell>(
     }
 
     override fun offerComponent(remote: ThermalObject<*>) = ThermalComponentInfo(
-        when (map.evaluate(cell.locator, remote.cell.locator)) {
+        when (map.evaluate(cell, remote.cell)) {
             Pole.Plus -> b1
             Pole.Minus -> b2
         }
@@ -364,8 +392,8 @@ class ThermalBipoleObject<C : Cell>(
         simulator.connect(b2, cell.environmentData.ambientTemperature, b2Leakage)
     }
 
-    override fun getContactTemperature(other: Locator): Quantity<Temperature>? {
-        val direction = map.evaluateOrNull(this.cell.locator, other)
+    override fun getContactTemperature(other: Cell): Quantity<Temperature>? {
+        val direction = map.evaluateOrNull(this.cell, other)
             ?: return null
 
         return when(direction) {
@@ -406,31 +434,89 @@ class ThermalBipoleObject<C : Cell>(
 }
 
 /**
- * Generator model consisting of a [VoltageSource] + [Resistor].
+ * Electrical generator modeled with a resistor and a source of potential.
  * */
-open class VRGeneratorObject<C : Cell>(cell: C, val map: PoleMap) : ElectricalObject<Cell>(cell) {
+abstract class VRGObject<C : Cell>(cell: C) : ElectricalObject<C>(cell) {
+    /**
+     * Gets the resistor used by this object. Not virtual because virtual resistor's don't guarantee polarity right now.
+     * */
     val resistor = Resistor()
+
+    /**
+     * Gets the voltage source used by this object.
+     * */
     val source = VoltageSource()
 
     /**
-     * Gets the offered component by evaluating the map.
-     * @return The resistor's external pin when the pole evaluates to *plus*. The source's negative pin when the pole evaluates to *minus*.
+     * Adds [resistor] and [source] to the circuit, regardless of their connection status with other things.
      * */
-    override fun offerComponent(remote: ElectricalObject<*>): ElectricalComponentInfo =
-        when (map.evaluate(this.cell.locator, remote.cell.locator)) {
-            Pole.Plus -> resistor.offerExternal()
-            Pole.Minus -> source.offerNegative()
-        }
-
-    override fun addComponents(circuit: ElectricalComponentSet) {
+    final override fun addComponents(circuit: ElectricalComponentSet) {
         circuit.add(resistor)
         circuit.add(source)
     }
 
-    override fun build(map: ElectricalConnectivityMap) {
+    /**
+     * Offers a term ref that should be used when connecting to an object on the positive pole of this source.
+     * */
+    protected fun plusOffer() = resistor.offerExternal()
+
+    /**
+     * Offers a term ref that should be used when connecting to an object on the negative pole of this source.
+     * */
+    protected fun minusOffer() = source.offerNegative()
+
+    /**
+     * Builds the sub-circuit and connects to the remote objects.
+     * The sub-circuit looks like this:
+     * ```
+     * ▁▁ ▁▁▁▁▁▁ ▁▁
+     * A?│+R-+V-│?B
+     * ▔▔ ▔▔▔▔▔▔ ▔▔
+     * ```
+     * where *A* and *B* are some external objects, *+* is the positive pin, *-* is the negative pin, *R* is [resistor] and *V* is [source].
+     * */
+    final override fun build(map: ElectricalConnectivityMap) {
         map.join(resistor.offerInternal(), source.offerPositive())
         super.build(map)
     }
+}
+
+/**
+ * Generator model consisting of a [VoltageSource] + [Resistor], whose poles are mapped using a [PoleMap].
+ * */
+open class PolarVRGObject<C : Cell>(cell: C, val map: PoleMap) : VRGObject<C>(cell) {
+    /**
+     * Gets the offered component by evaluating the map.
+     * @return
+     *  The resistor's external pin when the pole evaluates to [Pole.Plus].
+     *  The source's negative pin when the pole evaluates to [Pole.Minus].
+     *  Null in any other case.
+     * */
+    override fun offerPolar(remote: ElectricalObject<*>) =
+        when (map.evaluateOrNull(this.cell, remote.cell)) {
+            Pole.Plus -> plusOffer()
+            Pole.Minus -> minusOffer()
+            else -> null
+        }
+}
+
+/**
+ * Generator model consisting of a [VoltageSource] + [Resistor], whose poles are mapped to grid terminals.
+ * */
+open class TerminalVRGObject<C : Cell>(cell: C, val plus: Int = POSITIVE, val minus: Int = NEGATIVE) : VRGObject<C>(cell) {
+    /**
+     * Gets the offered component by checking to see which terminal the [gc] is connected to.
+     * @return
+     *  The resistor's external pin when the terminal is [plus].
+     *  The source's negative pin when the terminal is [minus].
+     *  Null in any other case.
+     * */
+    override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo) =
+        when(m0.terminal) {
+            plus -> plusOffer()
+            minus -> minusOffer()
+            else -> null
+        }
 }
 
 /**
@@ -439,9 +525,9 @@ open class VRGeneratorObject<C : Cell>(cell: C, val map: PoleMap) : ElectricalOb
  * @param term The term to wrap.
  * */
 open class PolarTermObject<C: Cell, T : Term>(cell: C, val poleMap: PoleMap, val term: T) : ElectricalObject<C>(cell) {
-    override fun offerComponent(remote: ElectricalObject<*>) = ElectricalComponentInfo(
+    override fun offerPolar(remote: ElectricalObject<*>) = TermRef(
         term,
-        poleMap.evaluate(cell.locator, remote.cell.locator).conventionalPin
+        poleMap.evaluate(cell, remote.cell).conventionalPin
     )
 
     override fun addComponents(circuit: ElectricalComponentSet) {

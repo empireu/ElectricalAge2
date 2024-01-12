@@ -167,7 +167,7 @@ class ExternalTemperatureReplicatorBehavior(
                     continue
                 }
 
-                val temperature = contactInfo.getContactTemperature(cell.locator)
+                val temperature = contactInfo.getContactTemperature(cell)
 
                 if(temperature != null) {
                     consumer(remoteThermalObject, temperature)

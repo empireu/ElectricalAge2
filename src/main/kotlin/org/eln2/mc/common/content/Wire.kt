@@ -106,7 +106,7 @@ class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass, val environmen
         }
     }
 
-    override fun getContactTemperature(other: Locator) = thermalBody.temperature
+    override fun getContactTemperature(other: Cell) = thermalBody.temperature
 
     override fun subscribe(subscribers: SubscriberCollection) {
         subscribers.addSubscriber(
@@ -137,7 +137,7 @@ class ElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
      * */
     var resistance by resistors::crossResistance
 
-    override fun offerComponent(remote: ElectricalObject<*>) = resistors.getOfferedResistor(remote)
+    override fun offerPolar(remote: ElectricalObject<*>) = resistors.getOfferedResistor(remote)
 
     override fun clearComponents() = resistors.clear()
 
@@ -176,7 +176,7 @@ class ElectricalWireObjectVirtual(cell: Cell) : ElectricalObject<Cell>(cell) {
      * */
     var resistance by resistors::crossResistance
 
-    override fun offerComponent(remote: ElectricalObject<*>) = resistors.getOfferedResistor(remote)
+    override fun offerPolar(remote: ElectricalObject<*>) = resistors.getOfferedResistor(remote)
 
     override fun clearComponents() = resistors.clear()
 

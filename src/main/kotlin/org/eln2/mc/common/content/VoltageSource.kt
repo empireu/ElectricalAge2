@@ -23,7 +23,7 @@ class VoltageSourceObject(cell: Cell) : ElectricalObject<Cell>(cell) {
     val source = VoltageSource()
     val resistors = resistorBundle(1e-4)
 
-    override fun offerComponent(remote: ElectricalObject<*>): ElectricalComponentInfo {
+    override fun offerPolar(remote: ElectricalObject<*>): TermRef {
         return resistors.getOfferedResistor(remote)
     }
 
@@ -57,7 +57,7 @@ class VoltageSourceCell(ci: CellCreateInfo) : Cell(ci) {
     }
 }
 
-class VoltageSourcePart(ci: PartCreateInfo) : CellPart<VoltageSourceCell, BasicPartRenderer>(ci, Content.VOLTAGE_SOURCE_CELL.get()), ComponentDisplay {
+class VoltageSourcePart(ci: PartCreateInfo) : CellPart<VoltageSourceCell, BasicPartRenderer>(ci, Content.VOLTAGE_SOURCE_CELL.get()), ComponentDisplay, WrenchRotatablePart {
     override fun createRenderer() = BasicPartRenderer(this, PartialModels.VOLTAGE_SOURCE)
 
     override fun onUsedBy(context: PartUseInfo): InteractionResult {

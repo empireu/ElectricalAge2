@@ -6,13 +6,19 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import org.ageseries.libage.data.Locator
 import org.ageseries.libage.data.LocatorDispatcher
-import org.ageseries.libage.data.LocatorShardDefinition
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.electrical.mna.NEGATIVE
 import org.ageseries.libage.sim.electrical.mna.POSITIVE
+import org.eln2.mc.DEBUGGER_BREAK
+import org.eln2.mc.common.GridConnectionCell
+import org.eln2.mc.common.GridNode
+import org.eln2.mc.common.cells.foundation.Cell
+import org.eln2.mc.common.cells.foundation.getNode
+import org.eln2.mc.common.cells.foundation.requireNode
 import org.eln2.mc.common.network.serverToClient.getBlockPos
 import org.eln2.mc.common.network.serverToClient.putBlockPos
 import org.eln2.mc.common.parts.foundation.getPartConnectionOrNull
+import org.eln2.mc.common.specs.foundation.GridTerminal
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
@@ -220,18 +226,12 @@ enum class Pole(val conventionalPin: Int) {
 }
 
 fun interface PoleMap {
-    fun evaluateOrNull(sourceLocator: Locator, targetLocator: Locator): Pole?
+    fun evaluateOrNull(sourceCell: Cell, targetCell: Cell): Pole?
 }
 
-/**
- * Maps the target location to a pole, when looking from the actual location.
- * @param sourceLocator The observer's location.
- * @param targetLocator The target's location.
- * @return The pole [targetLocator] corresponds to.
- * */
-fun PoleMap.evaluate(sourceLocator: Locator, targetLocator: Locator): Pole =
-    checkNotNull(evaluateOrNull(sourceLocator, targetLocator)) {
-        "Unhandled pole map direction $sourceLocator $targetLocator $this"
+fun PoleMap.evaluate(sourceCell: Cell, targetCell: Cell): Pole =
+    checkNotNull(evaluateOrNull(sourceCell, targetCell)) {
+        "Unhandled pole map direction $sourceCell $targetCell $this"
     }
 
 /**
@@ -240,8 +240,8 @@ fun PoleMap.evaluate(sourceLocator: Locator, targetLocator: Locator): Pole =
  * This means that, from the object's perspective, [Pole.Plus] is returned when the other object is towards [plusDir], and [Pole.Minus] is returned when the target is towards [minusDir].
  * */
 fun directionPoleMapPlanar(plusDir: Base6Direction3d = Base6Direction3d.Front, minusDir: Base6Direction3d = Base6Direction3d.Back) =
-    PoleMap { actualDescr, targetDescr ->
-        when (actualDescr.findDirActualPlanarOrNull(targetDescr)) {
+    PoleMap { c1, c2 ->
+        when (c1.locator.findDirActualPlanarOrNull(c2.locator)) {
             plusDir -> Pole.Plus
             minusDir -> Pole.Minus
             else -> null
@@ -254,8 +254,8 @@ fun directionPoleMapPlanar(plusDir: Base6Direction3d = Base6Direction3d.Front, m
  * This means that, from the object's perspective, [Pole.Plus] is returned when the other object is towards [plusDir], and [Pole.Minus] is returned when the target is towards [minusDir].
  * */
 fun directionPoleMapPart(plusDir: Base6Direction3d = Base6Direction3d.Front, minusDir: Base6Direction3d = Base6Direction3d.Back) =
-    PoleMap { actualDescr, targetDescr ->
-        when (actualDescr.findDirActualPartOrNull(targetDescr)) {
+    PoleMap { c1, c2 ->
+        when (c1.locator.findDirActualPartOrNull(c2.locator)) {
             plusDir -> Pole.Plus
             minusDir -> Pole.Minus
             else -> null

@@ -10,17 +10,18 @@ import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.electrical.mna.component.updateResistance
 import org.eln2.mc.*
-import org.eln2.mc.client.render.foundation.BasicPartRenderer
-import org.eln2.mc.client.render.foundation.PartRendererSupplier
+import org.eln2.mc.client.render.foundation.*
+import org.eln2.mc.common.GridNode
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.parts.foundation.*
+import org.eln2.mc.common.specs.foundation.CellSpec
+import org.eln2.mc.common.specs.foundation.SpecCreateInfo
 import org.eln2.mc.data.*
 import org.eln2.mc.extensions.getQuantity
 import org.eln2.mc.extensions.useSubTagIfPreset
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
-import org.eln2.mc.mathematics.*
 
 interface BatteryView {
     val model: BatteryModel
@@ -44,16 +45,16 @@ interface BatteryView {
     /**
      * Gets the number of charge-discharge cycles this battery has been trough.
      * */
-    val cycles: Double
+    val cycles: Double get() = totalEnergyTransferred / model.energyCapacity
     /**
      * Gets the charge percentage.
      * */
-    val charge: Double
+    val charge: Double get() = energy / model.energyCapacity
     /**
      * Gets the charge percentage, mapped using the battery's threshold parameter, as per [BatteryModel.damageChargeThreshold].
      * This value may be negative if the charge is under threshold.
      * */
-    val safeCharge: Double
+    val safeCharge: Double get() = map(charge, model.damageChargeThreshold, 1.0, 0.0, 1.0)
     /**
      * Gets the temperature of the battery.
      * */
@@ -67,6 +68,15 @@ interface BatteryView {
      * The signs are as per [sourcePower]
      * */
     val energyIncrement: Quantity<Energy>
+    /**
+     * Gets the capacity percentage of this battery, relative to the initial state.
+     * */
+    val capacityCoefficient get() = model.capacityFunction.computeCapacity(this).coerceIn(0.0, 1.0)
+
+    /**
+     * Gets the capacity of this battery, based on the [capacityCoefficient].
+     * */
+    val adjustedEnergyCapacity get() = model.energyCapacity * capacityCoefficient
 }
 
 /**
@@ -164,64 +174,28 @@ data class BatteryState(
     val totalEnergyTransferred: Quantity<Energy>
 )
 
-class BatteryCell(
-    ci: CellCreateInfo,
-    override val model: BatteryModel,
-    plusDir: Base6Direction3d = Base6Direction3d.Front,
-    minusDir: Base6Direction3d = Base6Direction3d.Back
-) : Cell(ci), BatteryView {
-    companion object {
-        private const val ENERGY = "energy"
-        private const val LIFE = "life"
-        private const val ENERGY_IO = "energyIo"
-        private const val LIFE_EPS = 1e-3
-    }
+private const val ENERGY = "energy"
+private const val LIFE = "life"
+private const val ENERGY_IO = "energyIo"
+private const val LIFE_EPS = 1e-3
+
+abstract class BatteryCell(ci: CellCreateInfo, final override val model: BatteryModel) : Cell(ci), BatteryView {
+    abstract val generator: VRGObject<*>
 
     @SimObject
-    val generator = VRGeneratorObject<Cell>(this, directionPoleMapPlanar(plusDir, minusDir))
+    val thermalWire = ThermalWireObject(self(), ThermalMass(model.material, mass = model.mass))
 
-    @SimObject
-    val thermalWire = ThermalWireObject(this, ThermalMass(model.material, mass = model.mass))
-
-    @Behavior
-    val heater = PowerHeatingBehavior(generator.resistor::power, thermalWire.thermalBody)
-
-    override var energy = Quantity<Energy>(0.0)
-
-    init {
-        ruleSet.withDirectionRulePlanar(plusDir + minusDir)
-    }
-
-    override var totalEnergyTransferred = Quantity<Energy>(0.0)
-        private set
-
-    override var life = 1.0
-        private set
-
-    private var savedLife = life
-
-    override val cycles get() = totalEnergyTransferred / model.energyCapacity
+    final override var energy = Quantity<Energy>(0.0)
+    final override var totalEnergyTransferred = Quantity<Energy>(0.0)
     override val current get() = generator.resistor.current
-    override val charge get() = energy / model.energyCapacity
-    override val sourcePower get() = Quantity(generator.source.power, WATT)
 
+    final override var life = 1.0
+    override val temperature get() = thermalWire.thermalBody.temperature
+    override val sourcePower get() = Quantity(generator.source.power, WATT)
     override var energyIncrement = Quantity(0.0, JOULE)
 
+    private var savedLife = life
     private val stateUpdate = AtomicUpdate<BatteryState>()
-
-    override val safeCharge
-        get() = map(
-            charge,
-            model.damageChargeThreshold,
-            1.0,
-            0.0,
-            1.0
-        )
-
-    override val temperature get() = thermalWire.thermalBody.temperature
-
-    val capacityCoefficient get() = model.capacityFunction.computeCapacity(this).coerceIn(0.0, 1.0)
-    val adjustedEnergyCapacity get() = model.energyCapacity * capacityCoefficient
 
     fun deserializeNbt(tag: CompoundTag) {
         stateUpdate.setLatest(
@@ -245,7 +219,9 @@ class BatteryCell(
 
     override fun saveCellData() = serializeNbt()
 
-    override fun loadCellData(tag: CompoundTag) = deserializeNbt(tag)
+    override fun loadCellData(tag: CompoundTag) {
+        deserializeNbt(tag)
+    }
 
     override fun subscribe(subscribers: SubscriberCollection) = graph.simulationSubscribers.addPre(this::simulationTick)
 
@@ -299,35 +275,80 @@ class BatteryCell(
             savedLife = life
         }
     }
+
+    fun submitDisplay(builder: ComponentDisplayList) {
+        builder.charge(charge)
+        builder.integrity(life)
+        builder.quantity(thermalWire.thermalBody.temperature)
+        builder.potential(generator.source.potential)
+        builder.current(generator.source.current)
+        builder.powerOutput(generator.source.power)
+    }
 }
+
+class PolarBatteryCell(ci: CellCreateInfo, model: BatteryModel, map: PoleMap) : BatteryCell(ci, model) {
+    @SimObject
+    override val generator = PolarVRGObject(this, map)
+
+    override fun cellConnectionPredicate(remote: Cell): Boolean {
+        return super.cellConnectionPredicate(remote) && generator.map.evaluateOrNull(this, remote) != null
+    }
+}
+
+class TerminalBatteryCell(ci: CellCreateInfo, model: BatteryModel) : BatteryCell(ci, model) {
+    @Node
+    val grid = GridNode(this)
+
+    @SimObject
+    override val generator = TerminalVRGObject(this)
+
+    override fun cellConnectionPredicate(remote: Cell): Boolean {
+        return super.cellConnectionPredicate(remote) && remote.hasNode<GridNode>()
+    }
+}
+
+private const val BATTERY = "battery"
 
 class BatteryPart(
     ci: PartCreateInfo,
     provider: CellProvider<BatteryCell>,
     private val rendererSupplier: PartRendererSupplier<BatteryPart, BasicPartRenderer>
 ) : CellPart<BatteryCell, BasicPartRenderer>(ci, provider), ItemPersistent, WrenchRotatablePart, ComponentDisplay {
-    companion object {
-        private const val BATTERY = "battery"
-    }
-
     override fun createRenderer() = rendererSupplier.create(this)
 
-    override fun saveToItemNbt(tag: CompoundTag) {
-        tag.put(BATTERY, cell.serializeNbt())
-    }
-
-    override fun loadFromItemNbt(tag: CompoundTag?) {
-        tag?.useSubTagIfPreset(BATTERY, cell::deserializeNbt)
-    }
-
+    override fun saveToItemNbt(tag: CompoundTag) { tag.put(BATTERY, cell.serializeNbt()) }
+    override fun loadFromItemNbt(tag: CompoundTag?) { tag?.useSubTagIfPreset(BATTERY, cell::deserializeNbt) }
     override val order get() = ItemPersistentLoadOrder.AfterSim
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.quantity(cell.thermalWire.thermalBody.temperature)
-        builder.potential(cell.generator.source.potential)
-        builder.current(cell.generator.source.current)
-        builder.power(cell.generator.source.power)
-        builder.charge(cell.charge)
-        builder.integrity(cell.life)
+        cell.submitDisplay(builder)
+    }
+}
+
+class BatterySpec(
+    ci: SpecCreateInfo,
+    provider: CellProvider<TerminalBatteryCell>,
+    private val rendererSupplier: SpecRendererSupplier<BatterySpec, BasicSpecRenderer>
+) : CellSpec<TerminalBatteryCell, BasicSpecRenderer>(ci, provider), ItemPersistent, ComponentDisplay {
+    val negative = defineCellBoxTerminal(
+        -0.1, 0.0, 0.0,
+        0.1, 0.2, 0.1,
+        highlightColor = RGBAFloat(0f, 0f, 1f, 1f)
+    )
+
+    val positive = defineCellBoxTerminal(
+        +0.1, 0.0, 0.0,
+        0.1, 0.2, 0.1,
+        highlightColor = RGBAFloat(1f, 0f, 0f, 1f)
+    )
+
+    override fun createRenderer() = rendererSupplier.create(this)
+
+    override fun saveToItemNbt(tag: CompoundTag) { tag.put(BATTERY, cell.serializeNbt()) }
+    override fun loadFromItemNbt(tag: CompoundTag?) { tag?.useSubTagIfPreset(BATTERY, cell::deserializeNbt) }
+    override val order get() = ItemPersistentLoadOrder.AfterSim
+
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        cell.submitDisplay(builder)
     }
 }

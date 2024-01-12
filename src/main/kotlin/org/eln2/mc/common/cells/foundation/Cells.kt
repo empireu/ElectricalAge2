@@ -1,4 +1,4 @@
-@file:Suppress("MemberVisibilityCanBePrivate")
+@file:Suppress("MemberVisibilityCanBePrivate", "ClassName")
 
 package org.eln2.mc.common.cells.foundation
 
@@ -22,6 +22,8 @@ import org.ageseries.libage.sim.electrical.mna.POSITIVE
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.ageseries.libage.utils.Stopwatch
 import org.ageseries.libage.utils.measureDuration
+import org.ageseries.libage.utils.putUnique
+import org.ageseries.libage.utils.sourceName
 import org.eln2.mc.*
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.SimulationObjectType.*
@@ -35,6 +37,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.collections.ArrayList
+import kotlin.collections.HashMap
 import kotlin.collections.HashSet
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
@@ -138,26 +141,265 @@ annotation class SimObject
 annotation class Behavior
 
 /**
+ * Marks a field in a [Cell] as [CellNode]. The node will be registered automatically.
+ * @param id The unique name of the node, used for saving. If left empty, the [sourceName] of the class will be used.
+ * */
+@Retention(AnnotationRetention.RUNTIME)
+@Target(AnnotationTarget.FIELD)
+annotation class Node(val id: String = "")
+
+/**
+ * Interface with methods called throughout the lifetime of the cell or cell nodes.
+ * Each method dispatches a [CellLifetimeEvent]. Convention:
+ * ```
+ * Cell_<method name>
+ * ```
+ * **All methods are called on the server thread, because they are called when the circuit is changed (by a player!)**
+ * */
+interface CellLifetime {
+    /**
+     * Called after all graphs in the level have been loaded, before the solver is built.
+     * */
+    fun onWorldLoadedPreSolver() {
+        requireIsOnServerThread {
+            "onWorldLoadedPreSolver non-server"
+        }
+    }
+    /**
+     * Called after all graphs in the level have been loaded, after the solver is built.
+     */
+    fun onWorldLoadedPostSolver() {
+        requireIsOnServerThread {
+            "onWorldLoadedPostSolver non-server"
+        }
+    }
+    /**
+     * Called after all graphs in the level have been loaded, before the simulations start.
+     * */
+    fun onWorldLoadedPreSim() {
+        requireIsOnServerThread {
+            "onWorldLoadedPreSim non-server"
+        }
+    }
+    /**
+     * Called after all graphs in the level have been loaded, after the simulations have started.
+     * */
+    fun onWorldLoadedPostSim() {
+        requireIsOnServerThread {
+            "onWorldLoadedPostSim non-server"
+        }
+    }
+    /**
+     * Called after the container loaded in.
+     * The field is assigned before this is called.
+     */
+    fun onContainerLoaded() {
+        requireIsOnServerThread {
+            "onContainerLoaded non-server"
+        }
+    }
+    /**
+     * Called when the container is being unloaded (the game object went out-of-scope, where applicable).
+     * */
+    fun onContainerUnloading() {
+        requireIsOnServerThread {
+            "onContainerUnloading non-server"
+        }
+    }
+    /**
+     * Called after the container was unloaded.
+     * */
+    fun onContainerUnloaded() {
+        requireIsOnServerThread {
+            "onContainerUnloaded non-server"
+        }
+    }
+    /**
+     * Called when the graph manager completed loading this cell from the disk.
+     */
+    fun onLoadedFromDisk() {
+        requireIsOnServerThread {
+            "onLoadedFromDisk non-server"
+        }
+    }
+    /**
+     * Called after the cell was connected freshly.
+     */
+    fun onCreated() {
+        requireIsOnServerThread {
+            "onCreated non-server"
+        }
+    }
+    /**
+     * Called when the cell is being destroyed, right before any operations run.
+     * The cell is still in a valid and connected state.
+     * */
+    fun onBeginDestroy() {
+        requireIsOnServerThread {
+            "onBeginDestroy non-server"
+        }
+    }
+    /**
+     * Called while the cell is being destroyed, just after the simulation was stopped.
+     * Subscribers may be cleaned up here.
+     * Guaranteed to be on the game thread.
+     * */
+    fun onDestroying() {
+        requireIsOnServerThread {
+            "onDestroying non-server"
+        }
+    }
+    /**
+     * Called after the cell was destroyed.
+     */
+    fun onDestroyed() {
+        requireIsOnServerThread {
+            "onDestroyed non-server"
+        }
+    }
+    /**
+     * Called when the graph and/or neighbouring cells are updated. This method is called after completeDiskLoad and setPlaced
+     * @param connectionsChanged True if the neighbouring cells changed.
+     * @param graphChanged True if the graph that owns this cell has changed.
+     */
+    fun onUpdate(connectionsChanged: Boolean, graphChanged: Boolean) {
+        requireIsOnServerThread {
+            "onUpdate non-server"
+        }
+    }
+    /**
+     * Called when subscribers should be added, after the graph changes.
+     * This is called before [SimulationObject.subscribe].
+     * Calling the super method is not needed, by convention.
+     * */
+    fun subscribe(subscribers: SubscriberCollection) {
+        requireIsOnServerThread {
+            "subscribe non-server"
+        }
+    }
+    /**
+     * Called when the build started, right after the connections were cleared.
+     * */
+    fun onBuildStarted() {
+        requireIsOnServerThread {
+            "onBuildStarted non-server"
+        }
+    }
+    /**
+     * Called when the solver is built, before the simulation is started.
+     * */
+    fun onBuildFinished() {
+        requireIsOnServerThread {
+            "onBuildFinished non-server"
+        }
+    }
+}
+
+/**
+ * Represents an event sent throughout the lifetime of the cell.
+ * Each event is called when a method in [CellLifetime] is called on the [Cell].
+ * */
+interface CellLifetimeEvent : Event
+
+/**
+ * Called after all graphs in the level have been loaded, before the solver is built.
+ * */
+object Cell_onWorldLoadedPreSolver : CellLifetimeEvent
+/**
+ * Called after all graphs in the level have been loaded, after the solver is built.
+ */
+object Cell_onWorldLoadedPostSolver : CellLifetimeEvent
+/**
+ * Called after all graphs in the level have been loaded, before the simulations start.
+ * */
+object Cell_onWorldLoadedPreSim : CellLifetimeEvent
+/**
+ * Called after all graphs in the level have been loaded, after the simulations have started.
+ * */
+object Cell_onWorldLoadedPostSim : CellLifetimeEvent
+/**
+ * Called after the container loaded in.
+ * The field is assigned before this is called.
+ */
+object Cell_onContainerLoaded : CellLifetimeEvent
+/**
+ * Called when the container is being unloaded (the game object Cell_went out-of-scope, where applicable).
+ * */
+object Cell_onContainerUnloading : CellLifetimeEvent
+/**
+ * Called after the container was unloaded.
+ * */
+object Cell_onContainerUnloaded : CellLifetimeEvent
+/**
+ * Called when the graph manager completed loading this cell from the disk.
+ */
+object Cell_onLoadedFromDisk : CellLifetimeEvent
+/**
+ * Called after the cell was connected freshly.
+ */
+object Cell_onCreated : CellLifetimeEvent
+/**
+ * Called when the cell is being destroyed, right before any operations run.
+ * The cell is still in a valid and connected state.
+ * */
+object Cell_onBeginDestroy : CellLifetimeEvent
+/**
+ * Called while the cell is being destroyed, just after the simulation was stopped.
+ * Subscribers may be cleaned up here.
+ * Guaranteed to be on the game thread.
+ * */
+object Cell_onDestroying : CellLifetimeEvent
+/**
+ * Called after the cell was destroyed.
+ */
+object Cell_onDestroyed : CellLifetimeEvent
+/**
+ * Called when the graph and/or neighbouring cells are updated. This method is called after completeDiskLoad and setPlaced
+ * @param connectionsChanged True if the neighbouring cells changed.
+ * @param graphChanged True if the graph that owns this cell has changed.
+ */
+data class Cell_onUpdate(val connectionsChanged: Boolean, val graphChanged: Boolean) : CellLifetimeEvent
+/**
+ * Called when subscribers should be added, after the graph changes.
+ * This is called before [SimulationObject.subscribe].
+ * Calling the super method is not needed, by convention.
+ * */
+data class Cell_subscribe(val subscribers: SubscriberCollection) : CellLifetimeEvent
+/**
+ * Called when the build started, right after the connections were cleared.
+ * */
+object Cell_onBuildStarted : CellLifetimeEvent
+/**
+ * Called when the solver is built, before the simulation is started.
+ * */
+object Cell_onBuildFinished : CellLifetimeEvent
+
+/**
  * The cell is a physical unit, that may participate in multiple simulations. Each simulation will
  * have a Simulation Object associated with it.
  * Cells create connections with other cells, and objects create connections with other objects of the same simulation type.
  * */
 @ServerOnly
-abstract class Cell(val locator: Locator, val id: ResourceLocation, val environmentData: CellEnvironment) {
+abstract class Cell(val locator: Locator, val id: ResourceLocation, val environmentData: CellEnvironment) : CellLifetime {
     companion object {
         private val OBJECT_READERS = ConcurrentHashMap<Class<*>, List<FieldInfo<Cell>>>()
         private val BEHAVIOR_READERS_FIELD = ConcurrentHashMap<Class<*>, List<FieldInfo<Cell>>>()
         private val BEHAVIOR_READERS_LAZY = ConcurrentHashMap<Class<*>, List<FieldInfo<Cell>>>()
+        private val CELL_NODE_READERS = ConcurrentHashMap<Class<*>, List<FieldInfo<Cell>>>()
 
         private const val CELL_DATA = "cellData"
         private const val OBJECT_DATA = "objectData"
+        private const val NODE_DATA = "nodeData"
+        private const val UNIQUE_NODES = "unique"
+        private const val REPEATABLE_NODES = "repeatable"
+        private const val NODE_ID = "id"
+        private const val NODE_CLASS_ID = "type"
+        private const val NODE_TAG = "data"
 
         private val ID_ATOMIC = AtomicInteger()
     }
 
     constructor(ci: CellCreateInfo) : this(ci.locator, ci.id, ci.environment)
-
-    open fun beginDestroy() { }
 
     val uniqueCellId = ID_ATOMIC.getAndIncrement()
 
@@ -174,6 +416,137 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
 
     val ruleSet by lazy {
         LocatorRelationRuleSet()
+    }
+
+    /**
+     * Event bus where all calls from [CellLifetime] are also directed.
+     * */
+    val lifetimeEvents = EventBus()
+
+    private val uniqueContainer = UniqueNodeContainer()
+    private val repeatableContainer = RepeatableNodeContainer()
+
+    //#region Lifetime Hooks
+
+    private fun dispatchLifetime(event: CellLifetimeEvent) {
+        lifetimeEvents.send(event)
+    }
+
+    override fun onWorldLoadedPreSolver() {
+        super.onWorldLoadedPreSolver()
+        dispatchLifetime(Cell_onWorldLoadedPreSolver)
+    }
+
+    override fun onWorldLoadedPostSolver() {
+        super.onWorldLoadedPostSolver()
+        dispatchLifetime(Cell_onWorldLoadedPostSolver)
+    }
+
+    override fun onWorldLoadedPreSim() {
+        super.onWorldLoadedPreSim()
+        dispatchLifetime(Cell_onWorldLoadedPreSim)
+    }
+
+    override fun onWorldLoadedPostSim() {
+        super.onWorldLoadedPostSim()
+        dispatchLifetime(Cell_onWorldLoadedPostSim)
+    }
+
+    override fun onContainerLoaded() {
+        super.onContainerLoaded()
+        dispatchLifetime(Cell_onContainerLoaded)
+    }
+
+    override fun onContainerUnloading() {
+        super.onContainerUnloading()
+        dispatchLifetime(Cell_onContainerUnloading)
+    }
+
+    override fun onContainerUnloaded() {
+        super.onContainerUnloaded()
+        dispatchLifetime(Cell_onContainerUnloaded)
+    }
+
+    override fun onLoadedFromDisk() {
+        super.onLoadedFromDisk()
+        dispatchLifetime(Cell_onLoadedFromDisk)
+    }
+
+    override fun onCreated() {
+        super.onCreated()
+        dispatchLifetime(Cell_onCreated)
+    }
+
+    override fun onBeginDestroy() {
+        super.onBeginDestroy()
+        dispatchLifetime(Cell_onBeginDestroy)
+    }
+
+    override fun subscribe(subscribers: SubscriberCollection) {
+        super.subscribe(subscribers)
+        dispatchLifetime(Cell_subscribe(subscribers))
+    }
+
+    override fun onBuildStarted() {
+        super.onBuildStarted()
+        dispatchLifetime(Cell_onBuildStarted)
+    }
+
+    override fun onBuildFinished() {
+        super.onBuildFinished()
+        dispatchLifetime(Cell_onBuildFinished)
+    }
+
+    //#endregion
+
+    /**
+     * Special function called after the provider creates an instance of this cell.
+     * */
+    open fun afterConstruct() {
+        buildNodeContainers()
+    }
+
+    private fun buildNodeContainers() {
+        fieldScan(this.javaClass, CellNode::class, Node::class.java, CELL_NODE_READERS).forEach {
+            val obj = it.reader.get(this)
+
+            val node = checkNotNull(obj as? CellNode) {
+                "Invalid cell node ${it.reader.get(this)}"
+            }
+
+            val annotation = it.field.getAnnotation(Node::class.java)
+
+            val id = annotation.id.ifBlank {
+                node.javaClass.sourceName()
+            }
+
+            when (node) {
+                is UniqueCellNode -> {
+                    uniqueContainer.addUnique(id, node)
+                }
+
+                is RepeatableCellNode -> {
+                    repeatableContainer.addUnique(id, node)
+                }
+
+                else -> {
+                    error("Invalid cell node $node")
+                }
+            }
+        }
+    }
+
+    /**
+     * Gets a unique node by its class.
+     * */
+    fun getNode(uniqueNodeClass: Class<*>) = uniqueContainer.get(uniqueNodeClass)
+
+    /**
+     * Adds an unique node.
+     * */
+    fun addNode(uniqueNodeId: String, uniqueNode: UniqueCellNode) {
+        uniqueContainer.addUnique(uniqueNodeId, uniqueNode)
+        setChanged()
     }
 
     open fun allowsConnection(remote: Cell): Boolean {
@@ -352,49 +725,28 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
             .forEach(container::addToCollection)
     }
 
+    fun createTag() = CompoundTag().apply {
+        withSubTagOptional(CELL_DATA, saveCellData())
+        putSubTag(OBJECT_DATA) { saveObjectData(it) }
+        putSubTag(NODE_DATA) {
+            saveNodeList(uniqueContainer, it, UNIQUE_NODES)
+            saveNodeList(repeatableContainer, it, REPEATABLE_NODES)
+        }
+    }
+
     fun loadTag(tag: CompoundTag) {
         tag.useSubTagIfPreset(CELL_DATA, this::loadCellData)
         tag.useSubTagIfPreset(OBJECT_DATA, this::loadObjectData)
-    }
-
-    /**
-     * Called after all graphs in the level have been loaded, before the solver is built.
-     * */
-    open fun onWorldLoadedPreSolver() {}
-
-    /**
-     * Called after all graphs in the level have been loaded, after the solver is built.
-     */
-    open fun onWorldLoadedPostSolver() {}
-
-    /**
-     * Called after all graphs in the level have been loaded, before the simulations start.
-     * */
-    open fun onWorldLoadedPreSim() {}
-
-    /**
-     * Called after all graphs in the level have been loaded, after the simulations have started.
-     * */
-    open fun onWorldLoadedPostSim() {}
-
-    fun createTag(): CompoundTag {
-        return CompoundTag().also { tag ->
-            tag.apply {
-                withSubTagOptional(CELL_DATA, saveCellData())
-                putSubTag(OBJECT_DATA) { saveObjectData(it) }
-            }
+        tag.useSubTagIfPreset(NODE_DATA) {
+            loadNodeList(uniqueContainer, it, UNIQUE_NODES)
+            loadNodeList(repeatableContainer, it, REPEATABLE_NODES)
         }
     }
 
     /**
-     * Called when the graph is being loaded. Custom data saved by [saveCellData] will be passed here.
-     * */
-    open fun loadCellData(tag: CompoundTag) {}
-
-    /**
      * Called when the graph is being saved. Custom data should be saved here.
      * */
-    open fun saveCellData(): CompoundTag? = null
+    protected open fun saveCellData(): CompoundTag? = null
 
     private fun saveObjectData(tag: CompoundTag) {
         objects.forEachObject { obj ->
@@ -404,6 +756,32 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
         }
     }
 
+    private fun saveNodeList(container: NodeContainer<*>, tag: CompoundTag, listId: String) {
+        val list = ListTag()
+
+        container.mapByName.forEach { (id, node) ->
+            val nodeCompound = CompoundTag()
+
+            nodeCompound.putString(NODE_ID, id)
+            nodeCompound.putString(NODE_CLASS_ID, node.javaClass.sourceName())
+
+            val nodeTag = node.saveNodeData()
+
+            if(nodeTag != null) {
+                nodeCompound.put(NODE_TAG, nodeTag)
+            }
+
+            list.add(nodeCompound)
+        }
+
+        tag.put(listId, list)
+    }
+
+    /**
+     * Called when the graph is being loaded. Custom data saved by [saveCellData] will be passed here.
+     * */
+    protected open fun loadCellData(tag: CompoundTag) {}
+
     private fun loadObjectData(tag: CompoundTag) {
         objects.forEachObject { obj ->
             if (obj is PersistentObject) {
@@ -412,9 +790,32 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
         }
     }
 
-    open fun onContainerUnloading() {}
+    private fun loadNodeList(container: NodeContainer<*>, tag: CompoundTag, listId: String) {
+        if(tag.contains(listId)) {
+            tag.getListTag(listId).forEachCompound { nodeCompound ->
+                val nodeId = nodeCompound.getString(NODE_ID)
+                val classId = nodeCompound.getString(NODE_CLASS_ID)
+                val nodeTag = if(nodeCompound.contains(NODE_TAG)) {
+                    nodeCompound.getCompound(NODE_TAG)
+                }
+                else {
+                    null
+                }
 
-    open fun onContainerUnloaded() {}
+                val node = container.get(nodeId)
+
+                if(node == null) {
+                    LOG.fatal("UNRECOGNISED NODE $nodeId (@$classId) [${nodeTag}]")
+                    DEBUGGER_BREAK()
+                }
+                else {
+                    if(nodeTag != null) {
+                        node.loadNodeData(nodeTag)
+                    }
+                }
+            }
+        }
+    }
 
     fun bindGameObjects(objects: List<Any>) {
         // Not null, it is initialized when added to graph (so the SubscriberCollection is available)
@@ -456,59 +857,26 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
         transient.clear()
     }
 
-    /**
-     * Called when the block entity is being loaded.
-     * The field is assigned before this is called.
-     */
-    open fun onContainerLoaded() {}
-
-    /**
-     * Called when the graph manager completed loading this cell from the disk.
-     */
-    open fun onLoadedFromDisk() {}
-
-    fun create() {
-        onCreated()
-    }
-
-    /**
-     * Called after the cell was created.
-     */
-    protected open fun onCreated() {}
-
-    fun notifyRemoving() {
+    override fun onDestroying() {
+        super.onDestroying()
+        dispatchLifetime(Cell_onDestroying)
         isBeingRemoved = true
         behaviorContainer.destroy()
-        onRemoving()
         persistentPoolInternal?.clear()
     }
 
-    /**
-     * Called while the cell is being destroyed, just after the simulation was stopped.
-     * Subscribers may be cleaned up here.
-     * *Almost* guaranteed to be on the game thread.
-     * */
-    protected open fun onRemoving() {}
-
-    fun destroy() {
-        onDestroyed()
-    }
-
-    /**
-     * Called after the cell was destroyed.
-     */
-    protected open fun onDestroyed() {
+    override fun onDestroyed() {
+        super.onDestroyed()
+        dispatchLifetime(Cell_onDestroyed)
         objects.forEachObject { it.destroy() }
     }
 
     private var lastLevel: Level? = null
 
-    /**
-     * Called when the graph and/or neighbouring cells are updated. This method is called after completeDiskLoad and setPlaced
-     * @param connectionsChanged True if the neighbouring cells changed.
-     * @param graphChanged True if the graph that owns this cell has changed.
-     */
-    open fun update(connectionsChanged: Boolean, graphChanged: Boolean) {
+    override fun onUpdate(connectionsChanged: Boolean, graphChanged: Boolean) {
+        super.onUpdate(connectionsChanged, graphChanged)
+        dispatchLifetime(Cell_onUpdate(connectionsChanged, graphChanged))
+
         if (graphChanged) {
             if(lastLevel != null) {
                 if(lastLevel != graph.level) {
@@ -537,19 +905,11 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     }
 
     /**
-     * Called when subscribers should be added, after the graph changes.
-     * This is called before [SimulationObject.subscribe]
-     * */
-    protected open fun subscribe(subscribers: SubscriberCollection) {}
-
-    /**
      * Called when the solver is being built, in order to clear and prepare the objects.
      * */
     fun clearObjectConnections() {
         objects.forEachObject { it.clear() }
     }
-
-    open fun buildStarted() { }
 
     /**
      * Called when the solver is being built, in order to record all object-object connections.
@@ -604,14 +964,72 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
      * */
     fun hasObject(type: SimulationObjectType) = objects.hasObject(type)
 
-    /**
-     * Called when the solver is built, before the simulation is started.
-     * */
-    @OnServerThread
-    open fun buildFinished() { }
+    private abstract class NodeContainer<N : CellNode> {
+        val mapByName = HashMap<String, N>()
+
+        fun get(id: String) = mapByName[id]
+
+        open fun addUnique(id: String, node: N) {
+            requireIsOnServerThread {
+                "Add node non-server"
+            }
+
+            mapByName.putUnique(id, node) { "Duplicate add cell node $node ($id)" }
+        }
+    }
+
+    private class RepeatableNodeContainer : NodeContainer<RepeatableCellNode>()
+
+    private class UniqueNodeContainer : NodeContainer<UniqueCellNode>() {
+        val mapByClass = HashMap<Class<*>, UniqueCellNode>()
+
+        fun get(nodeClass: Class<*>) = mapByClass[nodeClass]
+
+        override fun addUnique(id: String, node: UniqueCellNode) {
+            super.addUnique(id, node)
+
+            mapByClass.putUnique(node.javaClass, node) {
+                "Duplicate add unique cell node $node ($id)"
+            }
+        }
+    }
 }
 
 fun Cell.self() = this
+
+/**
+ * Gets a unique node by its class [T].
+ * */
+inline fun<reified T : UniqueCellNode> Cell.getNode() = getNode(T::class.java) as? T
+
+/**
+ * Checks if cell has [T].
+ * */
+inline fun<reified T : UniqueCellNode> Cell.hasNode() = getNode(T::class.java) != null
+
+inline fun<reified T : UniqueCellNode> Cell.ifNode(action: (T) -> Unit) : Boolean {
+    val instance = getNode<T>()
+
+    return if(instance != null) {
+        action(instance)
+        true
+    }
+    else {
+        false
+    }
+}
+
+/**
+ * Gets a unique node by its class [T]. Throws if the node doesn't exist.
+ * */
+inline fun<reified T : UniqueCellNode> Cell.requireNode(message: () -> String) = requireNotNull(getNode<T>(), message)
+
+/**
+ * Gets a unique node by its class. Throws if the node doesn't exist.
+ * */
+inline fun<reified T : UniqueCellNode> Cell.requireNode() = requireNotNull(getNode<T>()) {
+    "The required node ${T::class.java} was not present in $this"
+}
 
 fun isConnectionAccepted(a: Cell, b: Cell) = a.allowsConnection(b) && b.allowsConnection(a)
 
@@ -638,16 +1056,16 @@ object CellConnections {
      * */
     fun insertFresh(container: CellContainer, cell: Cell) {
         connectCell(cell, container)
-        cell.create()
+        cell.onCreated()
     }
 
     /**
      * Removes a cell from the graph. It may cause topological changes to the graph, as outlined in the top document.
      * */
     fun destroy(cellInfo: Cell, container: CellContainer) {
-        cellInfo.beginDestroy()
+        cellInfo.onBeginDestroy()
         disconnectCell(cellInfo, container)
-        cellInfo.destroy()
+        cellInfo.onDestroyed()
     }
 
     fun connectCell(insertedCell: Cell, container: CellContainer) {
@@ -655,7 +1073,7 @@ object CellConnections {
         val neighborInfoList = container.neighborScan(insertedCell).also { neighbors ->
             val testSet = neighbors.mapTo(HashSet(neighbors.size)) { it.neighbor }
 
-            if(testSet.size != neighbors.size) {
+            if (testSet.size != neighbors.size) {
                 LOG.fatal("UNEXPECTED MULTIPLE CELLS")
                 DEBUGGER_BREAK()
             }
@@ -710,7 +1128,7 @@ object CellConnections {
 
             // Send connection update to the neighbor (the graph has not changed):
             neighborInfoList.forEach {
-                it.neighbor.update(
+                it.neighbor.onUpdate(
                     connectionsChanged = true,
                     graphChanged = false
                 )
@@ -739,7 +1157,7 @@ object CellConnections {
                 existingGraph.forEach { cell ->
                     cell.graph = graph
 
-                    cell.update(
+                    cell.onUpdate(
                         connectionsChanged = neighborCells.contains(cell), // As per the above explanation
                         graphChanged = true // We are destroying the old graph and copying, so this is true
                     )
@@ -761,7 +1179,7 @@ object CellConnections {
         * Because it was inserted into a new network, its neighbors have changed (connectionsChanged is true).
         * Then, because it is inserted into a new graph, graphChanged is also true:
         * */
-        insertedCell.update(connectionsChanged = true, graphChanged = true)
+        insertedCell.onUpdate(connectionsChanged = true, graphChanged = true)
         insertedCell.container?.onTopologyChanged()
 
         // And now resume/start the simulation:
@@ -776,7 +1194,7 @@ object CellConnections {
 
         val graph = actualCell.graph
 
-        if(!graph.isSimulating) {
+        if (!graph.isSimulating) {
             DEBUGGER_BREAK()
         }
 
@@ -784,7 +1202,7 @@ object CellConnections {
         graph.stopSimulation()
 
         if (notify) {
-            actualCell.notifyRemoving()
+            actualCell.onDestroying()
         }
 
         val markedNeighbors = actualCell.connections.toHashSet()
@@ -793,7 +1211,7 @@ object CellConnections {
             val containsA = actualCell.connections.contains(neighbor)
             val containsB = neighbor.connections.contains(actualCell)
 
-            if(containsA && containsB) {
+            if (containsA && containsB) {
                 actualCell.removeConnection(neighbor)
                 neighbor.removeConnection(actualCell)
 
@@ -801,13 +1219,12 @@ object CellConnections {
                 actualContainer.onCellDisconnected(actualCell, neighbor)
 
                 markedNeighbors.remove(neighbor)
-            }
-            else if(containsA != containsB) {
+            } else if (containsA != containsB) {
                 error("Mismatched connection vs query result")
             }
         }
 
-        if(markedNeighbors.isNotEmpty()) {
+        if (markedNeighbors.isNotEmpty()) {
             error("Lingering connections $actualCell $markedNeighbors")
         }
 
@@ -835,7 +1252,7 @@ object CellConnections {
 
             val neighbor = actualNeighborCells[0].neighbor
 
-            neighbor.update(connectionsChanged = true, graphChanged = false)
+            neighbor.onUpdate(connectionsChanged = true, graphChanged = false)
 
             graph.buildSolver()
             graph.startSimulation()
@@ -943,7 +1360,7 @@ object CellConnections {
             graph.forEach { cell ->
                 val isNeighbor = neighbors.contains(cell)
 
-                cell.update(connectionsChanged = isNeighbor, graphChanged = true)
+                cell.onUpdate(connectionsChanged = isNeighbor, graphChanged = true)
                 cell.container?.onTopologyChanged()
             }
 
@@ -1026,55 +1443,6 @@ interface CellContainer {
     fun onTopologyChanged() {}
 
     val manager: CellGraphManager
-}
-
-class StagingCellContainer(val level: ServerLevel) : CellContainer {
-    val cells = HashSet<Cell>()
-    val neighbors = HashSet<Cell>()
-
-    override fun getCells() = cells.toList()
-    override fun neighborScan(actualCell: Cell) = neighbors.map { CellAndContainerHandle.captureInScope(it) }
-
-    override val manager = CellGraphManager.getFor(level)
-
-    companion object {
-        class FakeCellStage<T : Cell>(level: ServerLevel, val provider: CellProvider<T>) {
-            private val container = StagingCellContainer(level)
-            private var staged = false
-
-            private fun validateUsage() {
-                check(!staged) {
-                    "Already staged"
-                }
-            }
-
-            fun withNeighbor(cell: Cell) : FakeCellStage<T> {
-                validateUsage()
-
-                require(container.neighbors.add(cell)) {
-                    "Duplicate neighbor $cell"
-                }
-
-                return this
-            }
-
-            fun stage(locator: Locator, environment: CellEnvironment) : T {
-                validateUsage()
-                staged = true
-
-                val cell = provider.create(locator, environment)
-                cell.container = container
-                CellConnections.insertFresh(container, cell)
-
-                cell.onContainerUnloading()
-                cell.container = null
-                cell.onContainerUnloaded()
-                cell.unbindGameObjects()
-
-                return cell
-            }
-        }
-    }
 }
 
 /**
@@ -1331,7 +1699,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         validateMutationAccess()
 
         cells.forEach { it.clearObjectConnections() }
-        cells.forEach { it.buildStarted() }
+        cells.forEach { it.onBuildStarted() }
         cells.forEach { it.recordObjectConnections() }
 
         val circuitBuilders = realizeElectrical()
@@ -1357,7 +1725,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
 
         electricalSims.forEach { postProcessCircuit(it) }
 
-        cells.forEach { it.buildFinished() }
+        cells.forEach { it.onBuildFinished() }
     }
 
     /**
@@ -1677,7 +2045,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
                 // Now set graph and connection
                 cell.graph = result
                 cell.connections = connections
-                cell.update(connectionsChanged = true, graphChanged = true)
+                cell.onUpdate(connectionsChanged = true, graphChanged = true)
 
                 try {
                     cell.loadTag(cellData[cell]!!)
@@ -1687,7 +2055,9 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
             }
 
             result.cells.forEach { it.onLoadedFromDisk() }
-            result.cells.forEach { it.create() }
+            result.cells.forEach {
+                it.onCreated()
+            }
 
             result.isLoading = false
 
@@ -1865,7 +2235,7 @@ class CellGraphManager(val level: ServerLevel) : SavedData() {
 /**
  * The Cell Provider is a factory of cells, and also has connection rules for cells.
  * */
-abstract class CellProvider<T : Cell> {
+abstract class CellProvider<out T : Cell> {
     /**
      * Gets the resource ID of this cell.
      * */
@@ -1876,7 +2246,11 @@ abstract class CellProvider<T : Cell> {
      * */
     abstract fun create(ci: CellCreateInfo): T
 
-    fun create(locator: Locator, environment: CellEnvironment) = create(CellCreateInfo(locator, id, environment))
+    fun create(locator: Locator, environment: CellEnvironment) : T {
+        val cell = create(CellCreateInfo(locator, id, environment))
+        cell.afterConstruct()
+        return cell
+    }
 }
 
 fun interface CellFactory<T : Cell> {

@@ -57,9 +57,10 @@ open class ResistorBundle<T>(val factory: () -> T) where T : IResistor, T : Term
             error("Not prepared")
         }
 
-        connections.forEach { remoteObj ->
+        for (remoteObj in connections) {
             val resistor = getResistor(remoteObj)
             val offered = remoteObj.offerComponent(sender)
+                ?: continue
             map.connect(resistor, EXTERNAL_PIN, offered.component, offered.index)
         }
     }
@@ -79,8 +80,8 @@ open class ResistorBundle<T>(val factory: () -> T) where T : IResistor, T : Term
      * unless *clear* is called.
      * If a resistor is not initialized for *direction*, and the bundle was prepared by *register*, an error will be produced.
      * */
-    fun getOfferedResistor(remote: ElectricalObject<*>): ElectricalComponentInfo {
-        return ElectricalComponentInfo(getResistor(remote), EXTERNAL_PIN)
+    fun getOfferedResistor(remote: ElectricalObject<*>): TermRef {
+        return TermRef(getResistor(remote), EXTERNAL_PIN)
     }
 
     /**
@@ -104,7 +105,5 @@ open class ResistorBundle<T>(val factory: () -> T) where T : IResistor, T : Term
     val totalPower get() = resistors.values.sumOf { abs(it.power) }
 }
 
-fun resistorBundle() = ResistorBundle { Resistor() }
-fun resistorVirtualBundle() = ResistorBundle { VirtualResistor() }
 fun resistorBundle(resistance: Double) = ResistorBundle(resistance) { Resistor() }
 fun resistorVirtualBundle(resistance: Double) = ResistorBundle(resistance) { VirtualResistor() }

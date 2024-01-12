@@ -54,12 +54,14 @@ import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.specs.foundation.*
 import org.eln2.mc.data.Locators
 import org.eln2.mc.data.SortedUUIDPair
+import org.eln2.mc.data.plusAssign
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.ceilBlockPos
 import org.eln2.mc.mathematics.floorBlockPos
 import java.util.*
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import java.util.function.Supplier
+import kotlin.collections.ArrayList
 import kotlin.concurrent.read
 import kotlin.concurrent.write
 import kotlin.math.*
@@ -158,7 +160,7 @@ object GridMaterials {
     private val IRON = gridAtlasSprite("iron_cable")
 
     private val BIG_GRID_SHAPE = Catenary(
-        8, 0.08,
+        8, 0.05,
         2.0 * PI * 0.1, 0.25
     )
 
@@ -169,6 +171,7 @@ object GridMaterials {
 
     private val COPPER_MATERIAL = ChemicalElement.Copper.asMaterial.copy(
         label = "High Resistance Copper",
+        density = Quantity(4.0, G_PER_CM3),
         electricalResistivity = Quantity(1.7e-9, OHM_METER) // one order of magnitude
     )
 
@@ -1112,7 +1115,7 @@ object GridCollisions {
         intersects(level, it.move(blockPos).cast())
     }
 
-    fun cablePlacementIntersects(level: Level, cable: Cable3dA, h1: MicroGridTerminalHandle, h2: MicroGridTerminalHandle) : Boolean {
+    fun cablePlacementIntersects(level: Level, cable: Cable3dA, h1: GridTerminalHandle, h2: GridTerminalHandle) : Boolean {
         return intersectRange(level, cable) {
             if(it == h1.gameObject || it == h2.gameObject) {
                 return@intersectRange true
@@ -1905,84 +1908,125 @@ data class CableMesh3d(val extrusion: SketchExtrusion, val quads: ArrayList<Cabl
 data class CableQuad3d(val principal: BlockPos, val vertices: List<CableVertex3d>)
 data class CableVertex3d(val position: Vector3d, val normal: Vector3d, val param: Double)
 
-/**
- * Represents a cell that manages multiple grid terminals.
- * */
-abstract class GridNodeCell(ci: CellCreateInfo) : Cell(ci) {
-    private val terminalsInternal = MutableMapPairBiMap<Int, GridEndpointInfo>()
+class GridNode(val cell: Cell) : UniqueCellNode {
+    init {
+        cell.lifetimeEvents += this::onBeginDestroy
+    }
 
     /**
      * Gets the terminals used by this grid node cell. The integer is the terminal ID, and the UUID is the endpoint ID of the terminal.
      * */
-    val terminals: BiMap<Int, GridEndpointInfo> get() = terminalsInternal
+    val terminals = MutableMapPairBiMap<Int, GridEndpointInfo>()
 
     /**
      * Takes the terminals from the [gridTerminalSystem] for usage within this cell.
      * This must be done once, when the cell is created. This data is saved and must be the same the next time the grid terminal system is created.
      * */
     fun mapFromGridTerminalSystem(gridTerminalSystem: GridTerminalSystem) {
-        check(terminalsInternal.size == 0) {
+        check(terminals.size == 0) {
             "Multiple map from grid terminal system"
         }
 
         gridTerminalSystem.getInstances().forEach { (terminalID, terminal) ->
-            terminalsInternal.add(terminalID, terminal.gridEndpointInfo)
+            terminals.add(terminalID, terminal.gridEndpointInfo)
         }
 
-        setChanged()
+        cell.setChanged()
+    }
+
+    inline fun forEachConnectionCell(use: (GridConnectionCell) -> Unit) {
+        cell.connections.forEach {
+            if (it is GridConnectionCell) {
+                use(it)
+            }
+        }
+    }
+
+    inline fun forEachMapping(use: (GridConnectionCell, Cell) -> Unit) {
+        cell.connections.forEach {
+            if (it is GridConnectionCell) {
+                use(it, it.getOtherCell(cell))
+            }
+        }
+    }
+
+    inline fun forEachMappingWhile(use: (GridConnectionCell, Cell) -> Boolean) {
+        for (it in cell.connections) {
+            if (it is GridConnectionCell) {
+                if(!use(it, it.getOtherCell(cell))) {
+                    return
+                }
+            }
+        }
+    }
+
+
+    inline fun forEachRemote(use: (Cell) -> Unit) {
+        cell.connections.forEach {
+            if (it is GridConnectionCell) {
+                use(it.getOtherCell(cell))
+            }
+        }
+    }
+
+    fun captureInNeighborListWithContainer(neighbors: MutableCollection<CellAndContainerHandle>) {
+        forEachRemote {
+            neighbors.add(CellAndContainerHandle.captureInScope(it))
+        }
     }
 
     /**
-     * Creates a bi-map of [GridConnectionCell]s to the [GridNodeCell]s that they are pairing with this cell.
-     * This is only valid when [connections] are valid.
-     * This is an allocation.
+     * Gets the first connection cell to the endpoint [remoteEndpointID] and the endpoint's cell, if a connection to [remoteEndpointID] exists.
      * */
-    fun getGridMapping() : BiMap<GridConnectionCell, GridNodeCell> {
-        val results = MutableMapPairBiMap<GridConnectionCell, GridNodeCell>()
+    fun firstPathwayTo(remoteEndpointID: UUID) : Pair<GridConnectionCell, GridConnectionCell.NodeInfo>? =
+        cell.connections.firstNotNullOfOrNull {
+            val connectionCell = it as? GridConnectionCell
+                ?: return@firstNotNullOfOrNull null
 
-        connections.forEach {
-            if (it is GridConnectionCell) {
-                results.add(it, it.getOtherCell(this))
+            val other = connectionCell.getOtherCellWithFullMetadata(cell)
+
+            if(other.endpointInfo.id == remoteEndpointID) {
+                connectionCell to other
+            }
+            else {
+                null
             }
         }
 
-        return results
-    }
-
-    /**
-     * Gets the connection cell to the endpoint [remoteEndpointID] and its cell, if exists.
-     * */
-    fun getPathwayTo(remoteEndpointID: UUID) : Pair<GridConnectionCell, GridConnectionCell.NodeInfo>? = connections.firstNotNullOfOrNull {
+    fun hasAnyConnectionWith(terminal: Int, remoteEndpointID: UUID, remoteTerminal: Int) = cell.connections.any {
         val connectionCell = it as? GridConnectionCell
-            ?: return@firstNotNullOfOrNull null
+            ?: return@any false
 
-        val other = connectionCell.getOtherCellWithFullMetadata(this)
+        if(connectionCell.getFullMetadata(cell).terminal != terminal) {
+            return@any false
+        }
 
-        if(other.endpointInfo.id == remoteEndpointID) {
-            connectionCell to other
-        }
-        else {
-            null
-        }
+        val other = connectionCell.getOtherCellWithFullMetadata(cell)
+
+        other.terminal == remoteTerminal && other.endpointInfo.id == remoteEndpointID
     }
-
-    fun hasConnectionWith(remoteEndpointID: UUID) = getPathwayTo(remoteEndpointID) != null
 
     /**
      * Destroys all [GridConnectionCell]s.
      * */
-    override fun beginDestroy() {
-        getGridMapping().forward.keys.forEach {
+    private fun onBeginDestroy(event: Cell_onBeginDestroy) {
+        val list = ArrayList<GridConnectionCell>()
+
+        forEachConnectionCell {
             it.isRemoving = true
+            list.add(it)
+        }
+
+        list.forEach {
             CellConnections.destroy(it, it.container!!)
         }
     }
 
-    override fun saveCellData(): CompoundTag {
+    override fun saveNodeData(): CompoundTag {
         val tag = CompoundTag()
         val listTag = ListTag()
 
-        terminalsInternal.forward.forEach { (terminal, endpoint) ->
+        terminals.forward.forEach { (terminal, endpoint) ->
             val entryCompound = CompoundTag()
 
             entryCompound.putInt(TERMINAL, terminal)
@@ -1998,7 +2042,7 @@ abstract class GridNodeCell(ci: CellCreateInfo) : Cell(ci) {
         return tag
     }
 
-    override fun loadCellData(tag: CompoundTag) {
+    override fun loadNodeData(tag: CompoundTag) {
         val listTag = tag.getListTag(TERMINALS)
 
         listTag.forEachCompound { entryCompound ->
@@ -2007,7 +2051,7 @@ abstract class GridNodeCell(ci: CellCreateInfo) : Cell(ci) {
             val attachment = entryCompound.getVector3d(ENDPOINT_ATTACHMENT)
             val endpointLocator = entryCompound.getLocator(ENDPOINT_LOCATOR)
 
-            terminalsInternal.add(terminal, GridEndpointInfo(endpointId, attachment, endpointLocator))
+            terminals.add(terminal, GridEndpointInfo(endpointId, attachment, endpointLocator))
         }
     }
 
@@ -2037,7 +2081,7 @@ class GridConnectionElectricalObject(cell: GridConnectionCell) : ElectricalObjec
         this.resistorInternal = resistor
     }
 
-    override fun offerComponent(remote: ElectricalObject<*>): ElectricalComponentInfo {
+    override fun offerPolar(remote: ElectricalObject<*>): TermRef {
         val remoteCell = remote.cell
 
         return if(remoteCell === cell.cellA) {
@@ -2109,8 +2153,8 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci), GridConnectionOwner {
 
     private fun initializeFromStaging(
         level: ServerLevel,
-        a: GridNodeCell, terminalA: Int,
-        b: GridNodeCell, terminalB: Int,
+        a: Cell, terminalA: Int,
+        b: Cell, terminalB: Int,
         cable: GridConnection,
     ) {
         check(stateField == null) {
@@ -2123,8 +2167,11 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci), GridConnectionOwner {
 
         container = StagingContainer(level, a, b)
 
-        val endpointA = a.terminals.forward[terminalA]!!
-        val endpointB = b.terminals.forward[terminalB]!!
+        val ax = a.requireNode<GridNode>()
+        val bx = b.requireNode<GridNode>()
+
+        val endpointA = ax.terminals.forward[terminalA]!!
+        val endpointB = bx.terminals.forward[terminalB]!!
 
         val pair = GridEndpointPair.create(endpointA, endpointB)
 
@@ -2144,8 +2191,8 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci), GridConnectionOwner {
         initializeObjects()
     }
 
-    private var cellAField: GridNodeCell? = null
-    private var cellBField: GridNodeCell? = null
+    private var cellAField: Cell? = null
+    private var cellBField: Cell? = null
 
     /**
      * Gets the cell of the first endpoint.
@@ -2165,7 +2212,7 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci), GridConnectionOwner {
      * Gets the other cell in the pair. [cell] must be either [cellA] or [cellB].
      * @return [cellA], if [cell] is [cellB]. [cellB] is [cell] is [cellA]. Otherwise, error.
      * */
-    fun getOtherCell(cell: GridNodeCell) = if (cellA === cell) {
+    fun getOtherCell(cell: Cell) = if (cellA === cell) {
         cellB
     } else if (cellB === cell) {
         cellA
@@ -2174,18 +2221,43 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci), GridConnectionOwner {
     }
 
     /**
+     * Gets the other cell in the pair.
+     * @return [cellA], if [cell] is [cellB]. [cellB] is [cell] is [cellA]. Otherwise, null.
+     * */
+    fun getOtherCellOrNull(cell: Cell) = if (cellA === cell) {
+        cellB
+    } else if (cellB === cell) {
+        cellA
+    } else {
+        null
+    }
+
+    /**
      * Gets the other cell in the pair, along with grid information. [cell] must be either [cellA] or [cellB].
      * @return [cellA], if [cell] is [cellB]. [cellB] is [cell] is [cellA]. Otherwise, error.
      * */
-    fun getOtherCellWithFullMetadata(cell: GridNodeCell) = if (cellA === cell) {
+    fun getOtherCellWithFullMetadata(cell: Cell) = if (cellA === cell) {
         NodeInfo(cellB, state.terminalB, state.pair.b)
     } else if (cellB === cell) {
         NodeInfo(cellA, state.terminalA, state.pair.a)
     } else {
-        error("Expected cell to be one from the pair")
+        error("Expected cell $cell to be one from the pair ($cellA or $cellB) to get other")
     }
 
-    override fun buildStarted() {
+    /**
+     * Gets the information associated with [cell]. The [cell] must be either [cellA] or [cellB].
+     * */
+    fun getFullMetadata(cell: Cell) = if (cellA === cell) {
+        NodeInfo(cellA, state.terminalA, state.pair.a)
+    } else if (cellB === cell) {
+        NodeInfo(cellB, state.terminalB, state.pair.b)
+    } else {
+        error("Expected cell $cell to be one from the pair ($cellA or $cellB) to get metadata")
+    }
+
+    override fun onBuildStarted() {
+        super.onBuildStarted()
+
         if(isRemoving) {
             return
         }
@@ -2197,14 +2269,18 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci), GridConnectionOwner {
         val cell1 = connections[0]
         val cell2 = connections[1]
 
-        check(cell1 is GridNodeCell && cell2 is GridNodeCell) {
-            "Connections were not grid terminal cells"
+        val cell1x = cell1.requireNode<GridNode> {
+            "$cell1 did not have grid node for connection"
         }
 
-        val cell1a = cell1.terminals.backward[state.pair.a]
-        val cell1b = cell1.terminals.backward[state.pair.b]
-        val cell2a = cell2.terminals.backward[state.pair.a]
-        val cell2b = cell2.terminals.backward[state.pair.b]
+        val cell2x = cell2.requireNode<GridNode> {
+            "$cell2 did not have grid node for connection"
+        }
+
+        val cell1a = cell1x.terminals.backward[state.pair.a]
+        val cell1b = cell1x.terminals.backward[state.pair.b]
+        val cell2a = cell2x.terminals.backward[state.pair.a]
+        val cell2b = cell2x.terminals.backward[state.pair.b]
 
         check(cell1a == null || cell1b == null) {
             "Cell 1 had both endpoints"
@@ -2276,6 +2352,7 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci), GridConnectionOwner {
     }
 
     override fun onWorldLoadedPreSolver() {
+        super.onWorldLoadedPreSolver()
         check(this.container == null)
         check(this.handle == null)
         setupPermanent()
@@ -2425,7 +2502,7 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci), GridConnectionOwner {
     )
 
     data class NodeInfo(
-        val cell: GridNodeCell,
+        val cell: Cell,
         val terminal: Int,
         val endpointInfo: GridEndpointInfo
     )
@@ -2476,8 +2553,8 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci), GridConnectionOwner {
         private const val TEMPERATURE_SEND_EPS = 5.0
 
         fun createStaging(
-            cellA: GridNodeCell,
-            cellB: GridNodeCell,
+            cellA: Cell,
+            cellB: Cell,
             level: ServerLevel,
             endpointA: UUID,
             terminalA: Int,

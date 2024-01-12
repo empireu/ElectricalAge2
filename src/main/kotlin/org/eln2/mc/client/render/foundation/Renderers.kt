@@ -481,6 +481,10 @@ fun interface PartRendererSupplier<T : Part<R>, R : PartRenderer> {
     fun create(part: T) : R
 }
 
+fun interface SpecRendererSupplier<T : Spec<R>, R : SpecRenderer> {
+    fun create(part: T) : R
+}
+
 class TestBlockEntityInstance<T : BlockEntity>(
     materialManager: MaterialManager,
     blockEntity: T,
