@@ -1,15 +1,15 @@
 {
-    "parent": "eln2:block/templates/block_medium",
     "credit": "Made with Blockbench",
-	"texture_size": [32, 32],
+    "parent": "eln2:block/templates/block_small",
+    "texture_size": [32, 32],
 	"textures": {
 		"0": "eln2:block/components",
 		"particle": "eln2:block/components"
 	},
 	"elements": [
 		{
-			"from": [7, 0, 7],
-			"to": [9, 3, 9],
+			"from": [7, 1, 7],
+			"to": [9, 4, 9],
 			"faces": {
 				"north": {"uv": [13, 8.5, 14, 10], "texture": "#0"},
 				"east": {"uv": [13, 8.5, 14, 10], "texture": "#0"},
@@ -20,8 +20,8 @@
 			}
 		},
 		{
-			"from": [6, 3, 6],
-			"to": [10, 8, 10],
+			"from": [6, 0, 6],
+			"to": [10, 1, 10],
 			"faces": {
 				"north": {"uv": [14, 7.5, 16, 8], "texture": "#0"},
 				"east": {"uv": [14, 7.5, 16, 8], "texture": "#0"},

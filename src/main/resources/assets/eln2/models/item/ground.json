@@ -1,6 +1,3 @@
 {
-    "parent": "minecraft:item/generated",
-    "textures": {
-        "layer0": "eln2:item/ground_symbol"
-    }
+    "parent": "eln2:block/ground_pin"
 }

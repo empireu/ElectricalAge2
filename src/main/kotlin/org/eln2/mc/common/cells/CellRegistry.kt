@@ -10,7 +10,7 @@ import org.ageseries.libage.data.mutableBiMapOf
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.GridConnectionCell
+import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.resource
 import java.util.function.Supplier
 

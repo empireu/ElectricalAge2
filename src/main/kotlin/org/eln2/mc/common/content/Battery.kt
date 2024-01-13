@@ -5,13 +5,15 @@ package org.eln2.mc.common.content
 import net.minecraft.nbt.CompoundTag
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.geometry.BoundingBox3d
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.electrical.mna.component.updateResistance
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.*
-import org.eln2.mc.common.GridNode
+import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.parts.foundation.*
@@ -328,17 +330,19 @@ class BatteryPart(
 class BatterySpec(
     ci: SpecCreateInfo,
     provider: CellProvider<TerminalBatteryCell>,
+    neg: BoundingBox3d,
+    pos: BoundingBox3d,
     private val rendererSupplier: SpecRendererSupplier<BatterySpec, BasicSpecRenderer>
 ) : CellSpec<TerminalBatteryCell, BasicSpecRenderer>(ci, provider), ItemPersistent, ComponentDisplay {
     val negative = defineCellBoxTerminal(
-        -0.1, 0.0, 0.0,
-        0.1, 0.2, 0.1,
+        neg.center.x, neg.center.y, neg.center.z,
+        neg.size.x, neg.size.y, neg.size.z,
         highlightColor = RGBAFloat(0f, 0f, 1f, 1f)
     )
 
     val positive = defineCellBoxTerminal(
-        +0.1, 0.0, 0.0,
-        0.1, 0.2, 0.1,
+        pos.center.x, pos.center.y, pos.center.z,
+        pos.size.x, pos.size.y, pos.size.z,
         highlightColor = RGBAFloat(1f, 0f, 0f, 1f)
     )
 

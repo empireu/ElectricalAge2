@@ -1,7 +1,7 @@
 {
-    "credit": "Made with Blockbench",
-    "parent": "eln2:block/templates/block_medium",
-    "texture_size": [32, 32],
+	"credit": "Made with Blockbench",
+	"parent": "eln2:block/templates/block_medium",
+	"texture_size": [32, 32],
 	"textures": {
 		"0": "eln2:block/smallwalllamp",
 		"particle": "eln2:block/smallwalllamp"
@@ -77,6 +77,32 @@
 				"west": {"uv": [0, 8.5, 2, 9.5], "texture": "#0"},
 				"up": {"uv": [7.5, 2, 4, 0], "texture": "#0"}
 			}
+		},
+		{
+			"name": "terminal1",
+			"from": [11.75, 0, 7.5],
+			"to": [12.25, 2, 8.5],
+			"faces": {
+				"north": {"uv": [7.5, 0, 8.75, 1.25], "texture": "#0"},
+				"east": {"uv": [7.5, 1.25, 8.75, 2.5], "texture": "#0"},
+				"south": {"uv": [8.75, 1.25, 10, 2.5], "texture": "#0"},
+				"west": {"uv": [8.75, 0, 10, 1.25], "texture": "#0"},
+				"up": {"uv": [7.5, 2.75, 8.75, 4], "texture": "#0"},
+				"down": {"uv": [8.75, 2.75, 10, 4], "texture": "#0"}
+			}
+		},
+		{
+			"name": "terminal2",
+			"from": [3.75, 0, 7.5],
+			"to": [4.25, 2, 8.5],
+			"faces": {
+				"north": {"uv": [7.5, 0, 8.75, 1.25], "texture": "#0"},
+				"east": {"uv": [7.5, 1.25, 8.75, 2.5], "texture": "#0"},
+				"south": {"uv": [8.75, 1.25, 10, 2.5], "texture": "#0"},
+				"west": {"uv": [8.75, 0, 10, 1.25], "texture": "#0"},
+				"up": {"uv": [7.5, 2.75, 8.75, 4], "texture": "#0"},
+				"down": {"uv": [8.75, 2.75, 10, 4], "texture": "#0"}
+			}
 		}
 	],
 	"groups": [
@@ -86,6 +112,12 @@
 			"color": 0,
 			"children": [0, 1, 2, 3, 4]
 		},
-		5
+		5,
+		{
+			"name": "group",
+			"origin": [0, 0, 0],
+			"color": 0,
+			"children": [6, 7]
+		}
 	]
 }

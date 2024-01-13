@@ -13,6 +13,8 @@ import org.joml.Quaternionf
 import org.joml.Quaternionfc
 import kotlin.math.*
 
+val maskXY = Vector3d(1.0, 0.0, 1.0)
+
 data class Vector2I(val x: Int, val y: Int) {
     companion object {
         fun one(): Vector2I = Vector2I(1, 1)

@@ -11,6 +11,8 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.level.saveddata.SavedData
 import net.minecraftforge.server.ServerLifecycleHooks
 import net.minecraft.core.BlockPos
+import net.minecraft.world.level.ChunkPos
+import net.minecraft.world.level.chunk.ChunkStatus
 import org.ageseries.libage.data.*
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Simulator
@@ -1082,8 +1084,16 @@ object CellConnections {
 
         // Stop all running simulations
 
-        neighborCells.map { it.graph }.distinct().forEach {
-            it.ensureStopped()
+        neighborCells
+            .map { it.graph }
+            .distinct()
+            .forEach {
+                it.ensureStopped()
+                it.captureAllInScope()
+            }
+
+        if(insertedCell.hasGraph) {
+            insertedCell.graph.captureAllInScope()
         }
 
         /*
@@ -1188,9 +1198,17 @@ object CellConnections {
 
     fun disconnectCell(actualCell: Cell, actualContainer: CellContainer, notify: Boolean = true) {
         val manager = actualContainer.manager
-        val actualNeighborCells = actualCell.connections.map {
+
+        val connections = actualCell.connections.map {
             CellAndContainerHandle.captureInScope(it)
         }
+
+        connections
+            .map { it.neighbor.graph }
+            .distinct()
+            .forEach {
+                it.captureAllInScope()
+            }
 
         val graph = actualCell.graph
 
@@ -1201,13 +1219,17 @@ object CellConnections {
         // Stop Simulation
         graph.stopSimulation()
 
+        graph.captureAllInScope()
+
         if (notify) {
             actualCell.onDestroying()
         }
 
         val markedNeighbors = actualCell.connections.toHashSet()
 
-        actualNeighborCells.forEach { (neighbor, neighborContainer) ->
+
+
+        connections.forEach { (neighbor, neighborContainer) ->
             val containsA = actualCell.connections.contains(neighbor)
             val containsB = neighbor.connections.contains(actualCell)
 
@@ -1237,20 +1259,20 @@ object CellConnections {
         *        and rebuild the circuits.
         */
 
-        if (actualNeighborCells.isEmpty()) {
+        if (connections.isEmpty()) {
             // Case 1. Destroy this circuit.
 
             // Make sure we don't make any logic errors somewhere else.
             check(graph.size == 1)
 
             graph.destroy()
-        } else if (actualNeighborCells.size == 1) {
+        } else if (connections.size == 1) {
             // Case 2.
 
             // Remove the cell from the circuit.
             graph.removeCell(actualCell)
 
-            val neighbor = actualNeighborCells[0].neighbor
+            val neighbor = connections[0].neighbor
 
             neighbor.onUpdate(connectionsChanged = true, graphChanged = false)
 
@@ -1260,7 +1282,7 @@ object CellConnections {
         } else {
             // Case 3 and 4. Implement a more sophisticated algorithm, if necessary.
             graph.destroy()
-            rebuildTopologies(actualNeighborCells, actualCell, manager)
+            rebuildTopologies(connections, actualCell, manager)
         }
     }
 
@@ -1451,10 +1473,29 @@ interface CellContainer {
 data class CellAndContainerHandle @Deprecated("Use [of]") constructor(val neighbor: Cell, val container: CellContainer) {
     companion object {
         @Suppress("DEPRECATION")
-        fun captureInScope(cell: Cell) = CellAndContainerHandle(
-            cell,
-            cell.container ?: error("Did not have container for $cell")
-        )
+        fun captureInScope(cell: Cell) : CellAndContainerHandle {
+            if(cell.locator.has(Locators.BLOCK)) {
+                if(cell.hasGraph) {
+                    val level = cell.graph.level
+                    val blockPos = cell.locator.requireLocator(Locators.BLOCK)
+                    val chunkPos = ChunkPos(blockPos)
+
+                    if(!level.chunkSource.hasChunk(chunkPos.x, chunkPos.z)) {
+                        LOG.warn("Forcing loading of chunk $chunkPos for $cell at $blockPos to capture in scope. Container: ${cell.container}")
+                        val chunk = level.chunkSource.level.getChunk(chunkPos.x, chunkPos.z, ChunkStatus.FULL)
+                        LOG.warn("Result: $chunk, with container ${cell.container}")
+                    }
+                }
+                else {
+                    LOG.warn("Capturing $cell - without graph")
+                }
+            }
+
+            return CellAndContainerHandle(
+                cell,
+                cell.container ?: error("Did not have container for $cell")
+            )
+        }
     }
 
     override fun equals(other: Any?): Boolean {
@@ -1527,6 +1568,12 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
 
     var isLoading = false
         private set
+
+    fun captureAllInScope() {
+        cells.forEach {
+            CellAndContainerHandle.captureInScope(it)
+        }
+    }
 
     /**
      * Gets an iterator over the cells in this graph.

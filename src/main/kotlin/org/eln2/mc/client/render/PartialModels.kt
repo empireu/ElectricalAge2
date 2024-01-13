@@ -28,8 +28,10 @@ object PartialModels {
     val VOLTAGE_SOURCE = partialBlock("voltage_source")
     val RESISTOR = partialBlock("resistor")
     val GROUND = partialBlock("ground_pin")
+    val GROUND_MICRO_GRID = partialBlock("ground_pin_micro_grid")
     val SMALL_WALL_LAMP_EMITTER = partialBlock("small_wall_lamp/emitter")
     val SMALL_WALL_LAMP_CAGE = partialBlock("small_wall_lamp/cage")
+    val SMALL_WALL_LAMP_CAGE_MICRO_GRID = partialBlock("small_wall_lamp/cage_micro_grid")
 
     val PELTIER_BODY = partialBlock("peltier/body")
     val PELTIER_LEFT = partialBlock("peltier/left")
@@ -50,8 +52,8 @@ object PartialModels {
 
     val SPEC_PART_FRAME = partialBlock("spec_part_frame")
 
-    val MICRO_GRID_ANCHOR = partialBlock("microgrid_anchor")
-    val MICRO_GRID_INTERFACE = partialBlock("microgrid_interface")
+    val MICRO_GRID_ANCHOR = partialBlock("micro_grid_anchor")
+    val MICRO_GRID_INTERFACE = partialBlock("micro_grid_interface")
 
     private fun partial(path: String) = PartialModel(resource(path))
 

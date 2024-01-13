@@ -1,6 +1,5 @@
 package org.eln2.mc.common.blocks.foundation
 
-import com.jozufozu.flywheel.util.Color
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.core.BlockPos
@@ -45,13 +44,14 @@ import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
-import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.foundation.MultipartBlockEntityInstance
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.GridCollisions
+import org.eln2.mc.common.grids.GridCollisions
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.foundation.*
+import org.eln2.mc.common.specs.SpecRegistry
+import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.data.Locators
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3dMask
@@ -389,6 +389,13 @@ class MultipartBlock : BaseEntityBlock(
 
         val picked = pickPart(level, pos, player)
             ?: return ItemStack.EMPTY
+
+        if(picked is SpecContainerPart) {
+            val spec = picked.pickSpec(player.getViewRay())?.second
+                ?: return ItemStack.EMPTY
+
+            return ItemStack(SpecRegistry.getSpecItem(spec.id))
+        }
 
         return ItemStack(PartRegistry.getPartItem(picked.id))
     }

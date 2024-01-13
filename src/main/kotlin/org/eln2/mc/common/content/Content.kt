@@ -12,6 +12,7 @@ import net.minecraft.world.phys.AABB
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.evaluate
+import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.lerp
 import org.ageseries.libage.mathematics.map
@@ -23,10 +24,7 @@ import org.eln2.mc.Datasets
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.cutout
-import org.eln2.mc.client.render.foundation.BasicPartRenderer
-import org.eln2.mc.client.render.foundation.BasicSpecRenderer
-import org.eln2.mc.client.render.foundation.TestBlockEntityInstance
-import org.eln2.mc.client.render.foundation.defaultRadiantBodyColor
+import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.client.render.solid
 import org.eln2.mc.common.*
 import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
@@ -39,11 +37,12 @@ import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
 import org.eln2.mc.common.cells.CellRegistry.cell
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.containers.ContainerRegistry.menu
+import org.eln2.mc.common.grids.*
 import org.eln2.mc.common.items.CreativeTabRegistry
-import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.partAndItem
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
+import org.eln2.mc.common.parts.foundation.PartFactory
 import org.eln2.mc.common.parts.foundation.transformPartWorld
 import org.eln2.mc.common.specs.SpecRegistry.specAndItem
 import org.eln2.mc.common.specs.foundation.*
@@ -53,7 +52,7 @@ import org.eln2.mc.data.directionPoleMapPlanar
 import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.mathematics.Base6Direction3d
-import org.eln2.mc.mathematics.Base6Direction3dMask
+import org.eln2.mc.mathematics.maskXY
 import org.eln2.mc.requireIsOnRenderThread
 import kotlin.math.PI
 import kotlin.math.abs
@@ -172,6 +171,15 @@ object Content {
         )
     )
 
+    val GROUND_SPEC = specAndItem(
+        "ground_micro_grid",
+        BasicSpecProvider(
+            PartialModels.GROUND_MICRO_GRID,
+            Vector3d(2.0 / 16.0),
+            ::GroundSpec
+        )
+    )
+
     //#endregion
 
     //#region Batteries
@@ -282,10 +290,17 @@ object Content {
     )
 
     val BATTERY_SPEC_12V = specAndItem(
-        "microgrid_lead_acid_battery_12v",
-        BasicSpecProvider(Vector3d(3.5 / 16.0, 2.0 / 16.0, 3.5 / 16.0)) { ci ->
-            BatterySpec(ci, GRID_LEAD_ACID_BATTERY_CELL_12V_80Wh.get()) { spec ->
-                BasicSpecRenderer(spec, PartialModels.ELECTRICAL_WIRE_HUB)
+        "micro_grid_lead_acid_battery_12v",
+        BasicSpecProvider.setup(null, Vector3d(6.0 / 16.0, 7.0 / 16.0, 10.0 / 16.0) * 0.35) {
+            val scale = 0.35
+            val size = Vector3d(1.5 / 16.0, 0.5 / 16.0, 1.5 / 16.0) * scale
+            val neg = BoundingBox3d.fromCenterSize(((Vector3d(7.25 / 16.0, 7 / 16.0, 3.25 / 16.0)) - Vector3d.one * maskXY / 2.0) * scale + size / 2.0, size)
+            val pos = BoundingBox3d.fromCenterSize(((Vector3d(7.25 / 16.0, 7 / 16.0, 11.25 / 16.0)) - Vector3d.one * maskXY / 2.0) * scale + size / 2.0, size)
+
+            SpecFactory {
+                BatterySpec(it, GRID_LEAD_ACID_BATTERY_CELL_12V_80Wh.get(), neg, pos) { spec ->
+                    BasicSpecRenderer(spec, PartialModels.BATTERY, scale = Vector3d(scale))
+                }
             }
         }
     )
@@ -346,19 +361,53 @@ object Content {
 
     //#region Lights
 
-    val LIGHT_CELL = cell(
-        "light",
+    val POLAR_LIGHT_CELL = cell(
+        "polar_light",
         BasicCellProvider { ci ->
-            LightCell(ci, directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)).also { cell ->
-                cell.ruleSet.withDirectionRulePlanar(Base6Direction3dMask.LEFT + Base6Direction3dMask.RIGHT)
-            }
+            PolarLightCell(ci, directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right))
+        }
+    )
+
+    val TERMINAL_LIGHT_CELL = cell(
+        "terminal_light",
+        BasicCellProvider { ci ->
+            TerminalLightCell(ci)
         }
     )
 
     val LIGHT_PART = partAndItem(
-        "light_part",
+        "small_wall_lamp",
         BasicPartProvider(Vector3d(8.0 / 16.0, (1.0 + 2.302) / 16.0, 5.0 / 16.0)) { ci ->
-            PoweredLightPart(ci, LIGHT_CELL.get())
+            PolarPoweredLightPart(ci, POLAR_LIGHT_CELL.get()) {
+                LightFixtureRenderer(
+                    it,
+                    PartialModels.SMALL_WALL_LAMP_CAGE.solid(),
+                    PartialModels.SMALL_WALL_LAMP_EMITTER.solid()
+                )
+            }
+        }
+    )
+
+    val LIGHT_PART_MICRO_GRID = partAndItem(
+        "small_wall_lamp_micro_grid",
+        BasicPartProvider.setup(Vector3d(8.0 / 16.0, (1.0 + 2.302) / 16.0, 5.0 / 16.0)) {
+            val size = Vector3d(0.5 / 16.0, 2.0 / 16.0, 1.0 / 16.0)
+            val neg = BoundingBox3d.fromCenterSize((Vector3d(3.75 / 16.0, 0.0, 7.5 / 16.0)) - Vector3d.one * maskXY / 2.0 + size * maskXY / 2.0, size)
+            val pos = BoundingBox3d.fromCenterSize((Vector3d(11.75 / 16.0, 0.0, 7.5 / 16.0)) - Vector3d.one * maskXY / 2.0 + size * maskXY / 2.0, size)
+
+            PartFactory { ci ->
+                TerminalPoweredLightPart(
+                    ci,
+                    TERMINAL_LIGHT_CELL.get(),
+                    neg, pos
+                ) {
+                    LightFixtureRenderer(
+                        it,
+                        PartialModels.SMALL_WALL_LAMP_CAGE_MICRO_GRID.solid(),
+                        PartialModels.SMALL_WALL_LAMP_EMITTER.solid()
+                    )
+                }
+            }
         }
     )
 
@@ -371,7 +420,7 @@ object Content {
         deviationMax: Double,
         increments: Int = 128,
         baseRadius: Int = 1
-    ) : ItemRegistry.ItemRegistryItem {
+    ) : RegistryObject<LightBulbItem> {
         val itemEntry = item(name) {
             val model = LightModel(
                 temperatureFunction = {
@@ -395,7 +444,7 @@ object Content {
         }
 
         CreativeTabRegistry.creativeTabVariant {
-            (itemEntry.get() as LightBulbItem).createStack(
+            itemEntry.get().createStack(
                 life = 1.0,
                 count = 1
             )
@@ -624,28 +673,85 @@ object Content {
 
     //#region Grid
 
-    val GRID_KNIFE = item("grid_knife") {
-        GridKnifeItem()
+    val GRID_COPPER_TEXTURE = GridMaterials.gridAtlasSprite("copper_cable")
+    val GRID_IRON_TEXTURE = GridMaterials.gridAtlasSprite("iron_cable")
+
+    val POWER_GRID_SHAPE = GridMaterial.Catenary(
+        8, 0.05,
+        2.0 * PI * 0.1, 0.25
+    )
+
+    val MICRO_GRID_SHAPE = GridMaterial.Straight(
+        8, 0.01,
+        2.0 * PI * 0.1, 1.0
+    )
+
+    private val GRID_COPPER_MATERIAL = ChemicalElement.Copper.asMaterial.copy(
+        label = "Grid Copper Wire",
+        density = Quantity(4.0, G_PER_CM3),
+        electricalResistivity = Quantity(1.7e-9, OHM_METER) // one order of magnitude
+    )
+
+    private val GRID_IRON_MATERIAL = ChemicalElement.Iron.asMaterial.copy(
+        label = "Grid Iron Wire",
+        density = Quantity(4.5, G_PER_CM3),
+        electricalResistivity = Quantity(9.700000000001e-9, OHM_METER) // one order of magnitude
+    )
+
+    val GRID_CABLE_PLIERS = item("grid_cable_pliers") {
+        GridCablePliersItem()
     }
 
-    val MICRO_GRID_CONNECT = item("microgrid_connect") {
-        GridConnectItem(GridMaterials.COPPER_MICRO_GRID)
-    }
+    val MICRO_GRID_CONNECT_COPPER = GridMaterials.gridConnect(
+        "micro_grid_copper_cable",
+        GridMaterial(
+            GRID_COPPER_TEXTURE,
+            GRID_COPPER_MATERIAL,
+            MICRO_GRID_SHAPE,
+            GridMaterialCategory.MicroGrid,
+            ChemicalElement.Copper.meltingPoint * 0.9,
+            10
+        )
+    )
 
-    val MICRO_GRID_CONNECT_IRON = item("microgrid_iron_connect") {
-        GridConnectItem(GridMaterials.IRON_MICRO_GRID)
-    }
+    val MICRO_GRID_CONNECT_IRON = GridMaterials.gridConnect(
+        "micro_grid_iron_cable",
+        GridMaterial(
+            GRID_IRON_TEXTURE,
+            GRID_IRON_MATERIAL,
+            MICRO_GRID_SHAPE,
+            GridMaterialCategory.MicroGrid,
+            ChemicalElement.Iron.meltingPoint * 0.9,
+            35
+        )
+    )
 
-    val POWER_GRID_CONNECT = item("power_grid_connect") {
-        GridConnectItem(GridMaterials.COPPER_POWER_GRID)
-    }
+    val POWER_GRID_CONNECT_COPPER = GridMaterials.gridConnect(
+        "power_grid_copper_cable",
+        GridMaterial(
+            GRID_COPPER_TEXTURE,
+            GRID_COPPER_MATERIAL,
+            POWER_GRID_SHAPE,
+            GridMaterialCategory.PowerGrid,
+            ChemicalElement.Copper.meltingPoint * 0.9,
+            25
+        )
+    )
 
-    val POWER_GRID_CONNECT_IRON = item("power_grid_iron_connect") {
-        GridConnectItem(GridMaterials.IRON_POWER_GRID)
-    }
+    val POWER_GRID_CONNECT_IRON = GridMaterials.gridConnect(
+        "power_grid_iron_cable",
+        GridMaterial(
+            GRID_IRON_TEXTURE,
+            GRID_IRON_MATERIAL,
+            POWER_GRID_SHAPE,
+            GridMaterialCategory.PowerGrid,
+            ChemicalElement.Iron.meltingPoint * 0.9,
+            150
+        )
+    )
 
-    val MICROGRID_ANCHOR_CELL = cell(
-        "microgrid_anchor",
+    val MICRO_GRID_ANCHOR_CELL = cell(
+        "micro_grid_anchor",
         BasicCellProvider {
             GridAnchorCell(
                 it,
@@ -657,8 +763,8 @@ object Content {
         }
     )
 
-    val MICROGRID_ANCHOR_SPEC = specAndItem(
-        "microgrid_anchor",
+    val MICRO_GRID_ANCHOR_SPEC = specAndItem(
+        "micro_grid_anchor",
         BasicSpecProvider(PartialModels.MICRO_GRID_ANCHOR, Vector3d(4.0 / 16.0)) {
             GridAnchorSpec(
                 it,
@@ -668,8 +774,8 @@ object Content {
         }
     )
 
-    val MICROGRID_INTERFACE_CELL = cell(
-        "microgrid_interface",
+    val MICRO_GRID_INTERFACE_CELL = cell(
+        "micro_grid_interface",
         BasicCellProvider {
             GridInterfaceCell(
                 it,
@@ -685,8 +791,8 @@ object Content {
         }
     )
 
-    val MICROGRID_INTERFACE_PART = partAndItem(
-        "microgrid_interface",
+    val MICRO_GRID_INTERFACE_PART = partAndItem(
+        "micro_grid_interface",
         BasicPartProvider(Vector3d(4.0 / 16.0)) {
             GridInterfacePart(
                 it,
@@ -719,7 +825,7 @@ object Content {
             GridInterfacePart(
                 it,
                 Vector3d(4.0 / 16.0, 8.0 / 16.0, 4.0 / 16.0) * 1.01,
-                listOf(GridMaterialCategory.BIG)
+                listOf(GridMaterialCategory.PowerGrid)
             ) { PartialModels.POWER_GRID_INTERFACE }
         }
     )
@@ -772,7 +878,7 @@ object Content {
         "grid_pass_pole",
         GRID_POLE_DELEGATE_MAP,
         Vector3d(0.5, 2.5, 0.5),
-        MICROGRID_ANCHOR_CELL
+        MICRO_GRID_ANCHOR_CELL
     )
 
     //#endregion

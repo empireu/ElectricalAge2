@@ -9,16 +9,10 @@ import org.ageseries.libage.data.LocatorDispatcher
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.electrical.mna.NEGATIVE
 import org.ageseries.libage.sim.electrical.mna.POSITIVE
-import org.eln2.mc.DEBUGGER_BREAK
-import org.eln2.mc.common.GridConnectionCell
-import org.eln2.mc.common.GridNode
 import org.eln2.mc.common.cells.foundation.Cell
-import org.eln2.mc.common.cells.foundation.getNode
-import org.eln2.mc.common.cells.foundation.requireNode
 import org.eln2.mc.common.network.serverToClient.getBlockPos
 import org.eln2.mc.common.network.serverToClient.putBlockPos
 import org.eln2.mc.common.parts.foundation.getPartConnectionOrNull
-import org.eln2.mc.common.specs.foundation.GridTerminal
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask

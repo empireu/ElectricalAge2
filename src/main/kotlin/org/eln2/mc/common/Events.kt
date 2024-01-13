@@ -1,7 +1,6 @@
 package org.eln2.mc.common
 
 import net.minecraft.server.level.ServerLevel
-import net.minecraft.world.item.context.BlockPlaceContext
 import net.minecraft.world.level.Level
 import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.level.BlockEvent
@@ -9,7 +8,6 @@ import net.minecraftforge.event.level.ChunkWatchEvent
 import net.minecraftforge.event.level.LevelEvent
 import net.minecraftforge.event.server.ServerStartingEvent
 import net.minecraftforge.event.server.ServerStoppingEvent
-import net.minecraftforge.eventbus.api.EventPriority
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.event.lifecycle.FMLLoadCompleteEvent
@@ -21,6 +19,9 @@ import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.CellGraph
 import org.eln2.mc.common.cells.foundation.CellGraphManager
 import org.eln2.mc.common.events.schedulePost
+import org.eln2.mc.common.grids.GridCollisions
+import org.eln2.mc.common.grids.GridConnectionManagerClient
+import org.eln2.mc.common.grids.GridConnectionManagerServer
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.foundation.SpecPlacementOverlayServer
 import org.eln2.mc.data.AveragingList

@@ -12,6 +12,8 @@ import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlock
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
+import org.eln2.mc.common.parts.foundation.CellPart
+import org.eln2.mc.common.specs.foundation.GridSpec
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.extensions.forEachCompound
 import org.eln2.mc.extensions.formattedPercentNormalized
@@ -68,7 +70,17 @@ class Eln2WailaPlugin : IWailaPlugin {
                 val part = blockEntity.pickPart(p1.player)
 
                 if(part is SpecContainerPart) {
-                    return part.pickSpec(p1.player)?.second as? T
+                    val spec = part.pickSpec(p1.player)?.second
+
+                    if(spec is GridSpec<*>) {
+                        val terminal = spec.pickTerminal(p1.player)
+
+                        if(terminal is T) {
+                            return terminal
+                        }
+                    }
+
+                    return spec as? T
                 }
 
                 return part as? T

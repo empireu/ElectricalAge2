@@ -82,7 +82,7 @@ class FurnaceCell(ci: CellCreateInfo, dir1: Base6Direction3d, dir2: Base6Directi
     }
 
     @SimObject
-    val resistor = ResistorObjectVirtual(this, directionPoleMapPlanar(dir1, dir2))
+    val resistor = PolarResistorObjectVirtual(this, directionPoleMapPlanar(dir1, dir2))
 
     init {
         ruleSet.withDirectionRulePlanar(dir1 + dir2)

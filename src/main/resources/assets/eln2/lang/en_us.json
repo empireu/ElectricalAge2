@@ -1,6 +1,9 @@
 {
     "item_group.eln2.all": "Electrical Age",
 
+    "block.eln2.heat_generator": "Heat Generator",
+    "block.eln2.furnace": "Electrical Furnace",
+
     "item.eln2.thermal_wire_copper": "Thermal Conduit",
     "item.eln2.electrical_cable_copper": "Electrical Cable",
     "item.eln2.voltage_source": "Voltage Source",
@@ -8,7 +11,6 @@
     "item.eln2.lead_acid_battery_12v": "12V Lead-Acid Battery",
     "item.eln2.resistor": "Resistor",
     "item.eln2.thermal_radiator": "Thermal Radiator",
-    "block.eln2.heat_generator": "Heat Generator",
     "item.eln2.photovoltaic_panel": "Solar Panel",
     "item.eln2.light_part": "Wall-Mounted Light",
     "item.eln2.light_bulb_12v_100w": "12V 100W Light Bulb",
@@ -17,9 +19,15 @@
     "item.eln2.small_garden_light": "Small Garden Light",
     "item.eln2.tall_garden_light": "Tall Garden Light",
     "item.eln2.electrical_heat_engine": "Thermoelectric Generator",
-    "block.eln2.furnace": "Electrical Furnace",
     "item.eln2.wrench": "Dragon Wrench",
-    "item.eln2.grid_connect_copper": "Copper Grid Wire",
+    "item.eln2.grid_cable_pliers": "Grid Cable Pliers",
+    "item.eln2.micro_grid_copper_cable": "Copper Micro-Grid Cable",
+    "item.eln2.micro_grid_iron_cable": "Iron Micro-Grid Cable",
+    "item.eln2.power_grid_copper_cable": "Copper Power Grid Cable",
+    "item.eln2.power_grid_iron_cable": "Iron Power Grid Cable",
+    "item.eln2.micro_grid_interface": "Micro-Grid Interface",
+    "item.eln2.power_grid_interface": "Power Grid Interface",
+    "item.eln2.micro_grid_anchor": "Micro-Grid Anchor",
 
     "waila.eln2.Temperature": "Temperature",
     "waila.eln2.Potential": "Potential",

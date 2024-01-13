@@ -5,6 +5,8 @@ import org.ageseries.libage.sim.electrical.mna.component.IResistor
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.grids.GridConnectionCell
+import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.data.PoleMap
@@ -13,9 +15,26 @@ import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.offerNegative
+import org.eln2.mc.offerPositive
 
-class ResistorObjectVirtual<C : Cell>(cell: C, poleMap: PoleMap, virtualResistor: VirtualResistor) : PolarTermObject<C, VirtualResistor>(cell, poleMap, virtualResistor), IResistor by virtualResistor {
+class PolarResistorObjectVirtual<C : Cell>(cell: C, poleMap: PoleMap, virtualResistor: VirtualResistor) : PolarTermObject<C, VirtualResistor>(cell, poleMap, virtualResistor), IResistor by virtualResistor {
     constructor(cell: C, poleMap: PoleMap) : this(cell, poleMap, VirtualResistor())
+}
+
+class TerminalResistorObjectVirtual<C : Cell>(cell: C, val resistor: VirtualResistor, val plus: Int, val minus: Int) : ElectricalObject<C>(cell), IResistor by resistor {
+    constructor(cell: C, plus: Int, minus: Int) : this(cell, VirtualResistor(), plus, minus)
+
+    override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo) =
+        when(m0.terminal) {
+            plus -> resistor.offerPositive()
+            minus -> resistor.offerNegative()
+            else -> null
+        }
+
+    override fun acceptsRemoteObject(remote: ElectricalObject<*>): Boolean {
+        return super.acceptsRemoteObject(remote) && remote.cell is GridConnectionCell
+    }
 }
 
 class ResistorCell(ci: CellCreateInfo) : Cell(ci) {
@@ -29,7 +48,7 @@ class ResistorCell(ci: CellCreateInfo) : Cell(ci) {
     }
 
     @SimObject
-    val resistor = ResistorObjectVirtual(this, directionPoleMapPlanar(A, B))
+    val resistor = PolarResistorObjectVirtual(this, directionPoleMapPlanar(A, B))
 
     @SimObject
     val thermalWire = ThermalWireObject(this)

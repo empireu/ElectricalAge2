@@ -11,6 +11,7 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.util.RandomSource
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
+import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.Level
@@ -22,21 +23,22 @@ import net.minecraft.world.phys.shapes.VoxelShape
 import org.ageseries.libage.data.Locator
 import org.ageseries.libage.data.put
 import org.ageseries.libage.data.requireLocator
-import org.ageseries.libage.mathematics.geometry.Cylinder3d
-import org.ageseries.libage.mathematics.geometry.Line3d
-import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.mathematics.geometry.*
 import org.eln2.mc.*
 import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
 import org.eln2.mc.client.render.foundation.MultipartBlockEntityInstance
+import org.eln2.mc.client.render.foundation.RGBAFloat
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.grids.*
 import org.eln2.mc.common.network.serverToClient.BulkMessages
 import org.eln2.mc.common.network.serverToClient.PacketHandler
 import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.PartMessage
 import org.eln2.mc.common.parts.PartRegistry
+import org.eln2.mc.common.specs.foundation.SpecGeometry
 import org.eln2.mc.data.*
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3d
@@ -118,9 +120,9 @@ data class PartPlacementInfo(
     val multipart: MultipartBlockEntity,
     val provider: PartProvider
 ) {
-    val positiveX = partX(facing, face)
-    val positiveY = partY(facing, face)
-    val positiveZ = partZ(facing, face)
+    val positiveX = incrementFromForwardUp(facing, face, Direction.EAST)
+    val positiveY = incrementFromForwardUp(facing, face, Direction.UP)
+    val positiveZ = incrementFromForwardUp(facing, face, Direction.SOUTH)
 
     val mountingPointWorld = position.toVector3d() + Vector3d(0.5) - face.vector3d * 0.5
 
@@ -540,15 +542,23 @@ abstract class PartProvider {
     open fun canPlace(level: Level, substratePos: BlockPos, face: Direction): Boolean = true
 }
 
+fun interface PartFactory {
+    operator fun invoke(ci: PartCreateInfo) : Part<*>
+}
+
 /**
  * The basic part provider uses a functional interface as part factory.
  * Often, the part's constructor can be passed in as factory.
  * */
 open class BasicPartProvider(
     final override val placementCollisionSize: Vector3d,
-    val factory: ((ci: PartCreateInfo) -> Part<*>),
+    val factory: PartFactory,
 ) : PartProvider() {
     override fun createCore(context: PartPlacementInfo) = factory(PartCreateInfo(id, context))
+
+    companion object {
+        fun setup(placementCollisionSize: Vector3d, supplier: () -> PartFactory) = BasicPartProvider(placementCollisionSize, supplier())
+    }
 }
 
 /**
@@ -867,10 +877,6 @@ fun incrementFromForwardUp(facing: FacingDirection, face: Direction, direction: 
 
 fun incrementFromForwardUp(facing: FacingDirection, face: Direction, direction: Base6Direction3d) = incrementFromForwardUp(facing, face, direction.alias)
 
-fun partX(facing: FacingDirection, faceWorld: Direction) = incrementFromForwardUp(facing, faceWorld, Direction.EAST)
-fun partY(facing: FacingDirection, faceWorld: Direction) = incrementFromForwardUp(facing, faceWorld, Direction.UP)
-fun partZ(facing: FacingDirection, faceWorld: Direction) = incrementFromForwardUp(facing, faceWorld, Direction.SOUTH)
-
 fun Locator.transformPartWorld(directionPart: Base6Direction3d) : Direction {
     val facing = this.requireLocator(Locators.FACING) { "Part -> World requires facing" }
     val face = this.requireLocator(Locators.FACE) { "Part -> World requires face" }
@@ -1169,5 +1175,139 @@ class SavingLifecycleTestPart(ci: PartCreateInfo) : Part<BasicPartRenderer>(ci) 
             Line3d.fromStartEnd(placement.mountingPointWorld, placement.mountingPointWorld + placement.positiveY.vector3d),
             0.5
         )).withinScopeOf(this)
+    }
+}
+
+abstract class GridCellPart<C : Cell, R : PartRenderer>(
+    ci: PartCreateInfo,
+    provider: CellProvider<C>,
+) : CellPart<C, R>(ci, provider), GridTerminalContainer {
+    var containerID: UUID = UUID.randomUUID()
+        private set
+
+    val gridTerminalSystem = GridTerminalSystem(placement.level)
+
+    override fun onPlaced() {
+        super.onPlaced()
+        gridTerminalSystem.initializeFresh()
+
+        cell.ifNode<GridNode> {
+            it.mapFromGridTerminalSystem(gridTerminalSystem)
+        }
+    }
+
+    override fun getServerSaveTag(): CompoundTag? {
+        val tag = super.getServerSaveTag() ?: CompoundTag()
+
+        tag.put(GRID_TERMINAL_SYSTEM, gridTerminalSystem.save(GridTerminalSystem.SaveType.Server))
+        tag.putUUID(CONTAINER_ID, containerID)
+
+        return tag
+    }
+
+    override fun loadServerSaveTag(tag: CompoundTag) {
+        super.loadServerSaveTag(tag)
+
+        gridTerminalSystem.initializeSaved(tag.getCompound(GRID_TERMINAL_SYSTEM))
+        containerID = tag.getUUID(CONTAINER_ID)
+    }
+
+    override fun getClientSaveTag() : CompoundTag {
+        val tag = super.getClientSaveTag() ?: CompoundTag()
+
+        tag.put(GRID_TERMINAL_SYSTEM, gridTerminalSystem.save(GridTerminalSystem.SaveType.Client))
+        tag.putUUID(CONTAINER_ID, containerID)
+
+        return tag
+    }
+
+    override fun loadClientSaveTag(tag: CompoundTag) {
+        super.loadClientSaveTag(tag)
+
+        gridTerminalSystem.initializeSaved(tag.getCompound(GRID_TERMINAL_SYSTEM))
+        containerID = tag.getUUID(CONTAINER_ID)
+    }
+
+    /**
+     * Creates a bounding box in the world frame.
+     * @param x Center X in the local frame.
+     * @param y Center Y in the local frame.
+     * @param z Center Z in the local frame.
+     * @param sizeX Size along X in the local frame.
+     * @param sizeY Size along Y in the local frame.
+     * @param sizeZ Size along Z in the local frame.
+     * @return A bounding box in the world frame.
+     * */
+    protected fun boundingBox(
+        x: Double,
+        y: Double,
+        z: Double,
+        sizeX: Double,
+        sizeY: Double,
+        sizeZ: Double,
+        orientation: Rotation2d = Rotation2d.identity,
+    ) = SpecGeometry.boundingBox(
+        placement.mountingPointWorld +
+            placement.positiveX.vector3d * x +
+            placement.positiveY.vector3d * y +
+            placement.positiveZ.vector3d * z,
+        orientation * placement.facing.rotation2d,
+        Vector3d(sizeX, sizeY, sizeZ),
+        placement.facing,
+        placement.face
+    )
+
+    protected fun defineCellBoxTerminal(box3d: OrientedBoundingBox3d, attachment: Vector3d? = null, highlightColor : RGBAFloat? = RGBAFloat(
+        1f,
+        0.58f,
+        0.44f,
+        0.8f
+    ), categories: List<GridMaterialCategory>) = gridTerminalSystem.defineTerminal<GridTerminal>(
+        TerminalFactories(
+            { ci ->
+                CellTerminal(ci, locator, attachment ?: box3d.center, box3d) { this.cell }.also {
+                    it.categories.addAll(categories)
+                }
+            },
+            { GridTerminalClient(it, locator, attachment ?: box3d.center, box3d, highlightColor) }
+        )
+    )
+
+    protected fun defineCellBoxTerminal(
+        x: Double, y: Double, z: Double,
+        sizeX: Double, sizeY: Double, sizeZ: Double,
+        orientation: Rotation2d = Rotation2d.identity,
+        attachment: Vector3d? = null,
+        highlightColor: RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f),
+        categories: List<GridMaterialCategory> = listOf(GridMaterialCategory.MicroGrid),
+    ) = defineCellBoxTerminal(boundingBox(x, y, z, sizeX, sizeY, sizeZ, orientation), attachment, highlightColor, categories)
+
+    override fun pickTerminal(player: LivingEntity) = gridTerminalSystem.pick(player)
+
+    override fun getTerminalByEndpointID(endpointID: UUID) = gridTerminalSystem.getByEndpointID(endpointID)
+
+    override fun addExtraConnections(results: MutableSet<CellAndContainerHandle>) {
+        gridTerminalSystem.forEachTerminalOfType<CellTerminal> {
+            if(it.stagingCell != null) {
+                results.add(CellAndContainerHandle.captureInScope(it.stagingCell!!))
+            }
+        }
+
+        if(hasCell) {
+            cell.ifNode<GridNode> { node ->
+                node.forEachConnectionCell {
+                    results.add(CellAndContainerHandle.captureInScope(it))
+                }
+            }
+        }
+    }
+
+    override fun onBroken() {
+        gridTerminalSystem.destroy()
+    }
+
+    companion object {
+        private const val CONTAINER_ID = "containerID"
+        private const val GRID_TERMINAL_SYSTEM = "gridTerminalSystem"
     }
 }

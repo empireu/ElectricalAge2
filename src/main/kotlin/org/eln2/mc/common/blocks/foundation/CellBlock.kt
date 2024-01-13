@@ -19,11 +19,18 @@ import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.level.material.FluidState
 import org.ageseries.libage.data.put
+import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
+import org.ageseries.libage.mathematics.geometry.Rotation2d
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
+import org.eln2.mc.client.render.foundation.RGBAFloat
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.grids.*
+import org.eln2.mc.common.specs.foundation.SpecGeometry
 import org.eln2.mc.data.*
+import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.toHorizontalFacing
 import java.util.*
@@ -252,4 +259,171 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
 
     override val manager: CellGraphManager
         get() = CellGraphManager.getFor(level as ServerLevel)
+}
+
+abstract class GridCellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetType: BlockEntityType<*>) : CellBlockEntity<C>(pos, state, targetType),
+    GridTerminalContainer {
+    var containerID = UUID.randomUUID()
+        private set
+
+    private var gridTerminalSystemField: GridTerminalSystem? = null
+    // FRAK YOU!
+    val gridTerminalSystem get() = checkNotNull(gridTerminalSystemField) {
+        "Grid terminal system is not initialized yet!"
+    }
+
+    val positiveX get() = blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing().rotation3d * Vector3d.unitX
+    val positiveZ get() = blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing().rotation3d * Vector3d.unitZ
+
+    /**
+     * Creates a bounding box in the world frame.
+     * @param x Center X in the local frame.
+     * @param y Center Y in the local frame.
+     * @param z Center Z in the local frame.
+     * @param sizeX Size along X in the local frame.
+     * @param sizeY Size along Y in the local frame.
+     * @param sizeZ Size along Z in the local frame.
+     * @return A bounding box in the world frame.
+     * */
+    protected fun boundingBox(
+        x: Double,
+        y: Double,
+        z: Double,
+        sizeX: Double,
+        sizeY: Double,
+        sizeZ: Double,
+        orientation: Rotation2d = Rotation2d.identity,
+    ) = SpecGeometry.boundingBox(
+        blockPos.toVector3d() + Vector3d(0.5, 0.0, 0.5) +
+            positiveX * x +
+            Vector3d.unitY * y +
+            positiveZ * z,
+        orientation * blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing().rotation2d,
+        Vector3d(sizeX, sizeY, sizeZ),
+        blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing(),
+        Direction.UP
+    )
+
+    protected fun defineCellBoxTerminal(box3d: OrientedBoundingBox3d, attachment: Vector3d? = null, highlightColor : RGBAFloat? = RGBAFloat(
+        1f,
+        0.58f,
+        0.44f,
+        0.8f
+    ), categories: List<GridMaterialCategory>) = gridTerminalSystem.defineTerminal<GridTerminal>(
+        TerminalFactories(
+            { ci ->
+                CellTerminal(ci, locator, attachment ?: box3d.center, box3d) { this.cell }.also {
+                    it.categories.addAll(categories)
+                }
+            },
+            { GridTerminalClient(it, locator, attachment ?: box3d.center, box3d, highlightColor) }
+        )
+    )
+
+    protected fun defineCellBoxTerminal(
+        x: Double, y: Double, z: Double,
+        sizeX: Double, sizeY: Double, sizeZ: Double,
+        orientation: Rotation2d = Rotation2d.identity,
+        attachment: Vector3d? = null,
+        highlightColor: RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f),
+        categories: List<GridMaterialCategory>,
+    ) = defineCellBoxTerminal(boundingBox(x, y, z, sizeX, sizeY, sizeZ, orientation), attachment, highlightColor, categories)
+
+
+    private var gridTerminalSystemTag: CompoundTag? = null
+
+    override fun setPlacedBy(level: Level, cellProvider: CellProvider<C>) {
+        gridTerminalSystem.initializeFresh()
+        super.setPlacedBy(level, cellProvider)
+
+        if(!level.isClientSide) {
+            cell.ifNode<GridNode> {
+                it.mapFromGridTerminalSystem(gridTerminalSystem)
+            }
+        }
+    }
+
+    override fun saveAdditional(pTag: CompoundTag) {
+        super.saveAdditional(pTag)
+
+        pTag.putUUID(CONTAINER_ID, containerID)
+        pTag.put(GRID_TERMINAL_SYSTEM, gridTerminalSystem.save(GridTerminalSystem.SaveType.Server))
+    }
+
+    override fun getUpdateTag(): CompoundTag {
+        val tag = CompoundTag()
+        tag.put(GRID_TERMINAL_SYSTEM, gridTerminalSystem.save(GridTerminalSystem.SaveType.Client))
+        return tag
+    }
+
+    override fun handleUpdateTag(tag: CompoundTag?) {
+        if(tag == null) {
+            return
+        }
+
+        if(tag.contains(GRID_TERMINAL_SYSTEM)) {
+            gridTerminalSystem.initializeSaved(tag.getCompound(GRID_TERMINAL_SYSTEM))
+        }
+    }
+
+    override fun load(pTag: CompoundTag) {
+        super.load(pTag)
+
+        if(pTag.contains(CONTAINER_ID)) {
+            containerID = pTag.getUUID(CONTAINER_ID)
+        }
+
+        if(pTag.contains(GRID_TERMINAL_SYSTEM)) {
+            gridTerminalSystemTag = pTag.getCompound(GRID_TERMINAL_SYSTEM)
+        }
+    }
+
+    override fun setLevel(pLevel: Level) {
+        check(gridTerminalSystemField == null) {
+            "Grid terminal system was present in setLevel"
+        }
+
+        gridTerminalSystemField = GridTerminalSystem(pLevel)
+        createTerminals()
+
+        super.setLevel(pLevel)
+
+        if(gridTerminalSystemTag != null) {
+            check(!pLevel.isClientSide)
+            gridTerminalSystem.initializeSaved(gridTerminalSystemTag!!)
+            gridTerminalSystemTag = null
+        }
+    }
+
+    protected abstract fun createTerminals()
+
+    override fun pickTerminal(player: LivingEntity) = gridTerminalSystem.pick(player)
+
+    override fun getTerminalByEndpointID(endpointID: UUID) = gridTerminalSystem.getByEndpointID(endpointID)
+
+    override fun setDestroyed() {
+        super.setDestroyed()
+        gridTerminalSystem.destroy()
+    }
+
+    override fun addExtraConnections(results: MutableSet<CellAndContainerHandle>) {
+        gridTerminalSystem.forEachTerminalOfType<CellTerminal> {
+            if(it.stagingCell != null) {
+                results.add(CellAndContainerHandle.captureInScope(it.stagingCell!!))
+            }
+        }
+
+        if(hasCell) {
+            cell.ifNode<GridNode> { node ->
+                node.forEachConnectionCell {
+                    results.add(CellAndContainerHandle.captureInScope(it))
+                }
+            }
+        }
+    }
+
+    companion object {
+        private const val CONTAINER_ID = "containerID"
+        private const val GRID_TERMINAL_SYSTEM = "gridTerminalSystem"
+    }
 }

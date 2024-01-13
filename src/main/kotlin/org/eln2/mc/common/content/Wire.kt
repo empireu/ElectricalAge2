@@ -1094,14 +1094,14 @@ abstract class WireRenderer<I>(
         this.transformPart(
             multipart,
             part,
-            0.0
+            yRotation = 0.0
         )
 
     protected fun<T : Transform<T>> T.poseConnection(info: PartConnectionDirection): T =
         this.transformPart(
             multipart,
             part,
-            when (info.directionPart) {
+            yRotation = when (info.directionPart) {
                 Base6Direction3d.Front -> 0.0
                 Base6Direction3d.Back -> PI
                 Base6Direction3d.Left -> PI / 2.0

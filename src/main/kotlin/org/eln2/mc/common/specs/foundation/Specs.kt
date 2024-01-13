@@ -44,11 +44,9 @@ import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.*
-import org.eln2.mc.common.GridCollisions
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
-import org.eln2.mc.common.cells.foundation.Cell
-import org.eln2.mc.common.cells.foundation.CellConnections
-import org.eln2.mc.common.cells.foundation.CellGraphManager
+import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.grids.*
 import org.eln2.mc.common.items.foundation.PartItem
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.parts.PartRegistry
@@ -131,6 +129,10 @@ data class SpecPlacementInfo(
         part.placement.facing,
         part.placement.face
     )
+
+    val positiveX = orientedBoundingBoxWorld.transform.rotation * Vector3d.unitX
+    val positiveY = orientedBoundingBoxWorld.transform.rotation * Vector3d.unitY
+    val positiveZ = orientedBoundingBoxWorld.transform.rotation * Vector3d.unitZ
 
     val shapeBoundingBox = run {
         val offset = PartGeometry.faceOffset(
@@ -302,11 +304,26 @@ class SpecContainerPart(ci: PartCreateInfo) : Part<SpecPartRenderer>(ci), DebugC
     }
 
     fun pickSpec(ray3d: Ray3d) = specsInternal.values
-        .mapNotNull {
-            val intersection = (ray3d intersectionWith it.placement.orientedBoundingBoxWorld)
-                ?: return@mapNotNull null
+        .flatMap { spec ->
+            val intersections = ArrayList<Pair<RayIntersection, Spec<*>>>(1)
 
-            intersection to it
+            fun test(box: OrientedBoundingBox3d) {
+                val intersection = (ray3d intersectionWith box)
+
+                if(intersection != null) {
+                    intersections.add(intersection to spec)
+                }
+            }
+
+            test(spec.placement.orientedBoundingBoxWorld)
+
+            if(spec is GridSpec<*>) {
+                spec.gridTerminalSystem.instances.values.forEach {
+                    test(it.boundingBox)
+                }
+            }
+
+            intersections
         }
         .minByOrNull { ray3d.origin..ray3d.evaluate(it.first.entry) }
 
@@ -1120,16 +1137,24 @@ abstract class SpecProvider {
     abstract val placementCollisionSize: Vector3d
 }
 
+fun interface SpecFactory {
+    operator fun invoke(ci: SpecCreateInfo) : Spec<*>
+}
+
 open class BasicSpecProvider(
     val previewModel: PartialModel?,
     final override val placementCollisionSize: Vector3d,
-    val factory: ((ci: SpecCreateInfo) -> Spec<*>),
+    val factory: SpecFactory,
 ) : SpecProvider() {
     constructor(placementCollisionSize: Vector3d, factory: (ci: SpecCreateInfo) -> Spec<*>) : this(null, placementCollisionSize, factory)
 
     override fun getModelForPreview(): PartialModel? = previewModel
 
     override fun createCore(context: SpecPlacementInfo) = factory(SpecCreateInfo(id, context))
+
+    companion object {
+        fun setup(previewModel: PartialModel?, placementCollisionSize: Vector3d, block: () -> (SpecFactory)) = BasicSpecProvider(previewModel, placementCollisionSize, block())
+    }
 }
 
 /**
@@ -1765,4 +1790,326 @@ object SpecPreviewRenderer {
             previewColor
         )
     }
+}
+
+/**
+ * [Spec] that uses the grid system by managing a [gridTerminalSystem].
+ * */
+abstract class GridSpec<Renderer : SpecRenderer>(ci: SpecCreateInfo) : Spec<Renderer>(ci), GridTerminalContainer {
+    val locator = placement.createLocator()
+
+    /**
+     * Gets the grid terminal system of this spec. Its lifetime is managed by the spec.
+     * */
+    val gridTerminalSystem = GridTerminalSystem(placement.level)
+
+    /**
+     * Creates a bounding box in the fixed frame.
+     * @param x Center X in the local frame.
+     * @param y Center Y in the local frame.
+     * @param z Center Z in the local frame.
+     * @param sizeX Size along X in the local frame.
+     * @param sizeY Size along Y in the local frame.
+     * @param sizeZ Size along Z in the local frame.
+     * @return A bounding box in the world frame.
+     * */
+    protected fun boundingBox(
+        x: Double,
+        y: Double,
+        z: Double,
+        sizeX: Double,
+        sizeY: Double,
+        sizeZ: Double,
+        orientation: Rotation2d = Rotation2d.identity,
+    ) = SpecGeometry.boundingBox(
+        placement.mountingPointWorld +
+            placement.positiveX * x +
+            placement.positiveY * y +
+            placement.positiveZ * z,
+        orientation * placement.orientation,
+        Vector3d(sizeX, sizeY, sizeZ),
+        placement.part.placement.facing,
+        placement.face
+    )
+
+    @ServerOnly
+    override fun onPlaced() {
+        // called when placed, which initializes the terminals server-side
+        // then, the spec gets sent to the client and they deserialize
+        gridTerminalSystem.initializeFresh()
+    }
+
+    override fun getServerSaveTag(): CompoundTag? {
+        return gridTerminalSystem.save(GridTerminalSystem.SaveType.Server)
+    }
+
+    override fun getClientSaveTag(): CompoundTag? {
+        // This is the only way clients get initialized
+        return gridTerminalSystem.save(GridTerminalSystem.SaveType.Client)
+    }
+
+    override fun loadServerSaveTag(tag: CompoundTag) {
+        gridTerminalSystem.initializeSaved(tag)
+    }
+
+    override fun loadClientSaveTag(tag: CompoundTag) {
+        gridTerminalSystem.initializeSaved(tag)
+    }
+
+    override fun pickTerminal(player: LivingEntity) = gridTerminalSystem.pick(player)
+
+    override fun getTerminalByEndpointID(endpointID: UUID) = gridTerminalSystem.getByEndpointID(endpointID)
+
+    override fun onBroken() {
+        gridTerminalSystem.destroy()
+    }
+}
+
+/**
+ * Represents a part that has a cell.
+ * */
+interface SpecWithCell<C : Cell> {
+    /**
+     * This is the cell owned by the part.
+     * */
+    val cell: C
+
+    /**
+     * Indicates if the cell is available (loaded).
+     * */
+    val hasCell: Boolean
+
+    /**
+     * @return The provider associated with the cell.
+     * */
+    val provider: CellProvider<C>
+
+    /**
+     * Called when the cell part is connected to another cell.
+     * */
+    fun onConnected(remoteCell: Cell)
+
+    /**
+     * Called when the cell part is disconnected from another cell. This may happen when the part is being destroyed.
+     * */
+    fun onDisconnected(remoteCell: Cell)
+
+    /**
+     * Called when the cell part is connected/disconnected. This is not called if the part is being destroyed.
+     * */
+    fun onConnectivityChanged() { }
+
+    fun neighborScan() : List<CellAndContainerHandle>
+}
+
+abstract class CellSpec<C : Cell, R : SpecRenderer>(
+    ci: SpecCreateInfo,
+    final override val provider: CellProvider<C>,
+) : GridSpec<R>(ci), SpecWithCell<C> {
+    companion object {
+        private const val GRAPH_ID = "GraphID"
+        private const val CUSTOM_SIMULATION_DATA = "SimulationData"
+    }
+
+    private var cellField: C? = null
+
+    /**
+     * The actual cell contained within this spec.
+     * It only exists on the server (it is a simulation-only item)
+     * */
+    @ServerOnly
+    final override val cell: C get() = cellField
+        ?: error(
+            if(placement.level.isClientSide) {
+                "TRIED TO ACCESS SPEC CELL ON CLIENT"
+            } else {
+                "Tried to get spec cell before it is set $this"
+            }
+        )
+
+    final override val hasCell: Boolean
+        get() = cellField != null
+
+    /**
+     * Used by the loading procedures.
+     * */
+    @ServerOnly
+    private lateinit var loadGraphId: UUID
+
+    @ServerOnly
+    private var customSimulationData: CompoundTag? = null
+
+    /**
+     * Creates the cell, sets [Cell.container] and notifies via [onCellAcquired].
+     * */
+    override fun onPlaced() {
+        super.onPlaced()
+        cellField = provider.create(locator, CellEnvironment.evaluate(placement.level, locator))
+        cell.container = placement.part
+        if(cell.hasNode<GridNode>()) {
+            cell.requireNode<GridNode>().mapFromGridTerminalSystem(gridTerminalSystem)
+        }
+        onCellAcquired()
+    }
+
+    /**
+     * Notifies the cell that the container has been removed.
+     * */
+    override fun onUnloaded() {
+        super.onUnloaded()
+        if (hasCell) {
+            requireIsOnServerThread { "onUnloaded spec cell is null $this" }
+            cell.onContainerUnloading()
+            cell.container = null
+            cell.onContainerUnloaded()
+            cell.unbindGameObjects()
+            onCellReleased()
+        }
+    }
+
+    /**
+     * The saved data includes the Graph ID. This is used to fetch the cell after loading.
+     * */
+    override fun getServerSaveTag(): CompoundTag? {
+        val tag = super.getServerSaveTag() ?: CompoundTag()
+
+        if (!hasCell) {
+            LOG.fatal("Spec saving, but cell not initialized!")
+            return tag
+        }
+
+        tag.putUUID(GRAPH_ID, cell.graph.id)
+
+        saveCustomSimData()?.also {
+            tag.put(CUSTOM_SIMULATION_DATA, it)
+        }
+
+        return tag
+    }
+
+    /**
+     * This method gets the graph ID from the saved data.
+     * The level is not available at this point, so we defer cell fetching to the onLoaded method.
+     * */
+    override fun loadServerSaveTag(tag: CompoundTag) {
+        super.loadServerSaveTag(tag)
+
+        if (placement.level.isClientSide) {
+            return
+        }
+
+        if (tag.contains(GRAPH_ID)) {
+            loadGraphId = tag.getUUID(GRAPH_ID)
+        } else {
+            LOG.info("Part at $locator did not have saved data")
+        }
+
+        tag.useSubTagIfPreset(CUSTOM_SIMULATION_DATA) { customSimulationData = it }
+    }
+
+    /**
+     * This is the final stage of loading. We have the level, so we can fetch the cell using the saved data.
+     * */
+    @Suppress("UNCHECKED_CAST")
+    override fun onLoaded() {
+        super.onLoaded()
+
+        if (placement.level.isClientSide) {
+            return
+        }
+
+        cellField = if (!this::loadGraphId.isInitialized) {
+            LOG.fatal("Spec cell not initialized!")
+            // Should we blow up the game or make the cell fresh?
+            provider.create(locator, CellEnvironment.evaluate(placement.level, locator))
+        } else {
+            CellGraphManager.getFor(placement.level as ServerLevel)
+                .getGraph(loadGraphId)
+                .getCellByLocator(locator) as C
+        }
+
+        cell.container = placement.multipart
+        cell.onContainerLoaded()
+
+        if (this.customSimulationData != null) {
+            loadCustomSimDataPre(customSimulationData!!)
+        }
+
+        onCellAcquired()
+
+        if (this.customSimulationData != null) {
+            loadCustomSimDataPost(customSimulationData!!)
+            this.customSimulationData = null
+        }
+
+        cell.bindGameObjects(listOf(this, placement.multipart))
+    }
+
+    /**
+     * Saves custom data to the simulation storage (separate from the block entity and chunks)
+     * */
+    open fun saveCustomSimData(): CompoundTag? {
+        return null
+    }
+
+    /**
+     * Loads custom data from the simulation storage, just before the cell is acquired.
+     * */
+    open fun loadCustomSimDataPre(tag: CompoundTag) {}
+
+    /**
+     * Loads custom data from the simulation storage, after the cell is acquired.
+     * */
+    open fun loadCustomSimDataPost(tag: CompoundTag) {}
+
+    override fun onConnected(remoteCell: Cell) {}
+
+    override fun onDisconnected(remoteCell: Cell) {}
+
+    open fun onCellAcquired() {}
+    open fun onCellReleased() {}
+
+    override fun neighborScan() : List<CellAndContainerHandle> {
+        val results = ArrayList<CellAndContainerHandle>()
+
+        gridTerminalSystem.forEachTerminalOfType<CellTerminal> {
+            if(it.stagingCell != null) {
+                results.add(CellAndContainerHandle.captureInScope(it.stagingCell!!))
+            }
+        }
+
+        if(hasCell) {
+            cell.ifNode<GridNode> { node ->
+                node.forEachConnectionCell {
+                    results.add(CellAndContainerHandle.captureInScope(it))
+                }
+            }
+        }
+
+        return results
+    }
+
+    protected fun defineCellBoxTerminal(box3d: OrientedBoundingBox3d, attachment: Vector3d? = null, highlightColor : RGBAFloat? = RGBAFloat(
+        1f,
+        0.58f,
+        0.44f,
+        0.8f
+    ), categories: List<GridMaterialCategory>) = gridTerminalSystem.defineTerminal<GridTerminal>(
+        TerminalFactories(
+            { ci ->
+                CellTerminal(ci, locator, attachment ?: box3d.center, box3d) { this.cell }.also {
+                    it.categories.addAll(categories)
+                }
+            },
+            { GridTerminalClient(it, locator, attachment ?: box3d.center, box3d, highlightColor) }
+        )
+    )
+    protected fun defineCellBoxTerminal(
+        x: Double, y: Double, z: Double,
+        sizeX: Double, sizeY: Double, sizeZ: Double,
+        orientation: Rotation2d = Rotation2d.identity,
+        attachment: Vector3d? = null,
+        highlightColor: RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f),
+        categories: List<GridMaterialCategory> = listOf(GridMaterialCategory.MicroGrid),
+    ) = defineCellBoxTerminal(boundingBox(x, y, z, sizeX, sizeY, sizeZ, orientation), attachment, highlightColor, categories)
 }

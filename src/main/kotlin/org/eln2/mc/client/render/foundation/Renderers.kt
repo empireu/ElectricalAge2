@@ -53,6 +53,7 @@ import org.eln2.mc.extensions.cast
 import org.eln2.mc.extensions.rotationFast
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.requireIsOnRenderThread
+import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.sqrt
 
@@ -60,36 +61,34 @@ fun createPartInstance(
     multipart: MultipartBlockEntityInstance,
     model: PartialModel,
     part: Part<*>,
+    scale: Vector3d = Vector3d.one,
     yRotation: Double = 0.0,
-): ModelData {
-    return multipart.materialManager
+) = multipart.materialManager
         .defaultSolid()
         .material(Materials.TRANSFORMED)
         .getModel(model)
         .createInstance()
         .loadIdentity()
-        .transformPart(multipart, part, yRotation)
-}
+        .transformPart(multipart, part, scale, yRotation)
 
 fun createSpecInstance(
     part: SpecPartRenderer,
     model: PartialModel,
     spec: Spec<*>,
-    yRotation: Double
-): ModelData {
-    return part.multipart.materialManager
+    scale: Vector3d = Vector3d.one,
+    yRotation: Double = 0.0
+) = part.multipart.materialManager
         .defaultSolid()
         .material(Materials.TRANSFORMED)
         .getModel(model)
         .createInstance()
         .loadIdentity()
-        .transformSpec(part, spec, yRotation)
-}
+        .transformSpec(part, spec, scale, yRotation)
 
 /**
  * Part renderer with a single model.
  * */
-open class BasicPartRenderer(val part: Part<*>, val model: PartialModel) : PartRenderer() {
+open class BasicPartRenderer(val part: Part<*>, val model: PartialModel, val scale: Vector3d = Vector3d.one) : PartRenderer() {
     var yRotation = 0.0
 
     private var modelInstance: ModelData? = null
@@ -100,7 +99,7 @@ open class BasicPartRenderer(val part: Part<*>, val model: PartialModel) : PartR
 
     fun buildInstance() {
         modelInstance?.delete()
-        modelInstance = createPartInstance(multipart, model, part, yRotation)
+        modelInstance = createPartInstance(multipart, model, part, scale, yRotation)
     }
 
     override fun relight(source: RelightSource) {
@@ -207,11 +206,11 @@ class ConnectedPartRenderer(
                 multipart,
                 model.variants[info.mode]!!,
                 part,
-                when (direction) {
+                yRotation = when (direction) {
                     Base6Direction3d.Front -> 0.0
-                    Base6Direction3d.Back -> kotlin.math.PI
-                    Base6Direction3d.Left -> kotlin.math.PI / 2.0
-                    Base6Direction3d.Right -> -kotlin.math.PI / 2.0
+                    Base6Direction3d.Back -> PI
+                    Base6Direction3d.Left -> PI / 2.0
+                    Base6Direction3d.Right -> -PI / 2.0
                     else -> error("Invalid connected part direction $direction")
                 }
             )
@@ -252,7 +251,7 @@ val partOffsetTable = buildDirectionTable {
     }
 }
 
-fun<T : Transform<T>> T.transformPart(instance: MultipartBlockEntityInstance, part: Part<*>, yRotation: Double = 0.0): T {
+fun<T : Transform<T>> T.transformPart(instance: MultipartBlockEntityInstance, part: Part<*>, scale: Vector3d = Vector3d.one, yRotation: Double = 0.0): T {
     val (dx, dy, dz) = partOffsetTable[part.placement.face.get3DDataValue()]
 
     return this
@@ -260,10 +259,11 @@ fun<T : Transform<T>> T.transformPart(instance: MultipartBlockEntityInstance, pa
         .translate(dx, dy, dz)
         .multiply(part.placement.face.rotationFast)
         .rotateYRadians(yRotation + part.placement.facing.angle)
+        .scale(scale.x.toFloat(), scale.y.toFloat(), scale.z.toFloat())
         .translate(-0.5, 0.0, -0.5)
 }
 
-fun<T : Transform<T>> T.transformSpec(instance: SpecPartRenderer, spec: Spec<*>, yRotation: Double): T {
+fun<T : Transform<T>> T.transformSpec(instance: SpecPartRenderer, spec: Spec<*>, scale: Vector3d, yRotation: Double): T {
     val (dx, dy, dz) = partOffsetTable[instance.specPart.placement.face.get3DDataValue()]
     val (dx1, dy1, dz1) = spec.placement.mountingPointWorld - instance.specPart.placement.mountingPointWorld
 
@@ -272,6 +272,7 @@ fun<T : Transform<T>> T.transformSpec(instance: SpecPartRenderer, spec: Spec<*>,
         .translate(dx + dx1, dy + dy1, dz + dz1)
         .multiply(instance.specPart.placement.face.rotationFast)
         .rotateYRadians(yRotation + instance.specPart.placement.facing.angle + spec.placement.orientation.ln())
+        .scale(scale.x.toFloat(), scale.y.toFloat(), scale.z.toFloat())
         .translate(-0.5, 0.0, -0.5)
 }
 
@@ -518,7 +519,7 @@ class TestBlockEntityInstance<T : BlockEntity>(
 /**
  * Part renderer with a single model.
  * */
-open class BasicSpecRenderer(val spec: Spec<*>, val model: PartialModel) : SpecRenderer() {
+open class BasicSpecRenderer(val spec: Spec<*>, val model: PartialModel, val scale: Vector3d = Vector3d.one) : SpecRenderer() {
     var yRotation = 0.0
 
     private var modelInstance: ModelData? = null
@@ -529,7 +530,7 @@ open class BasicSpecRenderer(val spec: Spec<*>, val model: PartialModel) : SpecR
 
     fun buildInstance() {
         modelInstance?.delete()
-        modelInstance = createSpecInstance(partRenderer, model, spec, yRotation)
+        modelInstance = createSpecInstance(partRenderer, model, spec, scale, yRotation)
     }
 
     override fun relight(source: RelightSource) {

@@ -23,6 +23,7 @@ import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.containers.ContainerRegistry
 import org.eln2.mc.common.content.Content
+import org.eln2.mc.common.grids.TerminalHighlightRenderer
 import org.eln2.mc.common.entities.EntityRegistry
 import org.eln2.mc.common.items.CreativeTabRegistry
 import org.eln2.mc.common.items.ItemRegistry

@@ -10,29 +10,27 @@ import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
 import org.ageseries.libage.sim.electrical.mna.VirtualResistor
+import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
-import org.eln2.mc.client.render.foundation.BasicSpecRenderer
-import org.eln2.mc.client.render.foundation.ConnectedPartRenderer
-import org.eln2.mc.client.render.foundation.RGBAFloat
-import org.eln2.mc.client.render.foundation.handleConnectedPartTag
-import org.eln2.mc.common.GridConnectionCell
-import org.eln2.mc.common.GridMaterialCategory
-import org.eln2.mc.common.GridNode
+import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.BigBlockRepresentativeBlockEntity
 import org.eln2.mc.common.blocks.foundation.CellBlock
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.grids.GridConnectionCell
+import org.eln2.mc.common.grids.GridMaterialCategory
+import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.common.specs.foundation.CellSpec
-import org.eln2.mc.common.specs.foundation.GridCellBlockEntity
-import org.eln2.mc.common.specs.foundation.MicroGridCellPart
+import org.eln2.mc.common.blocks.foundation.GridCellBlockEntity
+import org.eln2.mc.common.parts.foundation.GridCellPart
 import org.eln2.mc.common.specs.foundation.SpecCreateInfo
 import org.eln2.mc.data.UnsafeLazyResettable
 import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.offerExternal
 import java.util.function.Supplier
+import kotlin.collections.HashMap
 import kotlin.math.abs
 
 class GridPoleBlock(val delegateMap: MultiblockDelegateMap, val attachment: Vector3d, private val cellProvider: RegistryObject<CellProvider<GridAnchorCell>>) : CellBlock<GridAnchorCell>() {
@@ -55,7 +53,7 @@ class GridPoleBlockEntity(private val representativeBlock: GridPoleBlock, pos: B
             0.0, 0.0, 0.0,
             1.0, 1.0, 1.0,
             attachment = blockPos.toVector3d() + representativeBlock.attachment,
-            categories = listOf(GridMaterialCategory.BIG)
+            categories = listOf(GridMaterialCategory.PowerGrid)
         )
     }
 
@@ -110,7 +108,7 @@ class GridAnchorCell(ci: CellCreateInfo, crossResistance: Double) : Cell(ci) {
     }
 }
 
-class GridAnchorSpec(ci: SpecCreateInfo, terminalSize: Vector3d, categories: List<GridMaterialCategory>) : CellSpec<GridAnchorCell, BasicSpecRenderer>(ci, Content.MICROGRID_ANCHOR_CELL.get()),
+class GridAnchorSpec(ci: SpecCreateInfo, terminalSize: Vector3d, categories: List<GridMaterialCategory>) : CellSpec<GridAnchorCell, BasicSpecRenderer>(ci, Content.MICRO_GRID_ANCHOR_CELL.get()),
     ComponentDisplay {
     val terminal = defineCellBoxTerminal(
         0.0, 0.0, 0.0,
@@ -183,7 +181,7 @@ class GridInterfaceCell(ci: CellCreateInfo, tapResistance: Double, anchorResista
     val electricalInterface = GridInterfaceObject(this, tapResistance, anchorResistance)
 }
 
-class GridInterfacePart(ci: PartCreateInfo, terminalSize: Vector3d, categories: List<GridMaterialCategory>, val bodySupplier: Supplier<PartialModel>) : MicroGridCellPart<GridInterfaceCell, ConnectedPartRenderer>(ci, Content.MICROGRID_INTERFACE_CELL.get()),
+class GridInterfacePart(ci: PartCreateInfo, terminalSize: Vector3d, categories: List<GridMaterialCategory>, val bodySupplier: Supplier<PartialModel>) : GridCellPart<GridInterfaceCell, ConnectedPartRenderer>(ci, Content.MICRO_GRID_INTERFACE_CELL.get()),
     ComponentDisplay {
     val terminal = defineCellBoxTerminal(
         0.0, 0.0, 0.0,
@@ -227,3 +225,4 @@ class GridInterfacePart(ci: PartCreateInfo, terminalSize: Vector3d, categories: 
         builder.power(cell.electricalInterface.totalPower)
     }
 }
+

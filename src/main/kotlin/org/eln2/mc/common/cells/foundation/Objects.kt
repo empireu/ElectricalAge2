@@ -13,7 +13,7 @@ import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.electrical.mna.component.Term
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.eln2.mc.*
-import org.eln2.mc.common.GridConnectionCell
+import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.data.*
 import org.eln2.mc.extensions.getQuantity
 import org.eln2.mc.extensions.putQuantity

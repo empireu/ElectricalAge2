@@ -1,6 +1,6 @@
 {
     "parent": "minecraft:item/generated",
     "textures": {
-        "layer0": "eln2:item/cables/copper/bare_grid"
+        "layer0": "eln2:item/cables/iron/bare_power_grid"
     }
 }

@@ -2,6 +2,7 @@
 
 package org.eln2.mc.common.items
 
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.item.Item
 import net.minecraftforge.eventbus.api.IEventBus
 import net.minecraftforge.registries.DeferredRegister
@@ -19,13 +20,5 @@ object ItemRegistry {
         LOG.info("Prepared item registry.")
     }
 
-    data class ItemRegistryItem(
-        val name: String,
-        val item: RegistryObject<Item>,
-    ) : Supplier<Item> by item
-
-    fun item(name: String, supplier: () -> Item): ItemRegistryItem {
-        val item = ITEMS.register(name) { supplier() }
-        return ItemRegistryItem(name, item)
-    }
+    fun <T : Item> item(name: String, supplier: () -> T): RegistryObject<T> = ITEMS.register(name) { supplier() }
 }

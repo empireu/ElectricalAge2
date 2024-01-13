@@ -11,29 +11,38 @@ import net.minecraft.sounds.SoundSource
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import org.ageseries.libage.data.registerHandler
-import org.ageseries.libage.mathematics.*
+import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
+import org.ageseries.libage.sim.electrical.mna.NEGATIVE
+import org.ageseries.libage.sim.electrical.mna.POSITIVE
+import org.ageseries.libage.sim.electrical.mna.component.IResistor
 import org.ageseries.libage.sim.electrical.mna.component.updateResistance
 import org.eln2.mc.*
-import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.DefaultRenderType
 import org.eln2.mc.client.render.RenderTypedPartialModel
 import org.eln2.mc.client.render.foundation.colorLerp
 import org.eln2.mc.client.render.foundation.transformPart
-import org.eln2.mc.client.render.solid
 import org.eln2.mc.common.*
 import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.events.*
+import org.eln2.mc.common.events.AtomicUpdate
+import org.eln2.mc.common.events.EventListener
+import org.eln2.mc.common.events.EventQueue
+import org.eln2.mc.common.events.Scheduler
+import org.eln2.mc.common.grids.GridCableItem
+import org.eln2.mc.common.grids.GridConnectionCell
+import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.network.serverToClient.with
 import org.eln2.mc.common.parts.foundation.*
-import org.eln2.mc.data.*
-import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.data.PoleMap
 import org.eln2.mc.integration.ComponentDisplay
+import org.eln2.mc.integration.ComponentDisplayList
 import java.nio.ByteBuffer
-import kotlin.math.*
+import kotlin.math.absoluteValue
+import kotlin.math.round
 
-class LightCell(ci: CellCreateInfo, poleMap: PoleMap) : Cell(ci), LightView, LightBulbEmitterView {
+abstract class LightCell(ci: CellCreateInfo) : Cell(ci), LightView, LightBulbEmitterView {
     companion object {
         private const val RENDER_EPS = 1e-4
         private const val RESISTANCE_EPS = 0.1
@@ -48,34 +57,36 @@ class LightCell(ci: CellCreateInfo, poleMap: PoleMap) : Cell(ci), LightView, Lig
     // An event queue hooked into the game object:
     private var serverThreadReceiver: EventQueue? = null
 
-    @SimObject
-    val resistor = ResistorObjectVirtual(this, poleMap).also {
-        it.resistance = LARGE_RESISTANCE
-    }
+    abstract val resistor : IResistor
 
     @SimObject
-    val thermalWire = ThermalWireObject(this)
+    val thermalWire = ThermalWireObject(self())
 
     @Behavior
     val explosion = TemperatureExplosionBehavior.create(
         TemperatureExplosionBehaviorOptions(),
-        this,
+        self(),
         thermalWire.thermalBody::temperature
     )
 
-    override var volumeState: Int = 0
+    final override var volumeState: Int = 0
 
-    override var modelTemperature = 0.0
+    final override var modelTemperature = 0.0
         private set
 
-    override val power: Double get() = resistor.power
-    override val current: Double get() = resistor.current
-    override val potential: Double get() = resistor.potential
+    final override val power: Double get() = resistor.power
+    final override val current: Double get() = resistor.current
+    final override val potential: Double get() = resistor.potential
 
-    override var life: Double = 0.0
+    final override var life: Double = 0.0
 
-    override var lightBulb: LightBulbItem? = null
+    final override var lightBulb: LightBulbItem? = null
     var volume: LightVolume? = null
+
+    override fun afterConstruct() {
+        super.afterConstruct()
+        resistor.resistance = LARGE_RESISTANCE
+    }
 
     override fun resetValues() {
         resistor.updateResistance(LARGE_RESISTANCE)
@@ -176,7 +187,32 @@ class LightCell(ci: CellCreateInfo, poleMap: PoleMap) : Cell(ci), LightView, Lig
     }
 }
 
-class PoweredLightPart(ci: PartCreateInfo, cellProvider: CellProvider<LightCell>) : CellPart<LightCell, LightFixtureRenderer>(ci, cellProvider), EventListener, WrenchRotatablePart, ComponentDisplay {
+class PolarLightCell(ci: CellCreateInfo, map: PoleMap) : LightCell(ci) {
+    @SimObject
+    override val resistor = PolarResistorObjectVirtual(self(), map)
+
+    override fun cellConnectionPredicate(remote: Cell): Boolean {
+        return super.cellConnectionPredicate(remote) && resistor.poleMap.evaluateOrNull(this, remote) != null
+    }
+}
+
+class TerminalLightCell(ci: CellCreateInfo, plus: Int = POSITIVE, minus: Int = NEGATIVE) : LightCell(ci) {
+    @Node
+    val grid = GridNode(self())
+
+    @SimObject
+    override val resistor = TerminalResistorObjectVirtual(self(), plus, minus)
+
+    override fun allowsConnection(remote: Cell): Boolean {
+        return super.allowsConnection(remote)
+    }
+
+    override fun cellConnectionPredicate(remote: Cell): Boolean {
+        return super.cellConnectionPredicate(remote) && remote is GridConnectionCell
+    }
+}
+
+abstract class PoweredLightPart<T : LightCell>(ci: PartCreateInfo, cellProvider: CellProvider<T>, private val rendererSupplier: (PoweredLightPart<T>) -> LightFixtureRenderer) : GridCellPart<LightCell, LightFixtureRenderer>(ci, cellProvider), EventListener, WrenchRotatablePart, ComponentDisplay {
     val instance = serverOnlyHolder {
         LightVolumeInstance(
             placement.level as ServerLevel,
@@ -214,15 +250,12 @@ class PoweredLightPart(ci: PartCreateInfo, cellProvider: CellProvider<LightCell>
         }
     }
 
-    override fun createRenderer() = LightFixtureRenderer(
-        this,
-        PartialModels.SMALL_WALL_LAMP_CAGE.solid(),
-        PartialModels.SMALL_WALL_LAMP_EMITTER.solid()
-    )
+    override fun createRenderer() = rendererSupplier.invoke(this)
 
     @ServerOnly
     @OnServerThread
     override fun onCellAcquired() {
+        super.onCellAcquired()
         val events = Scheduler.register(this)
 
         events.registerHandler(this::onVolumeUpdated)
@@ -277,10 +310,12 @@ class PoweredLightPart(ci: PartCreateInfo, cellProvider: CellProvider<LightCell>
     @ServerOnly
     @OnServerThread
     override fun onSyncSuggested() {
+        super.onSyncSuggested()
         sendClientBrightness(cell.modelTemperature)
     }
 
     override fun onCellReleased() {
+        super.onCellReleased()
         cell.unbind()
         Scheduler.remove(this)
         instance().destroyCells()
@@ -299,6 +334,42 @@ class PoweredLightPart(ci: PartCreateInfo, cellProvider: CellProvider<LightCell>
         builder.current(cell.current)
         builder.power(cell.power)
         builder.integrity(cell.life)
+    }
+}
+
+class PolarPoweredLightPart(
+    ci: PartCreateInfo,
+    cellProvider: CellProvider<PolarLightCell>,
+    rendererSupplier: (PoweredLightPart<PolarLightCell>) -> LightFixtureRenderer
+) : PoweredLightPart<PolarLightCell>(ci, cellProvider, rendererSupplier)
+
+class TerminalPoweredLightPart(
+    ci: PartCreateInfo,
+    cellProvider: CellProvider<TerminalLightCell>,
+    neg: BoundingBox3d,
+    pos: BoundingBox3d,
+    negAttachment: Vector3d? = null,
+    posAttachment: Vector3d? = null,
+    rendererSupplier: (PoweredLightPart<TerminalLightCell>) -> LightFixtureRenderer
+) : PoweredLightPart<TerminalLightCell>(ci, cellProvider, rendererSupplier) {
+    val negative = defineCellBoxTerminal(
+        neg.center.x, neg.center.y, neg.center.z,
+        neg.size.x, neg.size.y, neg.size.z,
+        attachment = negAttachment
+    )
+
+    val positive = defineCellBoxTerminal(
+        pos.center.x, pos.center.y, pos.center.z,
+        pos.size.x, pos.size.y, pos.size.z,
+        attachment = posAttachment
+    )
+
+    override fun onUsedBy(context: PartUseInfo): InteractionResult {
+        if(context.player.getItemInHand(context.hand).item is GridCableItem) {
+            return InteractionResult.FAIL
+        }
+
+        return super.onUsedBy(context)
     }
 }
 
@@ -497,7 +568,7 @@ class LightFixtureRenderer(
             .getModel(model)
             .createInstance()
             .loadIdentity()
-            .transformPart(multipart, part, yRotation)
+            .transformPart(multipart, part, yRotation = yRotation)
     }
 
     private fun applyLightTint() {

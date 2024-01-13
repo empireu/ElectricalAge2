@@ -54,7 +54,7 @@ class RadiantBodyRenderer(
     fun update(temperature: Quantity<Temperature>) = updates.setLatest(temperature)
 
     override fun setupRendering() {
-        bodyInstance = createPartInstance(multipart, model, part, yRotation)
+        bodyInstance = createPartInstance(multipart, model, part, yRotation = yRotation)
     }
 
     override fun beginFrame() {
