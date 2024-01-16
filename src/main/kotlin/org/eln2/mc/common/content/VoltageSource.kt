@@ -1,9 +1,6 @@
 package org.eln2.mc.common.content
 
 import net.minecraft.world.InteractionResult
-import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
-import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
-import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
 import org.eln2.mc.common.cells.foundation.*
@@ -14,37 +11,6 @@ import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3dMask
-
-/**
- * The voltage source object has a bundle of resistors, whose External Pins are exported to other objects, and
- * a voltage source, connected to the Internal Pins of the bundle.
- * */
-class VoltageSourceObject(cell: Cell) : ElectricalObject<Cell>(cell) {
-    val source = VoltageSource()
-    val resistors = resistorBundle(1e-4)
-
-    override fun offerPolar(remote: ElectricalObject<*>): TermRef {
-        return resistors.getOfferedResistor(remote)
-    }
-
-    override fun clearComponents() {
-        resistors.clear()
-    }
-
-    override fun addComponents(circuit: ElectricalComponentSet) {
-        circuit.add(source)
-        resistors.addComponents(connections, circuit)
-    }
-
-    override fun build(map: ElectricalConnectivityMap) {
-        source.ground(INTERNAL_PIN)
-        resistors.build(connections, this, map)
-
-        resistors.forEach {
-            map.connect(it, INTERNAL_PIN, source, EXTERNAL_PIN)
-        }
-    }
-}
 
 class VoltageSourceCell(ci: CellCreateInfo) : Cell(ci) {
     @SimObject

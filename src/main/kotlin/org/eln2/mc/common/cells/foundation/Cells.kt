@@ -1695,6 +1695,12 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
 
         simulationStopLock.lock()
 
+        if(!isSimulating) {
+            LOG.warn("Aborting tick!")
+            simulationStopLock.unlock()
+            return
+        }
+
         var stage = UpdateStep.Start
 
         try {

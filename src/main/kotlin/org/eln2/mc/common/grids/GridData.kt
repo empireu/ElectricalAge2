@@ -506,7 +506,9 @@ object GridConnectionManagerServer {
         fun unwatch(player: ServerPlayer, chunkPos: ChunkPos) {
             if(watchedChunksByPlayer[player].remove(chunkPos)) {
                 handlesByChunk[chunkPos].forEach { handle ->
-                    handle.removePlayer(player, chunkPos)
+                    if(handle.removePlayer(player, chunkPos)) {
+                        sendDeletedConnection(player, handle)
+                    }
                 }
             }
         }
@@ -587,6 +589,8 @@ object GridConnectionManagerServer {
 
             private var isDestroyed = false
             private val players = MutableSetMapMultiMap<ServerPlayer, ChunkPos>()
+
+            // for modifying [options] from simulation threads
             private val lock = ReentrantReadWriteLock()
 
             override var options: GridRenderOptions = GridRenderOptions()
@@ -621,12 +625,15 @@ object GridConnectionManagerServer {
                 }
             }
 
-            fun removePlayer(player: ServerPlayer, chunkPos: ChunkPos) {
+            fun removePlayer(player: ServerPlayer, chunkPos: ChunkPos) : Boolean {
                 lock.write {
                     check(!isDestroyed) {
                         "removePlayer isDestroyed"
                     }
-                    return players.remove(player, chunkPos)
+
+                    players.remove(player, chunkPos)
+
+                    return !players.contains(player)
                 }
             }
 

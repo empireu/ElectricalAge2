@@ -607,7 +607,8 @@ object Content {
                 potential = { ΔT ->
                     Quantity(!ΔT * (220.0 / 180.0), VOLT)
                 },
-                conductance = Quantity(5.0, WATT_PER_KELVIN)
+                conductance = Quantity(5.0, WATT_PER_KELVIN),
+                internalResistance = 5.1345
             )
 
             val hemispheres = Direction.entries.associateWith {
@@ -633,7 +634,7 @@ object Content {
                     hemispheres[it.locator.transformPartWorld(Base6Direction3d.Right)]!!
                 )
 
-                cell.generator.ruleSet.withDirectionRulePlanar(electricalA + electricalB)
+                cell.source.ruleSet.withDirectionRulePlanar(electricalA + electricalB)
                 cell.thermalBipole.ruleSet.withDirectionRulePlanar(thermalA + thermalB)
 
                 cell
@@ -765,10 +766,10 @@ object Content {
 
     val MICRO_GRID_ANCHOR_SPEC = specAndItem(
         "micro_grid_anchor",
-        BasicSpecProvider(PartialModels.MICRO_GRID_ANCHOR, Vector3d(4.0 / 16.0)) {
+        BasicSpecProvider(PartialModels.MICRO_GRID_ANCHOR, Vector3d(1.0 / 16.0, 1.5 / 16.0, 1.0 / 16.0)) {
             GridAnchorSpec(
                 it,
-                Vector3d(2.0 / 16.0, 4.0 / 16.0, 2.0 / 16.0),
+                Vector3d(1.0 / 16.0, 1.5 / 16.0, 1.0 / 16.0),
                 listOf(GridMaterialCategory.MicroGrid)
             )
         }

@@ -33,10 +33,7 @@ import org.ageseries.libage.mathematics.snzi
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.ThermalMassDefinition
-import org.ageseries.libage.sim.electrical.mna.component.PowerVoltageSource
-import org.eln2.mc.ClientOnly
-import org.eln2.mc.LOG
-import org.eln2.mc.ServerOnly
+import org.eln2.mc.*
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.common.blocks.foundation.CellBlock
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
@@ -55,7 +52,6 @@ import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3dMask
-import org.eln2.mc.resource
 import kotlin.math.*
 
 
@@ -363,7 +359,8 @@ class HeatGeneratorBlock : CellBlock<HeatGeneratorCell>() {
 data class ElectricalHeatEngineModel(
     val baseEfficiency: Double,
     val potential: InterpolationFunction<Quantity<Temperature>, Quantity<Potential>>,
-    val conductance: Quantity<ThermalConductance>
+    val conductance: Quantity<ThermalConductance>,
+    val internalResistance: Double
 )
 
 class ElectricalHeatEngineCell(
@@ -379,11 +376,7 @@ class ElectricalHeatEngineCell(
     radiantInfoB2: RadiantBodyEmissionDescription?
 ) : Cell(ci) {
     @SimObject
-    val generator = PolarTermObject(
-        this,
-        electricalMap,
-        PowerVoltageSource()
-    )
+    val source = PowerVoltageSourceObject(this, electricalMap)
 
     @SimObject
     val thermalBipole = ThermalBipoleObject(
@@ -397,6 +390,10 @@ class ElectricalHeatEngineCell(
 
     val cold by thermalBipole::b1
     val hot by thermalBipole::b2
+
+    init {
+        source.resistor.resistance = model.internalResistance
+    }
 
     @Behavior
     val radiantEmitter = if(radiantInfoB1 != null || radiantInfoB2 != null) {
@@ -440,12 +437,12 @@ class ElectricalHeatEngineCell(
         val ΔE = hot.energy - cold.energy
         val ΔT = hot.temperature - cold.temperature
 
-        generator.term.potentialMax = !model.potential.evaluate(abs(ΔT))
-        generator.term.powerIdeal = efficiency * sign(!ΔT) * min((0.5 * abs(!ΔE) / dt), !model.conductance * !abs(ΔT))
+        source.generator.potentialMax = !model.potential.evaluate(abs(ΔT))
+        source.generator.powerIdeal = efficiency * sign(!ΔT) * min((0.5 * abs(!ΔE) / dt), !model.conductance * !abs(ΔT))
     }
 
     private fun postTick(dt: Double, phase: SubscriberPhase) {
-        val electricalEnergy = generator.term.power * dt
+        val electricalEnergy = source.generator.power * dt
 
         val electricalDirection = snzi(electricalEnergy)
         val thermalDirection = snzi((!hot.temperature - !cold.temperature))
@@ -511,12 +508,12 @@ class ElectricalHeatEnginePart(ci: PartCreateInfo) : CellPart<ElectricalHeatEngi
     override fun submitDisplay(builder: ComponentDisplayList) {
         builder.quantity(cell.thermalBipole.b1.temperature)
         builder.quantity(cell.thermalBipole.b2.temperature)
-        builder.power(cell.generator.term.power)
-        builder.potential(cell.generator.term.potential)
-        builder.current(cell.generator.term.current)
+        builder.power(cell.source.generator.power)
+        builder.potential(cell.source.generator.potential)
+        builder.current(cell.source.generator.current)
         builder.debug("Efficiency: ${cell.efficiency.formattedPercentNormalized()}")
-        builder.debug("Potential Max: ${Quantity(cell.generator.term.potentialMax ?: 0.0, VOLT).classify()}")
-        builder.debug("Power Ideal: ${Quantity(cell.generator.term.powerIdeal, WATT).classify()}")
+        builder.debug("Potential Max: ${Quantity(cell.source.generator.potentialMax ?: 0.0, VOLT).classify()}")
+        builder.debug("Power Ideal: ${Quantity(cell.source.generator.powerIdeal, WATT).classify()}")
     }
 
     @Serializable

@@ -9,9 +9,7 @@ import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Simulator
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.electrical.mna.*
-import org.ageseries.libage.sim.electrical.mna.component.Resistor
-import org.ageseries.libage.sim.electrical.mna.component.Term
-import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
+import org.ageseries.libage.sim.electrical.mna.component.*
 import org.eln2.mc.*
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.data.*
@@ -532,5 +530,98 @@ open class PolarTermObject<C: Cell, T : Term>(cell: C, val poleMap: PoleMap, val
 
     override fun addComponents(circuit: ElectricalComponentSet) {
         circuit.add(term)
+    }
+}
+
+/**
+ * The voltage source object has a bundle of resistors, whose External Pins are exported to other objects, and
+ * a voltage source, connected to the Internal Pins of the bundle.
+ * */
+class VoltageSourceObject(cell: Cell) : ElectricalObject<Cell>(cell) {
+    val source = VoltageSource()
+    val resistors = resistorBundle(1e-4)
+
+    override fun offerPolar(remote: ElectricalObject<*>): TermRef {
+        return resistors.getOfferedResistor(remote)
+    }
+
+    override fun clearComponents() {
+        resistors.clear()
+    }
+
+    override fun addComponents(circuit: ElectricalComponentSet) {
+        circuit.add(source)
+        resistors.addComponents(connections, circuit)
+    }
+
+    override fun build(map: ElectricalConnectivityMap) {
+        source.ground(INTERNAL_PIN)
+        resistors.build(connections, this, map)
+
+        resistors.forEach {
+            map.connect(it, INTERNAL_PIN, source, EXTERNAL_PIN)
+        }
+    }
+}
+
+class TerminalResistorObjectVirtual<C : Cell>(cell: C, val resistor: VirtualResistor, val plus: Int, val minus: Int) : ElectricalObject<C>(cell), IResistor by resistor {
+    constructor(cell: C, plus: Int, minus: Int) : this(cell, VirtualResistor(), plus, minus)
+
+    override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo) =
+        when(m0.terminal) {
+            plus -> resistor.offerPositive()
+            minus -> resistor.offerNegative()
+            else -> null
+        }
+
+    override fun acceptsRemoteObject(remote: ElectricalObject<*>): Boolean {
+        return super.acceptsRemoteObject(remote) && remote.cell is GridConnectionCell
+    }
+}
+
+class PolarResistorObjectVirtual<C : Cell>(cell: C, poleMap: PoleMap, virtualResistor: VirtualResistor) : PolarTermObject<C, VirtualResistor>(cell, poleMap, virtualResistor), IResistor by virtualResistor {
+    constructor(cell: C, poleMap: PoleMap) : this(cell, poleMap, VirtualResistor())
+}
+
+class GroundObject(cell: Cell) : ElectricalObject<Cell>(cell) {
+    val resistors = resistorBundle(1e-5)
+
+    override fun offerPolar(remote: ElectricalObject<*>) = resistors.getOfferedResistor(remote)
+    override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo) = resistors.getOfferedResistor(gc.electrical)
+
+    override fun clearComponents() {
+        resistors.clear()
+    }
+
+    override fun addComponents(circuit: ElectricalComponentSet) {
+        resistors.addComponents(connections, circuit)
+    }
+
+    override fun build(map: ElectricalConnectivityMap) {
+        resistors.build(connections, this, map)
+        resistors.forEach {
+            it.ground(INTERNAL_PIN)
+        }
+    }
+}
+
+class PowerVoltageSourceObject<C : Cell>(cell: C, val map: PoleMap) : ElectricalObject<C>(cell) {
+    val generator = PowerVoltageSource()
+    val resistor = VirtualResistor()
+
+    override fun offerPolar(remote: ElectricalObject<*>) = when(map.evaluateOrNull(cell, remote.cell)) {
+        Pole.Plus -> generator.offerPositive()
+        Pole.Minus -> resistor.offerNegative()
+        null -> null
+    }
+
+    override fun addComponents(circuit: ElectricalComponentSet) {
+        circuit.add(generator)
+        circuit.add(resistor)
+    }
+
+    override fun build(map: ElectricalConnectivityMap) {
+        super.build(map)
+        map.join(generator.offerNegative(), resistor.offerPositive())
     }
 }
