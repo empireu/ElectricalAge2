@@ -1,11 +1,6 @@
 package org.eln2.mc.client.render
 
-import com.jozufozu.flywheel.api.Instancer
-import com.jozufozu.flywheel.api.MaterialGroup
-import com.jozufozu.flywheel.api.MaterialManager
-import com.jozufozu.flywheel.core.Materials
-import com.jozufozu.flywheel.core.PartialModel
-import com.jozufozu.flywheel.core.materials.model.ModelData
+import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.eln2.mc.client.render.foundation.PolarModel
 import org.eln2.mc.client.render.foundation.WireConnectionModelPartial
@@ -55,9 +50,9 @@ object PartialModels {
     val MICRO_GRID_ANCHOR = partialBlock("micro_grid_anchor")
     val MICRO_GRID_INTERFACE = partialBlock("micro_grid_interface")
 
-    private fun partial(path: String) = PartialModel(resource(path))
+    private fun partial(path: String) = PartialModel.of(resource(path))
 
-    fun partialBlock(path: String) = PartialModel(resource("block/$path"))
+    fun partialBlock(path: String) = PartialModel.of(resource("block/$path"))
 
     fun polarBlock(path: String) = PolarModel(resource("block/$path"))
 

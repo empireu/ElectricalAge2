@@ -161,6 +161,13 @@ repositories {
             includeGroup "maven.modrinth"
         }
     }
+
+    maven {
+        name "createmod maven"
+        url "https://maven.createmod.net/"
+    }
+
+    maven { url = "https://api.modrinth.com/maven" }
 }
 
 configurations {
@@ -202,9 +209,11 @@ dependencies {
     shade minecraftLibrary("com.charleskorn.kaml:kaml:0.50.0")
 
     implementation fg.deobf("curse.maven:jade-324717:4801177")
-    implementation fg.deobf("com.jozufozu.flywheel:flywheel-forge-1.20.1:0.6.10-8")
 
-    implementation fg.deobf("org.embeddedt:embeddium-1.20.1:0.2.11-git.23aedfb+mc1.20.1")
+    compileOnly fg.deobf("dev.engine-room.flywheel:flywheel-forge-api-${minecraft_version}:${flywheel_version}")
+    runtimeOnly fg.deobf("dev.engine-room.flywheel:flywheel-forge-${minecraft_version}:${flywheel_version}")
+
+    implementation fg.deobf("maven.modrinth:embeddium:${embeddium_version}")
 
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
@@ -239,7 +248,6 @@ mixin {
     add sourceSets.main, "eln2.refmap.json"
 
     config "eln2.mixins.json"
-    config "eln2.mixins.sodium.json"
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.

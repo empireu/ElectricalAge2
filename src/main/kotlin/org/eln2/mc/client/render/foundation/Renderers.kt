@@ -13,6 +13,10 @@ import com.jozufozu.flywheel.util.Color
 import com.jozufozu.flywheel.util.transform.Transform
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
+import dev.engine_room.flywheel.api.visual.BlockEntityVisual
+import dev.engine_room.flywheel.api.visual.DynamicVisual
+import dev.engine_room.flywheel.api.visualization.VisualizationContext
+import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntArrayList
 import net.minecraft.client.Camera
@@ -352,9 +356,9 @@ class ThermalTint(
 }
 
 @ClientOnly
-class MultipartBlockEntityInstance(val materialManager: MaterialManager, blockEntity: MultipartBlockEntity) :
-    BlockEntityInstance<MultipartBlockEntity>(materialManager, blockEntity),
-    DynamicInstance
+class MultipartBlockEntityInstance(ctx : VisualizationContext, blockEntity : MultipartBlockEntity, partialTick: Float) :
+    AbstractBlockEntityVisual<MultipartBlockEntity>(ctx, blockEntity, partialTick),
+    DynamicVisual
 {
     private class Entry(val part: Part<*>) {
         var renderer = part.renderer

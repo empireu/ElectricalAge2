@@ -1,20 +1,6 @@
 package org.eln2.mc.client.render.foundation
 
-import com.jozufozu.flywheel.api.InstanceData
-import com.jozufozu.flywheel.api.struct.Instanced
-import com.jozufozu.flywheel.api.struct.StructType
-import com.jozufozu.flywheel.backend.gl.buffer.VecBuffer
-import com.jozufozu.flywheel.backend.instancing.InstancedRenderRegistry
-import com.jozufozu.flywheel.backend.struct.UnsafeBufferWriter
-import com.jozufozu.flywheel.core.PartialModel
-import com.jozufozu.flywheel.core.layout.BufferLayout
-import com.jozufozu.flywheel.core.layout.CommonItems
-import com.jozufozu.flywheel.core.layout.MatrixItems
-import com.jozufozu.flywheel.core.materials.FlatLit
-import com.jozufozu.flywheel.core.materials.model.ModelType
-import com.jozufozu.flywheel.util.Color
-import com.jozufozu.flywheel.util.MatrixWrite
-import com.jozufozu.flywheel.util.transform.Transform
+import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
 import net.minecraft.client.renderer.LightTexture
 import net.minecraft.client.renderer.block.model.BakedQuad
 import net.minecraft.client.resources.model.BakedModel
@@ -34,7 +20,7 @@ import java.nio.IntBuffer
 
 object FlywheelRegistry {
     fun initialize() {
-        InstancedRenderRegistry.configure(BlockRegistry.MULTIPART_BLOCK_ENTITY.get())
+        VisualizerRegistry.setVisualizer<>(BlockRegistry.MULTIPART_BLOCK_ENTITY.get())
             .alwaysSkipRender()
             .factory { manager, entity -> MultipartBlockEntityInstance(manager, entity) }
             .apply()
