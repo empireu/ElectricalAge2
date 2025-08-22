@@ -6,7 +6,6 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.packs.resources.Resource
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.common.MinecraftForge
-import net.minecraftforge.eventbus.api.EventPriority
 import net.minecraftforge.eventbus.api.IEventBus
 import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.fml.ModLoadingContext
@@ -23,14 +22,11 @@ import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.containers.ContainerRegistry
 import org.eln2.mc.common.content.Content
-import org.eln2.mc.common.grids.TerminalHighlightRenderer
 import org.eln2.mc.common.entities.EntityRegistry
 import org.eln2.mc.common.items.CreativeTabRegistry
 import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.parts.PartRegistry
-import org.eln2.mc.common.specs.SpecRegistry
-import org.eln2.mc.common.specs.foundation.*
 import java.io.InputStream
 import java.nio.charset.Charset
 import java.nio.file.Files
@@ -66,7 +62,7 @@ class Eln2 {
 
         CellRegistry.setup(modEventBus)
         PartRegistry.setup(modEventBus)
-        SpecRegistry.setup(modEventBus)
+        //SpecRegistry.setup(modEventBus)
         Content.initialize()
 
         LOG.info("Prepared registries.")
@@ -84,11 +80,13 @@ class Eln2 {
         modEventBus.addListener(KeyMappingRegistry::register)
 
         forgeEventBus.addListener(Eln2Config::registerClientCommands);
-        forgeEventBus.addListener(EventPriority.LOWEST, SpecContainerPart::renderHighlightEvent)
-        forgeEventBus.addListener(TerminalHighlightRenderer::render)
-        forgeEventBus.addListener(SpecPlacementOverlayClient::onScroll)
-        forgeEventBus.addListener(SpecPlacementOverlayClient::onCycleOrientation)
-        forgeEventBus.addListener(SpecPreviewRenderer::render)
+
+        //FIXME
+        //forgeEventBus.addListener(EventPriority.LOWEST, SpecContainerPart::renderHighlightEvent)
+        //forgeEventBus.addListener(TerminalHighlightRenderer::render)
+        //forgeEventBus.addListener(SpecPlacementOverlayClient::onScroll)
+        //forgeEventBus.addListener(SpecPlacementOverlayClient::onCycleOrientation)
+        //forgeEventBus.addListener(SpecPreviewRenderer::render)
 
         PartialModels.initialize()
 

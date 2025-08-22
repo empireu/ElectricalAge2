@@ -2,7 +2,6 @@
 
 package org.eln2.mc.client.render
 
-import com.jozufozu.flywheel.util.Color
 import com.mojang.blaze3d.vertex.PoseStack
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
@@ -18,6 +17,7 @@ import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.extensions.*
+import org.eln2.mc.mathematics.ArgbColor
 import org.joml.Quaternionf
 import kotlin.math.PI
 
@@ -121,7 +121,7 @@ object DebugVisualizer {
 
     }
 
-    private class LineAABB(val aabb: AABB, val color: Color) : RenderElement() {
+    private class LineAABB(val aabb: AABB, val color: ArgbColor) : RenderElement() {
         override fun render(
             pPoseStack: PoseStack,
             pBufferSource: MultiBufferSource.BufferSource,
@@ -134,24 +134,15 @@ object DebugVisualizer {
             LevelRenderer.renderLineBox(
                 pPoseStack,
                 pBufferSource.getBuffer(RenderType.lines()),
-                aabb.minX - pCamX,
-                aabb.minY - pCamY,
-                aabb.minZ - pCamZ,
-                aabb.maxX - pCamX,
-                aabb.maxY - pCamY,
-                aabb.maxZ - pCamZ,
-                color.redAsFloat,
-                color.greenAsFloat,
-                color.blueAsFloat,
-                color.alphaAsFloat,
-                color.redAsFloat,
-                color.greenAsFloat,
-                color.blueAsFloat
+                aabb.minX - pCamX, aabb.minY - pCamY, aabb.minZ - pCamZ,
+                aabb.maxX - pCamX, aabb.maxY - pCamY, aabb.maxZ - pCamZ,
+                color.rF, color.gF, color.bF, color.aF,
+                color.rF, color.gF, color.bF
             )
         }
     }
 
-    private class LineOBB(val obb: OrientedBoundingBox3d, val color: Color) : RenderElement() {
+    private class LineOBB(val obb: OrientedBoundingBox3d, val color: ArgbColor) : RenderElement() {
         override fun render(
             pPoseStack: PoseStack,
             pBufferSource: MultiBufferSource.BufferSource,
@@ -173,19 +164,10 @@ object DebugVisualizer {
             LevelRenderer.renderLineBox(
                 pPoseStack,
                 pBufferSource.getBuffer(RenderType.lines()),
-                min.x,
-                min.y,
-                min.z,
-                max.x,
-                max.y,
-                max.z,
-                color.redAsFloat,
-                color.greenAsFloat,
-                color.blueAsFloat,
-                color.alphaAsFloat,
-                color.redAsFloat,
-                color.greenAsFloat,
-                color.blueAsFloat
+                min.x, min.y, min.z,
+                max.x, max.y, max.z,
+                color.rF, color.gF, color.bF, color.aF,
+                color.rF, color.gF, color.bF
             )
 
             pPoseStack.popPose()
@@ -193,7 +175,7 @@ object DebugVisualizer {
 
     }
 
-    private class LineCylinder(val cylinder: Cylinder3d, val color: Color) : RenderElement() {
+    private class LineCylinder(val cylinder: Cylinder3d, val color: ArgbColor) : RenderElement() {
         companion object {
             private const val LINES = 16
         }
@@ -218,10 +200,10 @@ object DebugVisualizer {
             val matrix3f = pPoseStack.last().normal()
 
             val vertexConsumer = pBufferSource.getBuffer(RenderType.lines())
-            val r = color.redAsFloat
-            val g = color.greenAsFloat
-            val b = color.blueAsFloat
-            val a = color.alphaAsFloat
+            val r = color.rF
+            val g = color.gF
+            val b = color.bF
+            val a = color.aF
 
             val radius = cylinder.radius.toFloat()
             val y1 = (-cylinder.extent.length / 2.0).toFloat()
@@ -343,19 +325,19 @@ object DebugVisualizer {
         return composite
     }
 
-    fun createLineBox(vararg aabbs: AABB, color: Color = Color.WHITE) =
+    fun createLineBox(vararg aabbs: AABB, color: ArgbColor = ArgbColor.WHITE) =
         createCompositionOf(*aabbs.map { LineAABB(it, color) }.toTypedArray())
 
-    fun createLineBox(vararg aabbs: BoundingBox3d, color: Color = Color.WHITE) =
+    fun createLineBox(vararg aabbs: BoundingBox3d, color: ArgbColor = ArgbColor.WHITE) =
         createCompositionOf(*aabbs.map { LineAABB(AABB(it.min.toVec3(), it.max.toVec3()), color) }.toTypedArray())
 
-    fun createLineOrientedBox(vararg obbs: OrientedBoundingBox3d, color: Color = Color.WHITE) =
+    fun createLineOrientedBox(vararg obbs: OrientedBoundingBox3d, color: ArgbColor = ArgbColor.WHITE) =
         createCompositionOf(*obbs.map { LineOBB(it, color) }.toTypedArray())
 
-    fun createLineCylinder(vararg cylinders: Cylinder3d, color: Color = Color.WHITE) =
+    fun createLineCylinder(vararg cylinders: Cylinder3d, color: ArgbColor = ArgbColor.WHITE) =
         createCompositionOf(*cylinders.map { LineCylinder(it, color) }.toTypedArray())
 
-    fun createDirection(origin: Vector3d, direction: Direction, size: Double = 0.01, color: Color = Color.WHITE) : RenderElement {
+    fun createDirection(origin: Vector3d, direction: Direction, size: Double = 0.01, color: ArgbColor = ArgbColor.WHITE) : RenderElement {
         val t = size / 2.0
 
         val box = when(direction) {
@@ -394,9 +376,9 @@ object DebugVisualizer {
     }
 
     fun createPartFrame(part: Part<*>) = createCompositionOf(
-        createDirection(part.placement.mountingPointWorld, part.placement.positiveX, color = Color(1f, 0f, 0f, 0.8f)),
-        createDirection(part.placement.mountingPointWorld, part.placement.positiveY, color = Color(0f, 1f, 0f, 0.8f)),
-        createDirection(part.placement.mountingPointWorld, part.placement.positiveZ, color = Color(0f, 0f, 1f, 0.8f))
+        createDirection(part.placement.mountingPointWorld, part.placement.positiveX, color = ArgbColor(0.8f, 1f, 0f, 0f)),
+        createDirection(part.placement.mountingPointWorld, part.placement.positiveY, color = ArgbColor(0.8f, 0f, 1f, 0f)),
+        createDirection(part.placement.mountingPointWorld, part.placement.positiveZ, color = ArgbColor( 0.8f, 0f, 0f, 1f))
     ).withinScopeOf(part)
 
     fun createPartBounds(part: Part<*>) =
@@ -404,19 +386,19 @@ object DebugVisualizer {
 
     fun compositionOf(vararg elements: RenderElement) = add(createCompositionOf(*elements))
 
-    fun lineBox(vararg aabbs: AABB, color: Color = Color.WHITE) =
+    fun lineBox(vararg aabbs: AABB, color: ArgbColor = ArgbColor.WHITE) =
         add(createLineBox(*aabbs, color = color))
 
-    fun lineBox(vararg aabbs: BoundingBox3d, color: Color = Color.WHITE) =
+    fun lineBox(vararg aabbs: BoundingBox3d, color: ArgbColor = ArgbColor.WHITE) =
         add(createLineBox(*aabbs, color = color))
 
-    fun lineOrientedBox(vararg obbs: OrientedBoundingBox3d, color: Color = Color.WHITE) =
+    fun lineOrientedBox(vararg obbs: OrientedBoundingBox3d, color: ArgbColor = ArgbColor.WHITE) =
         add(createLineOrientedBox(*obbs, color = color))
 
-    fun lineCylinder(vararg cylinders: Cylinder3d, color: Color = Color.WHITE) =
+    fun lineCylinder(vararg cylinders: Cylinder3d, color: ArgbColor = ArgbColor.WHITE) =
         add(createLineCylinder(*cylinders, color = color))
 
-    fun direction(origin: Vector3d, direction: Direction, size: Double = 0.05, color: Color = Color.WHITE) =
+    fun direction(origin: Vector3d, direction: Direction, size: Double = 0.05, color: ArgbColor = ArgbColor.WHITE) =
         add(createDirection(origin, direction, size, color))
 
     fun partFrame(part: Part<*>) = add(createPartFrame(part))

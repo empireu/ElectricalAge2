@@ -1,15 +1,15 @@
 package org.eln2.mc.client.render.foundation
 
-import com.jozufozu.flywheel.util.Color
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.lerp
+import org.eln2.mc.mathematics.ArgbColor
 
-fun colorLerp(from: Color, to: Color, blend: Float): Color =
-    Color(
-        lerp(from.redAsFloat, to.redAsFloat, blend),
-        lerp(from.greenAsFloat, to.greenAsFloat, blend),
-        lerp(from.blueAsFloat, to.blueAsFloat, blend),
-        lerp(from.alphaAsFloat, to.alphaAsFloat, blend)
+fun colorLerp(from: ArgbColor, to: ArgbColor, blend: Float): ArgbColor =
+    ArgbColor(
+        lerp(from.aF, to.aF, blend),
+        lerp(from.rF, to.rF, blend),
+        lerp(from.gF, to.gF, blend),
+        lerp(from.bF, to.bF, blend),
     )
 
 fun color(r: Int, g: Int, b: Int, a: Int = 255) =

@@ -1,6 +1,7 @@
 package org.eln2.mc.client.render.foundation
 
 import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
+import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.minecraft.client.renderer.LightTexture
 import net.minecraft.client.renderer.block.model.BakedQuad
 import net.minecraft.client.resources.model.BakedModel
@@ -20,12 +21,14 @@ import java.nio.IntBuffer
 
 object FlywheelRegistry {
     fun initialize() {
-        VisualizerRegistry.setVisualizer<>(BlockRegistry.MULTIPART_BLOCK_ENTITY.get())
-            .alwaysSkipRender()
-            .factory { manager, entity -> MultipartBlockEntityInstance(manager, entity) }
-            .apply()
+        VisualizerRegistry.setVisualizer(
+            BlockRegistry.MULTIPART_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::MultipartBlockEntityInstance) { true })
     }
 }
+
+//fixme
+/*
 
 object ModelLightOverrideType : ModelType() {
     private val PROGRAM_SPEC: ResourceLocation = resource("block_light_override")
@@ -152,6 +155,7 @@ class PolarWriterUnsafe(backingBuffer: VecBuffer, vertexType: StructType<PolarDa
         MatrixWrite.writeUnsafe(s.normal, ptr + 74)
     }
 }
+*/
 
 /**
  * Loads a baked model, and applies a post-processing step. The model must:
@@ -161,7 +165,7 @@ class PolarWriterUnsafe(backingBuffer: VecBuffer, vertexType: StructType<PolarDa
  * The vertex data is rotated so that, when it gets written to the vertex buffer, a special ordering of vertices is obtained:
  * Vertices 0, 1 are on one "pole" of the model (min z) and vertices 2, 3 are on the other (max z)
  * */
-open class PolarModel(modelLocation: ResourceLocation) : PartialModel(modelLocation) {
+/*open class PolarModel(modelLocation: ResourceLocation) : PartialModel(modelLocation) {
     override fun set(bakedModel: BakedModel) {
         @Suppress("NAME_SHADOWING")
         val bakedModel = bakedModel.bind()
@@ -276,4 +280,4 @@ open class PolarModel(modelLocation: ResourceLocation) : PartialModel(modelLocat
 
         super.set(bakedModel)
     }
-}
+}*/

@@ -13,8 +13,6 @@ import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlock
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.parts.foundation.CellPart
-import org.eln2.mc.common.specs.foundation.GridSpec
-import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.extensions.forEachCompound
 import org.eln2.mc.extensions.formattedPercentNormalized
 import snownee.jade.api.*
@@ -69,7 +67,8 @@ class Eln2WailaPlugin : IWailaPlugin {
             if(blockEntity is MultipartBlockEntity) {
                 val part = blockEntity.pickPart(p1.player)
 
-                if(part is SpecContainerPart) {
+                // FIXME
+                /*if(part is SpecContainerPart) {
                     val spec = part.pickSpec(p1.player)?.second
 
                     if(spec is GridSpec<*>) {
@@ -82,7 +81,7 @@ class Eln2WailaPlugin : IWailaPlugin {
 
                     return spec as? T
                 }
-
+*/
                 return part as? T
             }
 
@@ -236,9 +235,6 @@ class ComponentDisplayList(private val entries: MutableList<Component>) {
         return "waila.$MODID.$identifier"
     }
 
-    @Deprecated("DEBUG ONLY - NO LOCALIZATION",
-        ReplaceWith("translate(...)")
-    )
     fun debug(text: String) {
         add(Component.literal("*$text"))
     }

@@ -7,7 +7,6 @@ import net.minecraft.client.renderer.chunk.ChunkRenderDispatcher;
 import net.minecraft.client.renderer.chunk.RenderChunkRegion;
 import net.minecraft.client.renderer.chunk.VisGraph;
 import net.minecraft.core.BlockPos;
-import org.eln2.mc.common.grids.GridRenderer;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -48,11 +47,13 @@ public abstract class MixinRebuildTask {
         PoseStack pPoseStack,
         Set<RenderType> pRenderTypeSet
     ) {
-        GridRenderer.submitForRebuildSection(
+
+        //FIXME
+        /*GridRenderer.submitForRebuildSection(
             this$1,
             pChunkBufferBuilderPack,
             pRenderChunkRegion,
             pRenderTypeSet
-        );
+        );*/
     }
 }

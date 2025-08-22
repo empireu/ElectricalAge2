@@ -19,23 +19,14 @@ import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.level.material.FluidState
 import org.ageseries.libage.data.put
-import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
-import org.ageseries.libage.mathematics.geometry.Rotation2d
-import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
-import org.eln2.mc.client.render.foundation.RGBAFloat
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.grids.*
-import org.eln2.mc.common.specs.foundation.SpecGeometry
-import org.eln2.mc.data.*
-import org.eln2.mc.extensions.toVector3d
+import org.eln2.mc.data.Locators
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.toHorizontalFacing
 import java.util.*
-import kotlin.collections.ArrayList
-import kotlin.collections.HashSet
 
 abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirectionalBlock(p ?: Properties.of().noOcclusion()), EntityBlock {
     init {
@@ -261,6 +252,8 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
         get() = CellGraphManager.getFor(level as ServerLevel)
 }
 
+//FIXME
+/*
 abstract class GridCellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetType: BlockEntityType<*>) : CellBlockEntity<C>(pos, state, targetType),
     GridTerminalContainer {
     var containerID = UUID.randomUUID()
@@ -275,7 +268,7 @@ abstract class GridCellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, t
     val positiveX get() = blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing().rotation3d * Vector3d.unitX
     val positiveZ get() = blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing().rotation3d * Vector3d.unitZ
 
-    /**
+    *//**
      * Creates a bounding box in the world frame.
      * @param x Center X in the local frame.
      * @param y Center Y in the local frame.
@@ -284,7 +277,7 @@ abstract class GridCellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, t
      * @param sizeY Size along Y in the local frame.
      * @param sizeZ Size along Z in the local frame.
      * @return A bounding box in the world frame.
-     * */
+     * *//*
     protected fun boundingBox(
         x: Double,
         y: Double,
@@ -426,4 +419,4 @@ abstract class GridCellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, t
         private const val CONTAINER_ID = "containerID"
         private const val GRID_TERMINAL_SYSTEM = "gridTerminalSystem"
     }
-}
+}*/

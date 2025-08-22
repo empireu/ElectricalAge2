@@ -2,7 +2,6 @@
 
 package org.eln2.mc.common
 
-import com.jozufozu.flywheel.light.LightUpdater
 import it.unimi.dsi.fastutil.ints.*
 import it.unimi.dsi.fastutil.longs.Long2ObjectFunction
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
@@ -658,7 +657,8 @@ object GhostLightHackClient {
             "Expected level in commit"
         }
 
-        val lightUpdater = LightUpdater.get(level)
+        // FIXME
+        //val lightUpdater = LightUpdater.get(level)
 
         val renderer = checkNotNull(Minecraft.getInstance().levelRenderer) {
             "Expected level renderer in commit"
@@ -695,7 +695,10 @@ object GhostLightHackClient {
         changedSections.forEach {
             val section = SectionPos.of(it)
             renderer.setSectionDirtyWithNeighbors(section.x, section.y, section.z)
-            lightUpdater.onLightUpdate(LightLayer.BLOCK, it)
+
+            // FIXME the api is gone
+
+            //lightUpdater.onLightUpdate(LightLayer.BLOCK, it)
         }
     }
 

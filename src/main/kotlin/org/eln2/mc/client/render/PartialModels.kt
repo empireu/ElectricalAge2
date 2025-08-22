@@ -2,21 +2,17 @@ package org.eln2.mc.client.render
 
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import net.minecraftforge.server.ServerLifecycleHooks
-import org.eln2.mc.client.render.foundation.PolarModel
-import org.eln2.mc.client.render.foundation.WireConnectionModelPartial
-import org.eln2.mc.common.content.WireConnectionModel
-import org.eln2.mc.common.content.WirePatchType
-import org.eln2.mc.common.content.WirePolarPatchModel
+
 import org.eln2.mc.resource
 
-typealias RenderTypedPartialModel = DefaultRenderTypePartialModel<PartialModel>
-
 object PartialModels {
+    //FIXME
+
     val ELECTRICAL_WIRE_HUB = partialBlock("wire/electrical/hub")
-    val ELECTRICAL_WIRE_CONNECTION = wireConnection("wire/electrical/connection_hub", "wire/electrical/connection_full")
+    //val ELECTRICAL_WIRE_CONNECTION = wireConnection("wire/electrical/connection_hub", "wire/electrical/connection_full")
 
     val THERMAL_WIRE_HUB = partialBlock("wire/thermal/hub")
-    val THERMAL_WIRE_CONNECTION = wireConnection("wire/thermal/connection_hub", "wire/thermal/connection_full")
+    //val THERMAL_WIRE_CONNECTION = wireConnection("wire/thermal/connection_hub", "wire/thermal/connection_full")
 
     val BATTERY = partialBlock("battery/lead_acid")
 
@@ -37,7 +33,7 @@ object PartialModels {
     val SOLAR_PANEL_ONE_BLOCK = partialBlock("solar_panel_one_block")
 
     val POWER_GRID_INTERFACE = partialBlock("power_grid_interface")
-    val STANDARD_CONNECTION = patchPartial("standard_connection")
+    //val STANDARD_CONNECTION = patchPartial("standard_connection")
 
     val SMALL_GARDEN_LIGHT = partialBlock("small_garden_light/full")
     val TALL_GARDEN_LIGHT_EMITTER = partialBlock("tall_garden_light/emitter")
@@ -54,9 +50,10 @@ object PartialModels {
 
     fun partialBlock(path: String) = PartialModel.of(resource("block/$path"))
 
-    fun polarBlock(path: String) = PolarModel(resource("block/$path"))
+    //fun polarBlock(path: String) = PolarModel(resource("block/$path"))
 
-    fun wireConnection(connectionHub: String, connectionFull: String): WireConnectionModel {
+    // fixme
+    /*fun wireConnection(connectionHub: String, connectionFull: String): WireConnectionModel {
         val hubResourceLocation = resource("block/$connectionHub")
         val fullResourceLocation = resource("block/$connectionFull")
 
@@ -68,9 +65,9 @@ object PartialModels {
             WirePolarPatchModel(fullResourceLocation, WirePatchType.Inner),
             WirePolarPatchModel(fullResourceLocation, WirePatchType.Wrapped)
         )
-    }
+    }*/
 
-    fun patchPartial(connection: String): WireConnectionModelPartial {
+    /*fun patchPartial(connection: String): WireConnectionModelPartial {
         val resourceLocation = resource("block/$connection")
 
         return WireConnectionModelPartial(
@@ -78,7 +75,7 @@ object PartialModels {
             WirePolarPatchModel(resourceLocation, WirePatchType.Inner),
             WirePolarPatchModel(resourceLocation, WirePatchType.Wrapped)
         )
-    }
+    }*/
 
     fun initialize() {
         ServerLifecycleHooks.getCurrentServer()?.also { server ->
@@ -88,28 +85,3 @@ object PartialModels {
         }
     }
 }
-
-enum class DefaultRenderType {
-    Solid,
-    Cutout,
-    Transparent
-}
-
-// find better name
-data class DefaultRenderTypePartialModel<Model : PartialModel>(val model : Model, val type: DefaultRenderType)
-
-fun MaterialManager.group(type: DefaultRenderType): MaterialGroup = when(type) {
-    DefaultRenderType.Solid -> this.defaultSolid()
-    DefaultRenderType.Cutout -> this.defaultCutout()
-    DefaultRenderType.Transparent -> this.defaultTransparent()
-}
-
-fun<T : PartialModel> MaterialManager.model(partial: DefaultRenderTypePartialModel<T>): Instancer<ModelData> =
-    this.group(partial.type)
-    .material(Materials.TRANSFORMED)
-    .getModel(partial.model)
-
-fun<T : PartialModel> T.solid() = DefaultRenderTypePartialModel<T>(this, DefaultRenderType.Solid)
-fun<T : PartialModel> T.cutout() = DefaultRenderTypePartialModel<T>(this, DefaultRenderType.Cutout)
-fun<T : PartialModel> T.transparent() = DefaultRenderTypePartialModel<T>(this, DefaultRenderType.Transparent)
-

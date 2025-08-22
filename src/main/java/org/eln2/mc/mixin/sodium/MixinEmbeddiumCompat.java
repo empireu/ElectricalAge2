@@ -10,16 +10,16 @@ import net.minecraft.core.SectionPos;
 import net.minecraftforge.common.MinecraftForge;
 import org.eln2.mc.client.render.foundation.CachingLightReader;
 import org.eln2.mc.client.render.foundation.NeighborLightReader;
-import org.eln2.mc.common.grids.GridConnectionManagerClient;
-import org.eln2.mc.common.grids.GridRenderer;
 import org.embeddedt.embeddium.api.ChunkMeshEvent;
 import org.embeddedt.embeddium.api.MeshAppender;
-import org.embeddedt.embeddium.compat.EmbeddiumCompat;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+// FIXME fuck you, you also did breaking changes to your API
+/*
 
 @Mixin(EmbeddiumCompat.class)
 public abstract class MixinEmbeddiumCompat {
@@ -72,3 +72,4 @@ public abstract class MixinEmbeddiumCompat {
         });
     }
 }
+*/

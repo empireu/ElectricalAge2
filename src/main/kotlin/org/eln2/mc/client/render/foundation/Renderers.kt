@@ -2,23 +2,19 @@
 
 package org.eln2.mc.client.render.foundation
 
-import com.jozufozu.flywheel.api.MaterialManager
-import com.jozufozu.flywheel.api.instance.DynamicInstance
-import com.jozufozu.flywheel.backend.instancing.blockentity.BlockEntityInstance
-import com.jozufozu.flywheel.core.Materials
-import com.jozufozu.flywheel.core.PartialModel
-import com.jozufozu.flywheel.core.materials.FlatLit
-import com.jozufozu.flywheel.core.materials.model.ModelData
-import com.jozufozu.flywheel.util.Color
-import com.jozufozu.flywheel.util.transform.Transform
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
-import dev.engine_room.flywheel.api.visual.BlockEntityVisual
+import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.visual.DynamicVisual
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
+import dev.engine_room.flywheel.lib.instance.FlatLit
+import dev.engine_room.flywheel.lib.instance.InstanceTypes
+import dev.engine_room.flywheel.lib.instance.TransformedInstance
+import dev.engine_room.flywheel.lib.model.Models
+import dev.engine_room.flywheel.lib.model.baked.PartialModel
+import dev.engine_room.flywheel.lib.transform.Affine
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
-import it.unimi.dsi.fastutil.ints.IntArrayList
+import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import net.minecraft.client.Camera
 import net.minecraft.client.renderer.LevelRenderer
 import net.minecraft.client.renderer.RenderType
@@ -39,25 +35,15 @@ import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
-import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.buildDirectionTable
-import org.eln2.mc.client.render.DefaultRenderTypePartialModel
-import org.eln2.mc.client.render.model
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
-import org.eln2.mc.common.content.PartConnectionRenderInfo
-import org.eln2.mc.common.content.PartConnectionRenderInfoSetConsumer
-import org.eln2.mc.common.content.getPartConnectionAsContactSectionConnectionOrNull
-import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.parts.foundation.*
-import org.eln2.mc.common.specs.foundation.Spec
-import org.eln2.mc.common.specs.foundation.SpecPartRenderer
-import org.eln2.mc.common.specs.foundation.SpecRenderer
 import org.eln2.mc.extensions.cast
 import org.eln2.mc.extensions.rotationFast
-import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.mathematics.ArgbColor
 import org.eln2.mc.requireIsOnRenderThread
-import kotlin.math.PI
+import java.util.function.Consumer
 import kotlin.math.max
 import kotlin.math.sqrt
 
@@ -67,20 +53,19 @@ fun createPartInstance(
     part: Part<*>,
     scale: Vector3d = Vector3d.one,
     yRotation: Double = 0.0,
-) = multipart.materialManager
-        .defaultSolid()
-        .material(Materials.TRANSFORMED)
-        .getModel(model)
+) = multipart.context
+        .instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
         .createInstance()
-        .loadIdentity()
         .transformPart(multipart, part, scale, yRotation)
 
+/*
 fun createSpecInstance(
     part: SpecPartRenderer,
     model: PartialModel,
     spec: Spec<*>,
     scale: Vector3d = Vector3d.one,
-    yRotation: Double = 0.0
+    yRotation: Double = 0.0,
 ) = part.multipart.materialManager
         .defaultSolid()
         .material(Materials.TRANSFORMED)
@@ -88,6 +73,7 @@ fun createSpecInstance(
         .createInstance()
         .loadIdentity()
         .transformSpec(part, spec, scale, yRotation)
+*/
 
 /**
  * Part renderer with a single model.
@@ -95,7 +81,7 @@ fun createSpecInstance(
 open class BasicPartRenderer(val part: Part<*>, val model: PartialModel, val scale: Vector3d = Vector3d.one) : PartRenderer() {
     var yRotation = 0.0
 
-    private var modelInstance: ModelData? = null
+    private var modelInstance: TransformedInstance? = null
 
     override fun setupRendering() {
         buildInstance()
@@ -116,6 +102,7 @@ open class BasicPartRenderer(val part: Part<*>, val model: PartialModel, val sca
         modelInstance?.delete()
     }
 }
+/*
 
 fun CellPart<*, ConnectedPartRenderer>.getConnectedPartTag() = CompoundTag().also { compoundTag ->
     if(this.hasCell) {
@@ -131,6 +118,8 @@ fun CellPart<*, ConnectedPartRenderer>.getConnectedPartTag() = CompoundTag().als
         compoundTag.putIntArray("connections", values)
     }
 }
+*/
+/*
 
 fun Part<ConnectedPartRenderer>.handleConnectedPartTag(tag: CompoundTag) = this.renderer.acceptConnections(
     if(tag.contains("connections")) {
@@ -140,23 +129,24 @@ fun Part<ConnectedPartRenderer>.handleConnectedPartTag(tag: CompoundTag) = this.
         IntArray(0)
     }
 )
-
+*/
+/*
 data class WireConnectionModelPartial(
     val planar: PolarModel,
     val inner: PolarModel,
-    val wrapped: PolarModel
+    val wrapped: PolarModel,
 ) {
     val variants = mapOf(
         CellPartConnectionMode.Planar to planar,
         CellPartConnectionMode.Inner to inner,
         CellPartConnectionMode.Wrapped to wrapped
     )
-}
-
+}*/
+/*
 class ConnectedPartRenderer(
     val part: Part<*>,
     val body: PartialModel,
-    val connections: Map<Base6Direction3d, WireConnectionModelPartial>
+    val connections: Map<Base6Direction3d, WireConnectionModelPartial>,
 ) : PartRenderer(), PartConnectionRenderInfoSetConsumer, PartRendererStateStorage {
     constructor(part: Part<*>, body: PartialModel, connection: WireConnectionModelPartial) : this(
         part,
@@ -242,7 +232,7 @@ class ConnectedPartRenderer(
         bodyInstance?.delete()
         connectionInstances.values.forEach { it.delete() }
     }
-}
+}*/
 
 val partOffsetTable = buildDirectionTable {
     when(it) {
@@ -255,17 +245,18 @@ val partOffsetTable = buildDirectionTable {
     }
 }
 
-fun<T : Transform<T>> T.transformPart(instance: MultipartBlockEntityInstance, part: Part<*>, scale: Vector3d = Vector3d.one, yRotation: Double = 0.0): T {
+fun<T : Affine<T>> T.transformPart(instance: MultipartBlockEntityInstance, part: Part<*>, scale: Vector3d = Vector3d.one, yRotation: Double = 0.0): T {
     val (dx, dy, dz) = partOffsetTable[part.placement.face.get3DDataValue()]
 
     return this
-        .translate(instance.instancePosition)
+        .translate(instance.visualPosition) // todo is it right?
         .translate(dx, dy, dz)
-        .multiply(part.placement.face.rotationFast)
-        .rotateYRadians(yRotation + part.placement.facing.angle)
+        .rotate(part.placement.face.rotationFast)
+        .rotateY((yRotation + part.placement.facing.angle).toFloat())
         .scale(scale.x.toFloat(), scale.y.toFloat(), scale.z.toFloat())
         .translate(-0.5, 0.0, -0.5)
 }
+/*
 
 fun<T : Transform<T>> T.transformSpec(instance: SpecPartRenderer, spec: Spec<*>, scale: Vector3d, yRotation: Double): T {
     val (dx, dy, dz) = partOffsetTable[instance.specPart.placement.face.get3DDataValue()]
@@ -279,10 +270,11 @@ fun<T : Transform<T>> T.transformSpec(instance: SpecPartRenderer, spec: Spec<*>,
         .scale(scale.x.toFloat(), scale.y.toFloat(), scale.z.toFloat())
         .translate(-0.5, 0.0, -0.5)
 }
+*/
 
 class RadiantBodyColorBuilder {
-    var coldTint = Color(1f, 1f, 1f, 1f)
-    var hotTint = Color(1f, 0.1f, 0.1f, 1f)
+    var coldTint = ArgbColor(1f, 1f, 1f, 1f)
+    var hotTint = ArgbColor(1f, 0.1f, 0.1f, 1f)
     var coldTemperature = STANDARD_TEMPERATURE
     var hotTemperature = Quantity(800.0, CELSIUS)
 
@@ -301,8 +293,8 @@ fun defaultRadiantBodyColor(): ThermalTint {
 }
 
 class ThermalTint(
-    val coldTint: Color,
-    val hotTint: Color,
+    val coldTint: ArgbColor,
+    val hotTint: ArgbColor,
     val coldTemperature: Quantity<Temperature>,
     val hotTemperature: Quantity<Temperature>,
 ) {
@@ -328,13 +320,10 @@ class ThermalTint(
      * @param light The lower bound of the light value [[0, 15]]
      * @return The tint color to be rendered.
      * */
-    fun evaluateRGBL(temperature: Quantity<Temperature>, light: Double = 0.0): Color {
+    fun evaluateRGBL(temperature: Quantity<Temperature>, light: Double = 0.0): ArgbColor {
         val rgb = evaluate(temperature)
 
-        return Color(
-            rgb.red,
-            rgb.green,
-            rgb.blue,
+        return ArgbColor(
             max(
                 map(
                     light,
@@ -350,37 +339,41 @@ class ThermalTint(
                     0.0,
                     255.0
                 )
-            ).toInt().coerceIn(0, 255)
+            ).toInt().coerceIn(0, 255),
+            rgb.r,
+            rgb.g,
+            rgb.b
         )
     }
 }
 
 @ClientOnly
-class MultipartBlockEntityInstance(ctx : VisualizationContext, blockEntity : MultipartBlockEntity, partialTick: Float) :
-    AbstractBlockEntityVisual<MultipartBlockEntity>(ctx, blockEntity, partialTick),
-    DynamicVisual
-{
+class MultipartBlockEntityInstance(
+    ctx: VisualizationContext,
+    blockEntity: MultipartBlockEntity,
+    partialTick: Float,
+) : AbstractBlockEntityVisual<MultipartBlockEntity>(ctx, blockEntity, partialTick), SimpleDynamicVisual {
+    val context get() = this.visualizationContext
+
     private class Entry(val part: Part<*>) {
         var renderer = part.renderer
     }
 
     private val entries = ArrayList<Entry>()
 
-    override fun init() {
-        // When this is called on an already initialized renderer (e.g. changing graphics settings),
-        // we will get the parts in handlePartUpdates
+    init {
         blockEntity.bindRenderer(this)
     }
 
-    fun readBlockBrightness() = world.getBrightness(LightLayer.BLOCK, pos)
+    fun readBlockBrightness() = blockEntity.level!!.getBrightness(LightLayer.BLOCK, pos)
 
-    fun readSkyBrightness() = world.getBrightness(LightLayer.SKY, pos)
+    fun readSkyBrightness() = blockEntity.level!!.getBrightness(LightLayer.SKY, pos)
 
     /**
      * Called by flywheel at the start of each frame.
      * This applies any part updates (new or removed parts), and notifies the part renderers about the new frame.
      * */
-    override fun beginFrame() {
+    override fun beginFrame(ctx: DynamicVisual.Context) {
         handlePartUpdates()
 
         for (entry in entries) {
@@ -409,7 +402,7 @@ class MultipartBlockEntityInstance(ctx : VisualizationContext, blockEntity : Mul
      * Called by flywheel when a re-light is required.
      * This applies a re-light to all the part renderers.
      * */
-    override fun updateLight() {
+    override fun updateLight(partialTick: Float) {
         for (part in entries) {
             part.renderer.relight(RelightSource.BlockEvent)
         }
@@ -451,7 +444,7 @@ class MultipartBlockEntityInstance(ctx : VisualizationContext, blockEntity : Mul
      * Called by flywheel when this renderer is no longer needed.
      * This also calls a cleanup method on the part renderers.
      * */
-    override fun remove() {
+    override fun _delete() {
         for (entry in entries) {
             entry.part.destroyRenderer()
         }
@@ -464,65 +457,67 @@ class MultipartBlockEntityInstance(ctx : VisualizationContext, blockEntity : Mul
     /**
      * Relights the [models] using the block and skylight at this position.
      * */
-    fun relightModels(models: Iterable<FlatLit<*>?>) {
+    fun relightModels(models: Iterable<FlatLit?>) {
         val block = readBlockBrightness()
         val sky = readSkyBrightness()
 
         for (it in models) {
-            if(it != null) {
-                it.setBlockLight(block)
-                it.setSkyLight(sky)
-            }
+            it?.light(block, sky)
         }
     }
 
     /**
      * Relights the [models] using the block and skylight at this position.
      * */
-    fun relightModels(vararg models: FlatLit<*>?) = relightModels(models.asIterable())
+    fun relightModels(vararg models: FlatLit?) = relightModels(models.asIterable())
+
+    override fun collectCrumblingInstances(consumer: Consumer<Instance?>?) {
+        // TODO: do
+    }
 }
 
 fun interface PartRendererSupplier<T : Part<R>, R : PartRenderer> {
     fun create(part: T) : R
 }
-
+/*
 fun interface SpecRendererSupplier<T : Spec<R>, R : SpecRenderer> {
     fun create(part: T) : R
-}
+}*/
 
 class TestBlockEntityInstance<T : BlockEntity>(
-    materialManager: MaterialManager,
+    materialManager: VisualizationContext,
     blockEntity: T,
-    val model: DefaultRenderTypePartialModel<PartialModel>,
-    val transformer: (instance : ModelData, renderer : TestBlockEntityInstance<T>, blockEntity : T) -> Unit
-) : BlockEntityInstance<T>(materialManager, blockEntity) {
-    var instance: ModelData? = null
+    partialTick: Float,
+    val model: PartialModel,
+    val transformer: (instance: TransformedInstance, renderer: TestBlockEntityInstance<T>, blockEntity: T) -> Unit,
+) : AbstractBlockEntityVisual<T>(materialManager, blockEntity, partialTick) {
+    var instance: TransformedInstance? = null
 
-    override fun init() {
+    init {
         instance?.delete()
 
-        instance = materialManager
-            .model(model)
+        instance = visualizationContext.instancerProvider().instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
             .createInstance()
-            .loadIdentity()
 
         transformer(instance!!, this, blockEntity)
     }
 
-    override fun remove() {
+    override fun _delete() {
         instance?.delete()
     }
 
-    override fun updateLight() {
-        if(instance != null) {
-            relight(pos, instance)
-        }
+    override fun collectCrumblingInstances(consumer: Consumer<Instance?>?) {
+
+    }
+
+    override fun updateLight(partialTick: Float) {
+        relight(instance)
     }
 }
-
-/**
+/*
+*//**
  * Part renderer with a single model.
- * */
+ * *//*
 open class BasicSpecRenderer(val spec: Spec<*>, val model: PartialModel, val scale: Vector3d = Vector3d.one) : SpecRenderer() {
     var yRotation = 0.0
 
@@ -546,7 +541,7 @@ open class BasicSpecRenderer(val spec: Spec<*>, val model: PartialModel, val sca
     override fun remove() {
         modelInstance?.delete()
     }
-}
+}*/
 
 fun VertexConsumer.eln2SubmitUnshadedBakedModelQuads(
     renderType: RenderType,
@@ -557,7 +552,7 @@ fun VertexConsumer.eln2SubmitUnshadedBakedModelQuads(
     b: Float,
     a: Float,
     packedLight: Int = 15728880,
-    overlayTexture: Int = OverlayTexture.NO_OVERLAY
+    overlayTexture: Int = OverlayTexture.NO_OVERLAY,
 ) {
     requireIsOnRenderThread {
         "eln2SubmitUnshadedBakedModelQuads"
@@ -588,7 +583,7 @@ fun VertexConsumer.eln2SubmitUnshadedBakedModelQuads(
     model: BakedModel,
     rgba: RGBAFloat,
     packedLight: Int = 15728880,
-    overlayTexture: Int = OverlayTexture.NO_OVERLAY
+    overlayTexture: Int = OverlayTexture.NO_OVERLAY,
 ) = this.eln2SubmitUnshadedBakedModelQuads(renderType, pose, model, rgba.r, rgba.g, rgba.b, rgba.a, packedLight, overlayTexture)
 
 fun VertexConsumer.eln2SubmitVoxelShapeLines(pose: PoseStack.Pose, shape: VoxelShape, r: Float, g: Float, b: Float, a: Float) {

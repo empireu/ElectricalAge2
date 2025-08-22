@@ -1,6 +1,5 @@
 package org.eln2.mc.extensions
 
-import com.jozufozu.flywheel.util.transform.Translate
 import net.minecraft.core.Direction
 import net.minecraft.core.Vec3i
 import net.minecraft.nbt.CompoundTag
@@ -45,6 +44,8 @@ fun <T> ArrayList<T>.bind() = ArrayList<T>(this.size).also { it.addAll(this) }
 @Suppress("UNCHECKED_CAST")
 fun <K, V> HashMap<K, V>.bind() = this.clone() as HashMap<K, V>
 
+// FIXME
+/*
 fun <Self : Translate<Self>> Self.translateNormal(normal: Vec3, distance: Double) : Self {
     this.translate(normal * distance)
     return this
@@ -57,7 +58,7 @@ fun <Self : Translate<Self>> Self.translateNormal(normal: Vec3i, distance: Doubl
 
 fun <Self : Translate<Self>> Self.translateNormal(normalDirection: Direction, distance: Double) : Self {
     return this.translateNormal(normalDirection.normal, distance)
-}
+}*/
 
 fun PIDController.stateToNbt() : CompoundTag {
     val tag = CompoundTag()

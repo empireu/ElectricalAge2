@@ -4,59 +4,38 @@
 
 package org.eln2.mc.common.content
 
-import com.jozufozu.flywheel.backend.instancing.InstancedRenderRegistry
-import net.minecraft.client.gui.screens.MenuScreens
-import net.minecraft.core.Direction
-import net.minecraft.world.level.block.entity.BlockEntityType
-import net.minecraft.world.phys.AABB
-import net.minecraftforge.registries.RegistryObject
-import org.ageseries.libage.data.*
-import org.ageseries.libage.mathematics.evaluate
-import org.ageseries.libage.mathematics.geometry.BoundingBox3d
+import org.ageseries.libage.mathematics.frac
 import org.ageseries.libage.mathematics.geometry.Vector3d
-import org.ageseries.libage.mathematics.lerp
-import org.ageseries.libage.mathematics.map
-import org.ageseries.libage.sim.ChemicalElement
-import org.ageseries.libage.sim.ConnectionParameters
-import org.ageseries.libage.sim.Material
-import org.ageseries.libage.sim.ThermalMassDefinition
-import org.eln2.mc.Datasets
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.PartialModels
-import org.eln2.mc.client.render.cutout
-import org.eln2.mc.client.render.foundation.*
-import org.eln2.mc.client.render.solid
-import org.eln2.mc.common.*
-import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
-import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
-import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
-import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
-import org.eln2.mc.common.blocks.BlockRegistry.defineDelegateMap
-import org.eln2.mc.common.blocks.foundation.BigBlockItem
-import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
-import org.eln2.mc.common.cells.CellRegistry.cell
-import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.containers.ContainerRegistry.menu
-import org.eln2.mc.common.grids.*
-import org.eln2.mc.common.items.CreativeTabRegistry
+import org.eln2.mc.client.render.foundation.BasicPartRenderer
+import org.eln2.mc.common.LightFieldPrimitives
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.partAndItem
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
-import org.eln2.mc.common.parts.foundation.PartFactory
-import org.eln2.mc.common.parts.foundation.transformPartWorld
-import org.eln2.mc.common.specs.SpecRegistry.specAndItem
-import org.eln2.mc.common.specs.foundation.*
-import org.eln2.mc.data.Locators
-import org.eln2.mc.data.cylinderResistance
-import org.eln2.mc.data.directionPoleMapPlanar
-import org.eln2.mc.data.withDirectionRulePlanar
+import org.eln2.mc.extensions.celestialPass
 import org.eln2.mc.extensions.vector3d
-import org.eln2.mc.mathematics.Base6Direction3d
-import org.eln2.mc.mathematics.maskXY
 import org.eln2.mc.requireIsOnRenderThread
 import kotlin.math.PI
-import kotlin.math.abs
-import kotlin.math.pow
+import kotlin.math.cos
+
+// FIXME
+
+fun solarScan(normal: Vector3d) : Double {
+    var sum = 0.0
+
+    // Replaced integralScan with this because it is more representative of the discrete ticks
+    repeat(12000) {
+        val a = frac(it / 24000.0 - 0.25)
+        val b = 0.5 - cos(a * PI) / 2.0
+        val c = (a * 2.0 + b) / 3.0
+        val d = celestialPass(2.0 * PI * c)
+
+        sum += !Vector3d(d.re, d.im, 0.0) cosAngle normal
+    }
+
+    return 1.0 / sum
+}
 
 /**
  * Joint registry for content classes.
@@ -66,6 +45,36 @@ object Content {
      * Initializes the fields, in order to register the content.
      */
     fun initialize() {}
+
+    fun clientSetup() {
+        requireIsOnRenderThread()
+        setupScreens()
+        setupFlywheel()
+        LOG.info("Content client work completed")
+    }
+
+    private fun setupScreens() {
+        //FIXME
+        //MenuScreens.register(FURNACE_MENU.get(), ::FurnaceScreen)
+        //MenuScreens.register(HEAT_GENERATOR_MENU.get(), ::HeatGeneratorScreen)
+
+        //LOG.info("Client screens completed")
+    }
+
+    private fun setupFlywheel() {
+        // FIXME
+       /* listOf(GRID_PASS_THROUGH_POLE_BLOCK_ENTITY).forEach {
+            InstancedRenderRegistry.configure(it.get())
+                .alwaysSkipRender()
+                .factory { manager, entity ->
+                    TestBlockEntityInstance(manager, entity, PartialModels.POLE_TEMPORARY.solid()) { instance, renderer, _ ->
+                        instance.translate(renderer.instancePosition).scale(1f, 3f, 1f)
+                    }
+                }.apply()
+        }
+*/
+        LOG.info("Client flywheel completed")
+    }
 
     //#region Tools
 
@@ -77,7 +86,7 @@ object Content {
 
     private val UNINSULATED_WIRE_LIGHT_FIELD = LightFieldPrimitives.sourceOnlyStart(15)
 
-    val COPPER_THERMAL_WIRE = ThermalWireBuilder("thermal_wire_copper")
+   /* val COPPER_THERMAL_WIRE = ThermalWireBuilder("thermal_wire_copper")
         .apply {
             damageOptions = TemperatureExplosionBehaviorOptions(
                 temperatureThreshold = Quantity(1000.0, CELSIUS)
@@ -139,13 +148,13 @@ object Content {
         BasicPartProvider(Vector3d(1.0, 3.0 / 16.0, 1.0)) { ci ->
             RadiatorPart(ci, defaultRadiantBodyColor())
         }
-    )
+    )*/
 
     //#endregion
 
     //#region Creative Components
 
-    val VOLTAGE_SOURCE_CELL = cell(
+   /* val VOLTAGE_SOURCE_CELL = cell(
         "voltage_source",
         BasicCellProvider(::VoltageSourceCell)
     )
@@ -178,13 +187,13 @@ object Content {
             Vector3d(2.0 / 16.0),
             ::GroundSpec
         )
-    )
+    )*/
 
     //#endregion
 
     //#region Batteries
 
-    private fun leadAcid12Model(
+   /* private fun leadAcid12Model(
         capacity: Quantity<Energy>,
         internalResistance: Quantity<Resistance>,
         mass: Quantity<Mass>,
@@ -303,13 +312,13 @@ object Content {
                 }
             }
         }
-    )
+    )*/
 
     //#endregion
 
     //#region Basic Electrical Components
 
-    val RESISTOR_CELL = cell(
+    /*val RESISTOR_CELL = cell(
         "resistor",
         BasicCellProvider(::ResistorCell)
     )
@@ -321,12 +330,12 @@ object Content {
             ::ResistorPart
         )
     )
-
+*/
     //#endregion
 
     //#region Photovoltaics
 
-    val PHOTOVOLTAIC_GENERATOR_CELL = cell(
+  /*  val PHOTOVOLTAIC_GENERATOR_CELL = cell(
         "photovoltaic_generator",
         BasicCellProvider.setup {
             val model = PhotovoltaicModel(
@@ -356,12 +365,12 @@ object Content {
             )
         }
     )
-
+*/
     //#endregion
 
     //#region Lights
 
-    val POLAR_LIGHT_CELL = cell(
+ /*   val POLAR_LIGHT_CELL = cell(
         "polar_light",
         BasicCellProvider { ci ->
             PolarLightCell(ci, directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right))
@@ -491,7 +500,7 @@ object Content {
         deviationMax = PI / 4.0
     )
 
-
+*/
     private const val GARDEN_LIGHT_INITIAL_CHARGE = 0.5
 
     private fun gardenLightModel(strength: Double) = SolarLightModel(
@@ -522,7 +531,7 @@ object Content {
 
     private val TALL_GARDEN_LIGHT_MODEL = gardenLightModel(7.0)
 
-    val TALL_GARDEN_LIGHT = partAndItem(
+ /*   val TALL_GARDEN_LIGHT = partAndItem(
         "tall_garden_light",
         BasicPartProvider(Vector3d(3.0 / 16.0, 15.5 / 16.0, 3.0 / 16.0)) { ci ->
             SolarLightPart(
@@ -540,12 +549,12 @@ object Content {
             ).also { it.energy = GARDEN_LIGHT_INITIAL_CHARGE }
         }
     )
-
+*/
     //#endregion
 
     //#region Heat Generator
 
-    val HEAT_GENERATOR_CELL = cell(
+  /*  val HEAT_GENERATOR_CELL = cell(
         "heat_generator",
         BasicCellProvider.setup {
             val thermalDefinition = ThermalMassDefinition(
@@ -647,13 +656,13 @@ object Content {
         BasicPartProvider(Vector3d(4.0 / 16.0, 15.0 / 16.0, 14.0 / 16.0)) {
             ElectricalHeatEnginePart(it)
         }
-    )
+    )*/
 
     //#endregion
 
     //#region Furnaces
 
-    val FURNACE_CELL = cell(
+    /*val FURNACE_CELL = cell(
         "furnace_cell",
         BasicCellProvider {
             FurnaceCell(it, Base6Direction3d.Left, Base6Direction3d.Right)
@@ -669,11 +678,11 @@ object Content {
     )
 
     val FURNACE_MENU = menu("furnace_menu", ::FurnaceMenu)
-
+*/
     //#endregion
 
     //#region Grid
-
+/*
     val GRID_COPPER_TEXTURE = GridMaterials.gridAtlasSprite("copper_cable")
     val GRID_IRON_TEXTURE = GridMaterials.gridAtlasSprite("iron_cable")
 
@@ -884,31 +893,7 @@ object Content {
 
     //#endregion
 
-    fun clientSetup() {
-        requireIsOnRenderThread()
-        setupScreens()
-        setupFlywheel()
-        LOG.info("Content client work completed")
-    }
 
-    private fun setupScreens() {
-        MenuScreens.register(FURNACE_MENU.get(), ::FurnaceScreen)
-        MenuScreens.register(HEAT_GENERATOR_MENU.get(), ::HeatGeneratorScreen)
 
-        LOG.info("Client screens completed")
-    }
-
-    private fun setupFlywheel() {
-        listOf(GRID_PASS_THROUGH_POLE_BLOCK_ENTITY).forEach {
-            InstancedRenderRegistry.configure(it.get())
-                .alwaysSkipRender()
-                .factory { manager, entity ->
-                    TestBlockEntityInstance(manager, entity, PartialModels.POLE_TEMPORARY.solid()) { instance, renderer, _ ->
-                        instance.translate(renderer.instancePosition).scale(1f, 3f, 1f)
-                    }
-                }.apply()
-        }
-
-        LOG.info("Client flywheel completed")
-    }
+  */
 }
