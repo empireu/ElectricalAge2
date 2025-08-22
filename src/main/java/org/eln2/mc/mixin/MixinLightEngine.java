@@ -53,7 +53,7 @@ public abstract class MixinLightEngine {
         BlockGetter blockAccessor = chunkSource.getLevel();
 
         if(!(blockAccessor instanceof Level level)) {
-            Eln2Kt.getLOG().fatal("Unknown blockAccessor " + blockAccessor);
+            Eln2Kt.getLOG().fatal("Unknown blockAccessor {}", blockAccessor);
             return MixinLightEngine::ELN2$emptyGetter;
         }
 
@@ -67,11 +67,11 @@ public abstract class MixinLightEngine {
                 return GhostLightServer.createReader(level);
             }
             else {
-                Eln2Kt.getLOG().fatal("Invalid server " + server + " or thread " + Thread.currentThread());
+                Eln2Kt.getLOG().fatal("Invalid server {} or thread {}", server, Thread.currentThread());
             }
         }
         else {
-            Eln2Kt.getLOG().fatal("Invalid level " + level);
+            Eln2Kt.getLOG().fatal("Invalid level {}", level);
         }
 
         return MixinLightEngine::ELN2$emptyGetter;

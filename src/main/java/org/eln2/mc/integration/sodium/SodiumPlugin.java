@@ -29,7 +29,7 @@ public class SodiumPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        Eln2Kt.getLOG().warn("ELN2 Sodium compat: " + IS_SODIUM_LOADED.get());
+        Eln2Kt.getLOG().warn("ELN2 Sodium compat: {}", IS_SODIUM_LOADED.get());
         return IS_SODIUM_LOADED.get();
     }
 

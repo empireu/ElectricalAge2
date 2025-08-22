@@ -11,10 +11,8 @@ import net.minecraft.world.InteractionResult
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.*
-import org.eln2.mc.client.render.foundation.colorLerp
 import org.eln2.mc.client.render.foundation.transformPart
 import org.eln2.mc.common.*
-import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.integration.ComponentDisplay

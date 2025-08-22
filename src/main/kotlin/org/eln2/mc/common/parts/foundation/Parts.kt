@@ -29,7 +29,7 @@ import org.eln2.mc.*
 import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.BasicPartRenderer
-import org.eln2.mc.client.render.foundation.MultipartBlockEntityInstance
+import org.eln2.mc.client.render.foundation.MultipartBlockEntityVisual
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.network.serverToClient.BulkMessages
@@ -1061,7 +1061,7 @@ enum class RelightSource {
  * */
 @CrossThreadAccess
 abstract class PartRenderer {
-    lateinit var multipart: MultipartBlockEntityInstance
+    lateinit var multipart: MultipartBlockEntityVisual
         private set
 
     val hasMultipart get() = this::multipart.isInitialized
@@ -1071,7 +1071,7 @@ abstract class PartRenderer {
      * Called when the part is picked up by the [MultipartBlockEntity]'s renderer.
      * @param multipartInstance The multipart's renderer instance.
      * */
-    fun setupRendering(multipartInstance: MultipartBlockEntityInstance) {
+    fun setupRendering(multipartInstance: MultipartBlockEntityVisual) {
         this.multipart = multipartInstance
         setupRendering()
         relight(RelightSource.Setup)

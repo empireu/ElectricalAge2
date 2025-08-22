@@ -21,7 +21,6 @@ import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.core.Direction
-import net.minecraft.nbt.CompoundTag
 import net.minecraft.util.RandomSource
 import net.minecraft.world.level.LightLayer
 import net.minecraft.world.level.block.entity.BlockEntity
@@ -48,7 +47,7 @@ import kotlin.math.max
 import kotlin.math.sqrt
 
 fun createPartInstance(
-    multipart: MultipartBlockEntityInstance,
+    multipart: MultipartBlockEntityVisual,
     model: PartialModel,
     part: Part<*>,
     scale: Vector3d = Vector3d.one,
@@ -245,7 +244,7 @@ val partOffsetTable = buildDirectionTable {
     }
 }
 
-fun<T : Affine<T>> T.transformPart(instance: MultipartBlockEntityInstance, part: Part<*>, scale: Vector3d = Vector3d.one, yRotation: Double = 0.0): T {
+fun<T : Affine<T>> T.transformPart(instance: MultipartBlockEntityVisual, part: Part<*>, scale: Vector3d = Vector3d.one, yRotation: Double = 0.0): T {
     val (dx, dy, dz) = partOffsetTable[part.placement.face.get3DDataValue()]
 
     return this
@@ -299,7 +298,7 @@ class ThermalTint(
     val hotTemperature: Quantity<Temperature>,
 ) {
     fun evaluate(temperature: Quantity<Temperature>) =
-        colorLerp(
+        ArgbColor.lerp(
             from = coldTint,
             to = hotTint,
             blend = map(
@@ -348,7 +347,7 @@ class ThermalTint(
 }
 
 @ClientOnly
-class MultipartBlockEntityInstance(
+class MultipartBlockEntityVisual(
     ctx: VisualizationContext,
     blockEntity: MultipartBlockEntity,
     partialTick: Float,
@@ -462,7 +461,7 @@ class MultipartBlockEntityInstance(
         val sky = readSkyBrightness()
 
         for (it in models) {
-            it?.light(block, sky)
+            it?.light(block, sky)?.handle()?.setChanged()
         }
     }
 
@@ -581,10 +580,10 @@ fun VertexConsumer.eln2SubmitUnshadedBakedModelQuads(
     renderType: RenderType,
     pose: PoseStack.Pose, // this is not a pose, Minecraft, because it is not in SE(3)
     model: BakedModel,
-    rgba: RGBAFloat,
+    rgba: ArgbColor,
     packedLight: Int = 15728880,
     overlayTexture: Int = OverlayTexture.NO_OVERLAY,
-) = this.eln2SubmitUnshadedBakedModelQuads(renderType, pose, model, rgba.r, rgba.g, rgba.b, rgba.a, packedLight, overlayTexture)
+) = this.eln2SubmitUnshadedBakedModelQuads(renderType, pose, model, rgba.rF, rgba.gF, rgba.bF, rgba.aF, packedLight, overlayTexture)
 
 fun VertexConsumer.eln2SubmitVoxelShapeLines(pose: PoseStack.Pose, shape: VoxelShape, r: Float, g: Float, b: Float, a: Float) {
     shape.forAllEdges { pX1: Double, pY1: Double, pZ1: Double, pX2: Double, pY2: Double, pZ2: Double ->
@@ -621,15 +620,15 @@ fun VertexConsumer.eln2SubmitAABBLines(pose: PoseStack.Pose, aabb: BoundingBox3d
     )
 }
 
-fun VertexConsumer.eln2SubmitAABBLines(pose: PoseStack.Pose, aabb: BoundingBox3d, rgba: RGBAFloat) {
+fun VertexConsumer.eln2SubmitAABBLines(pose: PoseStack.Pose, aabb: BoundingBox3d, rgba: ArgbColor) {
     this.eln2SubmitAABBLines(
         pose,
         aabb,
-        rgba.r, rgba.g, rgba.b, rgba.a
+        rgba.rF, rgba.gF, rgba.bF, rgba.aF
     )
 }
 
-fun VertexConsumer.eln2SubmitOBBAtLevelStage(stack: PoseStack, obb: OrientedBoundingBox3d, rgba: RGBAFloat, camX: Double, camY: Double, camZ: Double) {
+fun VertexConsumer.eln2SubmitOBBAtLevelStage(stack: PoseStack, obb: OrientedBoundingBox3d, rgba: ArgbColor, camX: Double, camY: Double, camZ: Double) {
     stack.pushPose()
 
     stack.translate(-camX, -camY, -camZ)
@@ -644,14 +643,14 @@ fun VertexConsumer.eln2SubmitOBBAtLevelStage(stack: PoseStack, obb: OrientedBoun
         this,
         min.x, min.y, min.z,
         max.x, max.y, max.z,
-        rgba.r, rgba.g, rgba.b, rgba.a,
-        rgba.r, rgba.g, rgba.b
+        rgba.rF, rgba.gF, rgba.bF, rgba.aF,
+        rgba.rF, rgba.gF, rgba.bF
     )
 
     stack.popPose()
 }
 
-fun VertexConsumer.eln2SubmitOBBAtLevelStage(stack: PoseStack, obb: OrientedBoundingBox3d, rgba: RGBAFloat, camera: Camera) = this.eln2SubmitOBBAtLevelStage(
+fun VertexConsumer.eln2SubmitOBBAtLevelStage(stack: PoseStack, obb: OrientedBoundingBox3d, rgba: ArgbColor, camera: Camera) = this.eln2SubmitOBBAtLevelStage(
     stack, obb, rgba,
     camera.position.x, camera.position.y, camera.position.z
 )

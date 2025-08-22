@@ -26,23 +26,24 @@ import net.minecraftforge.fml.ModWorkManager
 import net.minecraftforge.network.NetworkEvent
 import net.minecraftforge.registries.ForgeRegistries
 import org.ageseries.libage.data.*
-import org.ageseries.libage.mathematics.*
+import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Ray3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.geometry.Vector3di
 import org.ageseries.libage.mathematics.geometry.dda
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
+import org.eln2.mc.common.GhostLightServer.canCreateHandle
 import org.eln2.mc.common.network.Networking
-import org.eln2.mc.data.*
+import org.eln2.mc.data.DefaultPooledObjectPolicy
+import org.eln2.mc.data.LinearObjectPool
+import org.eln2.mc.data.Locators
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.*
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.function.Supplier
-import kotlin.collections.component1
-import kotlin.collections.component2
 import kotlin.math.*
 
 /**
@@ -696,9 +697,8 @@ object GhostLightHackClient {
             val section = SectionPos.of(it)
             renderer.setSectionDirtyWithNeighbors(section.x, section.y, section.z)
 
-            // FIXME the api is gone
-
-            //lightUpdater.onLightUpdate(LightLayer.BLOCK, it)
+            // flywheel$onLightUpdate -> VisualizationManagerImpl#onLightUpdate
+            level.chunkSource.onLightUpdate(LightLayer.BLOCK, section)
         }
     }
 

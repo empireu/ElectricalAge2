@@ -44,7 +44,7 @@ import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
-import org.eln2.mc.client.render.foundation.MultipartBlockEntityInstance
+import org.eln2.mc.client.render.foundation.MultipartBlockEntityVisual
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.parts.PartRegistry
@@ -1293,7 +1293,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * I found that flywheel removes our instance sometimes, not sure why.
      * We use this to send the current parts to the renderer.
      * */
-    fun bindRenderer(instance: MultipartBlockEntityInstance) {
+    fun bindRenderer(instance: MultipartBlockEntityVisual) {
         partsInternal.values.forEach { part ->
             renderUpdates.add(PartUpdate(part, PartUpdateType.Add))
         }

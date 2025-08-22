@@ -2,28 +2,13 @@ package org.eln2.mc.client.render.foundation
 
 import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
-import net.minecraft.client.renderer.LightTexture
-import net.minecraft.client.renderer.block.model.BakedQuad
-import net.minecraft.client.resources.model.BakedModel
-import net.minecraft.core.Direction
-import net.minecraft.resources.ResourceLocation
-import net.minecraft.util.Mth
-import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.common.blocks.BlockRegistry
-import org.eln2.mc.extensions.bind
-import org.eln2.mc.resource
-import org.joml.Matrix3f
-import org.joml.Matrix4f
-import org.joml.Quaternionf
-import org.lwjgl.system.MemoryUtil
-import java.nio.ByteBuffer
-import java.nio.IntBuffer
 
 object FlywheelRegistry {
     fun initialize() {
         VisualizerRegistry.setVisualizer(
             BlockRegistry.MULTIPART_BLOCK_ENTITY.get(),
-            SimpleBlockEntityVisualizer(::MultipartBlockEntityInstance) { true })
+            SimpleBlockEntityVisualizer(::MultipartBlockEntityVisual) { true })
     }
 }
 

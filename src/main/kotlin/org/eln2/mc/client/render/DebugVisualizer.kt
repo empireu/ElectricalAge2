@@ -18,7 +18,6 @@ import org.eln2.mc.ClientOnly
 import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.ArgbColor
-import org.joml.Quaternionf
 import kotlin.math.PI
 
 @ClientOnly

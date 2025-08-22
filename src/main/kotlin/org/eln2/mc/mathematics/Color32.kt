@@ -1,11 +1,25 @@
 package org.eln2.mc.mathematics
 
 import net.minecraft.util.FastColor
+import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.mathematics.geometry.Vector4d
+import org.ageseries.libage.mathematics.lerp
 
+/**
+ * ARGB color with 8 bits per channel implemented as a value class.
+ * */
 @JvmInline
 value class ArgbColor(val data : Int) {
     companion object {
         val WHITE = ArgbColor(255, 255, 255,  255)
+
+        fun lerp(from: ArgbColor, to: ArgbColor, blend: Float): ArgbColor =
+            ArgbColor(
+                lerp(from.aF, to.aF, blend),
+                lerp(from.rF, to.rF, blend),
+                lerp(from.gF, to.gF, blend),
+                lerp(from.bF, to.bF, blend),
+            )
     }
 
     val a get() = FastColor.ARGB32.alpha(data)
@@ -50,6 +64,26 @@ value class ArgbColor(val data : Int) {
     constructor(r: Float, g: Float, b: Float) : this(1f, r, g, b)
 
     override fun toString() = "ARGB[$a, $r, $g, $b]"
+
+    fun toVector4d() = Vector4d(
+        aF.toDouble(),
+        rF.toDouble(),
+        gF.toDouble(),
+        bF.toDouble()
+    )
+
+    fun toRGBAVector4d() = Vector4d(
+        rF.toDouble(),
+        gF.toDouble(),
+        bF.toDouble(),
+        aF.toDouble()
+    )
+
+    fun toVector3d() = Vector3d(
+        rF.toDouble(),
+        gF.toDouble(),
+        bF.toDouble()
+    )
 }
 
 
