@@ -1,7 +1,5 @@
 package org.eln2.mc.common.parts.foundation
 
-import dev.engine_room.flywheel.api.visual.Visual
-import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -23,28 +21,29 @@ import net.minecraft.world.phys.shapes.VoxelShape
 import org.ageseries.libage.data.Locator
 import org.ageseries.libage.data.put
 import org.ageseries.libage.data.requireLocator
-import org.ageseries.libage.mathematics.geometry.Cylinder3d
-import org.ageseries.libage.mathematics.geometry.Line3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
-import org.eln2.mc.*
-import org.eln2.mc.client.render.DebugVisualizer
-import org.eln2.mc.client.render.PartialModels
-import org.eln2.mc.client.render.foundation.BasicPartRenderer
-import org.eln2.mc.client.render.foundation.MultipartBlockEntityVisual
+import org.eln2.mc.ClientOnly
+import org.eln2.mc.LOG
+import org.eln2.mc.ServerOnly
+import org.eln2.mc.client.render.foundation.AbstractPartVisual
+import org.eln2.mc.client.render.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
-import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.cells.foundation.Cell
+import org.eln2.mc.common.cells.foundation.CellAndContainerHandle
+import org.eln2.mc.common.cells.foundation.CellContainer
+import org.eln2.mc.common.cells.foundation.CellProvider
 import org.eln2.mc.common.network.serverToClient.BulkMessages
 import org.eln2.mc.common.network.serverToClient.PacketHandler
 import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.PartMessage
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.data.Locators
+import org.eln2.mc.directionByNormal
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.BlockPosInt
 import org.eln2.mc.mathematics.FacingDirection
 import org.joml.Vector3f
-import java.util.*
 
 object PartGeometry {
     fun transform(aabb: AABB, face: Direction): AABB = aabb
@@ -147,7 +146,7 @@ enum class PartUpdateType(val id: Int) {
     }
 }
 
-data class PartUpdate(val part: Part<*>, val type: PartUpdateType)
+data class PartUpdate(val part: Part, val type: PartUpdateType)
 
 data class PartUseInfo(val player: Player, val hand: InteractionHand)
 
@@ -158,10 +157,21 @@ data class PartCreateInfo(val id: ResourceLocation, val placement: PartPlacement
  * but up to 6 can exist in the same block space.
  * They are placed on the inner faces of a multipart container block space.
  * */
-abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
+abstract class Part(ci: PartCreateInfo) {
+    companion object {
+        fun createPartDropStack(id: ResourceLocation, saveTag: CompoundTag?, count: Int = 1): ItemStack {
+            val item = PartRegistry.getPartItem(id)
+            val stack = ItemStack(item, count)
+
+            stack.tag = saveTag
+
+            return stack
+        }
+    }
+
     val id = ci.id
     val placement = ci.placement
-    val partProviderShape = Shapes.create(modelBoundingBox)
+    val partProviderShape: VoxelShape = Shapes.create(modelBoundingBox)
     var isRemoved = false
 
     /**
@@ -175,17 +185,6 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
      * */
     open fun onCreated() { }
 
-    companion object {
-        fun createPartDropStack(id: ResourceLocation, saveTag: CompoundTag?, count: Int = 1): ItemStack {
-            val item = PartRegistry.getPartItem(id)
-            val stack = ItemStack(item, count)
-
-            stack.tag = saveTag
-
-            return stack
-        }
-    }
-
     /**
      * [PacketHandler] for server -> client packets.
      * It will receive messages if and only if the base [handleBulkMessage] gets called when a bulk message is received.
@@ -198,7 +197,7 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
     }
 
     @ClientOnly
-    protected open fun registerPackets(builder: PacketHandlerBuilder) {}
+    protected open fun registerPackets(builder: PacketHandlerBuilder) { }
 
     /**
      * Enqueues a bulk packet to be sent to the client.
@@ -255,6 +254,7 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
             placement.position
         )
 
+    // TODO store these?
     /**
      * Gets the model bounding box of the part, based on the provider's collision size,
      * */
@@ -267,7 +267,7 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
     val worldBoundingBox: AABB
         get() = getWorldBoundingBox(Vector3d.zero, placement.provider.placementCollisionSize)
 
-    fun translateShapeWorld(shape: VoxelShape) = shape.move(
+    fun translateShapeWorld(shape: VoxelShape): VoxelShape = shape.move(
         placement.position.x.toDouble(),
         placement.position.y.toDouble(),
         placement.position.z.toDouble()
@@ -455,63 +455,8 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
         this.setSyncDirty()
     }
 
-    @ClientOnly
-    protected var previousRenderer: Renderer? = null
-
-    @ClientOnly
-    protected var activeRenderer: Renderer? = null
-        private set
-
-    /**
-     * Gets the [Renderer] instance for this part.
-     * By default, it calls the [createRenderer] method, and stores the result.
-     * */
-    @ClientOnly
-    open val renderer: Renderer
-        get() {
-            if (!placement.level.isClientSide) {
-                error("Tried to get part renderer on non-client side!")
-            }
-
-            if (activeRenderer == null) {
-                activeRenderer = createRenderer().also {
-                    val previousRenderer = this.previousRenderer
-                    this.previousRenderer = null
-
-                    if(previousRenderer != null) {
-                        if(it is PartRendererStateStorage) {
-                            it.restoreSnapshot(previousRenderer)
-                        }
-                    }
-                }
-
-                initializeRenderer()
-            }
-
-            return activeRenderer!!
-        }
-
-    /**
-     * Creates a renderer instance for this part.
-     * @return A new instance of the part renderer.
-     * */
-    @ClientOnly
-    abstract fun createRenderer(): Renderer
-
-    /**
-     * Called to initialize the [Renderer], right after it is created by [createRenderer]
-     * */
-    @ClientOnly
-    open fun initializeRenderer() { }
-
-    @ClientOnly
-    open fun destroyRenderer() {
-        previousRenderer = activeRenderer
-        activeRenderer?.remove()
-        activeRenderer = null
-    }
+    abstract fun createVisual(ctx: MultipartVisualizationContext): AbstractPartVisual<*>
 }
-
 
 /**
  * This is a factory for parts. It also has the size used to validate placement (part-part collisions).
@@ -525,13 +470,13 @@ abstract class PartProvider {
      * @param context The placement context of this part.
      * @return Unique instance of the part.
      */
-    fun create(context: PartPlacementInfo): Part<*> {
+    fun create(context: PartPlacementInfo): Part {
         val instance = createCore(context)
         instance.onCreated()
         return instance
     }
 
-    protected abstract fun createCore(context: PartPlacementInfo): Part<*>
+    protected abstract fun createCore(context: PartPlacementInfo): Part
 
     /**
      * This is the size used to validate placement. This is different from baseSize, because
@@ -543,7 +488,7 @@ abstract class PartProvider {
 }
 
 fun interface PartFactory {
-    operator fun invoke(ci: PartCreateInfo) : Part<*>
+    operator fun invoke(ci: PartCreateInfo) : Part
 }
 
 /**
@@ -628,183 +573,183 @@ interface PartCellContainer : CellContainer {
     fun cellBindGameObjectsSuggested()
 }
 
-/**
- * This part represents a simulation object. It can become part of a cell network.
- * */
-abstract class CellPart<C: Cell, R : PartRenderer>(
-    ci: PartCreateInfo,
-    final override val provider: CellProvider<C>,
-) : Part<R>(ci), PartWithCell<C> {
-    companion object {
-        private const val GRAPH_ID = "GraphID"
-        private const val CUSTOM_SIMULATION_DATA = "SimulationData"
-    }
-
-    private var cellField: C? = null
-
-    /**
-     * The actual cell contained within this part.
-     * It only exists on the server (it is a simulation-only item)
-     * */
-    @ServerOnly
-    final override val cell: C get() = cellField
-        ?: error(
-            if(placement.level.isClientSide) {
-                "TRIED TO ACCESS PART CELL ON CLIENT"
-            } else {
-                "Tried to get spec cell before it is set $this"
-            }
-        )
-
-    final override val hasCell: Boolean
-        get() = cellField != null
-
-    val locator = placement.createLocator()
-
-    /**
-     * Used by the loading procedures.
-     * */
-    @ServerOnly
-    private lateinit var loadGraphId: UUID
-
-    @ServerOnly
-    private var customSimulationData: CompoundTag? = null
-
-    /**
-     * Creates the cell, sets [Cell.container] and notifies via [onCellAcquired].
-     * */
-    override fun onPlaced() {
-        cellField = provider.create(locator, CellEnvironment.evaluate(placement.level, locator))
-        cell.container = placement.multipart
-        onCellAcquired()
-    }
-
-    /**
-     * Notifies the cell that the container has been removed.
-     * */
-    override fun onUnloaded() {
-        if (hasCell) {
-            requireIsOnServerThread { "onUnloaded part cell is null $this" }
-            cell.onContainerUnloading()
-            cell.container = null
-            cell.onContainerUnloaded()
-            cell.unbindGameObjects()
-            onCellReleased()
-        }
-    }
-
-    /**
-     * The saved data includes the Graph ID. This is used to fetch the cell after loading.
-     * */
-    override fun getServerSaveTag(): CompoundTag? {
-        if (!hasCell) {
-            LOG.fatal("Part saving, but cell not initialized!")
-            return null
-        }
-
-        val tag = CompoundTag()
-
-        tag.putUUID(GRAPH_ID, cell.graph.id)
-
-        saveCustomSimData()?.also {
-            tag.put(CUSTOM_SIMULATION_DATA, it)
-        }
-
-        return tag
-    }
-
-    /**
-     * This method gets the graph ID from the saved data.
-     * The level is not available at this point, so we defer cell fetching to the onLoaded method.
-     * */
-    override fun loadServerSaveTag(tag: CompoundTag) {
-        if (placement.level.isClientSide) {
-            return
-        }
-
-        if (tag.contains(GRAPH_ID)) {
-            loadGraphId = tag.getUUID(GRAPH_ID)
-        } else {
-            LOG.info("Part at $locator did not have saved data")
-        }
-
-        tag.useSubTagIfPreset(CUSTOM_SIMULATION_DATA) { customSimulationData = it }
-    }
-
-    /**
-     * This is the final stage of loading. We have the level, so we can fetch the cell using the saved data.
-     * */
-    @Suppress("UNCHECKED_CAST")
-    override fun onLoaded() {
-        if (placement.level.isClientSide) {
-            return
-        }
-
-        cellField = if (!this::loadGraphId.isInitialized) {
-            LOG.fatal("Part cell not initialized!")
-            // Should we blow up the game or make the cell fresh?
-            provider.create(locator, CellEnvironment.evaluate(placement.level, locator))
-        } else {
-            CellGraphManager.getFor(placement.level as ServerLevel)
-                .getGraph(loadGraphId)
-                .getCellByLocator(locator) as C
-        }
-
-        cell.container = placement.multipart
-        cell.onContainerLoaded()
-
-        if (this.customSimulationData != null) {
-            loadCustomSimDataPre(customSimulationData!!)
-        }
-
-        onCellAcquired()
-
-        if (this.customSimulationData != null) {
-            loadCustomSimDataPost(customSimulationData!!)
-            this.customSimulationData = null
-        }
-
-        cell.bindGameObjects(listOf(this, placement.multipart))
-    }
-
-    /**
-     * Saves custom data to the simulation storage (separate from the block entity and chunks)
-     * */
-    open fun saveCustomSimData(): CompoundTag? {
-        return null
-    }
-
-    /**
-     * Loads custom data from the simulation storage, just before the cell is acquired.
-     * */
-    open fun loadCustomSimDataPre(tag: CompoundTag) {}
-
-    /**
-     * Loads custom data from the simulation storage, after the cell is acquired.
-     * */
-    open fun loadCustomSimDataPost(tag: CompoundTag) {}
-
-    override fun onConnected(remoteCell: Cell) {}
-
-    override fun onDisconnected(remoteCell: Cell) {}
-
-    open fun onCellAcquired() {}
-    open fun onCellReleased() {}
-
-    override val allowPlanarConnections = true
-    override val allowInnerConnections = true
-    override val allowWrappedConnections = true
-}
-
-open class BasicCellPart<C: Cell, R : PartRenderer>(
-    ci: PartCreateInfo,
-    provider: CellProvider<C>,
-    private val rendererFactory: PartRendererFactory<R>,
-) : CellPart<C, R>(ci, provider) {
-    override fun createRenderer(): R {
-        return rendererFactory.create(this)
-    }
-}
+///**
+// * This part represents a simulation object. It can become part of a cell network.
+// * */
+//abstract class CellPart<C: Cell, R : PartRenderer>(
+//    ci: PartCreateInfo,
+//    final override val provider: CellProvider<C>,
+//) : Part(ci), PartWithCell<C> {
+//    companion object {
+//        private const val GRAPH_ID = "GraphID"
+//        private const val CUSTOM_SIMULATION_DATA = "SimulationData"
+//    }
+//
+//    private var cellField: C? = null
+//
+//    /**
+//     * The actual cell contained within this part.
+//     * It only exists on the server (it is a simulation-only item)
+//     * */
+//    @ServerOnly
+//    final override val cell: C get() = cellField
+//        ?: error(
+//            if(placement.level.isClientSide) {
+//                "TRIED TO ACCESS PART CELL ON CLIENT"
+//            } else {
+//                "Tried to get spec cell before it is set $this"
+//            }
+//        )
+//
+//    final override val hasCell: Boolean
+//        get() = cellField != null
+//
+//    val locator = placement.createLocator()
+//
+//    /**
+//     * Used by the loading procedures.
+//     * */
+//    @ServerOnly
+//    private lateinit var loadGraphId: UUID
+//
+//    @ServerOnly
+//    private var customSimulationData: CompoundTag? = null
+//
+//    /**
+//     * Creates the cell, sets [Cell.container] and notifies via [onCellAcquired].
+//     * */
+//    override fun onPlaced() {
+//        cellField = provider.create(locator, CellEnvironment.evaluate(placement.level, locator))
+//        cell.container = placement.multipart
+//        onCellAcquired()
+//    }
+//
+//    /**
+//     * Notifies the cell that the container has been removed.
+//     * */
+//    override fun onUnloaded() {
+//        if (hasCell) {
+//            requireIsOnServerThread { "onUnloaded part cell is null $this" }
+//            cell.onContainerUnloading()
+//            cell.container = null
+//            cell.onContainerUnloaded()
+//            cell.unbindGameObjects()
+//            onCellReleased()
+//        }
+//    }
+//
+//    /**
+//     * The saved data includes the Graph ID. This is used to fetch the cell after loading.
+//     * */
+//    override fun getServerSaveTag(): CompoundTag? {
+//        if (!hasCell) {
+//            LOG.fatal("Part saving, but cell not initialized!")
+//            return null
+//        }
+//
+//        val tag = CompoundTag()
+//
+//        tag.putUUID(GRAPH_ID, cell.graph.id)
+//
+//        saveCustomSimData()?.also {
+//            tag.put(CUSTOM_SIMULATION_DATA, it)
+//        }
+//
+//        return tag
+//    }
+//
+//    /**
+//     * This method gets the graph ID from the saved data.
+//     * The level is not available at this point, so we defer cell fetching to the onLoaded method.
+//     * */
+//    override fun loadServerSaveTag(tag: CompoundTag) {
+//        if (placement.level.isClientSide) {
+//            return
+//        }
+//
+//        if (tag.contains(GRAPH_ID)) {
+//            loadGraphId = tag.getUUID(GRAPH_ID)
+//        } else {
+//            LOG.info("Part at $locator did not have saved data")
+//        }
+//
+//        tag.useSubTagIfPreset(CUSTOM_SIMULATION_DATA) { customSimulationData = it }
+//    }
+//
+//    /**
+//     * This is the final stage of loading. We have the level, so we can fetch the cell using the saved data.
+//     * */
+//    @Suppress("UNCHECKED_CAST")
+//    override fun onLoaded() {
+//        if (placement.level.isClientSide) {
+//            return
+//        }
+//
+//        cellField = if (!this::loadGraphId.isInitialized) {
+//            LOG.fatal("Part cell not initialized!")
+//            // Should we blow up the game or make the cell fresh?
+//            provider.create(locator, CellEnvironment.evaluate(placement.level, locator))
+//        } else {
+//            CellGraphManager.getFor(placement.level as ServerLevel)
+//                .getGraph(loadGraphId)
+//                .getCellByLocator(locator) as C
+//        }
+//
+//        cell.container = placement.multipart
+//        cell.onContainerLoaded()
+//
+//        if (this.customSimulationData != null) {
+//            loadCustomSimDataPre(customSimulationData!!)
+//        }
+//
+//        onCellAcquired()
+//
+//        if (this.customSimulationData != null) {
+//            loadCustomSimDataPost(customSimulationData!!)
+//            this.customSimulationData = null
+//        }
+//
+//        cell.bindGameObjects(listOf(this, placement.multipart))
+//    }
+//
+//    /**
+//     * Saves custom data to the simulation storage (separate from the block entity and chunks)
+//     * */
+//    open fun saveCustomSimData(): CompoundTag? {
+//        return null
+//    }
+//
+//    /**
+//     * Loads custom data from the simulation storage, just before the cell is acquired.
+//     * */
+//    open fun loadCustomSimDataPre(tag: CompoundTag) {}
+//
+//    /**
+//     * Loads custom data from the simulation storage, after the cell is acquired.
+//     * */
+//    open fun loadCustomSimDataPost(tag: CompoundTag) {}
+//
+//    override fun onConnected(remoteCell: Cell) {}
+//
+//    override fun onDisconnected(remoteCell: Cell) {}
+//
+//    open fun onCellAcquired() {}
+//    open fun onCellReleased() {}
+//
+//    override val allowPlanarConnections = true
+//    override val allowInnerConnections = true
+//    override val allowWrappedConnections = true
+//}
+//
+//open class BasicCellPart<C: Cell, R : PartRenderer>(
+//    ci: PartCreateInfo,
+//    provider: CellProvider<C>,
+//    private val rendererFactory: PartRendererFactory<R>,
+//) : CellPart<C, R>(ci, provider) {
+//    override fun createRenderer(): R {
+//        return rendererFactory.create(this)
+//    }
+//}
 
 /**
  * A connection mode represents the way two cells may be connected.
@@ -1061,69 +1006,10 @@ enum class RelightSource {
  * The various methods may be called from separate threads.
  * Thread safety must be guaranteed by the implementation.
  * */
-@CrossThreadAccess
-abstract class PartRenderer {
-    lateinit var multipart: MultipartBlockEntityVisual
-        private set
+// todo move to the new visual
 
-    val hasMultipart get() = this::multipart.isInitialized
 
-    /**
-     * Called when the part is picked up by the [MultipartBlockEntity]'s renderer.
-     * @param multipartInstance The multipart's renderer instance.
-     * */
-    fun setupRendering(multipartInstance: MultipartBlockEntityVisual) {
-        this.multipart = multipartInstance
-        setupRendering()
-        relight(RelightSource.Setup)
-    }
-
-    /**
-     * Called to set up rendering, when the [multipart] has been acquired.
-     * */
-    protected open fun setupRendering() { }
-
-    /**
-     * Called when a light update occurs, or this renderer is set up (after [setupRendering]).
-     * Models should be re-lit here
-     * */
-    open fun relight(source: RelightSource) { }
-
-    /**
-     * Called each frame.
-     * This method may be used to play animations or to apply general per-frame updates.
-     * */
-    open fun beginFrame() { }
-
-    /**
-     * Called when the renderer is no longer required **OR** the rendering pipeline/backend/whatever is re-created. In that case, the renderer might be re-created just after this one is destroyed.
-     * As an example, this will happen if the user switches flywheel backends, (I think) when the user changes some graphics settings, and it can also happen when the floating origin shifts.
-     * All resources must be released here. If you have any data that you stored in this renderer but not in the part, and you would like to get it back, implement [PartRendererStateStorage].
-     * */
-    open fun remove() { }
-}
-
-/**
- * Helper interface for renderers that store state in the [PartRenderer] instance.
- * */
-interface PartRendererStateStorage {
-    /**
-     * Called to restore the information from a previous renderer instance.
-     * Could happen when the renderer is re-created, after being destroyed. Could happen when origin shifts, etc. Passed as [PartRenderer] because the type can actually change (e.g. if switching backends and the part chooses to create another renderer. Example: the wire)
-     * */
-    fun restoreSnapshot(renderer: PartRenderer)
-}
-
-fun interface PartRendererFactory<R : PartRenderer> {
-    fun create(part: Part<R>): R
-}
-
-fun basicPartRenderer(model: PartialModel): PartRendererFactory<BasicPartRenderer> {
-    return PartRendererFactory { part ->
-        BasicPartRenderer(part, model)
-    }
-}
-
+/*
 class SavingLifecycleTestPart(ci: PartCreateInfo) : Part<BasicPartRenderer>(ci) {
     override fun createRenderer(): BasicPartRenderer {
         return BasicPartRenderer(this, PartialModels.GROUND)
@@ -1168,7 +1054,7 @@ class SavingLifecycleTestPart(ci: PartCreateInfo) : Part<BasicPartRenderer>(ci) 
             0.5
         )).withinScopeOf(this)
     }
-}
+}*/
 
 // FIXME
 

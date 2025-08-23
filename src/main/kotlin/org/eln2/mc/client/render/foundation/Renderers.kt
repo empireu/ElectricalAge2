@@ -8,6 +8,7 @@ import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.task.Plan
 import dev.engine_room.flywheel.api.visual.DynamicVisual
 import dev.engine_room.flywheel.api.visual.LightUpdatedVisual
+import dev.engine_room.flywheel.api.visual.SectionTrackedVisual
 import dev.engine_room.flywheel.api.visual.TickableVisual
 import dev.engine_room.flywheel.api.visual.Visual
 import dev.engine_room.flywheel.api.visualization.VisualEmbedding
@@ -28,10 +29,10 @@ import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.core.Direction
 import net.minecraft.core.Vec3i
 import net.minecraft.util.RandomSource
-import net.minecraft.world.level.LightLayer
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.phys.shapes.Shapes
 import net.minecraft.world.phys.shapes.VoxelShape
+import net.minecraftforge.client.model.data.ModelData
 import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
@@ -40,11 +41,11 @@ import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
-import org.eln2.mc.ClientOnly
-import org.eln2.mc.LOG
 import org.eln2.mc.buildDirectionTable
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
-import org.eln2.mc.common.parts.foundation.*
+import org.eln2.mc.common.parts.foundation.Part
+import org.eln2.mc.common.parts.foundation.PartUpdateType
+import org.eln2.mc.common.parts.foundation.TickablePart
 import org.eln2.mc.extensions.cast
 import org.eln2.mc.extensions.rotationFast
 import org.eln2.mc.mathematics.ArgbColor
@@ -54,16 +55,16 @@ import kotlin.math.max
 import kotlin.math.sqrt
 
 fun createPartInstance(
-    multipart: MultipartBlockEntityVisual,
+    ctx: MultipartVisualizationContext,
     model: PartialModel,
-    part: Part<*>,
+    part: Part,
     scale: Vector3d = Vector3d.one,
     yRotation: Double = 0.0,
-) = multipart.context
-        .instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
-        .createInstance()
-        .transformPart(multipart, part, scale, yRotation)
+): TransformedInstance = ctx
+    .instancerProvider()
+    .instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
+    .createInstance()
+    .partTransformation(ctx.parent, part, scale, yRotation)
 
 /*
 fun createSpecInstance(
@@ -84,27 +85,24 @@ fun createSpecInstance(
 /**
  * Part renderer with a single model.
  * */
-open class BasicPartRenderer(val part: Part<*>, val model: PartialModel, val scale: Vector3d = Vector3d.one) : PartRenderer() {
-    var yRotation = 0.0
-
+open class BasicPartVisual<P : Part>(
+    ctx: MultipartVisualizationContext,
+    part: P,
+    val model: PartialModel,
+    val scale: Vector3d = Vector3d.one,
+    val rotation: Double = 0.0,
+) : AbstractPartVisual<P>(ctx, part) {
     private var modelInstance: TransformedInstance? = null
 
-    override fun setupRendering() {
-        buildInstance()
+    init {
+        modelInstance = createPartInstance(ctx, model, part, scale, rotation)
     }
 
-    fun buildInstance() {
-        modelInstance?.delete()
-        modelInstance = createPartInstance(multipart, model, part, scale, yRotation)
+    override fun updateLight(partialTick: Float) {
+        visualizationContext.parent.relightInstances(modelInstance)
     }
 
-    override fun relight(source: RelightSource) {
-        multipart.relightModels(modelInstance)
-    }
-
-    override fun beginFrame() {}
-
-    override fun remove() {
+    override fun _delete() {
         modelInstance?.delete()
     }
 }
@@ -251,7 +249,7 @@ val partOffsetTable = buildDirectionTable {
     }
 }
 
-fun<T : Affine<T>> T.transformPart(instance: MultipartBlockEntityVisual, part: Part<*>, scale: Vector3d = Vector3d.one, yRotation: Double = 0.0): T {
+fun<T : Affine<T>> T.partTransformation(instance: MultipartBlockEntityVisual2, part: Part, scale: Vector3d = Vector3d.one, yRotation: Double = 0.0): T {
     val (dx, dy, dz) = partOffsetTable[part.placement.face.get3DDataValue()]
 
     return this
@@ -353,9 +351,8 @@ class ThermalTint(
     }
 }
 
-abstract class PartVisual(val part: Part, val visualizationContext: VisualizationContext) : Visual {
-    protected val instancerProvider = visualizationContext.instancerProvider()
 
+abstract class AbstractPartVisual<T : Part>(val visualizationContext: MultipartVisualizationContext, val part: T) : Visual, LightUpdatedVisual {
     private var deleted = false
 
     override fun update(partialTick: Float) { }
@@ -369,22 +366,33 @@ abstract class PartVisual(val part: Part, val visualizationContext: Visualizatio
         deleted = true
     }
 
-    protected fun _delete() { }
+    override fun setSectionCollector(collector: SectionTrackedVisual.SectionCollector?) {
+        // Should be already done by the parent, right?
+    }
+
+    @Suppress("FunctionName") // Keep consistent with the flywheel API
+    protected abstract fun _delete()
 }
+
+class MultipartVisualizationContext(
+    ctx: VisualizationContext,
+    val parent: MultipartBlockEntityVisual2,
+) : VisualizationContext by ctx
 
 class MultipartBlockEntityVisual2(
     ctx: VisualizationContext,
     blockEntity: MultipartBlockEntity,
-    partialTick: Float
+    partialTick: Float,
 ): AbstractBlockEntityVisual<MultipartBlockEntity>(ctx, blockEntity, partialTick), DynamicVisual, TickableVisual, LightUpdatedVisual {
-    val parts = ArrayList<Part<*>>()
-    val embedding: VisualEmbedding
-    val storage = SpecialVisualStorage<PartVisual>()
+    val parts = HashMap<Part, AbstractPartVisual<*>>()
+    val embedding: VisualEmbedding = ctx.createEmbedding(Vec3i.ZERO)
+    val multipartVisualizationContext = MultipartVisualizationContext(embedding, this)
+    val storage = SpecialVisualStorage<AbstractPartVisual<*>>()
 
     init {
-        embedding = ctx.createEmbedding(Vec3i.ZERO)
-
-        //blockEntity.bindRenderer()
+        blockEntity.parts.values.forEach {
+            addPart(it, partialTick)
+        }
     }
 
     override fun _delete() {
@@ -392,18 +400,20 @@ class MultipartBlockEntityVisual2(
     }
 
     override fun collectCrumblingInstances(consumer: Consumer<Instance?>?) {
-        // add the part being broken
+        // add the part being broken TODO
     }
 
     override fun updateLight(partialTick: Float) {
-        TODO("Not yet implemented")
+        parts.values.forEach {
+            it.updateLight(partialTick) // TODO examine what he says about safety
+        }
     }
 
-    override fun planFrame(): Plan<DynamicVisual.Context> = storage.dynamicVisuals
-
-    override fun planTick(): Plan<TickableVisual.Context> = RunnablePlan
+    override fun planFrame(): Plan<DynamicVisual.Context> = RunnablePlan
         .of(::handlePartUpdates)
-        .then(storage.tickableVisuals)
+        .then(storage.dynamicVisuals)
+
+    override fun planTick(): Plan<TickableVisual.Context> = storage.tickableVisuals
 
     /**
      * This method is called per tick. But it runs in parallel with the other multipart visuals.
@@ -412,7 +422,7 @@ class MultipartBlockEntityVisual2(
      *  - New parts added to the multipart.
      *  - Parts that were destroyed.
      * */
-    private fun handlePartUpdates(ctx: TickableVisual.Context) {
+    private fun handlePartUpdates(ctx: DynamicVisual.Context) {
         while (true) {
             val update = blockEntity.renderUpdates.poll()
                 ?: break
@@ -421,162 +431,173 @@ class MultipartBlockEntityVisual2(
 
             when (update.type) {
                 PartUpdateType.Add -> {
-                    if (!parts.contains(part)) {
-                        parts.add(part)
-                        part.renderer.setupRendering(this)
-                    }
+                    addPart(part, ctx.partialTick())
 
                     // Can get duplicate adds if the client first receives the parts (and clientAddPart enqueues updates)
                     // but just then the multipart renderer gets created and calls bindRenderer, which duplicate enqueues some more updates
                 }
                 PartUpdateType.Remove -> {
-                    parts.remove(part)
-                    part.destroyRenderer()
-                }
-            }
-        }
-    }
-}
+                    val visual = parts.remove(part)
 
-
-@ClientOnly
-class MultipartBlockEntityVisual(
-    ctx: VisualizationContext,
-    blockEntity: MultipartBlockEntity,
-    partialTick: Float
-) : AbstractBlockEntityVisual<MultipartBlockEntity>(ctx, blockEntity, partialTick), DynamicVisual {
-    val context get() = this.visualizationContext
-
-    private class Entry(val part: Part<*>) {
-        var renderer = part.renderer
-    }
-
-    private val entries = ArrayList<Entry>()
-
-    init {
-        blockEntity.bindRenderer(this)
-    }
-
-    fun readBlockBrightness() = blockEntity.level!!.getBrightness(LightLayer.BLOCK, pos)
-
-    fun readSkyBrightness() = blockEntity.level!!.getBrightness(LightLayer.SKY, pos)
-
-    override fun planFrame(): Plan<DynamicVisual.Context> {
-        LOG.warn("planFrame called")
-
-        return RunnablePlan.of(::beginFrame)
-    }
-
-    /**
-     * Called by flywheel at the start of each frame.
-     * This applies any part updates (new or removed parts), and notifies the part renderers about the new frame.
-     * */
-    fun beginFrame(ctx: DynamicVisual.Context) {
-        handlePartUpdates()
-
-        for (entry in entries) {
-            val part = entry.part
-            val actualRenderer = part.renderer
-
-            /**
-             * This is a frakking pinch.
-             * Flywheel creates new instances when breaking in survival, to render the whatever as crumbling.
-             * But it doesn't destroy the old instance, and after crumbling is done, the crumbling instance gets destroyed,
-             * which causes the part renderers get destroyed in [Part.destroyRenderer], and then flywheel dispatches beginFrame to that old instance,
-             * and we need to do extra work to see if the part's renderer changed, and we need to re-frak it the old renderer (this one).
-             * Also, I don't really see how we can make crumbling only affect a part, since flywheel doesn't tell us if the renderer is for crumbling or anything like that
-             * probably need some sort of mixin?
-             * */
-            if(actualRenderer !== entry.renderer) {
-                actualRenderer.setupRendering(this)
-                entry.renderer = actualRenderer
-            }
-
-            actualRenderer.beginFrame()
-        }
-    }
-
-    /**
-     * Called by flywheel when a re-light is required.
-     * This applies a re-light to all the part renderers.
-     * */
-    override fun updateLight(partialTick: Float) {
-        for (part in entries) {
-            part.renderer.relight(RelightSource.BlockEvent)
-        }
-    }
-
-    /**
-     * This method is called at the start of each frame.
-     * It dequeues all the part updates that were handled on the game thread.
-     * These updates may indicate:
-     *  - New parts added to the multipart.
-     *  - Parts that were destroyed.
-     * */
-    private fun handlePartUpdates() {
-        while (true) {
-            val update = blockEntity.renderUpdates.poll()
-                ?: break
-
-            val part = update.part
-
-            when (update.type) {
-                PartUpdateType.Add -> {
-                    if (entries.none { it.part === part }) {
-                        entries.add(Entry(part))
-                        part.renderer.setupRendering(this)
+                    if(visual != null) {
+                        storage.remove(visual)
+                        visual.delete()
                     }
-
-                    // Can get duplicate adds if the client first receives the parts (and clientAddPart enqueues updates)
-                    // but just then the multipart renderer gets created and calls bindRenderer, which duplicate enqueues some more updates
-                }
-                PartUpdateType.Remove -> {
-                    entries.removeIf { it.part === part }
-                    part.destroyRenderer()
                 }
             }
         }
     }
 
-    /**
-     * Called by flywheel when this renderer is no longer needed.
-     * This also calls a cleanup method on the part renderers.
-     * */
-    override fun _delete() {
-        for (entry in entries) {
-            entry.part.destroyRenderer()
-        }
+    private fun addPart(part: Part, partialTick: Float) {
+        if (!parts.contains(part)) {
+            val visual = part.createVisual(multipartVisualizationContext)
+            parts[part] = visual
 
-        blockEntity.unbindRenderer()
-    }
-
-    // Nullable for convenience
-
-    /**
-     * Relights the [models] using the block and skylight at this position.
-     * */
-    fun relightModels(models: Iterable<FlatLit?>) {
-        val block = readBlockBrightness()
-        val sky = readSkyBrightness()
-
-        for (it in models) {
-            it?.light(block, sky)?.handle()?.setChanged()
+            visual.updateLight(partialTick)
         }
     }
 
-    /**
-     * Relights the [models] using the block and skylight at this position.
-     * */
-    fun relightModels(vararg models: FlatLit?) = relightModels(models.asIterable())
-
-    override fun collectCrumblingInstances(consumer: Consumer<Instance?>?) {
-        // TODO: do
+    fun relightInstances(vararg instances: FlatLit?) {
+        relight(pos, *instances)
     }
 }
 
-fun interface PartRendererSupplier<T : Part<R>, R : PartRenderer> {
-    fun create(part: T) : R
-}
+
+//@ClientOnly
+//class MultipartBlockEntityVisual(
+//    ctx: VisualizationContext,
+//    blockEntity: MultipartBlockEntity,
+//    partialTick: Float
+//) : AbstractBlockEntityVisual<MultipartBlockEntity>(ctx, blockEntity, partialTick), DynamicVisual {
+//    val context get() = this.visualizationContext
+//
+//    private class Entry(val part: Part<*>) {
+//        var renderer = part.renderer
+//    }
+//
+//    private val entries = ArrayList<Entry>()
+//
+//    init {
+//        blockEntity.bindRenderer(this)
+//    }
+//
+//    fun readBlockBrightness() = blockEntity.level!!.getBrightness(LightLayer.BLOCK, pos)
+//
+//    fun readSkyBrightness() = blockEntity.level!!.getBrightness(LightLayer.SKY, pos)
+//
+//    override fun planFrame(): Plan<DynamicVisual.Context> {
+//        LOG.warn("planFrame called")
+//
+//        return RunnablePlan.of(::beginFrame)
+//    }
+//
+//    /**
+//     * Called by flywheel at the start of each frame.
+//     * This applies any part updates (new or removed parts), and notifies the part renderers about the new frame.
+//     * */
+//    fun beginFrame(ctx: DynamicVisual.Context) {
+//        handlePartUpdates()
+//
+//        for (entry in entries) {
+//            val part = entry.part
+//            val actualRenderer = part.renderer
+//
+//            /**
+//             * This is a frakking pinch.
+//             * Flywheel creates new instances when breaking in survival, to render the whatever as crumbling.
+//             * But it doesn't destroy the old instance, and after crumbling is done, the crumbling instance gets destroyed,
+//             * which causes the part renderers get destroyed in [Part.destroyRenderer], and then flywheel dispatches beginFrame to that old instance,
+//             * and we need to do extra work to see if the part's renderer changed, and we need to re-frak it the old renderer (this one).
+//             * Also, I don't really see how we can make crumbling only affect a part, since flywheel doesn't tell us if the renderer is for crumbling or anything like that
+//             * probably need some sort of mixin?
+//             * */
+//            if(actualRenderer !== entry.renderer) {
+//                actualRenderer.setupRendering(this)
+//                entry.renderer = actualRenderer
+//            }
+//
+//            actualRenderer.beginFrame()
+//        }
+//    }
+//
+//    /**
+//     * Called by flywheel when a re-light is required.
+//     * This applies a re-light to all the part renderers.
+//     * */
+//    override fun updateLight(partialTick: Float) {
+//        for (part in entries) {
+//            part.renderer.relight(RelightSource.BlockEvent)
+//        }
+//    }
+//
+//    /**
+//     * This method is called at the start of each frame.
+//     * It dequeues all the part updates that were handled on the game thread.
+//     * These updates may indicate:
+//     *  - New parts added to the multipart.
+//     *  - Parts that were destroyed.
+//     * */
+//    private fun handlePartUpdates() {
+//        while (true) {
+//            val update = blockEntity.renderUpdates.poll()
+//                ?: break
+//
+//            val part = update.part
+//
+//            when (update.type) {
+//                PartUpdateType.Add -> {
+//                    if (entries.none { it.part === part }) {
+//                        entries.add(Entry(part))
+//                        part.renderer.setupRendering(this)
+//                    }
+//
+//                    // Can get duplicate adds if the client first receives the parts (and clientAddPart enqueues updates)
+//                    // but just then the multipart renderer gets created and calls bindRenderer, which duplicate enqueues some more updates
+//                }
+//                PartUpdateType.Remove -> {
+//                    entries.removeIf { it.part === part }
+//                    part.destroyRenderer()
+//                }
+//            }
+//        }
+//    }
+//
+//    /**
+//     * Called by flywheel when this renderer is no longer needed.
+//     * This also calls a cleanup method on the part renderers.
+//     * */
+//    override fun _delete() {
+//        for (entry in entries) {
+//            entry.part.destroyRenderer()
+//        }
+//
+//        blockEntity.unbindRenderer()
+//    }
+//
+//    // Nullable for convenience
+//
+//    /**
+//     * Relights the [models] using the block and skylight at this position.
+//     * */
+//    fun relightModels(models: Iterable<FlatLit?>) {
+//        val block = readBlockBrightness()
+//        val sky = readSkyBrightness()
+//
+//        for (it in models) {
+//            it?.light(block, sky)?.handle()?.setChanged()
+//        }
+//    }
+//
+//    /**
+//     * Relights the [models] using the block and skylight at this position.
+//     * */
+//    fun relightModels(vararg models: FlatLit?) = relightModels(models.asIterable())
+//
+//    override fun collectCrumblingInstances(consumer: Consumer<Instance?>?) {
+//        // TODO: do
+//    }
+//}
+
 /*
 fun interface SpecRendererSupplier<T : Spec<R>, R : SpecRenderer> {
     fun create(part: T) : R
@@ -660,7 +681,7 @@ fun VertexConsumer.eln2SubmitUnshadedBakedModelQuads(
         null,
         null,
         RandomSource.create(),
-        net.minecraftforge.client.model.data.ModelData.EMPTY,
+        ModelData.EMPTY,
         renderType
     )
 

@@ -1,9 +1,11 @@
 package org.eln2.mc.common.content
 
+import dev.engine_room.flywheel.api.visual.DynamicVisual
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
+import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionHand
@@ -11,10 +13,14 @@ import net.minecraft.world.InteractionResult
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.*
-import org.eln2.mc.client.render.foundation.transformPart
+import org.eln2.mc.client.render.PartialModels
+import org.eln2.mc.client.render.foundation.AbstractPartVisual
+import org.eln2.mc.client.render.foundation.BasicPartVisual
+import org.eln2.mc.client.render.foundation.MultipartVisualizationContext
+import org.eln2.mc.client.render.foundation.partTransformation
 import org.eln2.mc.common.*
-import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.parts.foundation.*
+import org.eln2.mc.extensions.evaluateDiffuseIrradianceFactor
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.ArgbColor
@@ -25,17 +31,15 @@ data class SolarLightModel(
     val volumeProvider: LocatorLightVolumeProvider
 )
 
-class SolarLightPart<R : PartRenderer>(
+class SolarLightPart(
     ci: PartCreateInfo,
     val model: SolarLightModel,
-    normalSupplier: (SolarLightPart<R>) -> Vector3d,
-    val rendererSupplier: (SolarLightPart<R>) -> R,
-    rendererClass: Class<R>,
-) : Part<R>(ci), TickablePart, ComponentDisplay {
+    normalSupplier: (SolarLightPart) -> Vector3d
+) : Part(ci), TickablePart, ComponentDisplay, LightFixtureGameObject {
     val volume = model.volumeProvider.getVolume(placement.createLocator())
     val normal = normalSupplier(this)
 
-    private val instance = serverOnlyHolder {
+    private val lightVolume = serverOnlyHolder {
         LightVolumeInstance(
             placement.level as ServerLevel,
             placement.position
@@ -46,7 +50,16 @@ class SolarLightPart<R : PartRenderer>(
     private var savedEnergy = 0.0
     private var isOn = true
     private var trackedState = false
-    private val usesSync = rendererClass == LightFixtureRenderer::class.java
+
+    @ClientOnly
+    override var visualBrightness: Double = 0.0
+
+    @ClientOnly
+    override fun createVisual(ctx: MultipartVisualizationContext) = BasicPartVisual<SolarLightPart>(
+        ctx,
+        this,
+        PartialModels.SMALL_GARDEN_LIGHT
+    )
 
     override fun onUsedBy(context: PartUseInfo): InteractionResult {
         if(placement.level.isClientSide) {
@@ -62,8 +75,6 @@ class SolarLightPart<R : PartRenderer>(
         return InteractionResult.FAIL
     }
 
-    override fun createRenderer() = rendererSupplier(this)
-
     override fun onAdded() {
         if(!placement.level.isClientSide) {
             placement.multipart.addTicker(this)
@@ -71,8 +82,7 @@ class SolarLightPart<R : PartRenderer>(
     }
 
     override fun tick() {
-        //energy += model.rechargeRate * placement.level.evaluateDiffuseIrradianceFactor(normal)
-        // FIXME
+        energy += model.rechargeRate * placement.level.evaluateDiffuseIrradianceFactor(normal)
 
         val state: Boolean
 
@@ -104,14 +114,11 @@ class SolarLightPart<R : PartRenderer>(
             0
         }
 
-        instance().checkoutState(volume, stateIncrement)
+        lightVolume().checkoutState(volume, stateIncrement)
 
         if(state != trackedState) {
             trackedState = state
-
-            if(usesSync) {
-                setSyncDirty()
-            }
+            setSyncDirty()
         }
 
         energy = energy.coerceIn(0.0, 1.0)
@@ -137,22 +144,17 @@ class SolarLightPart<R : PartRenderer>(
     }
 
     override fun handleSyncTag(tag: CompoundTag) {
-        if(usesSync) {
-            (renderer as LightFixtureRenderer).updateBrightness(
-                if(tag.getBoolean(STATE)) {
-                    1.0
-                }
-                else {
-                    0.0
-                }
-            )
+        visualBrightness = if(tag.getBoolean(STATE)) {
+            1.0
+        }
+        else {
+            0.0
         }
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         builder.charge(energy)
-        //builder.translatePercent("Irradiance", placement.level.evaluateDiffuseIrradianceFactor(normal))
-        //FIXME
+        builder.translatePercent("Irradiance", placement.level.evaluateDiffuseIrradianceFactor(normal))
     }
 
     override fun onRemoved() {
@@ -167,7 +169,7 @@ class SolarLightPart<R : PartRenderer>(
 
     private fun destroyLights() {
         if(!placement.level.isClientSide) {
-            instance().destroyCells()
+            lightVolume().destroyCells()
         }
     }
 
@@ -178,57 +180,68 @@ class SolarLightPart<R : PartRenderer>(
     }
 }
 
-class LightFixtureRenderer(
-    val part: Part<LightFixtureRenderer>,
-    val cageModel: PartialModel,
-    val emitterModel: PartialModel,
+/**
+ * Implemented by game objects that are rendered with a [LightFixtureRenderer].
+ * The [visualBrightness] is polled by the renderer, so safety must be guaranteed.
+ * */
+interface LightFixtureGameObject {
+    /**
+     * The intensity of the light, used to blend between the two tint colors.
+     * Range is from 0 to 1, but it is clamped by the renderer.
+     * */
+    val visualBrightness : Double
+}
+
+class LightFixtureRenderer<P>(
+    ctx: MultipartVisualizationContext,
+    part: P,
+    cageModel: PartialModel,
+    emitterModel: PartialModel,
+    val rotation: Double = 0.0,
     val coldTint: ArgbColor = ArgbColor(255, 255, 255, 255),
     val warmTint: ArgbColor = ArgbColor(196, 127, 255, 254),
-) : PartRenderer() {
-    private val brightnessUpdate = AtomicUpdate<Double>()
+) : AbstractPartVisual<P>(ctx, part), SimpleDynamicVisual where P : Part, P : LightFixtureGameObject {
+    private val cageInstance = create(cageModel)
+    private val emitterInstance = create(emitterModel)
     private var brightness = 0.0
 
-    fun updateBrightness(newValue: Double) = brightnessUpdate.setLatest(newValue)
-
-    var yRotation = 0.0
-
-    private var cageInstance: TransformedInstance? = null
-    private var emitterInstance: TransformedInstance? = null
-
-    override fun setupRendering() {
-        cageInstance?.delete()
-        emitterInstance?.delete()
-        cageInstance = create(cageModel)
-        emitterInstance = create(emitterModel)
-        applyLightTint()
+    private fun create(model: PartialModel): TransformedInstance {
+        return visualizationContext
+            .instancerProvider()
+            .instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
+            .createInstance()
+            .partTransformation(visualizationContext.parent, part, yRotation = rotation)
     }
 
-    private fun create(model: PartialModel): TransformedInstance {
-        return multipart.context
-            .instancerProvider().instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
-            .createInstance()
-
-            .transformPart(multipart, part, yRotation = yRotation)
+    override fun updateLight(partialTick: Float) {
+        visualizationContext.parent.relightInstances(cageInstance, emitterInstance)
     }
 
     private fun applyLightTint() {
-        //emitterInstance?.setColor(colorLerp(coldTint, warmTint, brightness.toFloat()))
-        //FIXME
+        val t = brightness.toFloat()
+
+        emitterInstance
+            .color(
+                ArgbColor.lerpR(coldTint, warmTint, t),
+                ArgbColor.lerpG(coldTint, warmTint, t),
+                ArgbColor.lerpB(coldTint, warmTint, t),
+                ArgbColor.lerpA(coldTint, warmTint, t)
+            )
+            .handle()
+            .setChanged()
     }
 
-    override fun relight(source: RelightSource) {
-        multipart.relightModels(emitterInstance, cageInstance)
-    }
+    override fun beginFrame(ctx: DynamicVisual.Context) {
+        val desiredBrightness = part.visualBrightness.coerceIn(0.0, 1.0)
 
-    override fun beginFrame() {
-        brightnessUpdate.consume {
-            brightness = it.coerceIn(0.0, 1.0)
+        if(desiredBrightness != brightness) {
+            brightness = desiredBrightness
             applyLightTint()
         }
     }
 
-    override fun remove() {
-        cageInstance?.delete()
-        emitterInstance?.delete()
+    override fun _delete() {
+        cageInstance.delete()
+        emitterInstance.delete()
     }
 }

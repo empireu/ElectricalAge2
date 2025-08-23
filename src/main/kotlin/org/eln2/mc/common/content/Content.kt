@@ -8,7 +8,7 @@ import org.ageseries.libage.mathematics.frac
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.PartialModels
-import org.eln2.mc.client.render.foundation.BasicPartRenderer
+import org.eln2.mc.client.render.foundation.BasicPartVisual
 import org.eln2.mc.common.LightFieldPrimitives
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.partAndItem
@@ -514,18 +514,8 @@ object Content {
     val SMALL_GARDEN_LIGHT = partAndItem(
         "small_garden_light",
         BasicPartProvider(Vector3d(4.0 / 16.0, 6.0 / 16.0, 4.0 / 16.0)) { ci ->
-            SolarLightPart(
-                ci,
-                SMALL_GARDEN_LIGHT_MODEL,
-                { it.placement.face.vector3d },
-                {
-                    BasicPartRenderer(
-                        it,
-                        PartialModels.SMALL_GARDEN_LIGHT
-                    )
-                },
-                BasicPartRenderer::class.java
-            ).also { it.energy = GARDEN_LIGHT_INITIAL_CHARGE }
+            SolarLightPart(ci, SMALL_GARDEN_LIGHT_MODEL) { it.placement.face.vector3d }
+                .also { it.energy = GARDEN_LIGHT_INITIAL_CHARGE }
         }
     )
 

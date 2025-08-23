@@ -20,6 +20,11 @@ value class ArgbColor(val data : Int) {
                 lerp(from.gF, to.gF, blend),
                 lerp(from.bF, to.bF, blend),
             )
+
+        fun lerpA(from: ArgbColor, to: ArgbColor, blend: Float) : Float = lerp(from.aF, to.aF, blend)
+        fun lerpR(from: ArgbColor, to: ArgbColor, blend: Float) : Float = lerp(from.rF, to.rF, blend)
+        fun lerpG(from: ArgbColor, to: ArgbColor, blend: Float) : Float = lerp(from.gF, to.gF, blend)
+        fun lerpB(from: ArgbColor, to: ArgbColor, blend: Float) : Float = lerp(from.bF, to.bF, blend)
     }
 
     val a get() = FastColor.ARGB32.alpha(data)

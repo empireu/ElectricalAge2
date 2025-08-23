@@ -10,16 +10,11 @@ import org.eln2.mc.*
 import org.eln2.mc.common.LightVolume
 import org.eln2.mc.common.LightVolumeInstance
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
-import org.eln2.mc.common.LocatorLightVolumeProvider
 import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.events.schedulePre
-import org.eln2.mc.common.parts.foundation.CellPart
-import org.eln2.mc.data.*
+import org.eln2.mc.data.Locators
 import org.eln2.mc.extensions.destroyPart
-import java.util.*
 import java.util.concurrent.atomic.AtomicReference
-import java.util.function.Supplier
-import kotlin.collections.ArrayList
 
 /**
  * *A cell behavior* manages routines ([Subscriber]) that run on the simulation thread.

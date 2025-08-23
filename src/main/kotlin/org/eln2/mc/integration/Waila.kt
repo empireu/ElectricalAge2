@@ -12,7 +12,6 @@ import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlock
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
-import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.extensions.forEachCompound
 import org.eln2.mc.extensions.formattedPercentNormalized
 import snownee.jade.api.*

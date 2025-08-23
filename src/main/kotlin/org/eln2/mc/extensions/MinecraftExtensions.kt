@@ -52,6 +52,7 @@ import org.joml.Quaternionfc
 import org.joml.Vector3f
 import java.util.*
 import kotlin.math.PI
+import kotlin.math.cos
 
 fun Entity.getClipStartEnd() : Pair<Vec3, Vec3> {
     val viewDirection = this.lookAngle
@@ -207,6 +208,42 @@ private val DIRECTION_TO_ROTATION3D = buildDirectionTable {
 
 val Direction.rotation3d get() = DIRECTION_TO_ROTATION3D[this.get3DDataValue()]
 
+fun evaluateSunlight(rainLevel: Double, thunderLevel: Double, timeOfDay: Double) : Double {
+    val d0 = 1.0 - rainLevel * 5.0 / 16.0
+    val d1 = 1.0 - thunderLevel * 5.0 / 16.0
+    val d2 = 0.5 + 2.0 * cos((2.0 * PI) * timeOfDay).coerceIn(-0.25, 0.25) // We are also compounding this with our own calculation. Maybe remove this?
+
+    return (d0 * d1 * d2).coerceIn(0.0, 1.0)
+}
+
+fun Level.evaluateSunlight() = evaluateSunlight(
+    this.getRainLevel(1.0f).toDouble(),
+    this.getThunderLevel(1.0f).toDouble(),
+    this.getTimeOfDay(1.0f).toDouble()
+)
+
+fun Level.evaluateDiffuseIrradianceFactor(normal: Vector3d) : Double {
+    val pass = this.celestialPass()
+    val sunlight = this.evaluateSunlight()
+
+    val u = !Vector3d(pass.re, pass.im, 0.0) cosAngle !normal
+
+    return if(u >= 0.0) {
+        sunlight * u
+    }
+    else {
+        0.0
+    }
+}
+
+fun Level.evaluateDiffuseIrradianceFactor(normal: Vector3d, blockPos: BlockPos) : Double {
+    if(!this.canSeeSky(blockPos)) {
+        return 0.0
+    }
+
+    return this.evaluateDiffuseIrradianceFactor(normal)
+}
+
 fun Level.playLocalSound(
     pos: Vec3,
     pSound: SoundEvent,
@@ -255,7 +292,7 @@ fun ServerLevel.addItem(x: Double, y: Double, z: Double, stack: ItemStack) {
 fun ServerLevel.addItem(pos: BlockPos, stack: ItemStack) = addItem(pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble(), stack)
 
 @ServerOnly
-fun ServerLevel.destroyPart(part: Part<*>, dropPart: Boolean) {
+fun ServerLevel.destroyPart(part: Part, dropPart: Boolean) {
     val pos = part.placement.position
 
     val multipart = this.getBlockEntity(pos)

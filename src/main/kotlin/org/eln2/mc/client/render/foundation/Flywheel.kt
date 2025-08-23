@@ -12,7 +12,8 @@ object FlywheelRegistry {
     fun initialize() {
         VisualizerRegistry.setVisualizer(
             BlockRegistry.MULTIPART_BLOCK_ENTITY.get(),
-            SimpleBlockEntityVisualizer(::MultipartBlockEntityVisual) { true })
+            SimpleBlockEntityVisualizer(::MultipartBlockEntityVisual2) { true }
+        )
     }
 }
 
@@ -43,6 +44,17 @@ class SpecialVisualStorage<V : Visual> {
         tickableVisuals.clear()
     }
 
+    fun remove(visual: Visual){
+        visuals.remove(visual)
+
+        if(visual is DynamicVisual) {
+            dynamicVisuals.remove(visual)
+        }
+
+        if(visual is TickableVisual) {
+            tickableVisuals.remove(visual)
+        }
+    }
 }
 
 //fixme

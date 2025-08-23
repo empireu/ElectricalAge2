@@ -78,7 +78,7 @@ object DebugVisualizer {
             }
         }
 
-        open fun withinScopeOf(part: Part<*>) = withRemover(part::isRemoved)
+        open fun withinScopeOf(part: Part) = withRemover(part::isRemoved)
     }
 
     private class CompositeRenderElement : RenderElement() {
@@ -374,13 +374,13 @@ object DebugVisualizer {
         return createLineBox(box, color = color)
     }
 
-    fun createPartFrame(part: Part<*>) = createCompositionOf(
+    fun createPartFrame(part: Part) = createCompositionOf(
         createDirection(part.placement.mountingPointWorld, part.placement.positiveX, color = ArgbColor(0.8f, 1f, 0f, 0f)),
         createDirection(part.placement.mountingPointWorld, part.placement.positiveY, color = ArgbColor(0.8f, 0f, 1f, 0f)),
         createDirection(part.placement.mountingPointWorld, part.placement.positiveZ, color = ArgbColor( 0.8f, 0f, 0f, 1f))
     ).withinScopeOf(part)
 
-    fun createPartBounds(part: Part<*>) =
+    fun createPartBounds(part: Part) =
         createLineBox(part.worldBoundingBox).withinScopeOf(part)
 
     fun compositionOf(vararg elements: RenderElement) = add(createCompositionOf(*elements))
@@ -400,9 +400,9 @@ object DebugVisualizer {
     fun direction(origin: Vector3d, direction: Direction, size: Double = 0.05, color: ArgbColor = ArgbColor.WHITE) =
         add(createDirection(origin, direction, size, color))
 
-    fun partFrame(part: Part<*>) = add(createPartFrame(part))
+    fun partFrame(part: Part) = add(createPartFrame(part))
 
-    fun partBounds(part: Part<*>) = add(createPartBounds(part))
+    fun partBounds(part: Part) = add(createPartBounds(part))
 
     fun clear() {
         synchronized(obj) {

@@ -44,7 +44,6 @@ import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
-import org.eln2.mc.client.render.foundation.MultipartBlockEntityVisual
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.parts.PartRegistry
@@ -54,6 +53,7 @@ import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.FacingDirection
 import org.eln2.mc.mathematics.toHorizontalFacing
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 
 class MultipartBlock : BaseEntityBlock(
@@ -145,7 +145,7 @@ class MultipartBlock : BaseEntityBlock(
         return getPartShape(pLevel, pPos, pContext)
     }
 
-    private fun spawnDrop(pLevel: ServerLevel, removedPart: Part<*>, saveTag: CompoundTag) {
+    private fun spawnDrop(pLevel: ServerLevel, removedPart: Part, saveTag: CompoundTag) {
         if(!removedPart.shouldDrop()) {
             return
         }
@@ -310,7 +310,7 @@ class MultipartBlock : BaseEntityBlock(
         return pickedPart.modelShape
     }
 
-    private fun pickPart(level: BlockGetter, pos: BlockPos, context: CollisionContext): Part<*>? {
+    private fun pickPart(level: BlockGetter, pos: BlockPos, context: CollisionContext): Part? {
         if (context !is EntityCollisionContext) {
             LOG.error("Collision context was not an entity collision context at $pos")
             return null
@@ -338,7 +338,7 @@ class MultipartBlock : BaseEntityBlock(
         return pickPart(level, pos, entity)
     }
 
-    private fun pickPart(level: BlockGetter, pos: BlockPos, entity: LivingEntity): Part<*>? {
+    private fun pickPart(level: BlockGetter, pos: BlockPos, entity: LivingEntity): Part? {
         val multipart = level.getBlockEntity(pos)
 
         if (multipart == null) {
@@ -418,9 +418,9 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     // This is set to TRUE when this block first ticks. We only update the ticker if this is set to true.
     private var worldLoaded = false
 
-    private val partsInternal = HashMap<Direction, Part<*>>()
+    private val partsInternal = ConcurrentHashMap<Direction, Part>()
 
-    val parts: Map<Direction, Part<*>> get() = partsInternal
+    val parts: Map<Direction, Part> get() = partsInternal
 
     // Used for part sync:
     private val dirtyParts = HashSet<Direction>()
@@ -449,7 +449,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     /**
      * Gets the part on the specified [face] or null, if a part does not exist there.
      * */
-    fun getPart(face: Direction): Part<*>? {
+    fun getPart(face: Direction): Part? {
         return partsInternal[face]
     }
 
@@ -457,7 +457,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * Adds the [part] on the [face] and notifies via [Part.onAdded]
      * Throws if a part already exists on that face.
      * */
-    private fun addPart(face: Direction, part: Part<*>) {
+    private fun addPart(face: Direction, part: Part) {
         partsInternal.putUnique(face, part)
         part.onAdded()
     }
@@ -466,7 +466,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * Removes the part on [face] from all containers and notifies via [Part.onRemoved]
      * @return The removed part or null, if there is no part on [face].
      * */
-    private fun removePart(face: Direction): Part<*>? {
+    private fun removePart(face: Direction): Part? {
         val result = partsInternal.remove(face)
             ?: return null
 
@@ -642,7 +642,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * @return The part that was destroyed or null, if not successful
      * */
     @ServerOnly
-    fun breakPartByPlayer(entity: Player, level: Level, saveTag: CompoundTag? = null): Part<*>? {
+    fun breakPartByPlayer(entity: Player, level: Level, saveTag: CompoundTag? = null): Part? {
         if (level.isClientSide) {
             return null
         }
@@ -666,7 +666,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * @param saveTag A tag to save part data, if required (for [ItemPersistent]s).
      * */
     @ServerOnly
-    fun breakPart(part: Part<*>, saveTag: CompoundTag? = null) {
+    fun breakPart(part: Part, saveTag: CompoundTag? = null) {
         require(partsInternal.values.contains(part)) {
             "Tried to break part $part which was not present"
         }
@@ -700,7 +700,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * @return The part that was destroyed or null, if no part was resting on the neighbor at [neighborPos].
      * */
     @ServerOnly
-    fun breakPartByNeighbor(neighborPos: BlockPos, saveTag: CompoundTag? = null): Part<*>? {
+    fun breakPartByNeighbor(neighborPos: BlockPos, saveTag: CompoundTag? = null): Part? {
         check(!level!!.isClientSide)
 
         val direction = neighborPos.directionTo(pos)
@@ -718,7 +718,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     /**
      * Merges the current multipart collider with the collider of the part.
      * */
-    private fun joinCollider(part: Part<*>) {
+    private fun joinCollider(part: Part) {
         collisionShape = Shapes.join(collisionShape, part.modelShape, BooleanOp.OR)
     }
 
@@ -951,7 +951,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * Enqueues a part for renderer setup.
      * */
     @ClientOnly
-    private fun clientAddPart(part: Part<*>) {
+    private fun clientAddPart(part: Part) {
         part.onAddedToClient()
         renderUpdates.add(PartUpdate(part, PartUpdateType.Add))
     }
@@ -960,7 +960,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * Removes a part from the renderer.
      * */
     @ClientOnly
-    private fun clientRemovePart(part: Part<*>) {
+    private fun clientRemovePart(part: Part) {
         part.onBroken()
         renderUpdates.add(PartUpdate(part, PartUpdateType.Remove))
     }
@@ -1047,7 +1047,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * Saves all the data associated with a part to a CompoundTag.
      * */
     @ServerOnly
-    private fun savePartCommon(part: Part<*>, type: SaveType): CompoundTag {
+    private fun savePartCommon(part: Part, type: SaveType): CompoundTag {
         val tag = CompoundTag()
 
         tag.putResourceLocation("ID", part.id)
@@ -1109,7 +1109,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * This tag should be a product of the getPartTag method.
      * This method _does not_ add the part to the part map!
      * */
-    private fun unpackPart(tag: CompoundTag, saveType: SaveType): Part<*> {
+    private fun unpackPart(tag: CompoundTag, saveType: SaveType): Part {
         val id = tag.getResourceLocation("ID")
         val pos = tag.getBlockPos("Pos")
         val face = tag.getDirection("Face")
@@ -1287,20 +1287,6 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             ?: return InteractionResult.FAIL
 
         return part.onUsedBy(PartUseInfo(player, hand))
-    }
-
-    /**
-     * I found that flywheel removes our instance sometimes, not sure why.
-     * We use this to send the current parts to the renderer.
-     * */
-    fun bindRenderer(instance: MultipartBlockEntityVisual) {
-        partsInternal.values.forEach { part ->
-            renderUpdates.add(PartUpdate(part, PartUpdateType.Add))
-        }
-    }
-
-    fun unbindRenderer() {
-
     }
 
     fun addTicker(part: TickablePart): Boolean {

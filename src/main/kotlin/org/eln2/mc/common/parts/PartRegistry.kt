@@ -13,7 +13,6 @@ import org.eln2.mc.common.items.blacklistCreativeTab
 import org.eln2.mc.common.items.foundation.PartItem
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.PartProvider
-import org.eln2.mc.common.parts.foundation.SavingLifecycleTestPart
 import org.eln2.mc.resource
 import java.util.function.Supplier
 
@@ -80,13 +79,6 @@ object PartRegistry {
             SpecContainerPart(it)
         }
     ).blacklistCreativeTab()*/
-
-    val SAVING_LIFECYCLE_TEST_PART = partAndItem(
-        "saving_lifecycle_test_part",
-        BasicPartProvider(Vector3d(1.0)) {
-            SavingLifecycleTestPart(it)
-        }
-    ).blacklistCreativeTab()
 
     fun finalize() {
         for (it in PART_ITEMS.entries) {
