@@ -1,6 +1,10 @@
 package org.eln2.mc.client.render.foundation
 
+import dev.engine_room.flywheel.api.visual.DynamicVisual
+import dev.engine_room.flywheel.api.visual.TickableVisual
+import dev.engine_room.flywheel.api.visual.Visual
 import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
+import dev.engine_room.flywheel.lib.task.PlanMap
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import org.eln2.mc.common.blocks.BlockRegistry
 
@@ -10,6 +14,35 @@ object FlywheelRegistry {
             BlockRegistry.MULTIPART_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::MultipartBlockEntityVisual) { true })
     }
+}
+
+class SpecialVisualStorage<V : Visual> {
+    val visuals = ArrayList<V>()
+    val dynamicVisuals = PlanMap<DynamicVisual, DynamicVisual.Context>()
+    val tickableVisuals = PlanMap<TickableVisual, TickableVisual.Context>()
+
+    fun add(visual: V, partialTick: Float) {
+        // Done once so no performance issues
+        if(visuals.contains(visual)){
+            error("Duplicate add visual $visual")
+        }
+
+        if(visual is DynamicVisual) {
+            dynamicVisuals.add(visual, visual.planFrame())
+        }
+
+        if(visual is TickableVisual) {
+            tickableVisuals.add(visual, visual.planTick())
+        }
+    }
+
+    fun delete() {
+        visuals.forEach { it.delete() }
+        visuals.clear()
+        dynamicVisuals.clear()
+        tickableVisuals.clear()
+    }
+
 }
 
 //fixme

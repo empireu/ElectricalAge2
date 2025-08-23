@@ -1,5 +1,6 @@
 package org.eln2.mc.common.parts.foundation
 
+import dev.engine_room.flywheel.api.visual.Visual
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
 import net.minecraft.core.BlockPos
@@ -510,6 +511,7 @@ abstract class Part<Renderer : PartRenderer>(ci: PartCreateInfo) {
         activeRenderer = null
     }
 }
+
 
 /**
  * This is a factory for parts. It also has the size used to validate placement (part-part collisions).
@@ -1065,7 +1067,6 @@ abstract class PartRenderer {
         private set
 
     val hasMultipart get() = this::multipart.isInitialized
-
 
     /**
      * Called when the part is picked up by the [MultipartBlockEntity]'s renderer.

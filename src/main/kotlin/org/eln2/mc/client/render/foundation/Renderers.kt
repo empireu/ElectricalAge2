@@ -5,22 +5,28 @@ package org.eln2.mc.client.render.foundation
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
 import dev.engine_room.flywheel.api.instance.Instance
+import dev.engine_room.flywheel.api.task.Plan
 import dev.engine_room.flywheel.api.visual.DynamicVisual
+import dev.engine_room.flywheel.api.visual.LightUpdatedVisual
+import dev.engine_room.flywheel.api.visual.TickableVisual
+import dev.engine_room.flywheel.api.visual.Visual
+import dev.engine_room.flywheel.api.visualization.VisualEmbedding
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
 import dev.engine_room.flywheel.lib.instance.FlatLit
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
+import dev.engine_room.flywheel.lib.task.RunnablePlan
 import dev.engine_room.flywheel.lib.transform.Affine
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
-import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import net.minecraft.client.Camera
 import net.minecraft.client.renderer.LevelRenderer
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.core.Direction
+import net.minecraft.core.Vec3i
 import net.minecraft.util.RandomSource
 import net.minecraft.world.level.LightLayer
 import net.minecraft.world.level.block.entity.BlockEntity
@@ -35,6 +41,7 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
 import org.eln2.mc.ClientOnly
+import org.eln2.mc.LOG
 import org.eln2.mc.buildDirectionTable
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.parts.foundation.*
@@ -346,12 +353,98 @@ class ThermalTint(
     }
 }
 
+abstract class PartVisual(val part: Part, val visualizationContext: VisualizationContext) : Visual {
+    protected val instancerProvider = visualizationContext.instancerProvider()
+
+    private var deleted = false
+
+    override fun update(partialTick: Float) { }
+
+    final override fun delete() {
+        if(deleted) {
+            return
+        }
+
+        _delete()
+        deleted = true
+    }
+
+    protected fun _delete() { }
+}
+
+class MultipartBlockEntityVisual2(
+    ctx: VisualizationContext,
+    blockEntity: MultipartBlockEntity,
+    partialTick: Float
+): AbstractBlockEntityVisual<MultipartBlockEntity>(ctx, blockEntity, partialTick), DynamicVisual, TickableVisual, LightUpdatedVisual {
+    val parts = ArrayList<Part<*>>()
+    val embedding: VisualEmbedding
+    val storage = SpecialVisualStorage<PartVisual>()
+
+    init {
+        embedding = ctx.createEmbedding(Vec3i.ZERO)
+
+        //blockEntity.bindRenderer()
+    }
+
+    override fun _delete() {
+        storage.delete()
+    }
+
+    override fun collectCrumblingInstances(consumer: Consumer<Instance?>?) {
+        // add the part being broken
+    }
+
+    override fun updateLight(partialTick: Float) {
+        TODO("Not yet implemented")
+    }
+
+    override fun planFrame(): Plan<DynamicVisual.Context> = storage.dynamicVisuals
+
+    override fun planTick(): Plan<TickableVisual.Context> = RunnablePlan
+        .of(::handlePartUpdates)
+        .then(storage.tickableVisuals)
+
+    /**
+     * This method is called per tick. But it runs in parallel with the other multipart visuals.
+     * It dequeues all the part updates that were queued up.
+     * These updates may indicate:
+     *  - New parts added to the multipart.
+     *  - Parts that were destroyed.
+     * */
+    private fun handlePartUpdates(ctx: TickableVisual.Context) {
+        while (true) {
+            val update = blockEntity.renderUpdates.poll()
+                ?: break
+
+            val part = update.part
+
+            when (update.type) {
+                PartUpdateType.Add -> {
+                    if (!parts.contains(part)) {
+                        parts.add(part)
+                        part.renderer.setupRendering(this)
+                    }
+
+                    // Can get duplicate adds if the client first receives the parts (and clientAddPart enqueues updates)
+                    // but just then the multipart renderer gets created and calls bindRenderer, which duplicate enqueues some more updates
+                }
+                PartUpdateType.Remove -> {
+                    parts.remove(part)
+                    part.destroyRenderer()
+                }
+            }
+        }
+    }
+}
+
+
 @ClientOnly
 class MultipartBlockEntityVisual(
     ctx: VisualizationContext,
     blockEntity: MultipartBlockEntity,
-    partialTick: Float,
-) : AbstractBlockEntityVisual<MultipartBlockEntity>(ctx, blockEntity, partialTick), SimpleDynamicVisual {
+    partialTick: Float
+) : AbstractBlockEntityVisual<MultipartBlockEntity>(ctx, blockEntity, partialTick), DynamicVisual {
     val context get() = this.visualizationContext
 
     private class Entry(val part: Part<*>) {
@@ -368,11 +461,17 @@ class MultipartBlockEntityVisual(
 
     fun readSkyBrightness() = blockEntity.level!!.getBrightness(LightLayer.SKY, pos)
 
+    override fun planFrame(): Plan<DynamicVisual.Context> {
+        LOG.warn("planFrame called")
+
+        return RunnablePlan.of(::beginFrame)
+    }
+
     /**
      * Called by flywheel at the start of each frame.
      * This applies any part updates (new or removed parts), and notifies the part renderers about the new frame.
      * */
-    override fun beginFrame(ctx: DynamicVisual.Context) {
+    fun beginFrame(ctx: DynamicVisual.Context) {
         handlePartUpdates()
 
         for (entry in entries) {
