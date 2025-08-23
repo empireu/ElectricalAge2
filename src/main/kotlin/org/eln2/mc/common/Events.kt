@@ -2,6 +2,7 @@ package org.eln2.mc.common
 
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
+import net.minecraftforge.client.event.EntityRenderersEvent
 import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.level.BlockEvent
 import net.minecraftforge.event.level.ChunkWatchEvent
@@ -16,6 +17,7 @@ import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.common.blocks.BlockRegistry
+import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityDummyRenderer
 import org.eln2.mc.common.cells.foundation.CellGraph
 import org.eln2.mc.common.cells.foundation.CellGraphManager
 import org.eln2.mc.common.events.schedulePost
@@ -26,6 +28,14 @@ import org.eln2.mc.data.AveragingList
 object ModEvents {
     var isFullyLoaded = false
         private set
+
+    @SubscribeEvent @JvmStatic
+    fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
+        event.registerBlockEntityRenderer(
+            BlockRegistry.MULTIPART_BLOCK_ENTITY.get(),
+            MultipartBlockEntityDummyRenderer()
+        )
+    }
 
     @SubscribeEvent @JvmStatic
     fun loadCompletedEvent(event: FMLLoadCompleteEvent) {

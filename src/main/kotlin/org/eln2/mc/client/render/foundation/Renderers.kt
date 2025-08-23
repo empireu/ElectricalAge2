@@ -39,13 +39,14 @@ import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.mathematics.lerp
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
+import org.eln2.mc.LOG
 import org.eln2.mc.buildDirectionTable
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.common.parts.foundation.PartUpdateType
-import org.eln2.mc.common.parts.foundation.TickablePart
 import org.eln2.mc.extensions.cast
 import org.eln2.mc.extensions.rotationFast
 import org.eln2.mc.mathematics.ArgbColor
@@ -253,7 +254,7 @@ fun<T : Affine<T>> T.partTransformation(instance: MultipartBlockEntityVisual2, p
     val (dx, dy, dz) = partOffsetTable[part.placement.face.get3DDataValue()]
 
     return this
-        .translate(instance.visualPosition) // todo is it right?
+        //.translate(instance.visualPosition) // todo is it right?
         .translate(dx, dy, dz)
         .rotate(part.placement.face.rotationFast)
         .rotateY((yRotation + part.placement.facing.angle).toFloat())
@@ -385,18 +386,38 @@ class MultipartBlockEntityVisual2(
     partialTick: Float,
 ): AbstractBlockEntityVisual<MultipartBlockEntity>(ctx, blockEntity, partialTick), DynamicVisual, TickableVisual, LightUpdatedVisual {
     val parts = HashMap<Part, AbstractPartVisual<*>>()
-    val embedding: VisualEmbedding = ctx.createEmbedding(Vec3i.ZERO)
+
+    val embedding: VisualEmbedding = let {
+        val result = ctx.createEmbedding(Vec3i.ZERO)
+        val visualPos = this.visualPosition
+
+        val matrix = PoseStack()
+		matrix.setIdentity()
+		matrix.translate(
+            visualPos.x.toDouble(),
+            visualPos.y.toDouble(),
+            visualPos.z.toDouble()
+        )
+
+		result.transforms(matrix.last().pose(), matrix.last().normal());
+        result
+    }
+
     val multipartVisualizationContext = MultipartVisualizationContext(embedding, this)
     val storage = SpecialVisualStorage<AbstractPartVisual<*>>()
 
     init {
+        LOG.warn("Created MPBV ${blockEntity.pos} / $visualPosition (${this.hashCode()})")
+
         blockEntity.parts.values.forEach {
             addPart(it, partialTick)
+            LOG.warn("initial part: ${it.placement.face}")
         }
     }
 
     override fun _delete() {
         storage.delete()
+        LOG.warn("DELETED MPBV ${blockEntity.pos} / $visualPosition (${this.hashCode()})")
     }
 
     override fun collectCrumblingInstances(consumer: Consumer<Instance?>?) {
@@ -454,6 +475,9 @@ class MultipartBlockEntityVisual2(
             parts[part] = visual
 
             visual.updateLight(partialTick)
+
+            LOG.warn("Added part ${blockEntity.pos} / $visualPosition (${this.hashCode()})")
+
         }
     }
 

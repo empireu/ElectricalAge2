@@ -1,12 +1,17 @@
 package org.eln2.mc.common.blocks.foundation
 
+import com.mojang.blaze3d.vertex.PoseStack
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.client.renderer.MultiBufferSource
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderer
+import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.network.Connection
+import net.minecraft.network.chat.Component
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ClientGamePacketListener
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket
@@ -396,6 +401,37 @@ class MultipartBlock : BaseEntityBlock(
         }*/
 
         return ItemStack(PartRegistry.getPartItem(picked.id))
+    }
+}
+
+class MultipartBlockEntityDummyRenderer : BlockEntityRendererProvider<MultipartBlockEntity> {
+    companion object {
+        private var warned = false
+    }
+
+    override fun create(p0: BlockEntityRendererProvider.Context): BlockEntityRenderer<MultipartBlockEntity> {
+        return Impl()
+    }
+
+    private class Impl : BlockEntityRenderer<MultipartBlockEntity> {
+        override fun render(
+            p0: MultipartBlockEntity,
+            p1: Float,
+            p2: PoseStack,
+            p3: MultiBufferSource,
+            p4: Int,
+            p5: Int,
+        ) {
+            if(warned) {
+                return
+            }
+
+            val player = Minecraft.getInstance().player
+                ?: return
+
+            player.sendSystemMessage(Component.literal("ELN2 only supports rendering with flywheel at the moment"))
+            warned = true
+        }
     }
 }
 
