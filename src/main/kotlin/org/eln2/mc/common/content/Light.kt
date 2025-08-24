@@ -54,13 +54,6 @@ class SolarLightPart(
     @ClientOnly
     override var visualBrightness: Double = 0.0
 
-    @ClientOnly
-    override fun createVisual(ctx: MultipartVisualizationContext) = BasicPartVisual<SolarLightPart>(
-        ctx,
-        this,
-        PartialModels.SMALL_GARDEN_LIGHT
-    )
-
     override fun onUsedBy(context: PartUseInfo): InteractionResult {
         if(placement.level.isClientSide) {
             return InteractionResult.PASS

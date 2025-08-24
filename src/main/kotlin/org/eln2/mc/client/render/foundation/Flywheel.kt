@@ -6,14 +6,43 @@ import dev.engine_room.flywheel.api.visual.Visual
 import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
 import dev.engine_room.flywheel.lib.task.PlanMap
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
+import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.common.blocks.BlockRegistry
+import org.eln2.mc.common.content.Content
+import org.eln2.mc.common.content.SolarLightPart
+import org.eln2.mc.common.parts.foundation.Part
+import org.eln2.mc.common.parts.foundation.PartProvider
+import java.util.UUID
 
-object FlywheelRegistry {
-    fun initialize() {
+object VisualizerRegistry {
+    private val partVisualRegistry = HashMap<PartProvider, PartVisualizer>()
+
+    private fun setPartVisualizer(partProvider: PartProvider, visualizer: PartVisualizer) {
+        if(partVisualRegistry.contains(partProvider)) {
+            error("Duplicate register part visualizer ${partProvider.id}")
+        }
+
+        partVisualRegistry[partProvider] = visualizer
+    }
+
+    fun getPartVisualizer(provider: PartProvider) = partVisualRegistry[provider]
+        ?: error("Visualizer for part $provider not registered")
+
+    fun registerBlockEntityVisuals() {
         VisualizerRegistry.setVisualizer(
             BlockRegistry.MULTIPART_BLOCK_ENTITY.get(),
-            SimpleBlockEntityVisualizer(::MultipartBlockEntityVisual2) { true }
+            SimpleBlockEntityVisualizer(::MultipartBlockEntityVisual) { true }
         )
+    }
+
+    fun registerPartVisuals() {
+        setPartVisualizer(Content.SMALL_GARDEN_LIGHT.part.get()) { ctx, part ->
+            BasicPartVisual(
+                ctx,
+                part,
+                PartialModels.SMALL_GARDEN_LIGHT
+            )
+        }
     }
 }
 
