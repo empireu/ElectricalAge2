@@ -93,18 +93,14 @@ open class BasicPartVisual<P : Part>(
     val scale: Vector3d = Vector3d.one,
     val rotation: Double = 0.0,
 ) : AbstractPartVisual<P>(ctx, part) {
-    private var modelInstance: TransformedInstance? = null
-
-    init {
-        modelInstance = createPartInstance(ctx, model, part, scale, rotation)
-    }
+    private val modelInstance = createPartInstance(ctx, model, part, scale, rotation)
 
     override fun updateLight(partialTick: Float) {
         visualizationContext.parent.relightInstances(modelInstance)
     }
 
     override fun _delete() {
-        modelInstance?.delete()
+        modelInstance.delete()
     }
 }
 /*
@@ -407,17 +403,15 @@ class MultipartBlockEntityVisual2(
     val storage = SpecialVisualStorage<AbstractPartVisual<*>>()
 
     init {
-        LOG.warn("Created MPBV ${blockEntity.pos} / $visualPosition (${this.hashCode()})")
-
         blockEntity.parts.values.forEach {
             addPart(it, partialTick)
-            LOG.warn("initial part: ${it.placement.face}")
         }
     }
 
     override fun _delete() {
         storage.delete()
-        LOG.warn("DELETED MPBV ${blockEntity.pos} / $visualPosition (${this.hashCode()})")
+        parts.clear()
+        embedding.delete()
     }
 
     override fun collectCrumblingInstances(consumer: Consumer<Instance?>?) {
@@ -472,12 +466,10 @@ class MultipartBlockEntityVisual2(
     private fun addPart(part: Part, partialTick: Float) {
         if (!parts.contains(part)) {
             val visual = part.createVisual(multipartVisualizationContext)
+            storage.add(visual, partialTick)
             parts[part] = visual
 
             visual.updateLight(partialTick)
-
-            LOG.warn("Added part ${blockEntity.pos} / $visualPosition (${this.hashCode()})")
-
         }
     }
 

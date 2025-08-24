@@ -7,8 +7,6 @@ package org.eln2.mc.common.content
 import org.ageseries.libage.mathematics.frac
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.LOG
-import org.eln2.mc.client.render.PartialModels
-import org.eln2.mc.client.render.foundation.BasicPartVisual
 import org.eln2.mc.common.LightFieldPrimitives
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.partAndItem

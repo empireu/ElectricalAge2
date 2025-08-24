@@ -24,7 +24,7 @@ class SpecialVisualStorage<V : Visual> {
 
     fun add(visual: V, partialTick: Float) {
         // Done once so no performance issues
-        if(visuals.contains(visual)){
+        if(!visuals.add(visual)){
             error("Duplicate add visual $visual")
         }
 
