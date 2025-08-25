@@ -1,20 +1,50 @@
 package org.eln2.mc.client.render.foundation
 
+import dev.engine_room.flywheel.api.instance.InstanceHandle
+import dev.engine_room.flywheel.api.instance.InstanceType
+import dev.engine_room.flywheel.api.layout.FloatRepr
+import dev.engine_room.flywheel.api.layout.IntegerRepr
+import dev.engine_room.flywheel.api.layout.LayoutBuilder
+import dev.engine_room.flywheel.api.model.Model
 import dev.engine_room.flywheel.api.visual.DynamicVisual
 import dev.engine_room.flywheel.api.visual.TickableVisual
 import dev.engine_room.flywheel.api.visual.Visual
 import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
+import dev.engine_room.flywheel.lib.instance.AbstractInstance
+import dev.engine_room.flywheel.lib.instance.FlatLit
+import dev.engine_room.flywheel.lib.instance.SimpleInstanceType
+import dev.engine_room.flywheel.lib.instance.TransformedInstance
+import dev.engine_room.flywheel.lib.material.SimpleMaterial
+import dev.engine_room.flywheel.lib.material.SimpleMaterialShaders
+import dev.engine_room.flywheel.lib.model.baked.BakedModelBuilder
+import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import dev.engine_room.flywheel.lib.task.PlanMap
+import dev.engine_room.flywheel.lib.util.ExtraMemoryOps
+import dev.engine_room.flywheel.lib.util.RendererReloadCache
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
-import org.eln2.mc.client.render.PartialModels
+import net.minecraft.client.renderer.block.model.BakedQuad
+import net.minecraft.client.resources.model.BakedModel
+import net.minecraft.core.Direction
+import net.minecraft.resources.ResourceLocation
+import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.eln2.mc.LOG
+import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.WirePatchType.Inner
+import org.eln2.mc.client.render.foundation.WirePatchType.Wrapped
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.content.Content
-import org.eln2.mc.common.content.SolarLightPart
-import org.eln2.mc.common.parts.foundation.Part
+import org.eln2.mc.common.parts.foundation.CellPartConnectionMode
 import org.eln2.mc.common.parts.foundation.PartProvider
-import java.util.UUID
+import org.eln2.mc.extensions.bind
+import org.eln2.mc.mathematics.ArgbColor
+import org.eln2.mc.resource
+import org.joml.Matrix4f
+import org.lwjgl.system.MemoryUtil
+import java.nio.ByteBuffer
+import java.nio.IntBuffer
+import java.util.function.Function
 
-object VisualizerRegistry {
+object FlwVisualizerRegistry {
     private val partVisualRegistry = HashMap<PartProvider, PartVisualizer>()
 
     private fun setPartVisualizer(partProvider: PartProvider, visualizer: PartVisualizer) {
@@ -36,14 +66,69 @@ object VisualizerRegistry {
     }
 
     fun registerPartVisuals() {
-        setPartVisualizer(Content.SMALL_GARDEN_LIGHT.part.get()) { ctx, part ->
+        /*setPartVisualizer(Content.SMALL_GARDEN_LIGHT.part.get()) { ctx, part ->
             BasicPartVisual(
                 ctx,
                 part,
-                PartialModels.SMALL_GARDEN_LIGHT
+                FlwModels.SMALL_GARDEN_LIGHT
+            )
+        }*/
+
+        setPartVisualizer(Content.SMALL_GARDEN_LIGHT.part.get()) { ctx, part ->
+            TESTPARTVISUAL(
+                ctx,
+                part
             )
         }
     }
+}
+
+object FlwMaterials {
+    fun init() {
+        LOG.info("Created ELN2 Flw materials.")
+    }
+}
+
+object FlwInstanceTypes {
+    val POLAR = SimpleInstanceType.builder(::PolarInstance)
+        .cullShader(resource("instance/cull/polar.glsl"))
+        .vertexShader(resource("instance/polar.vert"))
+        .layout(LayoutBuilder.create()
+            .vector("color", FloatRepr.NORMALIZED_UNSIGNED_BYTE, 4)
+            .vector("light", IntegerRepr.SHORT, 2)
+            .vector("overlay", IntegerRepr.SHORT, 2)
+            .vector("color1", FloatRepr.NORMALIZED_UNSIGNED_BYTE, 4)
+            .vector("color2", FloatRepr.NORMALIZED_UNSIGNED_BYTE, 4)
+            .matrix("pose", FloatRepr.FLOAT, 4)
+            .build()
+        )
+        .writer { ptr, instance ->
+            MemoryUtil.memPutByte(ptr + 0, instance.red)
+            MemoryUtil.memPutByte(ptr + 1, instance.green)
+            MemoryUtil.memPutByte(ptr + 2, instance.blue)
+            MemoryUtil.memPutByte(ptr + 3, instance.alpha)
+
+            ExtraMemoryOps.put2x16(ptr + 4, instance.light)
+            ExtraMemoryOps.put2x16(ptr + 8, instance.overlay)
+
+            ExtraMemoryOps.put4x8(ptr + 12, instance.color1.data)
+            ExtraMemoryOps.put4x8(ptr + 16, instance.color2.data)
+
+            ExtraMemoryOps.putMatrix4f(ptr + 20, instance.pose)
+        }
+        .build()
+
+    fun init() {
+        LOG.info("Created ELN2 Flw instance types.")
+    }
+}
+
+class PolarInstance(
+    type: InstanceType<PolarInstance>,
+    handle: InstanceHandle
+) : TransformedInstance(type, handle) {
+    var color1 = ArgbColor(0)
+    var color2 = ArgbColor(0)
 }
 
 class SpecialVisualStorage<V : Visual> {
@@ -217,18 +302,61 @@ class PolarWriterUnsafe(backingBuffer: VecBuffer, vertexType: StructType<PolarDa
 */
 
 /**
- * Loads a baked model, and applies a post-processing step. The model must:
+ * Wraps a [PartialModel] and applies changes.
+ * When the [model] is requested for the first time, [applyChanges] is called to modify a copy of the partial model.
+ * */
+abstract class ProcessedModel(modelLocation: ResourceLocation) {
+    companion object {
+        val CACHE: RendererReloadCache<ProcessedModel, Model> =
+            RendererReloadCache<ProcessedModel, Model> { it: ProcessedModel ->
+                BakedModelBuilder.create(it.model ?: error("Partial model was null ${it.partialModel.modelLocation()}")).build()
+            }
+    }
+
+    val partialModel: PartialModel = PartialModel.of(modelLocation)
+
+    private val obj = Any()
+    private var lastInitialModel: BakedModel? = null
+    private var processedModel: BakedModel? = null
+
+    private val model: BakedModel? get() {
+        synchronized(obj) {
+            val partial = partialModel.get()
+
+            if(partial == null) {
+                lastInitialModel = null
+                processedModel = null
+                return null
+            }
+
+            if(lastInitialModel != partial) {
+                lastInitialModel = partial
+                processedModel = applyChanges(partial.bind())
+            }
+
+            return processedModel!!
+        }
+    }
+
+    /**
+     * Applies the changes to the [bakedModel]. The [bakedModel] is a copy of the model baked for the [partialModel], so it can be mutated freely.
+     * @return The changed [bakedModel] or another model entirely.
+     * */
+    protected abstract fun applyChanges(bakedModel: BakedModel): BakedModel
+
+    fun model(): Model = CACHE.get(this)
+}
+
+/**
+ * Applies a post-processing step needed by the polar instance. The model must:
  * - Not have quads oriented towards north and south
  * - Be like a tube
  *
  * The vertex data is rotated so that, when it gets written to the vertex buffer, a special ordering of vertices is obtained:
  * Vertices 0, 1 are on one "pole" of the model (min z) and vertices 2, 3 are on the other (max z)
  * */
-/*open class PolarModel(modelLocation: ResourceLocation) : PartialModel(modelLocation) {
-    override fun set(bakedModel: BakedModel) {
-        @Suppress("NAME_SHADOWING")
-        val bakedModel = bakedModel.bind()
-
+open class PolarModel(modelLocation: ResourceLocation) : ProcessedModel(modelLocation) {
+    override fun applyChanges(bakedModel: BakedModel): BakedModel {
         val quadPositionAttributes = HashMap<BakedQuad, ArrayList<Vector3d>>()
 
         @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")
@@ -337,6 +465,132 @@ class PolarWriterUnsafe(backingBuffer: VecBuffer, vertexType: StructType<PolarDa
             }
         }
 
-        super.set(bakedModel)
+        return bakedModel
     }
-}*/
+}
+
+/**
+ * Represents a type of modification needed to a standard "tube" wire model that is placed in a specific part configuration.
+ * The three possible configurations are:
+ * - Straight - the wire connects with another wire in the same plane. The model is designed for this, so no changes are required.
+ * - [Wrapped] - the wire connects to another wire on a perpendicular face of the same block, around the exterior. The patcher needs to extend the endpoint vertices so there is no gap at the corner.
+ * - [Inner] - the wire connects to another wire on a perpendicular face of the same block, inside the wire. The patcher needs to retract the endpoint vertices so there is no overlap at the corner.
+ * */
+enum class WirePatchType {
+    /**
+     * Patches the chosen face to wrap around the corner of a block by translating vertices forward to create a sleeve
+     * */
+    Wrapped,
+    /**
+     * Patches the chosen face to pack in the corner of a block by translating vertices backward to create a slit
+     * */
+    Inner
+}
+
+class WirePatchPolarModel(modelLocation: ResourceLocation, val patchType: WirePatchType) : PolarModel(modelLocation) {
+    override fun applyChanges(bakedModel: BakedModel): BakedModel {
+        val polarModelSource = super.applyChanges(bakedModel)
+
+        @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")
+        val quads = polarModelSource.getQuads(null, null, null).map {
+            if(it.direction == Direction.NORTH || it.direction == Direction.SOUTH) {
+                error("Invalid connection model")
+            }
+
+            it
+        }.associateBy { it.direction }
+
+        val headPositions = let {
+            val results = HashMap<BakedQuad, List<Pair<Int, Vector3d>>>()
+
+            quads.values.forEach { quad ->
+                val positionList = ArrayList<Pair<Int, Vector3d>>(2)
+                val buffer = ByteBuffer.allocate(32)
+                val intView = buffer.asIntBuffer()
+
+                for (i in 0 until 2) {
+                    intView.clear()
+                    intView.put(quad.vertices, i * 8, 8)
+
+                    val vector = Vector3d(
+                        buffer.getFloat(0).toDouble(),
+                        buffer.getFloat(4).toDouble(),
+                        buffer.getFloat(8).toDouble(),
+                    )
+
+                    positionList.add(i to vector)
+                }
+
+                positionList.sortBy { it.second.y }
+
+                results[quad] = positionList
+            }
+
+            results
+        }
+
+        val size = headPositions[quads[Direction.EAST]!!]!!.let {
+            it[1].second.y - it[0].second.y
+        }
+
+        require(size > 0.0)
+
+        fun write(quad: BakedQuad, i: Int, value: Double) {
+            val writer = IntBuffer.wrap(quad.vertices)
+            writer.position(8 * i + 2)
+            writer.put(value.toFloat().toBits())
+        }
+
+        val dz = when(patchType) {
+            WirePatchType.Wrapped -> -size
+            WirePatchType.Inner -> +size
+        }
+
+        quads[Direction.UP]!!.also { roof ->
+            headPositions[roof]!!.forEach { p ->
+                write(roof, p.first, p.second.z + dz)
+            }
+        }
+
+        listOf(Direction.EAST, Direction.WEST).map { quads[it]!! }.forEach { wall ->
+            val hVertex = headPositions[wall]!![1]
+            write(wall, hVertex.first, hVertex.second.z + dz)
+        }
+
+        return polarModelSource
+    }
+}
+
+/**
+ * Holds variants of a wire connection model.
+ * @param hubConnectionPlanar Planar variant of junction-hub connection
+ * @param hubConnectionInner Inner variant of junction-hub connection
+ * @param hubConnectionWrapped Wrapped variant of junction-hub connection
+ * @param fullConnectionPlanar Planar variant of junction-center connection
+ * @param fullConnectionInner Inner variant of junction-center connection
+ * @param fullConnectionWrapped Wrapped variant of junction-center connection
+ * */
+class WireConnectionModel(
+    hubConnectionPlanar: PolarModel,
+    hubConnectionInner: PolarModel,
+    hubConnectionWrapped: PolarModel,
+    fullConnectionPlanar: PolarModel,
+    fullConnectionInner: PolarModel,
+    fullConnectionWrapped: PolarModel,
+) {
+    /**
+     * Gets the Planar, Inner and Wrapped variants by fullness.
+     * */
+    val variants = mapOf(
+        false to mapOf(
+            CellPartConnectionMode.Planar to hubConnectionPlanar,
+            CellPartConnectionMode.Inner to hubConnectionInner,
+            CellPartConnectionMode.Wrapped to hubConnectionWrapped
+        ),
+        true to mapOf(
+            CellPartConnectionMode.Planar to fullConnectionPlanar,
+            CellPartConnectionMode.Inner to fullConnectionInner,
+            CellPartConnectionMode.Wrapped to fullConnectionWrapped
+        )
+    )
+}

@@ -23,6 +23,7 @@ import dev.engine_room.flywheel.lib.transform.Affine
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import net.minecraft.client.Camera
 import net.minecraft.client.renderer.LevelRenderer
+import net.minecraft.client.renderer.LightTexture
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.client.resources.model.BakedModel
@@ -42,7 +43,9 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
 import org.eln2.mc.buildDirectionTable
+import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
+import org.eln2.mc.common.parts.foundation.CellPartConnectionMode
 import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.common.parts.foundation.PartUpdateType
 import org.eln2.mc.extensions.cast
@@ -101,6 +104,29 @@ open class BasicPartVisual<P : Part>(
         modelInstance.delete()
     }
 }
+
+class TESTPARTVISUAL<P : Part>(
+    ctx: MultipartVisualizationContext,
+    part: P
+) : AbstractPartVisual<P>(ctx, part) {
+    val instance = ctx.instancerProvider()
+        .instancer(FlwInstanceTypes.POLAR, FlwModels.THERMAL_WIRE_CONNECTION.variants[true]!![CellPartConnectionMode.Planar]!!.model())
+        .createInstance()
+        .also {
+            it.color1 = ArgbColor(255, 0, 255, 0)
+            it.color2 = ArgbColor(0, 0, 0, 255)
+        }
+        .partTransformation(ctx.parent, part, Vector3d.one, 0.0)
+
+    override fun _delete() {
+        instance.delete()
+    }
+
+    override fun updateLight(partialTick: Float) {
+        visualizationContext.parent.relightInstances(instance)
+    }
+}
+
 /*
 
 fun CellPart<*, ConnectedPartRenderer>.getConnectedPartTag() = CompoundTag().also { compoundTag ->
@@ -129,7 +155,7 @@ fun Part<ConnectedPartRenderer>.handleConnectedPartTag(tag: CompoundTag) = this.
     }
 )
 */
-/*
+
 data class WireConnectionModelPartial(
     val planar: PolarModel,
     val inner: PolarModel,
@@ -140,7 +166,7 @@ data class WireConnectionModelPartial(
         CellPartConnectionMode.Inner to inner,
         CellPartConnectionMode.Wrapped to wrapped
     )
-}*/
+}
 /*
 class ConnectedPartRenderer(
     val part: Part<*>,

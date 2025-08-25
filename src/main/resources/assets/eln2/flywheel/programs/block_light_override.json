@@ -1,4 +1,0 @@
-{
-  "vertex": "flywheel:model.vert",
-  "fragment": "eln2:block_light_override.frag"
-}

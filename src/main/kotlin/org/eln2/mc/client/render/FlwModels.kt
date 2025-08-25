@@ -2,17 +2,21 @@ package org.eln2.mc.client.render
 
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import net.minecraftforge.server.ServerLifecycleHooks
+import org.eln2.mc.client.render.foundation.PolarModel
+import org.eln2.mc.client.render.foundation.WireConnectionModel
+import org.eln2.mc.client.render.foundation.WirePatchType
+import org.eln2.mc.client.render.foundation.WirePatchPolarModel
 
 import org.eln2.mc.resource
 
-object PartialModels {
+object FlwModels {
     //FIXME
 
     val ELECTRICAL_WIRE_HUB = partialBlock("wire/electrical/hub")
     //val ELECTRICAL_WIRE_CONNECTION = wireConnection("wire/electrical/connection_hub", "wire/electrical/connection_full")
 
     val THERMAL_WIRE_HUB = partialBlock("wire/thermal/hub")
-    //val THERMAL_WIRE_CONNECTION = wireConnection("wire/thermal/connection_hub", "wire/thermal/connection_full")
+    val THERMAL_WIRE_CONNECTION = wireConnection("wire/thermal/connection_hub", "wire/thermal/connection_full")
 
     val BATTERY = partialBlock("battery/lead_acid")
 
@@ -50,22 +54,21 @@ object PartialModels {
 
     fun partialBlock(path: String) = PartialModel.of(resource("block/$path"))
 
-    //fun polarBlock(path: String) = PolarModel(resource("block/$path"))
+    fun polarBlock(path: String) = PolarModel(resource("block/$path"))
 
-    // fixme
-    /*fun wireConnection(connectionHub: String, connectionFull: String): WireConnectionModel {
+    fun wireConnection(connectionHub: String, connectionFull: String): WireConnectionModel {
         val hubResourceLocation = resource("block/$connectionHub")
         val fullResourceLocation = resource("block/$connectionFull")
 
        return WireConnectionModel(
             PolarModel(hubResourceLocation),
-            WirePolarPatchModel(hubResourceLocation, WirePatchType.Inner),
-            WirePolarPatchModel(hubResourceLocation, WirePatchType.Wrapped),
-            PolarModel(fullResourceLocation),
-            WirePolarPatchModel(fullResourceLocation, WirePatchType.Inner),
-            WirePolarPatchModel(fullResourceLocation, WirePatchType.Wrapped)
+            WirePatchPolarModel(hubResourceLocation, WirePatchType.Inner),
+            WirePatchPolarModel(hubResourceLocation, WirePatchType.Wrapped),
+           PolarModel(fullResourceLocation),
+           WirePatchPolarModel(fullResourceLocation, WirePatchType.Inner),
+            WirePatchPolarModel(fullResourceLocation, WirePatchType.Wrapped)
         )
-    }*/
+    }
 
     /*fun patchPartial(connection: String): WireConnectionModelPartial {
         val resourceLocation = resource("block/$connection")

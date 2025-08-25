@@ -26,7 +26,7 @@ import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.client.render.foundation.MultipartVisualizationContext
-import org.eln2.mc.client.render.foundation.VisualizerRegistry
+import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.cells.foundation.Cell
 import org.eln2.mc.common.cells.foundation.CellAndContainerHandle
@@ -459,7 +459,7 @@ abstract class Part(ci: PartCreateInfo) {
         this.setSyncDirty()
     }
 
-    open fun createVisual(ctx: MultipartVisualizationContext) = VisualizerRegistry
+    open fun createVisual(ctx: MultipartVisualizationContext) = FlwVisualizerRegistry
         .getPartVisualizer(placement.provider)
         .create(ctx, this)
 }

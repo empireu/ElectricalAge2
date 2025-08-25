@@ -13,9 +13,7 @@ import net.minecraft.world.InteractionResult
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.*
-import org.eln2.mc.client.render.PartialModels
 import org.eln2.mc.client.render.foundation.AbstractPartVisual
-import org.eln2.mc.client.render.foundation.BasicPartVisual
 import org.eln2.mc.client.render.foundation.MultipartVisualizationContext
 import org.eln2.mc.client.render.foundation.partTransformation
 import org.eln2.mc.common.*
