@@ -12,17 +12,195 @@ import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
+import org.ageseries.libage.sim.electrical.mna.component.IResistor
+import org.ageseries.libage.sim.electrical.mna.component.updateResistance
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.AbstractPartVisual
 import org.eln2.mc.client.render.foundation.MultipartVisualizationContext
 import org.eln2.mc.client.render.foundation.partTransformation
 import org.eln2.mc.common.*
+import org.eln2.mc.common.cells.foundation.Behavior
+import org.eln2.mc.common.cells.foundation.Cell
+import org.eln2.mc.common.cells.foundation.CellCreateInfo
+import org.eln2.mc.common.cells.foundation.CellProvider
+import org.eln2.mc.common.cells.foundation.PolarResistorObjectVirtual
+import org.eln2.mc.common.cells.foundation.SimObject
+import org.eln2.mc.common.cells.foundation.SubscriberCollection
+import org.eln2.mc.common.cells.foundation.SubscriberPhase
+import org.eln2.mc.common.cells.foundation.TemperatureExplosionBehavior
+import org.eln2.mc.common.cells.foundation.TemperatureExplosionBehaviorOptions
+import org.eln2.mc.common.cells.foundation.addPre
+import org.eln2.mc.common.cells.foundation.self
+import org.eln2.mc.common.events.EventQueue
 import org.eln2.mc.common.parts.foundation.*
+import org.eln2.mc.data.PoleMap
 import org.eln2.mc.extensions.evaluateDiffuseIrradianceFactor
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.ArgbColor
+import kotlin.math.absoluteValue
+import kotlin.math.round
+
+abstract class LightCell(ci: CellCreateInfo) : Cell(ci), LightView, LightBulbEmitterView {
+    companion object {
+        private const val RENDER_EPS = 1e-4
+        private const val RESISTANCE_EPS = 0.1
+    }
+
+    // The last render brightness sent:
+    private var trackedRenderBrightness: Double = 0.0
+
+    // Accessor to send the render brightness:
+    private var renderBrightnessConsumer: LightTemperatureConsumer? = null
+
+    // An event queue hooked into the game object:
+    private var serverThreadReceiver: EventQueue? = null
+
+    /**
+     * Don't worry, it *is* implemented by an electrical object.
+     * We just used `by` to redirect the object's resistor to this field.
+     * */
+    abstract val resistor : IResistor
+
+    @SimObject
+    val thermalWire = ThermalWireObject(self())
+
+    @Behavior
+    val explosion = TemperatureExplosionBehavior.create(
+        TemperatureExplosionBehaviorOptions(),
+        self(),
+        thermalWire.thermalBody::temperature
+    )
+
+    final override var volumeState: Int = 0
+
+    final override var modelTemperature = 0.0
+        private set
+
+    final override val power: Double get() = resistor.power
+    final override val current: Double get() = resistor.current
+    final override val potential: Double get() = resistor.potential
+
+    final override var life: Double = 0.0
+
+    final override var lightBulb: LightBulbItem? = null
+    var volume: LightVolume? = null
+
+    override fun afterConstruct() {
+        super.afterConstruct()
+        resistor.resistance = LARGE_RESISTANCE
+    }
+
+    override fun resetValues() {
+        resistor.updateResistance(LARGE_RESISTANCE)
+        modelTemperature = 0.0
+        trackedRenderBrightness = 0.0
+        volumeState = 0
+        life = 0.0
+        lightBulb = null
+        volume = null
+    }
+
+    fun bind(serverThreadAccess: EventQueue, renderBrightnessConsumer: LightTemperatureConsumer, pLoadExisting: Boolean) {
+        this.serverThreadReceiver = serverThreadAccess
+        this.renderBrightnessConsumer = renderBrightnessConsumer
+
+        if(pLoadExisting) {
+            // If we've been running, send the current state:
+            val life = this.life
+            val volume = this.volume
+
+            if(volume != null && life > 0.0) {
+                serverThreadAccess.place(VolumetricLightChangeEvent(volume, volumeState))
+                renderBrightnessConsumer.consume(modelTemperature)
+            }
+        }
+    }
+
+    fun unbind() {
+        serverThreadReceiver = null
+        renderBrightnessConsumer = null
+    }
+
+    override fun subscribe(subscribers: SubscriberCollection) {
+        subscribers.addPre(this::simulationTick) // maybe reduce interval
+    }
+
+    @OnSimulationThread
+    private fun simulationTick(dt: Double, phase: SubscriberPhase) {
+        val lightModel = this.lightBulb?.model
+
+        if(lightModel == null || life approxEq 0.0) {
+            return
+        }
+
+        // Fetch volume if not fetched:
+        volume = volume ?: lightModel.volumeProvider.getVolume(locator)
+        val volume = volume!!
+
+        val gameEventReceiver = this.serverThreadReceiver
+
+        // Tick down consumption:
+        val damage = lightModel.damageFunction.computeDamage(this, dt).absoluteValue
+
+        if(damage > 0.0) {
+            life = (life - damage).coerceIn(0.0, 1.0)
+            setChanged()
+        }
+
+        if(life approxEq 0.0) {
+            life = 0.0
+            // Light has burned out:
+            gameEventReceiver?.enqueue(LightBurnedOutEvent)
+            resetValues()
+            setChanged()
+            return
+        }
+
+        // Evaluate temperature:
+        modelTemperature = lightModel.temperatureFunction.computeTemperature(this).coerceIn(0.0, 1.0)
+
+        // Update power consumption:
+        resistor.updateResistance(!lightModel.resistanceFunction.computeResistance(this), RESISTANCE_EPS)
+
+        // Send new value to client:
+        if (!modelTemperature.approxEq(trackedRenderBrightness, RENDER_EPS)) {
+            trackedRenderBrightness = modelTemperature
+            renderBrightnessConsumer?.consume(modelTemperature)
+        }
+
+        // Find target state based on temperature:s
+        val targetState = round(modelTemperature * volume.stateIncrements).toInt().coerceIn(0, volume.stateIncrements)
+
+        // Detect changes:
+        if (volumeState != targetState) {
+            volumeState = targetState
+            // Using this new "place" API, the game object will receive one event (with the latest values),
+            // even if we do multiple updates in our simulation thread:
+            gameEventReceiver?.place(VolumetricLightChangeEvent(volume, targetState))
+        }
+    }
+
+    override fun saveCellData() = lightBulb?.toNbtWithState(life)
+
+    override fun loadCellData(tag: CompoundTag) {
+        LightBulbItem.fromNbtWithState(tag)?.also { (bulb, life) ->
+            this.lightBulb = bulb
+            this.life = life
+        }
+    }
+}
+
+class PolarLightCell(ci: CellCreateInfo, map: PoleMap) : LightCell(ci) {
+    @SimObject
+    override val resistor = PolarResistorObjectVirtual(self(), map)
+
+    override fun cellConnectionPredicate(remote: Cell): Boolean {
+        return super.cellConnectionPredicate(remote) && resistor.poleMap.evaluateOrNull(this, remote) != null
+    }
+}
 
 data class SolarLightModel(
     val rechargeRate: Double,

@@ -75,8 +75,9 @@ class Eln2 {
             event.enqueueWork {
                 FlwMaterials.init()
                 FlwInstanceTypes.init()
-                FlwVisualizerRegistry.registerBlockEntityVisuals()
-                FlwVisualizerRegistry.registerPartVisuals()
+                FlwVisualizerRegistry.registerBlockEntityVisualizers()
+                FlwVisualizerRegistry.registerPartVisualizers()
+                FlwVisualizerRegistry.registerSpecVisualizers()
                 Content.clientSetup()
             }
         }

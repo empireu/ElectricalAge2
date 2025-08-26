@@ -34,6 +34,9 @@ import org.eln2.mc.common.content.SolarLightPart
 import org.eln2.mc.common.parts.foundation.CellPartConnectionMode
 import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.common.parts.foundation.PartProvider
+import org.eln2.mc.common.specs.foundation.Spec
+import org.eln2.mc.common.specs.foundation.SpecProvider
+import org.eln2.mc.common.specs.foundation.SpecVisualizer
 import org.eln2.mc.extensions.bind
 import org.eln2.mc.mathematics.ArgbColor
 import org.eln2.mc.resource
@@ -42,27 +45,39 @@ import java.nio.ByteBuffer
 import java.nio.IntBuffer
 
 object FlwVisualizerRegistry {
-    private val partVisualRegistry = HashMap<PartProvider, PartVisualizer<*>>()
+    private val partVisualizerRegistry = HashMap<PartProvider, PartVisualizer<*>>()
+    private val specVisualizerRegistry = HashMap<SpecProvider, SpecVisualizer<*>>()
 
     private fun <P : Part> setPartVisualizer(partProvider: PartProvider, visualizer: PartVisualizer<P>) {
-        if(partVisualRegistry.contains(partProvider)) {
+        if(partVisualizerRegistry.contains(partProvider)) {
             error("Duplicate register part visualizer ${partProvider.id}")
         }
 
-        partVisualRegistry[partProvider] = visualizer
+        partVisualizerRegistry[partProvider] = visualizer
     }
 
-    fun getPartVisualizer(provider: PartProvider) = partVisualRegistry[provider]
+    private fun <S : Spec> setSpecVisualizer(specProvider: SpecProvider, visualizer: SpecVisualizer<S>) {
+        if(specVisualizerRegistry.contains(specProvider)) {
+            error("Duplicate register spec visualizer ${specProvider.id}")
+        }
+
+        specVisualizerRegistry[specProvider] = visualizer
+    }
+
+    fun getPartVisualizer(provider: PartProvider) = partVisualizerRegistry[provider]
         ?: error("Visualizer for part $provider not registered")
 
-    fun registerBlockEntityVisuals() {
+    fun getSpecVisualizer(provider: SpecProvider) = specVisualizerRegistry[provider]
+        ?: error("Visualizer for spec $provider not registered")
+
+    fun registerBlockEntityVisualizers() {
         VisualizerRegistry.setVisualizer(
             BlockRegistry.MULTIPART_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::MultipartBlockEntityVisual) { true }
         )
     }
 
-    fun registerPartVisuals() {
+    fun registerPartVisualizers() {
         setPartVisualizer<SolarLightPart>(Content.SMALL_GARDEN_LIGHT.part.get()) { ctx, part ->
             BasicPartVisual(
                 ctx,
@@ -78,6 +93,10 @@ object FlwVisualizerRegistry {
                 FlwModels.TALL_GARDEN_LIGHT_EMITTER
             )
         }
+    }
+
+    fun registerSpecVisualizers() {
+
     }
 }
 

@@ -377,7 +377,7 @@ abstract class AbstractPartVisual<T : Part>(val visualizationContext: MultipartV
 
 class MultipartVisualizationContext(
     ctx: VisualizationContext,
-    val parent: MultipartBlockEntityVisual,
+    val parent: MultipartBlockEntityVisual
 ) : VisualizationContext by ctx
 
 class MultipartBlockEntityVisual(

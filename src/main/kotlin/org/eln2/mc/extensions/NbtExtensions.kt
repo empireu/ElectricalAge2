@@ -11,6 +11,7 @@ import org.ageseries.libage.mathematics.geometry.Vector2d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.common.parts.foundation.CellPartConnectionMode
 import org.eln2.mc.common.parts.foundation.PartUpdateType
+import org.eln2.mc.common.specs.foundation.SpecUpdateType
 import org.eln2.mc.data.Locators
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.FacingDirection
@@ -163,9 +164,6 @@ fun CompoundTag.getPartUpdateType(key: String): PartUpdateType {
     return PartUpdateType.fromId(data)
 }
 
-// FIXME
-/*
-
 fun CompoundTag.putSpecUpdateType(key: String, type: SpecUpdateType) {
     val data = type.id
 
@@ -177,7 +175,6 @@ fun CompoundTag.getSpecUpdateType(key: String): SpecUpdateType {
 
     return SpecUpdateType.fromId(data)
 }
-*/
 
 /**
  * Creates a new compound tag, calls the consumer method with the new tag, and adds the created tag to this instance.

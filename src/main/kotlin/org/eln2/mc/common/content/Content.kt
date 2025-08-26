@@ -195,7 +195,7 @@ object Content {
 
     //#region Creative Components
 
-   /* val VOLTAGE_SOURCE_CELL = cell(
+   val VOLTAGE_SOURCE_CELL = cell(
         "voltage_source",
         BasicCellProvider(::VoltageSourceCell)
     )
@@ -207,7 +207,7 @@ object Content {
             ::VoltageSourcePart
         )
     )
-
+/*
     val GROUND_CELL = cell(
         "ground",
         BasicCellProvider(::GroundCell)
@@ -219,16 +219,17 @@ object Content {
             Vector3d(4.0 / 16.0, 4.0 / 16.0, 4.0 / 16.0),
             ::GroundPart
         )
-    )
-
-    val GROUND_SPEC = specAndItem(
-        "ground_micro_grid",
-        BasicSpecProvider(
-            PartialModels.GROUND_MICRO_GRID,
-            Vector3d(2.0 / 16.0),
-            ::GroundSpec
-        )
     )*/
+
+    /*
+        val GROUND_SPEC = specAndItem(
+            "ground_micro_grid",
+            BasicSpecProvider(
+                PartialModels.GROUND_MICRO_GRID,
+                Vector3d(2.0 / 16.0),
+                ::GroundSpec
+            )
+        )*/
 
     //#endregion
 
@@ -359,7 +360,7 @@ object Content {
 
     //#region Basic Electrical Components
 
-    /*val RESISTOR_CELL = cell(
+    val RESISTOR_CELL = cell(
         "resistor",
         BasicCellProvider(::ResistorCell)
     )
@@ -371,7 +372,7 @@ object Content {
             ::ResistorPart
         )
     )
-*/
+
     //#endregion
 
     //#region Photovoltaics
@@ -411,7 +412,7 @@ object Content {
 
     //#region Lights
 
- /*   val POLAR_LIGHT_CELL = cell(
+    val POLAR_LIGHT_CELL = cell(
         "polar_light",
         BasicCellProvider { ci ->
             PolarLightCell(ci, directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right))
@@ -437,6 +438,8 @@ object Content {
             }
         }
     )
+
+    /*
 
     val LIGHT_PART_MICRO_GRID = partAndItem(
         "small_wall_lamp_micro_grid",

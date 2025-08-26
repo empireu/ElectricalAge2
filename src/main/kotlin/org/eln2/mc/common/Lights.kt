@@ -1383,7 +1383,7 @@ interface LightView {
      * */
     val modelTemperature: Double
     /**
-     * Gets the latest state incremement.
+     * Gets the latest state increment.
      * */
     val volumeState: Int
 }
