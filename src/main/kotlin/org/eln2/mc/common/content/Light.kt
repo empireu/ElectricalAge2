@@ -19,6 +19,7 @@ import org.eln2.mc.client.render.foundation.partTransformation
 import org.eln2.mc.common.*
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.extensions.evaluateDiffuseIrradianceFactor
+import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.ArgbColor
@@ -32,10 +33,10 @@ data class SolarLightModel(
 class SolarLightPart(
     ci: PartCreateInfo,
     val model: SolarLightModel,
-    normalSupplier: (SolarLightPart) -> Vector3d
+    normalSupplier: ((SolarLightPart) -> Vector3d)? = null
 ) : Part(ci), TickablePart, ComponentDisplay, LightFixtureGameObject {
     val volume = model.volumeProvider.getVolume(placement.createLocator())
-    val normal = normalSupplier(this)
+    val normal = if(normalSupplier == null) placement.face.vector3d else normalSupplier(this)
 
     private val lightVolume = serverOnlyHolder {
         LightVolumeInstance(
@@ -44,7 +45,7 @@ class SolarLightPart(
         )
     }
 
-    var energy = 0.0
+    var energy = 0.5
     private var savedEnergy = 0.0
     private var isOn = true
     private var trackedState = false
@@ -73,12 +74,11 @@ class SolarLightPart(
     }
 
     override fun tick() {
-        energy += model.rechargeRate * placement.level.evaluateDiffuseIrradianceFactor(normal)
-
         val state: Boolean
 
         // Is day -> sky darken
         if(placement.level.isDay && placement.level.canSeeSky(placement.position)) {
+            energy += model.rechargeRate * placement.level.evaluateDiffuseIrradianceFactor(normal)
             state = false
         }
         else {
@@ -190,7 +190,7 @@ class LightFixtureRenderer<P>(
     emitterModel: PartialModel,
     val rotation: Double = 0.0,
     val coldTint: ArgbColor = ArgbColor(255, 255, 255, 255),
-    val warmTint: ArgbColor = ArgbColor(196, 127, 255, 254),
+    val warmTint: ArgbColor = ArgbColor(255, 255, 196, 127),
 ) : AbstractPartVisual<P>(ctx, part), SimpleDynamicVisual where P : Part, P : LightFixtureGameObject {
     private val cageInstance = create(cageModel)
     private val emitterInstance = create(emitterModel)
@@ -201,7 +201,7 @@ class LightFixtureRenderer<P>(
             .instancerProvider()
             .instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
             .createInstance()
-            .partTransformation(visualizationContext.parent, part, yRotation = rotation)
+            .partTransformation(part, yRotation = rotation)
     }
 
     override fun updateLight(partialTick: Float) {

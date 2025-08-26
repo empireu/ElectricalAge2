@@ -62,7 +62,11 @@ fun interface InternalTemperatureConsumer {
 }
 
 fun interface ExternalTemperatureConsumer {
-    fun onExternalTemperatureChanges(removed: HashSet<ThermalObject<*>>, dirty: HashMap<ThermalObject<*>, Double>)
+    fun onExternalTemperatureChanges(
+        removed: HashSet<ThermalObject<*>>,
+        dirty: HashMap<ThermalObject<*>, Double>,
+        all: HashMap<ThermalObject<*>, Double>
+    )
 }
 
 /**
@@ -115,38 +119,55 @@ class ExternalTemperatureReplicatorBehavior(
     var scanPhase: SubscriberPhase = SubscriberPhase.Pre
     var tolerance: Double = 1.0
 
-    private val tracked = HashMap<ThermalObject<*>, Double>()
-    private val unmarked = HashSet<ThermalObject<*>>()
+    /**
+     * Holds the last seen temperature for the remote thermal object.
+     * */
+    private val trackedObjects = HashMap<ThermalObject<*>, Double>()
+
+    /**
+     * Used to find which thermal objects have been "disconnected".
+     * At the start of the scan, the map is filled with all tracked objects.
+     * Then, as neighbors are found, they are removed from this map.
+     * What is left over is what no longer is connected to this cell.
+     * */
+    private val lostObjects = HashSet<ThermalObject<*>>()
+
+    /**
+     * Holds the objects that have changed their temperature last scan.
+     * */
+    private val dirty = HashMap<ThermalObject<*>, Double>()
 
     override fun subscribe(subscribers: SubscriberCollection) {
         subscribers.addSubscriber(SubscriberOptions(scanInterval, scanPhase), this::scan)
     }
 
     private fun scan(dt: Double, phase: SubscriberPhase) {
-        unmarked.addAll(tracked.keys)
-
-        val dirty = HashMap<ThermalObject<*>, Double>()
+        lostObjects.clear()
+        lostObjects.addAll(trackedObjects.keys)
+        dirty.clear()
 
         scanNeighbors(cell) { remoteThermalObject, actualTemperature ->
-            unmarked.remove(remoteThermalObject)
+            lostObjects.remove(remoteThermalObject)
 
-            val previousTemperature = tracked[remoteThermalObject]
+            val previousTemperature = trackedObjects[remoteThermalObject]
 
             if(previousTemperature == null || !previousTemperature.approxEq(!actualTemperature, tolerance)) {
-                tracked[remoteThermalObject] = !actualTemperature
+                trackedObjects[remoteThermalObject] = !actualTemperature
                 dirty[remoteThermalObject] = !actualTemperature
             }
         }
 
-        if(unmarked.size > 0 || dirty.size > 0) {
-            consumer.onExternalTemperatureChanges(HashSet(unmarked), dirty)
-
-            unmarked.forEach {
-                tracked.remove(it)
+        if(lostObjects.isNotEmpty() || dirty.isNotEmpty()) {
+            lostObjects.forEach {
+                trackedObjects.remove(it)
             }
-        }
 
-        unmarked.clear()
+            consumer.onExternalTemperatureChanges(
+                HashSet(lostObjects),
+                HashMap(dirty),
+                HashMap(trackedObjects)
+            )
+        }
     }
 
     companion object {
@@ -155,15 +176,11 @@ class ExternalTemperatureReplicatorBehavior(
                 val remoteThermalObject = remoteCell.objects.getObjectOrNull(SimulationObjectType.Thermal) as? ThermalObject
                     ?: continue
 
-                val contactInfo: ThermalContactInfo
-
-                if(remoteThermalObject is ThermalContactInfo) {
-                    contactInfo = remoteThermalObject
-                }
-                else if(remoteThermalObject.cell is ThermalContactInfo) {
-                    contactInfo = remoteThermalObject.cell
-                }
-                else {
+                val contactInfo: ThermalContactInfo = if(remoteThermalObject is ThermalContactInfo) {
+                    remoteThermalObject
+                } else if(remoteThermalObject.cell is ThermalContactInfo) {
+                    remoteThermalObject.cell
+                } else {
                     continue
                 }
 

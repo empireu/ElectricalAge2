@@ -4,6 +4,7 @@ import net.minecraft.util.FastColor
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.geometry.Vector4d
 import org.ageseries.libage.mathematics.lerp
+import org.lwjgl.system.MemoryUtil
 
 /**
  * ARGB color with 8 bits per channel implemented as a value class.
@@ -89,6 +90,13 @@ value class ArgbColor(val data : Int) {
         gF.toDouble(),
         bF.toDouble()
     )
+
+    fun blit(ptr: Long) {
+        MemoryUtil.memPutByte(ptr + 0, r.toByte())
+        MemoryUtil.memPutByte(ptr + 1, g.toByte())
+        MemoryUtil.memPutByte(ptr + 2, b.toByte())
+        MemoryUtil.memPutByte(ptr + 3, a.toByte())
+    }
 }
 
 

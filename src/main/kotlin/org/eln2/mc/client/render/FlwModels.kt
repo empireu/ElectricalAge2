@@ -13,7 +13,7 @@ object FlwModels {
     //FIXME
 
     val ELECTRICAL_WIRE_HUB = partialBlock("wire/electrical/hub")
-    //val ELECTRICAL_WIRE_CONNECTION = wireConnection("wire/electrical/connection_hub", "wire/electrical/connection_full")
+    val ELECTRICAL_WIRE_CONNECTION = wireConnection("wire/electrical/connection_hub", "wire/electrical/connection_full")
 
     val THERMAL_WIRE_HUB = partialBlock("wire/thermal/hub")
     val THERMAL_WIRE_CONNECTION = wireConnection("wire/thermal/connection_hub", "wire/thermal/connection_full")

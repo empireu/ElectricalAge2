@@ -4,10 +4,30 @@
 
 package org.eln2.mc.common.content
 
+import net.minecraft.client.gui.screens.MenuScreens
+import org.ageseries.libage.data.CELSIUS
+import org.ageseries.libage.data.KILOGRAM
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.WATT_PER_KELVIN
+import org.ageseries.libage.data.WATT_PER_METER_KELVIN
 import org.ageseries.libage.mathematics.frac
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.sim.ChemicalElement
+import org.ageseries.libage.sim.ConnectionParameters
+import org.ageseries.libage.sim.Material
+import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.LOG
+import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.defaultRadiantBodyColor
 import org.eln2.mc.common.LightFieldPrimitives
+import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
+import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
+import org.eln2.mc.common.cells.CellRegistry.cell
+import org.eln2.mc.common.cells.foundation.BasicCellProvider
+import org.eln2.mc.common.cells.foundation.CellFactory
+import org.eln2.mc.common.cells.foundation.RadiantBodyEmissionDescription
+import org.eln2.mc.common.cells.foundation.TemperatureExplosionBehaviorOptions
+import org.eln2.mc.common.containers.ContainerRegistry.menu
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.partAndItem
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
@@ -54,7 +74,7 @@ object Content {
     private fun setupScreens() {
         //FIXME
         //MenuScreens.register(FURNACE_MENU.get(), ::FurnaceScreen)
-        //MenuScreens.register(HEAT_GENERATOR_MENU.get(), ::HeatGeneratorScreen)
+        MenuScreens.register(HEAT_GENERATOR_MENU.get(), ::HeatGeneratorScreen)
 
         //LOG.info("Client screens completed")
     }
@@ -84,7 +104,7 @@ object Content {
 
     private val UNINSULATED_WIRE_LIGHT_FIELD = LightFieldPrimitives.sourceOnlyStart(15)
 
-   /* val COPPER_THERMAL_WIRE = ThermalWireBuilder("thermal_wire_copper")
+    val COPPER_THERMAL_WIRE = ThermalWireBuilder("thermal_wire_copper")
         .apply {
             damageOptions = TemperatureExplosionBehaviorOptions(
                 temperatureThreshold = Quantity(1000.0, CELSIUS)
@@ -104,8 +124,18 @@ object Content {
             radiantDescription = RadiantBodyEmissionDescription({
                 UNINSULATED_WIRE_LIGHT_FIELD
             })
+
+            renderer {
+                WireRenderModel(
+                    FlwModels.THERMAL_WIRE_HUB,
+                    FlwModels.THERMAL_WIRE_CONNECTION,
+                    defaultRadiantBodyColor()
+                )
+            }
         }
         .register()
+
+   /*
 
     val ELECTRICAL_WIRE_COPPER = ElectricalWireBuilder("electrical_cable_copper")
         .apply {
@@ -499,8 +529,6 @@ object Content {
     )
 
 */
-    private const val GARDEN_LIGHT_INITIAL_CHARGE = 0.5
-
     private fun gardenLightModel(strength: Double) = SolarLightModel(
         solarScan(Vector3d.unitY),
         dischargeRate = 1.0 / 12000.0 * 0.9,
@@ -512,37 +540,26 @@ object Content {
     val SMALL_GARDEN_LIGHT = partAndItem(
         "small_garden_light",
         BasicPartProvider(Vector3d(4.0 / 16.0, 6.0 / 16.0, 4.0 / 16.0)) { ci ->
-            SolarLightPart(ci, SMALL_GARDEN_LIGHT_MODEL) { it.placement.face.vector3d }
-                .also { it.energy = GARDEN_LIGHT_INITIAL_CHARGE }
+            SolarLightPart(ci, SMALL_GARDEN_LIGHT_MODEL)
         }
     )
 
-    private val TALL_GARDEN_LIGHT_MODEL = gardenLightModel(7.0)
+    private val TALL_GARDEN_LIGHT_MODEL = gardenLightModel(5.0)
 
- /*   val TALL_GARDEN_LIGHT = partAndItem(
+    val TALL_GARDEN_LIGHT = partAndItem(
         "tall_garden_light",
         BasicPartProvider(Vector3d(3.0 / 16.0, 15.5 / 16.0, 3.0 / 16.0)) { ci ->
-            SolarLightPart(
-                ci,
-                SMALL_GARDEN_LIGHT_MODEL,
-                { it.placement.face.vector3d },
-                {
-                    LightFixtureRenderer(
-                        it,
-                        PartialModels.TALL_GARDEN_LIGHT_CAGE.cutout(),
-                        PartialModels.TALL_GARDEN_LIGHT_EMITTER.solid()
-                    )
-                },
-                LightFixtureRenderer::class.java
-            ).also { it.energy = GARDEN_LIGHT_INITIAL_CHARGE }
+            SolarLightPart(ci, TALL_GARDEN_LIGHT_MODEL)
         }
     )
+
+ /*
 */
     //#endregion
 
     //#region Heat Generator
 
-  /*  val HEAT_GENERATOR_CELL = cell(
+    val HEAT_GENERATOR_CELL = cell(
         "heat_generator",
         BasicCellProvider.setup {
             val thermalDefinition = ThermalMassDefinition(
@@ -575,7 +592,7 @@ object Content {
     )
 
     val HEAT_GENERATOR_MENU = menu("heat_generator", ::HeatGeneratorMenu)
-
+/*
     val ELECTRICAL_HEAT_ENGINE_CELL = cell(
         "electrical_heat_engine",
         BasicCellProvider.setup {

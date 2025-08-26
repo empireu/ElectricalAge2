@@ -23,7 +23,6 @@ import dev.engine_room.flywheel.lib.transform.Affine
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import net.minecraft.client.Camera
 import net.minecraft.client.renderer.LevelRenderer
-import net.minecraft.client.renderer.LightTexture
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.client.resources.model.BakedModel
@@ -42,6 +41,7 @@ import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
+import org.eln2.mc.LOG
 import org.eln2.mc.buildDirectionTable
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
@@ -66,7 +66,7 @@ fun createPartInstance(
     .instancerProvider()
     .instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
     .createInstance()
-    .partTransformation(ctx.parent, part, scale, yRotation)
+    .partTransformation(part, scale, yRotation)
 
 /*
 fun createSpecInstance(
@@ -102,28 +102,6 @@ open class BasicPartVisual<P : Part>(
 
     override fun _delete() {
         modelInstance.delete()
-    }
-}
-
-class TESTPARTVISUAL<P : Part>(
-    ctx: MultipartVisualizationContext,
-    part: P
-) : AbstractPartVisual<P>(ctx, part) {
-    val instance = ctx.instancerProvider()
-        .instancer(FlwInstanceTypes.POLAR, FlwModels.THERMAL_WIRE_CONNECTION.variants[true]!![CellPartConnectionMode.Planar]!!.model())
-        .createInstance()
-        .also {
-            it.color1 = ArgbColor(255, 0, 255, 0)
-            it.color2 = ArgbColor(0, 0, 0, 255)
-        }
-        .partTransformation(ctx.parent, part, Vector3d.one, 0.0)
-
-    override fun _delete() {
-        instance.delete()
-    }
-
-    override fun updateLight(partialTick: Float) {
-        visualizationContext.parent.relightInstances(instance)
     }
 }
 
@@ -270,7 +248,7 @@ val partOffsetTable = buildDirectionTable {
     }
 }
 
-fun<T : Affine<T>> T.partTransformation(instance: MultipartBlockEntityVisual, part: Part, scale: Vector3d = Vector3d.one, yRotation: Double = 0.0): T {
+fun<T : Affine<T>> T.partTransformation(part: Part, scale: Vector3d = Vector3d.one, yRotation: Double = 0.0): T {
     val (dx, dy, dz) = partOffsetTable[part.placement.face.get3DDataValue()]
 
     return this
@@ -299,7 +277,7 @@ fun<T : Transform<T>> T.transformSpec(instance: SpecPartRenderer, spec: Spec<*>,
 
 class RadiantBodyColorBuilder {
     var coldTint = ArgbColor(1f, 1f, 1f, 1f)
-    var hotTint = ArgbColor(1f, 0.1f, 0.1f, 1f)
+    var hotTint = ArgbColor( 1f, 1f, 0.1f, 0.1f)
     var coldTemperature = STANDARD_TEMPERATURE
     var hotTemperature = Quantity(800.0, CELSIUS)
 
@@ -372,8 +350,8 @@ class ThermalTint(
     }
 }
 
-fun interface PartVisualizer {
-    fun create(ctx: MultipartVisualizationContext, part: Part): AbstractPartVisual<*>
+fun interface PartVisualizer<P : Part> {
+    fun create(ctx: MultipartVisualizationContext, part: P): AbstractPartVisual<*>
 }
 
 abstract class AbstractPartVisual<T : Part>(val visualizationContext: MultipartVisualizationContext, val part: T) : Visual, LightUpdatedVisual {
@@ -493,6 +471,12 @@ class MultipartBlockEntityVisual(
     private fun addPart(part: Part, partialTick: Float) {
         if (!parts.contains(part)) {
             val visual = part.createVisual(multipartVisualizationContext)
+
+            if(visual == null) {
+                LOG.debug("Part {} didn't create a visual", part)
+                return
+            }
+
             storage.add(visual, partialTick)
             parts[part] = visual
 
@@ -502,6 +486,10 @@ class MultipartBlockEntityVisual(
 
     fun relightInstances(vararg instances: FlatLit?) {
         relight(pos, *instances)
+    }
+
+    fun relightInstances(instances: Iterable<FlatLit?>) {
+        relight(pos, instances)
     }
 }
 

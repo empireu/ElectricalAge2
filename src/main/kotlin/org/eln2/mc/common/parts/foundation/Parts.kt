@@ -25,8 +25,10 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
+import org.eln2.mc.client.render.foundation.AbstractPartVisual
 import org.eln2.mc.client.render.foundation.MultipartVisualizationContext
 import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry
+import org.eln2.mc.client.render.foundation.PartVisualizer
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.cells.foundation.Cell
 import org.eln2.mc.common.cells.foundation.CellAndContainerHandle
@@ -459,8 +461,9 @@ abstract class Part(ci: PartCreateInfo) {
         this.setSyncDirty()
     }
 
-    open fun createVisual(ctx: MultipartVisualizationContext) = FlwVisualizerRegistry
-        .getPartVisualizer(placement.provider)
+    @Suppress("UNCHECKED_CAST")
+    open fun createVisual(ctx: MultipartVisualizationContext): AbstractPartVisual<*>? =
+        (FlwVisualizerRegistry.getPartVisualizer(placement.provider) as PartVisualizer<Part>)
         .create(ctx, this)
 }
 
