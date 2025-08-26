@@ -180,6 +180,7 @@ interface LightFixtureGameObject {
      * The intensity of the light, used to blend between the two tint colors.
      * Range is from 0 to 1, but it is clamped by the renderer.
      * */
+    @ClientOnly
     val visualBrightness : Double
 }
 

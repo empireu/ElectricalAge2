@@ -38,7 +38,6 @@ import org.ageseries.libage.sim.*
 import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
 import org.eln2.mc.*
-import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.*
@@ -51,6 +50,8 @@ import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.*
 import org.eln2.mc.mathematics.ArgbColor
 import java.util.function.Supplier
+import kotlin.contracts.InvocationKind
+import kotlin.contracts.contract
 import kotlin.math.PI
 
 /**
@@ -153,7 +154,7 @@ class ElectricalWireObjectVirtual(cell: Cell) : ElectricalObject<Cell>(cell) {
  * @param hub Hub (junction) model
  * @param connection The connection models
  * */
-data class WireRenderModel(val hub: PartialModel, val connection: WireConnectionModel, val tintColor: ThermalTint)
+data class WireRenderModel(val hub: PartialModel, val connection: WireConnectionModel, val tintColor: ThermalTint = ThermalTint.DEFAULT)
 
 /**
  * Holds information regarding a registered thermal wire.
@@ -516,7 +517,7 @@ class WirePart<C : WireCell>(
             ?: return null
 
         return if(isIncandescent) {
-            IncandescentInstancedWirePartVisual(ctx, this, model)
+            IncandescentWirePartVisual(ctx, this, model)
         } else {
             FlatWirePartVisual(ctx, this, model)
         }
@@ -950,17 +951,6 @@ abstract class WirePartVisual<H : TransformedInstance, C : TransformedInstance>(
         connectionInstances.clear()
     }
 
-    fun forEachConnectionInfo(user: (PartConnectionDirection) -> Unit) {
-        if(connectionInstances.isEmpty()) {
-            return
-        }
-
-        val iterator = connectionInstances.keys.intIterator()
-        while (iterator.hasNext()) {
-            user(PartConnectionDirection(iterator.nextInt()))
-        }
-    }
-
     protected fun putUniqueConnection(key: Int, instance: C) {
         require(connectionInstances.put(key, instance) == null) {
             "Duplicate $this wire renderer direction"
@@ -985,6 +975,9 @@ abstract class WirePartVisual<H : TransformedInstance, C : TransformedInstance>(
 /**
  * Wire renderer without any temperature visualization.
  * To be used for insulated wires or non-thermal wires.
+ * P.S. apparently the per-(vertex or fragment) lighting is gone from flywheel (?).
+ * I will try to talk to the devs and see if it's something I need to enable for it.
+ * If that's not the case, I will do what the [IncandescentWirePartVisual] does with [TransformedPolarInstance] to interpolate the light across the cable.
  * */
 class FlatWirePartVisual(
     ctx: MultipartVisualizationContext,
@@ -1041,7 +1034,7 @@ class FlatWirePartVisual(
  *          If fixing is needed, the easiest solution is probably to flag the external temperature data from the server so we can know if it's a neighbor wire or not.
  *
  * */
-class IncandescentInstancedWirePartVisual(
+class IncandescentWirePartVisual(
     context: MultipartVisualizationContext,
     part: WirePart<*>,
     model: WireRenderModel

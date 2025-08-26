@@ -257,7 +257,16 @@ data class RadiantBodyEmissionDescription(
     val volumeProvider: (Cell) -> LightVolume,
     val coldTemperature: Quantity<Temperature> = Quantity(300.0, CELSIUS),
     val hotTemperature: Quantity<Temperature> = Quantity(800.0, CELSIUS)
-)
+) {
+    constructor(
+        volume: LightVolume,
+        coldTemperature: Quantity<Temperature> = Quantity(300.0, CELSIUS),
+        hotTemperature: Quantity<Temperature> = Quantity(800.0, CELSIUS)) : this(
+            { volume },
+            coldTemperature,
+            hotTemperature
+        )
+}
 
 class RadiantEmissionBehavior private constructor(val cell: Cell, bodies: Map<ThermalMass, RadiantBodyEmissionDescription>) : CellBehavior {
     private var isDestroyed = false

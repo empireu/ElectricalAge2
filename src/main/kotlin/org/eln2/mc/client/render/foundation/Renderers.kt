@@ -43,7 +43,6 @@ import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
 import org.eln2.mc.LOG
 import org.eln2.mc.buildDirectionTable
-import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.parts.foundation.CellPartConnectionMode
 import org.eln2.mc.common.parts.foundation.Part
@@ -275,7 +274,7 @@ fun<T : Transform<T>> T.transformSpec(instance: SpecPartRenderer, spec: Spec<*>,
 }
 */
 
-class RadiantBodyColorBuilder {
+class ThermalTintBuilder {
     var coldTint = ArgbColor(1f, 1f, 1f, 1f)
     var hotTint = ArgbColor( 1f, 1f, 0.1f, 0.1f)
     var coldTemperature = STANDARD_TEMPERATURE
@@ -291,16 +290,16 @@ class RadiantBodyColorBuilder {
     }
 }
 
-fun defaultRadiantBodyColor(): ThermalTint {
-    return RadiantBodyColorBuilder().build()
-}
-
 class ThermalTint(
     val coldTint: ArgbColor,
     val hotTint: ArgbColor,
     val coldTemperature: Quantity<Temperature>,
     val hotTemperature: Quantity<Temperature>,
 ) {
+    companion object {
+        val DEFAULT = ThermalTintBuilder().build()
+    }
+
     fun evaluate(temperature: Quantity<Temperature>) =
         ArgbColor.lerp(
             from = coldTint,

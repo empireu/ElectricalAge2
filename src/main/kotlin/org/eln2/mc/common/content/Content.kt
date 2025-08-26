@@ -18,7 +18,7 @@ import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.FlwModels
-import org.eln2.mc.client.render.foundation.defaultRadiantBodyColor
+import org.eln2.mc.client.render.foundation.ThermalTint
 import org.eln2.mc.common.LightFieldPrimitives
 import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
@@ -104,47 +104,60 @@ object Content {
 
     private val UNINSULATED_WIRE_LIGHT_FIELD = LightFieldPrimitives.sourceOnlyStart(15)
 
-    val COPPER_THERMAL_WIRE = ThermalWireBuilder("thermal_wire_copper")
-        .apply {
-            damageOptions = TemperatureExplosionBehaviorOptions(
-                temperatureThreshold = Quantity(1000.0, CELSIUS)
+    val COPPER_THERMAL_WIRE = ThermalWireBuilder("thermal_wire_copper").apply {
+        damageOptions = TemperatureExplosionBehaviorOptions(
+            temperatureThreshold = Quantity(1000.0, CELSIUS)
+        )
+
+        material = ThermalMassDefinition(
+            ChemicalElement.Copper.asMaterial.copy(
+                label = "Copper Thermal Conductor",
+                thermalConductivity = Quantity(3500.0, WATT_PER_METER_KELVIN),
             )
+        )
 
-            material = ThermalMassDefinition(
-                ChemicalElement.Copper.asMaterial.copy(
-                    label = "Copper Thermal Conductor",
-                    thermalConductivity = Quantity(3500.0, WATT_PER_METER_KELVIN),
-                )
-            )
+        leakageParameters = ConnectionParameters.DEFAULT.copy(
+            conductance = Quantity(0.05, WATT_PER_KELVIN)
+        )
 
-            leakageParameters = ConnectionParameters.DEFAULT.copy(
-                conductance = Quantity(0.05, WATT_PER_KELVIN)
-            )
+        radiantDescription = RadiantBodyEmissionDescription(
+            UNINSULATED_WIRE_LIGHT_FIELD
+        )
 
-            radiantDescription = RadiantBodyEmissionDescription({
-                UNINSULATED_WIRE_LIGHT_FIELD
-            })
-
-            renderer {
-                WireRenderModel(
-                    FlwModels.THERMAL_WIRE_HUB,
-                    FlwModels.THERMAL_WIRE_CONNECTION,
-                    defaultRadiantBodyColor()
-                )
-            }
-        }
-        .register()
-
-   /*
-
-    val ELECTRICAL_WIRE_COPPER = ElectricalWireBuilder("electrical_cable_copper")
-        .apply {
-            isIncandescent = false
-            leakageParameters = ConnectionParameters.DEFAULT.copy(
-                conductance = Quantity(0.01, WATT_PER_KELVIN) // Insulation
+        renderer {
+            WireRenderModel(
+                FlwModels.THERMAL_WIRE_HUB,
+                FlwModels.THERMAL_WIRE_CONNECTION,
+                ThermalTint.DEFAULT
             )
         }
-        .register()
+    }.register()
+
+    val ELECTRICAL_WIRE_COPPER = ElectricalWireBuilder("electrical_cable_copper").apply {
+        isIncandescent = false
+
+        damageOptions = TemperatureExplosionBehaviorOptions(
+            temperatureThreshold = Quantity(150.0, CELSIUS)
+        )
+
+        material = ThermalMassDefinition(
+            ChemicalElement.Copper.asMaterial.copy(
+                label = "Copper Electrical Conductor",
+                thermalConductivity = Quantity(3500.0, WATT_PER_METER_KELVIN),
+            )
+        )
+
+        leakageParameters = ConnectionParameters.DEFAULT.copy(
+            conductance = Quantity(0.01, WATT_PER_KELVIN) // Insulation
+        )
+
+        renderer {
+            WireRenderModel(
+                FlwModels.ELECTRICAL_WIRE_HUB,
+                FlwModels.ELECTRICAL_WIRE_CONNECTION
+            )
+        }
+    }.register()
 
     val THERMAL_RADIATOR_CELL = cell(
         "thermal_radiator",
@@ -155,14 +168,14 @@ object Content {
                     mass = Quantity(50.0, KILOGRAM)
                 ),
                 TemperatureExplosionBehaviorOptions(
-                    temperatureThreshold = Quantity(1000.0, CELSIUS)
+                    temperatureThreshold = Quantity(900.0, CELSIUS)
                 ),
                 replicatesInternalTemperature = true,
                 replicatesExternalTemperature = true,
                 null, // TODO maybe it does radiate?
                 leakageParameters = ConnectionParameters(
                     area = 5.0
-                ),
+                )
             )
 
             CellFactory {
@@ -174,9 +187,9 @@ object Content {
     val THERMAL_RADIATOR_PART = partAndItem(
         "thermal_radiator",
         BasicPartProvider(Vector3d(1.0, 3.0 / 16.0, 1.0)) { ci ->
-            RadiatorPart(ci, defaultRadiantBodyColor())
+            RadiatorPart(ci)
         }
-    )*/
+    )
 
     //#endregion
 
