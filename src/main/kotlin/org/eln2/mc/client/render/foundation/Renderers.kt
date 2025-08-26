@@ -65,7 +65,7 @@ fun createPartInstance(
     .instancerProvider()
     .instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
     .createInstance()
-    .partTransformation(part, scale, yRotation)
+    .partTransformation(ctx.parent, part, scale, yRotation)
 
 /*
 fun createSpecInstance(
@@ -247,11 +247,11 @@ val partOffsetTable = buildDirectionTable {
     }
 }
 
-fun<T : Affine<T>> T.partTransformation(part: Part, scale: Vector3d = Vector3d.one, yRotation: Double = 0.0): T {
+fun<T : Affine<T>> T.partTransformation(parent: MultipartBlockEntityVisual, part: Part, scale: Vector3d = Vector3d.one, yRotation: Double = 0.0): T {
     val (dx, dy, dz) = partOffsetTable[part.placement.face.get3DDataValue()]
 
     return this
-        //.translate(instance.visualPosition) // todo is it right?
+        .translate(parent.visualPosition)
         .translate(dx, dy, dz)
         .rotate(part.placement.face.rotationFast)
         .rotateY((yRotation + part.placement.facing.angle).toFloat())
@@ -386,24 +386,7 @@ class MultipartBlockEntityVisual(
     partialTick: Float,
 ): AbstractBlockEntityVisual<MultipartBlockEntity>(ctx, blockEntity, partialTick), DynamicVisual, TickableVisual, LightUpdatedVisual {
     val parts = HashMap<Part, AbstractPartVisual<*>>()
-
-    val embedding: VisualEmbedding = let {
-        val result = ctx.createEmbedding(Vec3i.ZERO)
-        val visualPos = this.visualPosition
-
-        val matrix = PoseStack()
-		matrix.setIdentity()
-		matrix.translate(
-            visualPos.x.toDouble(),
-            visualPos.y.toDouble(),
-            visualPos.z.toDouble()
-        )
-
-		result.transforms(matrix.last().pose(), matrix.last().normal());
-        result
-    }
-
-    val multipartVisualizationContext = MultipartVisualizationContext(embedding, this)
+    val multipartVisualizationContext = MultipartVisualizationContext(visualizationContext, this)
     val storage = SpecialVisualStorage<AbstractPartVisual<*>>()
 
     init {
@@ -415,7 +398,6 @@ class MultipartBlockEntityVisual(
     override fun _delete() {
         storage.delete()
         parts.clear()
-        embedding.delete()
     }
 
     override fun collectCrumblingInstances(consumer: Consumer<Instance?>?) {

@@ -72,7 +72,7 @@ class RadiantBodyVisual<P>(
     private val bodyInstance = ctx.instancerProvider()
         .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, Models.partial(model))
         .createInstance()
-        .also { it.partTransformation(part, yRotation = rotation) }
+        .also { it.partTransformation(visualizationContext.parent, part, yRotation = rotation) }
 
     private var temperature = Quantity(-1.0, KELVIN)
 

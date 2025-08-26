@@ -955,10 +955,11 @@ abstract class WirePartVisual<H : TransformedInstance, C : TransformedInstance>(
         }
     }
 
-    protected fun<T : Affine<T>> T.poseHub(): T = this.partTransformation(part)
+    protected fun<T : Affine<T>> T.poseHub(): T = this.partTransformation(visualizationContext.parent, part)
 
     protected fun<T : Affine<T>> T.poseConnection(info: PartConnectionDirection): T =
         this.partTransformation(
+            visualizationContext.parent,
             part,
             yRotation = when (info.directionPart) {
                 Base6Direction3d.Front -> 0.0

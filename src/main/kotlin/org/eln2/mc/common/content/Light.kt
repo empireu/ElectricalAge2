@@ -571,7 +571,7 @@ class LightFixtureRenderer<P>(
             .instancerProvider()
             .instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
             .createInstance()
-            .partTransformation(part, yRotation = rotation)
+            .partTransformation(visualizationContext.parent, part, yRotation = rotation)
     }
 
     override fun updateLight(partialTick: Float) {
