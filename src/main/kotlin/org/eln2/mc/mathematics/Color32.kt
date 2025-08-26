@@ -10,22 +10,22 @@ import org.lwjgl.system.MemoryUtil
  * ARGB color with 8 bits per channel implemented as a value class.
  * */
 @JvmInline
-value class ArgbColor(val data : Int) {
+value class MyColor(val data : Int) {
     companion object {
-        val WHITE = ArgbColor(255, 255, 255,  255)
+        val WHITE = MyColor(255, 255, 255,  255)
 
-        fun lerp(from: ArgbColor, to: ArgbColor, blend: Float): ArgbColor =
-            ArgbColor(
+        fun lerp(from: MyColor, to: MyColor, blend: Float): MyColor =
+            MyColor(
                 lerp(from.aF, to.aF, blend),
                 lerp(from.rF, to.rF, blend),
                 lerp(from.gF, to.gF, blend),
                 lerp(from.bF, to.bF, blend),
             )
 
-        fun lerpA(from: ArgbColor, to: ArgbColor, blend: Float) : Float = lerp(from.aF, to.aF, blend)
-        fun lerpR(from: ArgbColor, to: ArgbColor, blend: Float) : Float = lerp(from.rF, to.rF, blend)
-        fun lerpG(from: ArgbColor, to: ArgbColor, blend: Float) : Float = lerp(from.gF, to.gF, blend)
-        fun lerpB(from: ArgbColor, to: ArgbColor, blend: Float) : Float = lerp(from.bF, to.bF, blend)
+        fun lerpA(from: MyColor, to: MyColor, blend: Float) : Float = lerp(from.aF, to.aF, blend)
+        fun lerpR(from: MyColor, to: MyColor, blend: Float) : Float = lerp(from.rF, to.rF, blend)
+        fun lerpG(from: MyColor, to: MyColor, blend: Float) : Float = lerp(from.gF, to.gF, blend)
+        fun lerpB(from: MyColor, to: MyColor, blend: Float) : Float = lerp(from.bF, to.bF, blend)
     }
 
     val a get() = FastColor.ARGB32.alpha(data)

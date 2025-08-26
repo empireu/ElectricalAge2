@@ -49,7 +49,7 @@ import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.common.parts.foundation.PartUpdateType
 import org.eln2.mc.extensions.cast
 import org.eln2.mc.extensions.rotationFast
-import org.eln2.mc.mathematics.ArgbColor
+import org.eln2.mc.mathematics.MyColor
 import org.eln2.mc.requireIsOnRenderThread
 import java.util.function.Consumer
 import kotlin.math.max
@@ -275,8 +275,8 @@ fun<T : Transform<T>> T.transformSpec(instance: SpecPartRenderer, spec: Spec<*>,
 */
 
 class ThermalTintBuilder {
-    var coldTint = ArgbColor(1f, 1f, 1f, 1f)
-    var hotTint = ArgbColor( 1f, 1f, 0.1f, 0.1f)
+    var coldTint = MyColor(1f, 1f, 1f, 1f)
+    var hotTint = MyColor( 1f, 1f, 0.1f, 0.1f)
     var coldTemperature = STANDARD_TEMPERATURE
     var hotTemperature = Quantity(800.0, CELSIUS)
 
@@ -291,8 +291,8 @@ class ThermalTintBuilder {
 }
 
 class ThermalTint(
-    val coldTint: ArgbColor,
-    val hotTint: ArgbColor,
+    val coldTint: MyColor,
+    val hotTint: MyColor,
     val coldTemperature: Quantity<Temperature>,
     val hotTemperature: Quantity<Temperature>,
 ) {
@@ -301,7 +301,7 @@ class ThermalTint(
     }
 
     fun evaluate(temperature: Quantity<Temperature>) =
-        ArgbColor.lerp(
+        MyColor.lerp(
             from = coldTint,
             to = hotTint,
             blend = map(
@@ -322,10 +322,10 @@ class ThermalTint(
      * @param light The lower bound of the light value [[0, 15]]
      * @return The tint color to be rendered.
      * */
-    fun evaluateRGBL(temperature: Quantity<Temperature>, light: Double = 0.0): ArgbColor {
+    fun evaluateRGBL(temperature: Quantity<Temperature>, light: Double = 0.0): MyColor {
         val rgb = evaluate(temperature)
 
-        return ArgbColor(
+        return MyColor(
             max(
                 map(
                     light,
@@ -594,7 +594,7 @@ fun VertexConsumer.eln2SubmitUnshadedBakedModelQuads(
     renderType: RenderType,
     pose: PoseStack.Pose, // this is not a pose, Minecraft, because it is not in SE(3)
     model: BakedModel,
-    rgba: ArgbColor,
+    rgba: MyColor,
     packedLight: Int = 15728880,
     overlayTexture: Int = OverlayTexture.NO_OVERLAY,
 ) = this.eln2SubmitUnshadedBakedModelQuads(renderType, pose, model, rgba.rF, rgba.gF, rgba.bF, rgba.aF, packedLight, overlayTexture)
@@ -634,7 +634,7 @@ fun VertexConsumer.eln2SubmitAABBLines(pose: PoseStack.Pose, aabb: BoundingBox3d
     )
 }
 
-fun VertexConsumer.eln2SubmitAABBLines(pose: PoseStack.Pose, aabb: BoundingBox3d, rgba: ArgbColor) {
+fun VertexConsumer.eln2SubmitAABBLines(pose: PoseStack.Pose, aabb: BoundingBox3d, rgba: MyColor) {
     this.eln2SubmitAABBLines(
         pose,
         aabb,
@@ -642,7 +642,7 @@ fun VertexConsumer.eln2SubmitAABBLines(pose: PoseStack.Pose, aabb: BoundingBox3d
     )
 }
 
-fun VertexConsumer.eln2SubmitOBBAtLevelStage(stack: PoseStack, obb: OrientedBoundingBox3d, rgba: ArgbColor, camX: Double, camY: Double, camZ: Double) {
+fun VertexConsumer.eln2SubmitOBBAtLevelStage(stack: PoseStack, obb: OrientedBoundingBox3d, rgba: MyColor, camX: Double, camY: Double, camZ: Double) {
     stack.pushPose()
 
     stack.translate(-camX, -camY, -camZ)
@@ -664,7 +664,7 @@ fun VertexConsumer.eln2SubmitOBBAtLevelStage(stack: PoseStack, obb: OrientedBoun
     stack.popPose()
 }
 
-fun VertexConsumer.eln2SubmitOBBAtLevelStage(stack: PoseStack, obb: OrientedBoundingBox3d, rgba: ArgbColor, camera: Camera) = this.eln2SubmitOBBAtLevelStage(
+fun VertexConsumer.eln2SubmitOBBAtLevelStage(stack: PoseStack, obb: OrientedBoundingBox3d, rgba: MyColor, camera: Camera) = this.eln2SubmitOBBAtLevelStage(
     stack, obb, rgba,
     camera.position.x, camera.position.y, camera.position.z
 )

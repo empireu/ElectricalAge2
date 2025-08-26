@@ -5,12 +5,20 @@
 package org.eln2.mc.common.content
 
 import net.minecraft.client.gui.screens.MenuScreens
+import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.KILOGRAM
+import org.ageseries.libage.data.OHM
+import org.ageseries.libage.data.Potential
+import org.ageseries.libage.data.Power
 import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.Resistance
+import org.ageseries.libage.data.VOLT
+import org.ageseries.libage.data.WATT
 import org.ageseries.libage.data.WATT_PER_KELVIN
 import org.ageseries.libage.data.WATT_PER_METER_KELVIN
 import org.ageseries.libage.mathematics.frac
+import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
@@ -19,7 +27,9 @@ import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.ThermalTint
+import org.eln2.mc.common.LightBulbItem
 import org.eln2.mc.common.LightFieldPrimitives
+import org.eln2.mc.common.LightModel
 import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.cells.CellRegistry.cell
@@ -28,14 +38,20 @@ import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.cells.foundation.RadiantBodyEmissionDescription
 import org.eln2.mc.common.cells.foundation.TemperatureExplosionBehaviorOptions
 import org.eln2.mc.common.containers.ContainerRegistry.menu
+import org.eln2.mc.common.items.CreativeTabRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.partAndItem
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
+import org.eln2.mc.common.parts.foundation.PartFactory
+import org.eln2.mc.data.directionPoleMapPlanar
 import org.eln2.mc.extensions.celestialPass
 import org.eln2.mc.extensions.vector3d
+import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.mathematics.maskXY
 import org.eln2.mc.requireIsOnRenderThread
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.pow
 
 // FIXME
 
@@ -207,7 +223,7 @@ object Content {
             ::VoltageSourcePart
         )
     )
-/*
+
     val GROUND_CELL = cell(
         "ground",
         BasicCellProvider(::GroundCell)
@@ -219,7 +235,7 @@ object Content {
             Vector3d(4.0 / 16.0, 4.0 / 16.0, 4.0 / 16.0),
             ::GroundPart
         )
-    )*/
+    )
 
     /*
         val GROUND_SPEC = specAndItem(
@@ -429,17 +445,9 @@ object Content {
     val LIGHT_PART = partAndItem(
         "small_wall_lamp",
         BasicPartProvider(Vector3d(8.0 / 16.0, (1.0 + 2.302) / 16.0, 5.0 / 16.0)) { ci ->
-            PolarPoweredLightPart(ci, POLAR_LIGHT_CELL.get()) {
-                LightFixtureRenderer(
-                    it,
-                    PartialModels.SMALL_WALL_LAMP_CAGE.solid(),
-                    PartialModels.SMALL_WALL_LAMP_EMITTER.solid()
-                )
-            }
+            PolarPoweredLightPart(ci, POLAR_LIGHT_CELL.get())
         }
     )
-
-    /*
 
     val LIGHT_PART_MICRO_GRID = partAndItem(
         "small_wall_lamp_micro_grid",
@@ -453,13 +461,7 @@ object Content {
                     ci,
                     TERMINAL_LIGHT_CELL.get(),
                     neg, pos
-                ) {
-                    LightFixtureRenderer(
-                        it,
-                        PartialModels.SMALL_WALL_LAMP_CAGE_MICRO_GRID.solid(),
-                        PartialModels.SMALL_WALL_LAMP_EMITTER.solid()
-                    )
-                }
+                )
             }
         }
     )
@@ -544,7 +546,6 @@ object Content {
         deviationMax = PI / 4.0
     )
 
-*/
     private fun gardenLightModel(strength: Double) = SolarLightModel(
         solarScan(Vector3d.unitY),
         dischargeRate = 1.0 / 12000.0 * 0.9,

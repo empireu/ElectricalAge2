@@ -10,6 +10,7 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.util.RandomSource
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
+import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.Level
@@ -21,6 +22,8 @@ import net.minecraft.world.phys.shapes.VoxelShape
 import org.ageseries.libage.data.Locator
 import org.ageseries.libage.data.put
 import org.ageseries.libage.data.requireLocator
+import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
+import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
@@ -36,17 +39,28 @@ import org.eln2.mc.common.cells.foundation.CellContainer
 import org.eln2.mc.common.cells.foundation.CellEnvironment
 import org.eln2.mc.common.cells.foundation.CellGraphManager
 import org.eln2.mc.common.cells.foundation.CellProvider
+import org.eln2.mc.common.cells.foundation.ifNode
+import org.eln2.mc.common.grids.CellTerminal
+import org.eln2.mc.common.grids.GridMaterialCategory
+import org.eln2.mc.common.grids.GridNode
+import org.eln2.mc.common.grids.GridTerminal
+import org.eln2.mc.common.grids.GridTerminalClient
+import org.eln2.mc.common.grids.GridTerminalContainer
+import org.eln2.mc.common.grids.GridTerminalSystem
+import org.eln2.mc.common.grids.TerminalFactories
 import org.eln2.mc.common.network.serverToClient.BulkMessages
 import org.eln2.mc.common.network.serverToClient.PacketHandler
 import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.PartMessage
 import org.eln2.mc.common.parts.PartRegistry
+import org.eln2.mc.common.specs.foundation.SpecGeometry
 import org.eln2.mc.data.Locators
 import org.eln2.mc.directionByNormal
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.BlockPosInt
 import org.eln2.mc.mathematics.FacingDirection
+import org.eln2.mc.mathematics.MyColor
 import org.eln2.mc.requireIsOnServerThread
 import org.joml.Vector3f
 import java.util.UUID
@@ -997,138 +1011,136 @@ interface AnimatedPart {
     fun animationTick(random: RandomSource)
 }
 
-// FIXME
+abstract class GridCellPart<C : Cell>(
+    ci: PartCreateInfo,
+    provider: CellProvider<C>,
+) : CellPart<C>(ci, provider), GridTerminalContainer {
+    var containerID: UUID = UUID.randomUUID()
+        private set
 
-//abstract class GridCellPart<C : Cell, R : PartRenderer>(
-//    ci: PartCreateInfo,
-//    provider: CellProvider<C>,
-//) : CellPart<C, R>(ci, provider), GridTerminalContainer {
-//    var containerID: UUID = UUID.randomUUID()
-//        private set
-//
-//    val gridTerminalSystem = GridTerminalSystem(placement.level)
-//
-//    override fun onPlaced() {
-//        super.onPlaced()
-//        gridTerminalSystem.initializeFresh()
-//
-//        cell.ifNode<GridNode> {
-//            it.mapFromGridTerminalSystem(gridTerminalSystem)
-//        }
-//    }
-//
-//    override fun getServerSaveTag(): CompoundTag? {
-//        val tag = super.getServerSaveTag() ?: CompoundTag()
-//
-//        tag.put(GRID_TERMINAL_SYSTEM, gridTerminalSystem.save(GridTerminalSystem.SaveType.Server))
-//        tag.putUUID(CONTAINER_ID, containerID)
-//
-//        return tag
-//    }
-//
-//    override fun loadServerSaveTag(tag: CompoundTag) {
-//        super.loadServerSaveTag(tag)
-//
-//        gridTerminalSystem.initializeSaved(tag.getCompound(GRID_TERMINAL_SYSTEM))
-//        containerID = tag.getUUID(CONTAINER_ID)
-//    }
-//
-//    override fun getClientSaveTag() : CompoundTag {
-//        val tag = super.getClientSaveTag() ?: CompoundTag()
-//
-//        tag.put(GRID_TERMINAL_SYSTEM, gridTerminalSystem.save(GridTerminalSystem.SaveType.Client))
-//        tag.putUUID(CONTAINER_ID, containerID)
-//
-//        return tag
-//    }
-//
-//    override fun loadClientSaveTag(tag: CompoundTag) {
-//        super.loadClientSaveTag(tag)
-//
-//        gridTerminalSystem.initializeSaved(tag.getCompound(GRID_TERMINAL_SYSTEM))
-//        containerID = tag.getUUID(CONTAINER_ID)
-//    }
-//
-//    /**
-//     * Creates a bounding box in the world frame.
-//     * @param x Center X in the local frame.
-//     * @param y Center Y in the local frame.
-//     * @param z Center Z in the local frame.
-//     * @param sizeX Size along X in the local frame.
-//     * @param sizeY Size along Y in the local frame.
-//     * @param sizeZ Size along Z in the local frame.
-//     * @return A bounding box in the world frame.
-//     * */
-//    protected fun boundingBox(
-//        x: Double,
-//        y: Double,
-//        z: Double,
-//        sizeX: Double,
-//        sizeY: Double,
-//        sizeZ: Double,
-//        orientation: Rotation2d = Rotation2d.identity,
-//    ) = SpecGeometry.boundingBox(
-//        placement.mountingPointWorld +
-//            placement.positiveX.vector3d * x +
-//            placement.positiveY.vector3d * y +
-//            placement.positiveZ.vector3d * z,
-//        orientation * placement.facing.rotation2d,
-//        Vector3d(sizeX, sizeY, sizeZ),
-//        placement.facing,
-//        placement.face
-//    )
-//
-//    protected fun defineCellBoxTerminal(box3d: OrientedBoundingBox3d, attachment: Vector3d? = null, highlightColor : RGBAFloat? = RGBAFloat(
-//        1f,
-//        0.58f,
-//        0.44f,
-//        0.8f
-//    ), categories: List<GridMaterialCategory>) = gridTerminalSystem.defineTerminal<GridTerminal>(
-//        TerminalFactories(
-//            { ci ->
-//                CellTerminal(ci, locator, attachment ?: box3d.center, box3d) { this.cell }.also {
-//                    it.categories.addAll(categories)
-//                }
-//            },
-//            { GridTerminalClient(it, locator, attachment ?: box3d.center, box3d, highlightColor) }
-//        )
-//    )
-//
-//    protected fun defineCellBoxTerminal(
-//        x: Double, y: Double, z: Double,
-//        sizeX: Double, sizeY: Double, sizeZ: Double,
-//        orientation: Rotation2d = Rotation2d.identity,
-//        attachment: Vector3d? = null,
-//        highlightColor: RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f),
-//        categories: List<GridMaterialCategory> = listOf(GridMaterialCategory.MicroGrid),
-//    ) = defineCellBoxTerminal(boundingBox(x, y, z, sizeX, sizeY, sizeZ, orientation), attachment, highlightColor, categories)
-//
-//    override fun pickTerminal(player: LivingEntity) = gridTerminalSystem.pick(player)
-//
-//    override fun getTerminalByEndpointID(endpointID: UUID) = gridTerminalSystem.getByEndpointID(endpointID)
-//
-//    override fun addExtraConnections(results: MutableSet<CellAndContainerHandle>) {
-//        gridTerminalSystem.forEachTerminalOfType<CellTerminal> {
-//            if(it.stagingCell != null) {
-//                results.add(CellAndContainerHandle.captureInScope(it.stagingCell!!))
-//            }
-//        }
-//
-//        if(hasCell) {
-//            cell.ifNode<GridNode> { node ->
-//                node.forEachConnectionCell {
-//                    results.add(CellAndContainerHandle.captureInScope(it))
-//                }
-//            }
-//        }
-//    }
-//
-//    override fun onBroken() {
-//        gridTerminalSystem.destroy()
-//    }
-//
-//    companion object {
-//        private const val CONTAINER_ID = "containerID"
-//        private const val GRID_TERMINAL_SYSTEM = "gridTerminalSystem"
-//    }
-//}
+    val gridTerminalSystem = GridTerminalSystem(placement.level)
+
+    override fun onPlaced() {
+        super.onPlaced()
+        gridTerminalSystem.initializeFresh()
+
+        cell.ifNode<GridNode> {
+            it.mapFromGridTerminalSystem(gridTerminalSystem)
+        }
+    }
+
+    override fun getServerSaveTag(): CompoundTag? {
+        val tag = super.getServerSaveTag() ?: CompoundTag()
+
+        tag.put(GRID_TERMINAL_SYSTEM, gridTerminalSystem.save(GridTerminalSystem.SaveType.Server))
+        tag.putUUID(CONTAINER_ID, containerID)
+
+        return tag
+    }
+
+    override fun loadServerSaveTag(tag: CompoundTag) {
+        super.loadServerSaveTag(tag)
+
+        gridTerminalSystem.initializeSaved(tag.getCompound(GRID_TERMINAL_SYSTEM))
+        containerID = tag.getUUID(CONTAINER_ID)
+    }
+
+    override fun getClientSaveTag() : CompoundTag {
+        val tag = super.getClientSaveTag() ?: CompoundTag()
+
+        tag.put(GRID_TERMINAL_SYSTEM, gridTerminalSystem.save(GridTerminalSystem.SaveType.Client))
+        tag.putUUID(CONTAINER_ID, containerID)
+
+        return tag
+    }
+
+    override fun loadClientSaveTag(tag: CompoundTag) {
+        super.loadClientSaveTag(tag)
+
+        gridTerminalSystem.initializeSaved(tag.getCompound(GRID_TERMINAL_SYSTEM))
+        containerID = tag.getUUID(CONTAINER_ID)
+    }
+
+    /**
+     * Creates a bounding box in the world frame.
+     * @param x Center X in the local frame.
+     * @param y Center Y in the local frame.
+     * @param z Center Z in the local frame.
+     * @param sizeX Size along X in the local frame.
+     * @param sizeY Size along Y in the local frame.
+     * @param sizeZ Size along Z in the local frame.
+     * @return A bounding box in the world frame.
+     * */
+    protected fun boundingBox(
+        x: Double,
+        y: Double,
+        z: Double,
+        sizeX: Double,
+        sizeY: Double,
+        sizeZ: Double,
+        orientation: Rotation2d = Rotation2d.identity,
+    ) = SpecGeometry.boundingBox(
+        placement.mountingPointWorld +
+            placement.positiveX.vector3d * x +
+            placement.positiveY.vector3d * y +
+            placement.positiveZ.vector3d * z,
+        orientation * placement.facing.rotation2d,
+        Vector3d(sizeX, sizeY, sizeZ),
+        placement.facing,
+        placement.face
+    )
+
+    protected fun defineCellBoxTerminal(box3d: OrientedBoundingBox3d, attachment: Vector3d? = null, highlightColor : MyColor? = MyColor(
+        0.8f,
+        1f,
+        0.58f,
+        0.44f
+    ), categories: List<GridMaterialCategory>) = gridTerminalSystem.defineTerminal<GridTerminal>(
+        TerminalFactories(
+            { ci ->
+                CellTerminal(ci, locator, attachment ?: box3d.center, box3d) { this.cell }.also {
+                    it.categories.addAll(categories)
+                }
+            },
+            { GridTerminalClient(it, locator, attachment ?: box3d.center, box3d, highlightColor) }
+        )
+    )
+
+    protected fun defineCellBoxTerminal(
+        x: Double, y: Double, z: Double,
+        sizeX: Double, sizeY: Double, sizeZ: Double,
+        orientation: Rotation2d = Rotation2d.identity,
+        attachment: Vector3d? = null,
+        highlightColor: MyColor? = MyColor(0.8f, 1f, 0.58f, 0.44f),
+        categories: List<GridMaterialCategory> = listOf(GridMaterialCategory.MicroGrid),
+    ) = defineCellBoxTerminal(boundingBox(x, y, z, sizeX, sizeY, sizeZ, orientation), attachment, highlightColor, categories)
+
+    override fun pickTerminal(player: LivingEntity) = gridTerminalSystem.pick(player)
+
+    override fun getTerminalByEndpointID(endpointID: UUID) = gridTerminalSystem.getByEndpointID(endpointID)
+
+    override fun addExtraConnections(results: MutableSet<CellAndContainerHandle>) {
+        gridTerminalSystem.forEachTerminalOfType<CellTerminal> {
+            if(it.stagingCell != null) {
+                results.add(CellAndContainerHandle.captureInScope(it.stagingCell!!))
+            }
+        }
+
+        if(hasCell) {
+            cell.ifNode<GridNode> { node ->
+                node.forEachConnectionCell {
+                    results.add(CellAndContainerHandle.captureInScope(it))
+                }
+            }
+        }
+    }
+
+    override fun onBroken() {
+        gridTerminalSystem.destroy()
+    }
+
+    companion object {
+        private const val CONTAINER_ID = "containerID"
+        private const val GRID_TERMINAL_SYSTEM = "gridTerminalSystem"
+    }
+}

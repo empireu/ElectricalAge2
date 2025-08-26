@@ -19,12 +19,26 @@ import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.level.material.FluidState
 import org.ageseries.libage.data.put
+import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
+import org.ageseries.libage.mathematics.geometry.Rotation2d
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.grids.CellTerminal
+import org.eln2.mc.common.grids.GridMaterialCategory
+import org.eln2.mc.common.grids.GridNode
+import org.eln2.mc.common.grids.GridTerminal
+import org.eln2.mc.common.grids.GridTerminalClient
+import org.eln2.mc.common.grids.GridTerminalContainer
+import org.eln2.mc.common.grids.GridTerminalSystem
+import org.eln2.mc.common.grids.TerminalFactories
+import org.eln2.mc.common.specs.foundation.SpecGeometry
 import org.eln2.mc.data.Locators
+import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
+import org.eln2.mc.mathematics.MyColor
 import org.eln2.mc.mathematics.toHorizontalFacing
 import java.util.*
 
@@ -252,11 +266,8 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
         get() = CellGraphManager.getFor(level as ServerLevel)
 }
 
-//FIXME
-/*
-abstract class GridCellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetType: BlockEntityType<*>) : CellBlockEntity<C>(pos, state, targetType),
-    GridTerminalContainer {
-    var containerID = UUID.randomUUID()
+abstract class GridCellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetType: BlockEntityType<*>) : CellBlockEntity<C>(pos, state, targetType), GridTerminalContainer {
+    var containerID: UUID = UUID.randomUUID()
         private set
 
     private var gridTerminalSystemField: GridTerminalSystem? = null
@@ -268,7 +279,7 @@ abstract class GridCellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, t
     val positiveX get() = blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing().rotation3d * Vector3d.unitX
     val positiveZ get() = blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing().rotation3d * Vector3d.unitZ
 
-    *//**
+    /**
      * Creates a bounding box in the world frame.
      * @param x Center X in the local frame.
      * @param y Center Y in the local frame.
@@ -277,7 +288,7 @@ abstract class GridCellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, t
      * @param sizeY Size along Y in the local frame.
      * @param sizeZ Size along Z in the local frame.
      * @return A bounding box in the world frame.
-     * *//*
+     */
     protected fun boundingBox(
         x: Double,
         y: Double,
@@ -297,11 +308,11 @@ abstract class GridCellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, t
         Direction.UP
     )
 
-    protected fun defineCellBoxTerminal(box3d: OrientedBoundingBox3d, attachment: Vector3d? = null, highlightColor : RGBAFloat? = RGBAFloat(
+    protected fun defineCellBoxTerminal(box3d: OrientedBoundingBox3d, attachment: Vector3d? = null, highlightColor : MyColor? = MyColor(
+        0.8f,
         1f,
         0.58f,
-        0.44f,
-        0.8f
+        0.44f
     ), categories: List<GridMaterialCategory>) = gridTerminalSystem.defineTerminal<GridTerminal>(
         TerminalFactories(
             { ci ->
@@ -318,7 +329,7 @@ abstract class GridCellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, t
         sizeX: Double, sizeY: Double, sizeZ: Double,
         orientation: Rotation2d = Rotation2d.identity,
         attachment: Vector3d? = null,
-        highlightColor: RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f),
+        highlightColor: MyColor? = MyColor(0.8f, 1f, 0.58f, 0.44f),
         categories: List<GridMaterialCategory>,
     ) = defineCellBoxTerminal(boundingBox(x, y, z, sizeX, sizeY, sizeZ, orientation), attachment, highlightColor, categories)
 
@@ -419,4 +430,4 @@ abstract class GridCellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, t
         private const val CONTAINER_ID = "containerID"
         private const val GRID_TERMINAL_SYSTEM = "gridTerminalSystem"
     }
-}*/
+}

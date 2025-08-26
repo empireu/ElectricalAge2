@@ -11,6 +11,7 @@ import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.electrical.mna.*
 import org.ageseries.libage.sim.electrical.mna.component.*
 import org.eln2.mc.*
+import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.data.*
 import org.eln2.mc.extensions.getQuantity
 import org.eln2.mc.extensions.putQuantity
@@ -158,7 +159,6 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     }
 }
 
-
 data class TermRef(val component: Term, val index: Int)
 
 abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
@@ -232,15 +232,13 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     fun offerComponent(remote: ElectricalObject<*>) : TermRef? {
         val remoteCell = remote.cell
 
-        return if(false/*remoteCell is GridConnectionCell FIXME*/) {
-            //offerTerminal(remoteCell, remoteCell.getFullMetadata(cell))
-            null
+        return if(remoteCell is GridConnectionCell) {
+            offerTerminal(remoteCell, remoteCell.getFullMetadata(cell))
         }
         else {
             offerPolar(remote)
         }
     }
-
 
     /**
      * Called by electrical objects to fetch a connection candidate.
@@ -252,8 +250,7 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
      * Called by the grid connection cell's electrical object to fetch a connection candidate, for the specified terminal [m0].
      * The same component and pin **must** be returned by subsequent calls to this method, during same re-building moment.
      * */
-    // FIXME
-    //protected open fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo): TermRef? = null
+    protected open fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo): TermRef? = null
 
     /**
      * Called when the circuit must be updated with the components owned by this object.
@@ -564,21 +561,21 @@ class VoltageSourceObject(cell: Cell) : ElectricalObject<Cell>(cell) {
         }
     }
 }
-//FIXME
-//class TerminalResistorObjectVirtual<C : Cell>(cell: C, val resistor: VirtualResistor, val plus: Int, val minus: Int) : ElectricalObject<C>(cell), IResistor by resistor {
-//    constructor(cell: C, plus: Int, minus: Int) : this(cell, VirtualResistor(), plus, minus)
-//
-//    override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo) =
-//        when(m0.terminal) {
-//            plus -> resistor.offerPositive()
-//            minus -> resistor.offerNegative()
-//            else -> null
-//        }
-//
-//    override fun acceptsRemoteObject(remote: ElectricalObject<*>): Boolean {
-//        return super.acceptsRemoteObject(remote) && remote.cell is GridConnectionCell
-//    }
-//}
+
+class TerminalResistorObjectVirtual<C : Cell>(cell: C, val resistor: VirtualResistor, val plus: Int, val minus: Int) : ElectricalObject<C>(cell), IResistor by resistor {
+    constructor(cell: C, plus: Int, minus: Int) : this(cell, VirtualResistor(), plus, minus)
+
+    override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo) =
+        when(m0.terminal) {
+            plus -> resistor.offerPositive()
+            minus -> resistor.offerNegative()
+            else -> null
+        }
+
+    override fun acceptsRemoteObject(remote: ElectricalObject<*>): Boolean {
+        return super.acceptsRemoteObject(remote) && remote.cell is GridConnectionCell
+    }
+}
 
 class PolarResistorObjectVirtual<C : Cell>(cell: C, poleMap: PoleMap, virtualResistor: VirtualResistor) : PolarTermObject<C, VirtualResistor>(cell, poleMap, virtualResistor), IResistor by virtualResistor {
     constructor(cell: C, poleMap: PoleMap) : this(cell, poleMap, VirtualResistor())

@@ -8,11 +8,17 @@ import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.sounds.SoundEvents
+import net.minecraft.sounds.SoundSource
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
+import org.ageseries.libage.data.registerHandler
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
+import org.ageseries.libage.sim.electrical.mna.NEGATIVE
+import org.ageseries.libage.sim.electrical.mna.POSITIVE
 import org.ageseries.libage.sim.electrical.mna.component.IResistor
 import org.ageseries.libage.sim.electrical.mna.component.updateResistance
 import org.eln2.mc.*
@@ -24,22 +30,31 @@ import org.eln2.mc.common.cells.foundation.Behavior
 import org.eln2.mc.common.cells.foundation.Cell
 import org.eln2.mc.common.cells.foundation.CellCreateInfo
 import org.eln2.mc.common.cells.foundation.CellProvider
+import org.eln2.mc.common.cells.foundation.Node
 import org.eln2.mc.common.cells.foundation.PolarResistorObjectVirtual
 import org.eln2.mc.common.cells.foundation.SimObject
 import org.eln2.mc.common.cells.foundation.SubscriberCollection
 import org.eln2.mc.common.cells.foundation.SubscriberPhase
 import org.eln2.mc.common.cells.foundation.TemperatureExplosionBehavior
 import org.eln2.mc.common.cells.foundation.TemperatureExplosionBehaviorOptions
+import org.eln2.mc.common.cells.foundation.TerminalResistorObjectVirtual
 import org.eln2.mc.common.cells.foundation.addPre
 import org.eln2.mc.common.cells.foundation.self
+import org.eln2.mc.common.events.EventListener
 import org.eln2.mc.common.events.EventQueue
+import org.eln2.mc.common.events.Scheduler
+import org.eln2.mc.common.grids.GridCableItem
+import org.eln2.mc.common.grids.GridConnectionCell
+import org.eln2.mc.common.grids.GridNode
+import org.eln2.mc.common.network.serverToClient.with
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.data.PoleMap
 import org.eln2.mc.extensions.evaluateDiffuseIrradianceFactor
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.mathematics.ArgbColor
+import org.eln2.mc.mathematics.MyColor
+import java.nio.ByteBuffer
 import kotlin.math.absoluteValue
 import kotlin.math.round
 
@@ -199,6 +214,182 @@ class PolarLightCell(ci: CellCreateInfo, map: PoleMap) : LightCell(ci) {
 
     override fun cellConnectionPredicate(remote: Cell): Boolean {
         return super.cellConnectionPredicate(remote) && resistor.poleMap.evaluateOrNull(this, remote) != null
+    }
+}
+
+class TerminalLightCell(ci: CellCreateInfo, plus: Int = POSITIVE, minus: Int = NEGATIVE) : LightCell(ci) {
+    @Node
+    val grid = GridNode(self())
+
+    @SimObject
+    override val resistor = TerminalResistorObjectVirtual(self(), plus, minus)
+
+    override fun cellConnectionPredicate(remote: Cell): Boolean {
+        return super.cellConnectionPredicate(remote) && remote is GridConnectionCell
+    }
+}
+
+abstract class PoweredLightPart<T : LightCell>(
+    ci: PartCreateInfo,
+    cellProvider: CellProvider<T>
+) : GridCellPart<LightCell>(ci, cellProvider), EventListener, WrenchRotatablePart, ComponentDisplay, LightFixtureGameObject {
+    @ClientOnly
+    override var visualBrightness: Double = 0.0
+        protected set
+
+    val instance = serverOnlyHolder {
+        LightVolumeInstance(
+            placement.level as ServerLevel,
+            placement.position
+        )
+    }
+
+    override fun onUsedBy(context: PartUseInfo): InteractionResult {
+        if (placement.level.isClientSide || context.hand != InteractionHand.MAIN_HAND) {
+            return InteractionResult.PASS
+        }
+
+        val instance = instance()
+        val stack = context.player.mainHandItem
+
+        var result = LightLoadResult.Fail
+
+        cell.graph.runSuspended {
+            result = LightVolumeInstance.loadLightFromBulb(instance, cell, stack)
+        }
+
+        return when (result) {
+            LightLoadResult.RemoveExisting -> {
+                sendClientBrightness(0.0)
+                InteractionResult.SUCCESS
+            }
+
+            LightLoadResult.AddNew -> {
+                InteractionResult.CONSUME
+            }
+
+            LightLoadResult.Fail -> {
+                InteractionResult.FAIL
+            }
+        }
+    }
+
+    @ServerOnly
+    @OnServerThread
+    override fun onCellAcquired() {
+        super.onCellAcquired()
+        val events = Scheduler.register(this)
+
+        events.registerHandler(this::onVolumeUpdated)
+        events.registerHandler(this::onLightBurnedOut)
+
+        cell.bind(
+            serverThreadAccess = Scheduler.getEventAccess(this),
+            renderBrightnessConsumer = ::sendClientBrightness,
+            true
+        )
+    }
+
+    private fun onVolumeUpdated(event: VolumetricLightChangeEvent) {
+        // Item is only mutated on onUsedBy (server thread), when the bulb is added/removed, so it is safe to access here
+        // if it is null, it means we got this update possibly after the bulb was removed by a player, so we will ignore it
+        if (!hasCell || cell.lightBulb == null) {
+            return
+        }
+
+        instance().checkoutState(event.volume, event.targetState)
+    }
+
+    @ServerOnly
+    private fun sendClientBrightness(value: Double) {
+        val buffer = ByteBuffer.allocate(8) with value
+        enqueueBulkMessage(buffer.array())
+    }
+
+    @ClientOnly
+    override fun handleBulkMessage(msg: ByteArray) {
+        val buffer = ByteBuffer.wrap(msg)
+        visualBrightness = buffer.getDouble()
+    }
+
+    @ServerOnly
+    @OnServerThread
+    private fun onLightBurnedOut(event: LightBurnedOutEvent) {
+        sendClientBrightness(0.0)
+        instance().destroyCells()
+        placement.level.playLocalSound(
+            placement.position.x.toDouble(),
+            placement.position.y.toDouble(),
+            placement.position.z.toDouble(),
+            SoundEvents.FIRE_EXTINGUISH,
+            SoundSource.BLOCKS,
+            1.0f,
+            randomFloat(0.9f, 1.1f),
+            false
+        )
+    }
+
+    @ServerOnly
+    @OnServerThread
+    override fun onSyncSuggested() {
+        super.onSyncSuggested()
+        sendClientBrightness(cell.modelTemperature)
+    }
+
+    override fun onCellReleased() {
+        super.onCellReleased()
+        cell.unbind()
+        Scheduler.remove(this)
+        instance().destroyCells()
+    }
+
+    override fun onRemoved() {
+        super.onRemoved()
+
+        if (!placement.level.isClientSide) {
+            instance().destroyCells()
+        }
+    }
+
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        builder.quantity(cell.thermalWire.thermalBody.temperature)
+        builder.current(cell.current)
+        builder.power(cell.power)
+        builder.integrity(cell.life)
+    }
+}
+
+class PolarPoweredLightPart(
+    ci: PartCreateInfo,
+    cellProvider: CellProvider<PolarLightCell>
+) : PoweredLightPart<PolarLightCell>(ci, cellProvider)
+
+class TerminalPoweredLightPart(
+    ci: PartCreateInfo,
+    cellProvider: CellProvider<TerminalLightCell>,
+    neg: BoundingBox3d,
+    pos: BoundingBox3d,
+    negAttachment: Vector3d? = null,
+    posAttachment: Vector3d? = null,
+) : PoweredLightPart<TerminalLightCell>(ci, cellProvider) {
+    val negative = defineCellBoxTerminal(
+        neg.center.x, neg.center.y, neg.center.z,
+        neg.size.x, neg.size.y, neg.size.z,
+        attachment = negAttachment
+    )
+
+    val positive = defineCellBoxTerminal(
+        pos.center.x, pos.center.y, pos.center.z,
+        pos.size.x, pos.size.y, pos.size.z,
+        attachment = posAttachment
+    )
+
+    override fun onUsedBy(context: PartUseInfo): InteractionResult {
+        if(context.player.getItemInHand(context.hand).item is GridCableItem) {
+            return InteractionResult.FAIL
+        }
+
+        return super.onUsedBy(context)
     }
 }
 
@@ -368,8 +559,8 @@ class LightFixtureRenderer<P>(
     cageModel: PartialModel,
     emitterModel: PartialModel,
     val rotation: Double = 0.0,
-    val coldTint: ArgbColor = ArgbColor(255, 255, 255, 255),
-    val warmTint: ArgbColor = ArgbColor(255, 255, 196, 127),
+    val coldTint: MyColor = MyColor(255, 255, 255, 255),
+    val warmTint: MyColor = MyColor(255, 255, 196, 127),
 ) : AbstractPartVisual<P>(ctx, part), SimpleDynamicVisual where P : Part, P : LightFixtureGameObject {
     private val cageInstance = create(cageModel)
     private val emitterInstance = create(emitterModel)
@@ -392,10 +583,10 @@ class LightFixtureRenderer<P>(
 
         emitterInstance
             .color(
-                ArgbColor.lerpR(coldTint, warmTint, t),
-                ArgbColor.lerpG(coldTint, warmTint, t),
-                ArgbColor.lerpB(coldTint, warmTint, t),
-                ArgbColor.lerpA(coldTint, warmTint, t)
+                MyColor.lerpR(coldTint, warmTint, t),
+                MyColor.lerpG(coldTint, warmTint, t),
+                MyColor.lerpB(coldTint, warmTint, t),
+                MyColor.lerpA(coldTint, warmTint, t)
             )
             .handle()
             .setChanged()

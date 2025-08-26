@@ -17,7 +17,7 @@ import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.extensions.*
-import org.eln2.mc.mathematics.ArgbColor
+import org.eln2.mc.mathematics.MyColor
 import kotlin.math.PI
 
 @ClientOnly
@@ -120,7 +120,7 @@ object DebugVisualizer {
 
     }
 
-    private class LineAABB(val aabb: AABB, val color: ArgbColor) : RenderElement() {
+    private class LineAABB(val aabb: AABB, val color: MyColor) : RenderElement() {
         override fun render(
             pPoseStack: PoseStack,
             pBufferSource: MultiBufferSource.BufferSource,
@@ -141,7 +141,7 @@ object DebugVisualizer {
         }
     }
 
-    private class LineOBB(val obb: OrientedBoundingBox3d, val color: ArgbColor) : RenderElement() {
+    private class LineOBB(val obb: OrientedBoundingBox3d, val color: MyColor) : RenderElement() {
         override fun render(
             pPoseStack: PoseStack,
             pBufferSource: MultiBufferSource.BufferSource,
@@ -174,7 +174,7 @@ object DebugVisualizer {
 
     }
 
-    private class LineCylinder(val cylinder: Cylinder3d, val color: ArgbColor) : RenderElement() {
+    private class LineCylinder(val cylinder: Cylinder3d, val color: MyColor) : RenderElement() {
         companion object {
             private const val LINES = 16
         }
@@ -324,19 +324,19 @@ object DebugVisualizer {
         return composite
     }
 
-    fun createLineBox(vararg aabbs: AABB, color: ArgbColor = ArgbColor.WHITE) =
+    fun createLineBox(vararg aabbs: AABB, color: MyColor = MyColor.WHITE) =
         createCompositionOf(*aabbs.map { LineAABB(it, color) }.toTypedArray())
 
-    fun createLineBox(vararg aabbs: BoundingBox3d, color: ArgbColor = ArgbColor.WHITE) =
+    fun createLineBox(vararg aabbs: BoundingBox3d, color: MyColor = MyColor.WHITE) =
         createCompositionOf(*aabbs.map { LineAABB(AABB(it.min.toVec3(), it.max.toVec3()), color) }.toTypedArray())
 
-    fun createLineOrientedBox(vararg obbs: OrientedBoundingBox3d, color: ArgbColor = ArgbColor.WHITE) =
+    fun createLineOrientedBox(vararg obbs: OrientedBoundingBox3d, color: MyColor = MyColor.WHITE) =
         createCompositionOf(*obbs.map { LineOBB(it, color) }.toTypedArray())
 
-    fun createLineCylinder(vararg cylinders: Cylinder3d, color: ArgbColor = ArgbColor.WHITE) =
+    fun createLineCylinder(vararg cylinders: Cylinder3d, color: MyColor = MyColor.WHITE) =
         createCompositionOf(*cylinders.map { LineCylinder(it, color) }.toTypedArray())
 
-    fun createDirection(origin: Vector3d, direction: Direction, size: Double = 0.01, color: ArgbColor = ArgbColor.WHITE) : RenderElement {
+    fun createDirection(origin: Vector3d, direction: Direction, size: Double = 0.01, color: MyColor = MyColor.WHITE) : RenderElement {
         val t = size / 2.0
 
         val box = when(direction) {
@@ -375,9 +375,9 @@ object DebugVisualizer {
     }
 
     fun createPartFrame(part: Part) = createCompositionOf(
-        createDirection(part.placement.mountingPointWorld, part.placement.positiveX, color = ArgbColor(0.8f, 1f, 0f, 0f)),
-        createDirection(part.placement.mountingPointWorld, part.placement.positiveY, color = ArgbColor(0.8f, 0f, 1f, 0f)),
-        createDirection(part.placement.mountingPointWorld, part.placement.positiveZ, color = ArgbColor( 0.8f, 0f, 0f, 1f))
+        createDirection(part.placement.mountingPointWorld, part.placement.positiveX, color = MyColor(0.8f, 1f, 0f, 0f)),
+        createDirection(part.placement.mountingPointWorld, part.placement.positiveY, color = MyColor(0.8f, 0f, 1f, 0f)),
+        createDirection(part.placement.mountingPointWorld, part.placement.positiveZ, color = MyColor( 0.8f, 0f, 0f, 1f))
     ).withinScopeOf(part)
 
     fun createPartBounds(part: Part) =
@@ -385,19 +385,19 @@ object DebugVisualizer {
 
     fun compositionOf(vararg elements: RenderElement) = add(createCompositionOf(*elements))
 
-    fun lineBox(vararg aabbs: AABB, color: ArgbColor = ArgbColor.WHITE) =
+    fun lineBox(vararg aabbs: AABB, color: MyColor = MyColor.WHITE) =
         add(createLineBox(*aabbs, color = color))
 
-    fun lineBox(vararg aabbs: BoundingBox3d, color: ArgbColor = ArgbColor.WHITE) =
+    fun lineBox(vararg aabbs: BoundingBox3d, color: MyColor = MyColor.WHITE) =
         add(createLineBox(*aabbs, color = color))
 
-    fun lineOrientedBox(vararg obbs: OrientedBoundingBox3d, color: ArgbColor = ArgbColor.WHITE) =
+    fun lineOrientedBox(vararg obbs: OrientedBoundingBox3d, color: MyColor = MyColor.WHITE) =
         add(createLineOrientedBox(*obbs, color = color))
 
-    fun lineCylinder(vararg cylinders: Cylinder3d, color: ArgbColor = ArgbColor.WHITE) =
+    fun lineCylinder(vararg cylinders: Cylinder3d, color: MyColor = MyColor.WHITE) =
         add(createLineCylinder(*cylinders, color = color))
 
-    fun direction(origin: Vector3d, direction: Direction, size: Double = 0.05, color: ArgbColor = ArgbColor.WHITE) =
+    fun direction(origin: Vector3d, direction: Direction, size: Double = 0.05, color: MyColor = MyColor.WHITE) =
         add(createDirection(origin, direction, size, color))
 
     fun partFrame(part: Part) = add(createPartFrame(part))

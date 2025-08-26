@@ -14,12 +14,11 @@ import org.eln2.mc.ClientOnly
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.cells.foundation.InternalTemperatureConsumer
-import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
-import org.eln2.mc.mathematics.ArgbColor
+import org.eln2.mc.mathematics.MyColor
 
 /**
  * Represents a game object that is rendered with a [RadiantBodyVisual].
@@ -35,8 +34,8 @@ interface RadiantGameObject {
 class RadiatorPart(
     ci: PartCreateInfo,
     val radiantColor: ThermalTint = ThermalTintBuilder().apply {
-        coldTint = ArgbColor(0.0f, 1f, 1f, 1f)
-        hotTint = ArgbColor( 0.4f, 1f, 0.1f, 0.1f)
+        coldTint = MyColor(0.0f, 1f, 1f, 1f)
+        hotTint = MyColor( 0.4f, 1f, 0.1f, 0.1f)
     }.build()
 ) : CellPart<ThermalWireCell>(ci, Content.THERMAL_RADIATOR_CELL.get()), InternalTemperatureConsumer, RadiantGameObject, ComponentDisplay {
     override var renderTemperature: Quantity<Temperature> = STANDARD_TEMPERATURE

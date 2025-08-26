@@ -20,17 +20,17 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.ServerOnly
-import org.eln2.mc.client.render.foundation.RGBAFloat
 import org.eln2.mc.client.render.foundation.eln2SubmitOBBAtLevelStage
+import org.eln2.mc.common.blocks.foundation.GridCellBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.cells.foundation.Cell
 import org.eln2.mc.common.cells.foundation.requireNode
-import org.eln2.mc.common.blocks.foundation.GridCellBlockEntity
 import org.eln2.mc.common.parts.foundation.GridCellPart
 import org.eln2.mc.common.specs.foundation.GridSpec
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.data.Notifier
 import org.eln2.mc.extensions.*
+import org.eln2.mc.mathematics.MyColor
 import org.eln2.mc.requireIsOnRenderThread
 import org.eln2.mc.requireIsOnServerThread
 import java.util.*
@@ -73,7 +73,7 @@ abstract class GridTerminalHandle(val terminal: GridTerminal) {
     /**
      * Handle for a [GridTerminalContainer] implemented by a [GridSpec].
      * */
-    class SpecHandle(terminal: GridTerminal, val part: SpecContainerPart, val spec: GridSpec<*>) : GridTerminalHandle(terminal) {
+    class SpecHandle(terminal: GridTerminal, val part: SpecContainerPart, val spec: GridSpec) : GridTerminalHandle(terminal) {
         override val gameObject: Any
             get() = spec
 
@@ -91,7 +91,7 @@ abstract class GridTerminalHandle(val terminal: GridTerminal) {
         }
     }
 
-    class PartHandle(terminal: GridTerminal, val part: GridCellPart<*, *>) : GridTerminalHandle(terminal) {
+    class PartHandle(terminal: GridTerminal, val part: GridCellPart<*>) : GridTerminalHandle(terminal) {
         override val gameObject: Any
             get() = part
 
@@ -155,7 +155,7 @@ abstract class GridTerminalHandle(val terminal: GridTerminal) {
                         return null
                     }
 
-                    val spec = part.getSpecByPlacementID(tag.getInt(PLACEMENT_ID)) as? GridSpec<*>
+                    val spec = part.getSpecByPlacementID(tag.getInt(PLACEMENT_ID)) as? GridSpec
                         ?: return null
 
                     val terminal = spec.getTerminalByEndpointID(tag.getUUID(ENDPOINT_ID))
@@ -170,7 +170,7 @@ abstract class GridTerminalHandle(val terminal: GridTerminal) {
                     val multipart = pLevel.getBlockEntity(pos) as? MultipartBlockEntity
                         ?: return null
 
-                    val part = multipart.getPart(tag.getDirection(FACE)) as? GridCellPart<*, *>
+                    val part = multipart.getPart(tag.getDirection(FACE)) as? GridCellPart<*>
                         ?: return null
 
                     if(part.containerID != tag.getUUID(CONTAINER_ID)) {
@@ -253,7 +253,7 @@ abstract class GridTerminalHandle(val terminal: GridTerminal) {
 
             when (part) {
                 is SpecContainerPart -> {
-                    val spec = part.pickSpec(pPlayer)?.second as? GridSpec<*>
+                    val spec = part.pickSpec(pPlayer)?.second as? GridSpec
                         ?: return null
 
                     val terminal = spec.pickTerminal(pPlayer)
@@ -262,7 +262,7 @@ abstract class GridTerminalHandle(val terminal: GridTerminal) {
                     return SpecHandle(terminal, part, spec)
                 }
 
-                is GridCellPart<*, *> -> {
+                is GridCellPart<*> -> {
                     val terminal = part.pickTerminal(pPlayer)
                         ?: return null
 
@@ -334,7 +334,7 @@ open class GridTerminalClient(
     locator: Locator,
     attachment: Vector3d,
     boundingBox: OrientedBoundingBox3d,
-    var color: RGBAFloat? = RGBAFloat(1f, 0f, 0f, 1f)
+    var color: MyColor? = MyColor( 1f, 1f, 0f, 0f)
 ) : GridTerminal(
     ci.gridTerminalSystem,
     ci.terminalID,

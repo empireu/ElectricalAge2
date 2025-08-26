@@ -29,6 +29,7 @@ import org.eln2.mc.data.Locators
 import org.eln2.mc.data.SortedUUIDPair
 import org.eln2.mc.data.plusAssign
 import org.eln2.mc.extensions.*
+import org.eln2.mc.mathematics.MyColor
 import java.util.*
 import kotlin.math.*
 import kotlin.random.Random
@@ -441,12 +442,12 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci), GridConnectionOwner {
         )
 
         handle.options = GridRenderOptions(
-            tint = RGBFloat.createClamped(
-                color.redAsFloat,
-                color.greenAsFloat,
-                color.blueAsFloat
+            tint = MyColor(
+                color.r,
+                color.g,
+                color.b
             ),
-            brightnessOverride = (color.alpha / 255.0).coerceIn(0.0, 1.0)
+            brightnessOverride = (color.a / 255.0)
         )
     }
 

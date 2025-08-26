@@ -30,7 +30,9 @@ import org.eln2.mc.client.render.foundation.WirePatchType.Wrapped
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.content.Content
 import org.eln2.mc.common.content.LightFixtureRenderer
+import org.eln2.mc.common.content.PolarPoweredLightPart
 import org.eln2.mc.common.content.SolarLightPart
+import org.eln2.mc.common.content.TerminalPoweredLightPart
 import org.eln2.mc.common.parts.foundation.CellPartConnectionMode
 import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.common.parts.foundation.PartProvider
@@ -38,7 +40,7 @@ import org.eln2.mc.common.specs.foundation.Spec
 import org.eln2.mc.common.specs.foundation.SpecProvider
 import org.eln2.mc.common.specs.foundation.SpecVisualizer
 import org.eln2.mc.extensions.bind
-import org.eln2.mc.mathematics.ArgbColor
+import org.eln2.mc.mathematics.MyColor
 import org.eln2.mc.resource
 import org.lwjgl.system.MemoryUtil
 import java.nio.ByteBuffer
@@ -91,6 +93,22 @@ object FlwVisualizerRegistry {
                 ctx, part,
                 FlwModels.TALL_GARDEN_LIGHT_CAGE,
                 FlwModels.TALL_GARDEN_LIGHT_EMITTER
+            )
+        }
+
+        setPartVisualizer<PolarPoweredLightPart>(Content.LIGHT_PART.part.get()) { ctx, part ->
+            LightFixtureRenderer(
+                ctx, part,
+                FlwModels.SMALL_WALL_LAMP_CAGE,
+                FlwModels.SMALL_WALL_LAMP_EMITTER
+            )
+        }
+
+        setPartVisualizer<TerminalPoweredLightPart>(Content.LIGHT_PART_MICRO_GRID.part.get()) { ctx, part ->
+            LightFixtureRenderer(
+                ctx, part,
+                FlwModels.SMALL_WALL_LAMP_CAGE_MICRO_GRID,
+                FlwModels.SMALL_WALL_LAMP_EMITTER
             )
         }
     }
@@ -165,8 +183,8 @@ class TransformedPolarInstance(
     type: InstanceType<TransformedPolarInstance>,
     handle: InstanceHandle,
 ) : TransformedInstance(type, handle) {
-    var color1 = ArgbColor(0)
-    var color2 = ArgbColor(0)
+    var color1 = MyColor(0)
+    var color2 = MyColor(0)
 }
 
 class TransformedLightOverrideInstance(

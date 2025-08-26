@@ -25,6 +25,7 @@ import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.extensions.getVector3d
 import org.eln2.mc.extensions.putVector3d
+import org.eln2.mc.mathematics.MyColor
 import org.eln2.mc.mathematics.floorBlockPos
 import org.eln2.mc.resource
 import java.util.HashSet
@@ -61,8 +62,8 @@ class GridMaterial(
     val category: GridMaterialCategory,
     val meltingTemperature: Quantity<Temperature>,
     val explosionParticlesPerMeter: Int,
-    val vertexColor: RGBFloat = RGBFloat(1f, 1f, 1f),
-    val thermalColor: ThermalTint = defaultRadiantBodyColor()
+    val vertexColor: MyColor = MyColor.WHITE,
+    val thermalColor: ThermalTint = ThermalTint.DEFAULT
 ) {
     val id get() = GridMaterials.getId(this)
 
@@ -204,8 +205,13 @@ object GridRenderer {
     @JvmStatic
     fun submitSection(section: SectionPos, lightReader: CachingLightReader, neighborLights: NeighborLightReader, consumer: GridRendererVertexConsumer) {
         GridConnectionManagerClient.read(section) { material, vertexList, data ->
-            val (mr, mg, mb) = material.vertexColor
-            val (tr, tg, tb) = data.tint
+            val mr = material.vertexColor.rF
+            val mg = material.vertexColor.gF
+            val mb = material.vertexColor.bF
+
+            val tr = data.tint.rF
+            val tg = data.tint.gF
+            val tb = data.tint.bF
 
             val r = mr * tr
             val g = mg * tg

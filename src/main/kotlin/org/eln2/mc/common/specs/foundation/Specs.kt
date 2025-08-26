@@ -8,17 +8,15 @@ import dev.engine_room.flywheel.api.visual.LightUpdatedVisual
 import dev.engine_room.flywheel.api.visual.SectionTrackedVisual
 import dev.engine_room.flywheel.api.visual.TickableVisual
 import dev.engine_room.flywheel.api.visual.Visual
-import dev.engine_room.flywheel.api.visualization.VisualEmbedding
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
+import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import dev.engine_room.flywheel.lib.task.RunnablePlan
-import it.unimi.dsi.fastutil.objects.ReferenceArraySet
 import net.minecraft.client.KeyMapping
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
-import net.minecraft.core.Vec3i
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.network.FriendlyByteBuf
@@ -65,11 +63,12 @@ import org.eln2.mc.data.Locators
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.DebugComponentDisplay
-import org.eln2.mc.mathematics.ArgbColor
+import org.eln2.mc.mathematics.MyColor
 import org.eln2.mc.mathematics.FacingDirection
 import org.joml.Quaternionf
 import org.lwjgl.glfw.GLFW
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.function.Supplier
 import kotlin.collections.HashSet
@@ -224,12 +223,12 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
             field = value
         }
 
-    private val specsInternal = HashMap<Int, Spec<*>>()
+    private val specsInternal = ConcurrentHashMap<Int, Spec>()
 
-    val specs : Map<Int, Spec<*>> get() = specsInternal
+    val specs : Map<Int, Spec> get() = specsInternal
 
     @ServerOnly
-    private val dirtySpecs = HashSet<Spec<*>>()
+    private val dirtySpecs = HashSet<Spec>()
     @ServerOnly
     private val placementUpdates = ArrayList<SpecUpdate>()
 
@@ -237,7 +236,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
     val renderUpdates = ConcurrentLinkedQueue<SpecUpdate>()
 
     @ServerOnly
-    fun enqueueSpecSync(spec: Spec<*>) {
+    fun enqueueSpecSync(spec: Spec) {
         requireIsOnServerThread {
             "Tried to enqueue spec sync on non-server thread"
         }
@@ -315,7 +314,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
 
     fun pickSpec(ray3d: Ray3d) = specsInternal.values
         .flatMap { spec ->
-            val intersections = ArrayList<Pair<RayIntersection, Spec<*>>>(1)
+            val intersections = ArrayList<Pair<RayIntersection, Spec>>(1)
 
             fun test(box: OrientedBoundingBox3d) {
                 val intersection = (ray3d intersectionWith box)
@@ -327,7 +326,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
 
             test(spec.placement.orientedBoundingBoxWorld)
 
-            if(spec is GridSpec<*>) {
+            if(spec is GridSpec) {
                 spec.gridTerminalSystem.instances.values.forEach {
                     test(it.boundingBox)
                 }
@@ -345,7 +344,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
      * Adds the [spec] and notifies via [Spec.onAdded]
      * Throws if the [spec] is already added.
      * */
-    private fun addSpec(spec: Spec<*>) {
+    private fun addSpec(spec: Spec) {
         specsInternal.putUnique(spec.placement.placementId, spec)
         spec.onAdded()
     }
@@ -354,7 +353,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
      * Removes the [spec] and notifies via [Spec.setRemoved].
      * @return True if the spec was removed. Otherwise, false.
      * */
-    private fun removeSpec(spec: Spec<*>) : Boolean {
+    private fun removeSpec(spec: Spec) : Boolean {
         if(specsInternal.remove(spec.placement.placementId) == null) {
             return false
         }
@@ -459,7 +458,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
      * @param isContainerBreak If true, this means the container part is being destroyed. Cell specs got cleaned up by [PartCellContainer.cellUnbindAndDestroySuggested] so we must not clean them up here.
      * */
     @ServerOnly
-    fun breakSpec(spec: Spec<*>, saveTag: CompoundTag? = null, isContainerBreak: Boolean = false) {
+    fun breakSpec(spec: Spec, saveTag: CompoundTag? = null, isContainerBreak: Boolean = false) {
         require(specsInternal.values.contains(spec)) {
             "Tried to break spec $spec which was not present"
         }
@@ -635,7 +634,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
     private fun packSpecUpdates(tag: CompoundTag) {
         requireIsOnServerThread()
 
-        if(dirtySpecs.size == 0) {
+        if(dirtySpecs.isEmpty()) {
             return
         }
 
@@ -692,7 +691,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
     }
 
     @ServerOnly
-    private fun saveSpecCommon(spec: Spec<*>, saveType: SaveType): CompoundTag {
+    private fun saveSpecCommon(spec: Spec, saveType: SaveType): CompoundTag {
         requireIsOnServerThread()
 
         val tag = CompoundTag()
@@ -742,7 +741,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
         }
     }
 
-    private fun unpackSpec(tag: CompoundTag, saveType: SaveType): Spec<*> {
+    private fun unpackSpec(tag: CompoundTag, saveType: SaveType): Spec {
         val id = tag.getResourceLocation(ID)
         val mountingPointWorld = tag.getVector3d(MOUNTING_POINT_WORLD)
         val specialPose = tag.getPose2d(SPECIAL_POSE)
@@ -776,7 +775,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
      * Enqueues a part for renderer setup.
      * */
     @ClientOnly
-    private fun clientAddSpec(spec: Spec<*>) {
+    private fun clientAddSpec(spec: Spec) {
         requireIsOnRenderThread()
         spec.onAddedToClient()
         renderUpdates.add(SpecUpdate(spec, SpecUpdateType.Add))
@@ -786,7 +785,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
      * Removes a part from the renderer.
      * */
     @ClientOnly
-    private fun clientRemoveSpec(spec: Spec<*>) {
+    private fun clientRemoveSpec(spec: Spec) {
         requireIsOnRenderThread()
         spec.onBroken()
         renderUpdates.add(SpecUpdate(spec, SpecUpdateType.Remove))
@@ -809,16 +808,6 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
         }
 
         updateShape(shape)
-    }
-
-    override fun createRenderer(): SpecContainerPartRenderer {
-        return SpecContainerPartRenderer(this)
-    }
-
-    fun bindRenderer(instance: SpecContainerPartRenderer) {
-        specsInternal.values.forEach {
-            renderUpdates.add(SpecUpdate(it, SpecUpdateType.Add))
-        }
     }
 
     override fun onUsedBy(context: PartUseInfo): InteractionResult {
@@ -904,7 +893,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
             return stack
         }
 
-        private fun spawnDrop(pLevel: ServerLevel, removedSpec: Spec<*>, saveTag: CompoundTag) {
+        private fun spawnDrop(pLevel: ServerLevel, removedSpec: Spec, saveTag: CompoundTag) {
             val center = removedSpec.placement.orientedBoundingBoxWorld.center
 
             pLevel.addItem(center.x, center.y, center.z, createSpecDropStack(removedSpec.id, saveTag))
@@ -932,7 +921,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
             event.multiBufferSource.getBuffer(RenderType.lines()).eln2SubmitOBBAtLevelStage(
                 event.poseStack,
                 spec.placement.orientedBoundingBoxWorld,
-                ArgbColor(0.5f, 0.8f, 0.9f, 0.1f),
+                MyColor(0.5f, 0.8f, 0.9f, 0.1f),
                 event.camera
             )
         }
@@ -1035,7 +1024,7 @@ class SpecContainerPartRenderer(
 ) : AbstractPartVisual<SpecContainerPart>(ctx, part), DynamicVisual, TickableVisual, LightUpdatedVisual {
     val specs = HashMap<Spec, AbstractSpecVisual<*>>()
     val specVisualizationContext = SpecVisualizationContext(ctx, this)
-    val storage = SpecialVisualStorage<AbstractPartVisual<*>>()
+    val storage = SpecialVisualStorage<AbstractSpecVisual<*>>()
 
     private var frameInstance = createPartInstance(ctx, FlwModels.SPEC_PART_FRAME, part)
 
@@ -1065,28 +1054,24 @@ class SpecContainerPartRenderer(
 
     override fun planTick(): Plan<TickableVisual.Context> = storage.tickableVisuals
 
-    override fun setupRendering() {
-        frameInstance?.delete()
-        //frameInstance =
-        multipart.relightModels(frameInstance)
-        part.bindRenderer(this)
-    }
-
     private fun handleSpecUpdates(ctx: DynamicVisual.Context) {
         while (true) {
-            val update = specPart.renderUpdates.poll() ?: break
+            val update = part.renderUpdates.poll()
+                ?: break
+
             val spec = update.spec
 
             when (update.type) {
                 SpecUpdateType.Add -> {
-                    if(specs.add(spec)) {
-                        spec.renderer.setupRendering(this)
-                        spec.renderer.relight(RelightSource.Setup)
-                    }
+                    addSpec(spec, ctx.partialTick())
                 }
                 SpecUpdateType.Remove -> {
-                    specs.remove(spec)
-                    spec.destroyRenderer()
+                    val visual = specs.remove(spec)
+
+                    if(visual != null) {
+                        storage.remove(visual)
+                        visual.delete()
+                    }
                 }
             }
         }
@@ -1094,17 +1079,17 @@ class SpecContainerPartRenderer(
 
     private fun addSpec(spec: Spec, partialTick: Float) {
         if (!specs.contains(spec)) {
-            //val visual = part.createVisual(multipartVisualizationContext)
-//
-            //if(visual == null) {
-            //    LOG.debug("Part {} didn't create a visual", part)
-            //    return
-            //}
-//
-            //storage.add(visual, partialTick)
-            //parts[part] = visual
-//
-            //visual.updateLight(partialTick)
+             val visual = spec.createVisual(specVisualizationContext)
+
+             if(visual == null) {
+                 LOG.debug("Spec {} didn't create a visual", spec)
+                 return
+             }
+
+            storage.add(visual, partialTick)
+            specs[spec] = visual
+
+            visual.updateLight(partialTick)
         }
     }
 }
@@ -1192,19 +1177,19 @@ abstract class SpecProvider {
     // Maybe add context to select model based on stuff
     open fun getModelForPreview() : PartialModel? = null
 
-    fun create(context: SpecPlacementInfo): Spec<*> {
+    fun create(context: SpecPlacementInfo): Spec {
         val instance = createCore(context)
         instance.onCreated()
         return instance
     }
 
-    protected abstract fun createCore(context: SpecPlacementInfo) : Spec<*>
+    protected abstract fun createCore(context: SpecPlacementInfo) : Spec
 
     abstract val placementCollisionSize: Vector3d
 }
 
 fun interface SpecFactory {
-    operator fun invoke(ci: SpecCreateInfo) : Spec<*>
+    operator fun invoke(ci: SpecCreateInfo) : Spec
 }
 
 open class BasicSpecProvider(
@@ -1212,7 +1197,7 @@ open class BasicSpecProvider(
     final override val placementCollisionSize: Vector3d,
     val factory: SpecFactory,
 ) : SpecProvider() {
-    constructor(placementCollisionSize: Vector3d, factory: (ci: SpecCreateInfo) -> Spec<*>) : this(null, placementCollisionSize, factory)
+    constructor(placementCollisionSize: Vector3d, factory: (ci: SpecCreateInfo) -> Spec) : this(null, placementCollisionSize, factory)
 
     override fun getModelForPreview(): PartialModel? = previewModel
 
@@ -1224,7 +1209,7 @@ open class BasicSpecProvider(
 }
 
 /**
- * [Spec]s are entity-like units that exist in a [SpecContainerPart]. They are similar to normal block entities,
+ * [Spec]s are entity-like game objects that exist in a [SpecContainerPart]. They are similar to normal block entities,
  * but many can exist in the same block space.
  * They are placed in a region on the substrate plane of a spec part container, with a custom orientation.
  * The position and orientation are not axis-aligned;
@@ -1314,7 +1299,7 @@ abstract class Spec(ci: SpecCreateInfo) {
      *  Called on the server when the spec is placed.
      * */
     @ServerOnly
-    open fun onPlaced() {}
+    open fun onPlaced() { }
 
     /**
      * Called when the spec is right-clicked by a player.
@@ -1381,138 +1366,13 @@ abstract class Spec(ci: SpecCreateInfo) {
         this.setSyncDirty()
     }
 
-    @ClientOnly
-    protected var previousRenderer: Renderer? = null
-
-    @ClientOnly
-    protected var activeRenderer: Renderer? = null
-        private set
-
-    /**
-     * Gets the [Renderer] instance for this spec.
-     * By default, it calls the [createRenderer] method, and stores the result.
-     * */
-    val renderer: Renderer get() {
-        if (!placement.level.isClientSide) {
-            error("Tried to get spec renderer on non-client side!")
-        }
-
-        if (activeRenderer == null) {
-            activeRenderer = createRenderer().also {
-                val previousRenderer = this.previousRenderer
-                this.previousRenderer = null
-
-                if(previousRenderer != null) {
-                    if(it is SpecRendererStateStorage) {
-                        it.restoreSnapshot(previousRenderer)
-                    }
-                }
-            }
-
-            initializeRenderer()
-        }
-
-        return activeRenderer!!
-    }
-
-    /**
-     * Creates a renderer instance for this spec.
-     * @return A new instance of the spec renderer.
-     * */
-    @ClientOnly
-    abstract fun createRenderer(): Renderer
-
-    /**
-     * Called to initialize the [Renderer], right after it is created by [createRenderer]
-     * */
-    @ClientOnly
-    open fun initializeRenderer() { }
-
-    @ClientOnly
-    open fun destroyRenderer() {
-        previousRenderer = activeRenderer
-        activeRenderer?.remove()
-        activeRenderer = null
-    }
-
     @Suppress("UNCHECKED_CAST")
     open fun createVisual(ctx: SpecVisualizationContext): AbstractSpecVisual<*>? =
         (FlwVisualizerRegistry.getSpecVisualizer(placement.provider) as SpecVisualizer<Spec>)
             .create(ctx, this)
 }
 
-/**
- * This is the per-spec renderer. One is created for every instance of a spec.
- * The various methods may be called from separate threads.
- * Thread safety must be guaranteed by the implementation.
- * */
-@CrossThreadAccess
-abstract class SpecRenderer {
-    lateinit var partRenderer: SpecContainerPartRenderer
-        private set
-
-    val hasPartRenderer get() = this::partRenderer.isInitialized
-
-    val instancePosition : BlockPos get() {
-        if(!hasPartRenderer) {
-            error("Tried to get instance position before init of spec part renderer")
-        }
-
-        return partRenderer.instancePosition
-    }
-
-    fun isSetupWith(partRenderer: SpecContainerPartRenderer): Boolean {
-        return this::partRenderer.isInitialized && this.partRenderer == partRenderer
-    }
-
-    /**
-     * Called when the spec is picked up by the [SpecContainerPart]'s renderer.
-     * @param partRenderer The spec part's renderer.
-     * */
-    fun setupRendering(partRenderer: SpecContainerPartRenderer) {
-        this.partRenderer = partRenderer
-        setupRendering()
-    }
-
-    /**
-     * Called to set up rendering, when [partRenderer] has been acquired.
-     * */
-    protected open fun setupRendering() { }
-
-    /**
-     * Called when a light update occurs, or this renderer is set up (after [setupRendering]).
-     * Models should be re-lit here
-     * */
-    open fun relight(source: RelightSource) { }
-
-    /**
-     * Called each frame.
-     * This method may be used to play animations or to apply general per-frame updates.
-     * */
-    open fun beginFrame() { }
-
-    /**
-     * Called when the renderer is no longer required **OR** the rendering pipeline/backend/whatever is re-created. In that case, the renderer might be re-created just after this one is destroyed.
-     * As an example, this will happen if the user switches flywheel backends, (I think) when the user changes some graphics settings, and it can also happen when the floating origin shifts.
-     * All resources must be released here. If you have any data that you stored in this renderer but not in the spec, and you would like to get it back, implement [SpecRendererStateStorage].
-     * */
-    open fun remove() { }
-}
-
-/**
- * Helper interface for renderers that store state in the [SpecRenderer] instance.
- * */
-interface SpecRendererStateStorage {
-    /**
-     * Called to restore the information from a previous renderer instance.
-     * Could happen when the renderer is re-created, after being destroyed. Could happen when origin shifts, etc. Passed as [SpecRenderer] because the type can actually change (e.g. if switching backends and the part chooses to create another renderer)
-     * */
-    fun restoreSnapshot(renderer: SpecRenderer)
-}
-
-data class SpecPlacementOverlayState(
-    val orientation: Rotation2d,
-)
+data class SpecPlacementOverlayState(val orientation: Rotation2d)
 
 data class SpecOverlayMessage(val state: SpecPlacementOverlayState) {
     companion object {
@@ -1590,7 +1450,7 @@ object SpecPlacementOverlayClient : IGuiOverlay {
             "θ×=${Math.toDegrees(orientation.ln()).formatted(2)}°",
             0,
             0,
-            color(255, 0, 0, 255)
+            MyColor(255, 0, 0).data
         )
     }
 
@@ -1673,10 +1533,10 @@ object SpecPlacementOverlay {
 
 @ClientOnly
 object SpecPreviewRenderer {
-    private val CAN_PLACE_COLOR = RGBAFloat(0.1f, 1.0f, 0.15f, 0.5f)
-    private val CANNOT_PLACE_COLOR = RGBAFloat(1.0f, 0.1f, 0.2f, 0.6f)
-    private val CAN_PLACE_PREVIEW_COLOR = RGBAFloat(0.1f, 1.0f, 0.15f, 0.9f)
-    private val CANNOT_PLACE_PREVIEW_COLOR = RGBAFloat(1.0f, 0.1f, 0.2f, 0.2f)
+    private val CAN_PLACE_COLOR = MyColor(0.5f, 0.1f, 1.0f, 0.15f)
+    private val CANNOT_PLACE_COLOR = MyColor(0.6f, 1.0f, 0.1f, 0.2f)
+    private val CAN_PLACE_PREVIEW_COLOR = MyColor(0.9f, 0.1f, 1.0f, 0.15f)
+    private val CANNOT_PLACE_PREVIEW_COLOR = MyColor(0.2f, 1.0f, 0.1f, 0.2f)
     private const val AXIS_THICKNESS = 0.01
     private const val CAN_PLACE_AXIS_ALPHA = 0.8f
     private const val CANNOT_PLACE_AXIS_ALPHA = 0.1f
@@ -1804,7 +1664,7 @@ object SpecPreviewRenderer {
         stack.popPose()
     }
 
-    private fun submitBoxAndAxes(pose: PoseStack.Pose, placeColor: RGBAFloat, placeAlpha: Float, placementCollisionSize: Vector3d) {
+    private fun submitBoxAndAxes(pose: PoseStack.Pose, placeColor: MyColor, placeAlpha: Float, placementCollisionSize: Vector3d) {
         val vertexConsumer = Minecraft.getInstance()
             .renderBuffers()
             .bufferSource()
@@ -1825,7 +1685,7 @@ object SpecPreviewRenderer {
                 Vector3d(0.5, 0.0, 0.0),
                 Vector3d(0.5, AXIS_THICKNESS, AXIS_THICKNESS)
             ),
-            RGBAFloat(1.0f, 0.0f, 0.0f, placeAlpha)
+            MyColor(placeAlpha, 1.0f, 0.0f, 0.0f)
         )
 
         vertexConsumer.eln2SubmitAABBLines(
@@ -1834,7 +1694,7 @@ object SpecPreviewRenderer {
                 Vector3d(0.0, 0.5, 0.0),
                 Vector3d(AXIS_THICKNESS, 0.5, AXIS_THICKNESS)
             ),
-            RGBAFloat(0.0f, 1.0f, 0.0f, placeAlpha)
+            MyColor(placeAlpha, 0.0f, 1.0f, 0.0f)
         )
 
         vertexConsumer.eln2SubmitAABBLines(
@@ -1843,11 +1703,11 @@ object SpecPreviewRenderer {
                 Vector3d(0.0, 0.0, 0.5),
                 Vector3d(AXIS_THICKNESS, AXIS_THICKNESS, 0.5)
             ),
-            RGBAFloat(0.0f, 0.0f, 1.0f, placeAlpha)
+            MyColor(placeAlpha, 0.0f, 0.0f, 1.0f)
         )
     }
 
-    private fun submitPreviewModel(pose: PoseStack.Pose, previewColor: RGBAFloat, provider: SpecProvider) {
+    private fun submitPreviewModel(pose: PoseStack.Pose, previewColor: MyColor, provider: SpecProvider) {
         val model = provider.getModelForPreview()
             ?: return
 
@@ -1866,7 +1726,7 @@ object SpecPreviewRenderer {
 /**
  * [Spec] that uses the grid system by managing a [gridTerminalSystem].
  * */
-abstract class GridSpec<Renderer : SpecRenderer>(ci: SpecCreateInfo) : Spec<Renderer>(ci), GridTerminalContainer {
+abstract class GridSpec(ci: SpecCreateInfo) : Spec(ci), GridTerminalContainer {
     val locator = placement.createLocator()
 
     /**
@@ -1973,10 +1833,10 @@ interface SpecWithCell<C : Cell> {
     fun neighborScan() : List<CellAndContainerHandle>
 }
 
-abstract class CellSpec<C : Cell, R : SpecRenderer>(
+abstract class CellSpec<C : Cell>(
     ci: SpecCreateInfo,
     final override val provider: CellProvider<C>,
-) : GridSpec<R>(ci), SpecWithCell<C> {
+) : GridSpec(ci), SpecWithCell<C> {
     companion object {
         private const val GRAPH_ID = "GraphID"
         private const val CUSTOM_SIMULATION_DATA = "SimulationData"
@@ -2160,11 +2020,11 @@ abstract class CellSpec<C : Cell, R : SpecRenderer>(
         return results
     }
 
-    protected fun defineCellBoxTerminal(box3d: OrientedBoundingBox3d, attachment: Vector3d? = null, highlightColor : RGBAFloat? = RGBAFloat(
+    protected fun defineCellBoxTerminal(box3d: OrientedBoundingBox3d, attachment: Vector3d? = null, highlightColor : MyColor? = MyColor(
+        0.8f,
         1f,
         0.58f,
-        0.44f,
-        0.8f
+        0.44f
     ), categories: List<GridMaterialCategory>) = gridTerminalSystem.defineTerminal<GridTerminal>(
         TerminalFactories(
             { ci ->
@@ -2180,7 +2040,7 @@ abstract class CellSpec<C : Cell, R : SpecRenderer>(
         sizeX: Double, sizeY: Double, sizeZ: Double,
         orientation: Rotation2d = Rotation2d.identity,
         attachment: Vector3d? = null,
-        highlightColor: RGBAFloat? = RGBAFloat(1f, 0.58f, 0.44f, 0.8f),
+        highlightColor: MyColor? = MyColor(0.8f, 1f, 0.58f, 0.44f),
         categories: List<GridMaterialCategory> = listOf(GridMaterialCategory.MicroGrid),
     ) = defineCellBoxTerminal(boundingBox(x, y, z, sizeX, sizeY, sizeZ, orientation), attachment, highlightColor, categories)
 }

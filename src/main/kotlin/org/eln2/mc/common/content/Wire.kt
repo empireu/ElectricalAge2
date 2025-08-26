@@ -48,10 +48,8 @@ import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.*
-import org.eln2.mc.mathematics.ArgbColor
+import org.eln2.mc.mathematics.MyColor
 import java.util.function.Supplier
-import kotlin.contracts.InvocationKind
-import kotlin.contracts.contract
 import kotlin.math.PI
 
 /**
@@ -1053,12 +1051,12 @@ class IncandescentWirePartVisual(
             .instancer(FlwInstanceTypes.TRANSFORMED_POLAR, model.get())
             .createInstance()
             .also {
-                it.color1 = ArgbColor(0.0f, 1.0f, 1.0f, 1.0f)
-                it.color2 = ArgbColor(0.0f, 1.0f, 1.0f, 1.0f)
+                it.color1 = MyColor(0.0f, 1.0f, 1.0f, 1.0f)
+                it.color2 = MyColor(0.0f, 1.0f, 1.0f, 1.0f)
                 it.poseConnection(info)
             }
 
-    private fun evaluateCoreColor() : ArgbColor {
+    private fun evaluateCoreColor() : MyColor {
         val renderState = part.renderState
 
         val lightLevel = LightTexture.block(
@@ -1165,7 +1163,7 @@ class IncandescentWirePartVisual(
      * This was done because it's the easiest way to get a continuous-looking wire without having the renderers know about each other.
      * It's not correct if the remote object is not an incandescent wire, but, later down the line, we can also export a flag from the server that tells us if we should apply the average or not.
      * */
-    private fun setExteriorPoleColor(instance: TransformedPolarInstance, coreColor: ArgbColor, remoteTemperature: Double, remoteInfo: Int) {
+    private fun setExteriorPoleColor(instance: TransformedPolarInstance, coreColor: MyColor, remoteTemperature: Double, remoteInfo: Int) {
         val remotePositionWorld = part.placement.position + PartConnectionDirection(remoteInfo).getIncrement(
             part.placement.facing,
             part.placement.face
@@ -1176,7 +1174,7 @@ class IncandescentWirePartVisual(
             remotePositionWorld
         )
 
-        instance.color1 = ArgbColor.lerp(
+        instance.color1 = MyColor.lerp(
             coreColor,
             model.tintColor.evaluateRGBL(Quantity(remoteTemperature), remoteLightLevel.toDouble()),
             0.5f

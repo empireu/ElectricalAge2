@@ -33,6 +33,7 @@ import org.eln2.mc.common.items.foundation.PartItem
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.extensions.*
+import org.eln2.mc.mathematics.MyColor
 import org.eln2.mc.mathematics.ceilBlockPos
 import org.eln2.mc.mathematics.floorBlockPos
 import java.util.*
@@ -267,16 +268,16 @@ data class GridConnectionUpdateRenderMessage(val id: Int, val options: GridRende
     companion object {
         fun encode(message: GridConnectionUpdateRenderMessage, buf: FriendlyByteBuf) {
             buf.writeInt(message.id)
-            buf.writeFloat(message.options.tint.r)
-            buf.writeFloat(message.options.tint.g)
-            buf.writeFloat(message.options.tint.b)
+            buf.writeFloat(message.options.tint.rF)
+            buf.writeFloat(message.options.tint.gF)
+            buf.writeFloat(message.options.tint.bF)
             buf.writeDouble(message.options.brightnessOverride)
         }
 
         fun decode(buf: FriendlyByteBuf) = GridConnectionUpdateRenderMessage(
             buf.readInt(),
             GridRenderOptions(
-                RGBFloat(
+                MyColor(
                     buf.readFloat(),
                     buf.readFloat(),
                     buf.readFloat()
@@ -735,7 +736,7 @@ object GridConnectionManagerServer {
 }
 
 data class GridRenderOptions(
-    val tint: RGBFloat = RGBFloat(1f, 1f, 1f),
+    val tint: MyColor = MyColor(1f, 1f, 1f),
     val brightnessOverride: Double = 0.0
 )
 
