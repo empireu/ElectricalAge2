@@ -501,7 +501,7 @@ class MultipartBlockEntityVisual(
                 return
             }
 
-            storage.add(visual, partialTick)
+            storage.add(visual)
             parts[part] = visual
 
             visual.updateLight(partialTick)

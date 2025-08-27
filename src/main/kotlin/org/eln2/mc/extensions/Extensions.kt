@@ -3,17 +3,18 @@ package org.eln2.mc.extensions
 import net.minecraft.core.Direction
 import net.minecraft.core.Vec3i
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.ageseries.libage.data.*
 import org.ageseries.libage.sim.Simulator
 import org.ageseries.libage.sim.ThermalMass
 import org.eln2.mc.*
+import org.eln2.mc.common.cells.foundation.Cell
 import org.eln2.mc.common.cells.foundation.CellEnvironment
 import org.eln2.mc.control.PIDController
 import java.util.*
-
 /*
-
+//FIXME where is multiblock manager? what is it?
 inline fun <reified T : Cell> Level.getCellOrNull(mb: MultiblockManager, cellPosId: BlockPos): T? {
     val entity = this.getBlockEntity(mb.txIdWorld(cellPosId)) as? CellBlockEntity
         ?: return null
@@ -24,6 +25,7 @@ inline fun <reified T : Cell> Level.getCellOrNull(mb: MultiblockManager, cellPos
 inline fun <reified T : Cell> Level.getCell(mb: MultiblockManager, cellPosId: BlockPos): T =
     getCellOrNull(mb, cellPosId) ?: error("Cell was not present")
 */
+
 
 fun Double.formattedPercentNormalized(decimals: Int = 2): String {
     return "${(this * 100.0).formatted(decimals)}%"

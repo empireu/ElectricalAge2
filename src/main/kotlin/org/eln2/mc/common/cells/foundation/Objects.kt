@@ -495,25 +495,24 @@ open class PolarVRGObject<C : Cell>(cell: C, val map: PoleMap) : VRGObject<C>(ce
             else -> null
         }
 }
-// FIXME
 /**
  * Generator model consisting of a [VoltageSource] + [Resistor], whose poles are mapped to grid terminals.
  * */
-//open class TerminalVRGObject<C : Cell>(cell: C, val plus: Int = POSITIVE, val minus: Int = NEGATIVE) : VRGObject<C>(cell) {
-//    /**
-//     * Gets the offered component by checking to see which terminal the [gc] is connected to.
-//     * @return
-//     *  The resistor's external pin when the terminal is [plus].
-//     *  The source's negative pin when the terminal is [minus].
-//     *  Null in any other case.
-//     * */
-//    override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo) =
-//        when(m0.terminal) {
-//            plus -> plusOffer()
-//            minus -> minusOffer()
-//            else -> null
-//        }
-//}
+open class TerminalVRGObject<C : Cell>(cell: C, val plus: Int = POSITIVE, val minus: Int = NEGATIVE) : VRGObject<C>(cell) {
+    /**
+     * Gets the offered component by checking to see which terminal the [gc] is connected to.
+     * @return
+     *  The resistor's external pin when the terminal is [plus].
+     *  The source's negative pin when the terminal is [minus].
+     *  Null in any other case.
+     * */
+    override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo) =
+        when(m0.terminal) {
+            plus -> plusOffer()
+            minus -> minusOffer()
+            else -> null
+        }
+}
 
 /**
  * [ElectricalObject] that wraps a single [Term] meant to connect via two poles, plus and minus.

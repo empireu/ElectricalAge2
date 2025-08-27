@@ -13,6 +13,8 @@ import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.CENTIMETER
 import org.ageseries.libage.data.G_PER_CM3
 import org.ageseries.libage.data.KILOGRAM
+import org.ageseries.libage.data.METER2
+import org.ageseries.libage.data.MILLI
 import org.ageseries.libage.data.OHM
 import org.ageseries.libage.data.OHM_METER
 import org.ageseries.libage.data.Potential
@@ -21,8 +23,10 @@ import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Resistance
 import org.ageseries.libage.data.VOLT
 import org.ageseries.libage.data.WATT
+import org.ageseries.libage.data.WATT_HOUR
 import org.ageseries.libage.data.WATT_PER_KELVIN
 import org.ageseries.libage.data.WATT_PER_METER_KELVIN
+import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.frac
 import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
@@ -62,6 +66,8 @@ import org.eln2.mc.common.parts.foundation.PartFactory
 import org.eln2.mc.common.parts.foundation.transformPartWorld
 import org.eln2.mc.common.specs.SpecRegistry.specAndItem
 import org.eln2.mc.common.specs.foundation.BasicSpecProvider
+import org.eln2.mc.common.specs.foundation.SpecFactory
+import org.eln2.mc.data.Locators
 import org.eln2.mc.data.cylinderResistance
 import org.eln2.mc.data.directionPoleMapPlanar
 import org.eln2.mc.data.withDirectionRulePlanar
@@ -108,11 +114,10 @@ object Content {
     }
 
     private fun setupScreens() {
-        //FIXME
         MenuScreens.register(FURNACE_MENU.get(), ::FurnaceScreen)
         MenuScreens.register(HEAT_GENERATOR_MENU.get(), ::HeatGeneratorScreen)
 
-        //LOG.info("Client screens completed")
+        LOG.info("Client screens completed.")
     }
 
     //#region Tools
@@ -255,66 +260,11 @@ object Content {
 
     //#region Batteries
 
-   /* private fun leadAcid12Model(
-        capacity: Quantity<Energy>,
-        internalResistance: Quantity<Resistance>,
-        mass: Quantity<Mass>,
-        surfaceArea: Quantity<Area>,
-        currentMultiplier: Double) = BatteryModel(
-        voltageFunction = {
-            val voltageDataset = Datasets.LEAD_ACID_VOLTAGE
-            val temperature = it.temperature
-
-            if (it.charge > it.model.damageChargeThreshold) {
-                Quantity(voltageDataset.evaluate(it.charge, !temperature), VOLT)
-            } else {
-                val datasetCeiling = voltageDataset.evaluate(it.model.damageChargeThreshold, !temperature)
-
-                Quantity(
-                    lerp(
-                        0.0,
-                        datasetCeiling,
-                        map(
-                            it.charge,
-                            0.0,
-                            it.model.damageChargeThreshold,
-                            0.0,
-                            1.0
-                        )
-                    ), VOLT)
-            }
-        },
-        resistanceFunction = {
-            internalResistance
-        },
-        damageFunction = { battery, dt ->
-            var damage = 0.0
-
-            damage += dt * (1.0 / 3.0) * 1e-6 // 1 month
-            damage += !(abs(battery.energyIncrement) / (!battery.model.energyCapacity * 50.0))
-            damage += dt * abs(battery.current).pow(1.12783256261) * currentMultiplier *
-                if(battery.safeCharge > 0.0) 1.0
-                else map(battery.charge, 0.0, battery.model.damageChargeThreshold, 1.0, 5.0)
-
-            //println("T: ${battery.life / (damage / dt)}")
-
-            damage
-        },
-        capacityFunction = { battery ->
-            battery.life.pow(0.5)
-        },
-        energyCapacity = capacity,
-        0.5,
-        BatteryMaterials.LEAD_ACID_BATTERY,
-        mass,
-        surfaceArea
-    )
-
-    val LEAD_ACID_BATTERY_CELL_12V_2200Wh = cell(
-        "lead_acid_battery_12v_2200wh",
+    val LEAD_ACID_BATTERY_CELL_12V_840Wh = cell(
+        "lead_acid_battery_12v_840wh",
         BasicCellProvider.setup {
-            val model = leadAcid12Model(
-                Quantity(1.5, KILO * WATT_HOUR),
+            val model = BatteryModels.TESTleadAcid12Model(
+                Quantity(840.0, WATT_HOUR),
                 Quantity(23.0, MILLI * OHM),
                 Quantity(12.0, KILOGRAM),
                 Quantity(0.1, METER2),
@@ -335,7 +285,7 @@ object Content {
     val GRID_LEAD_ACID_BATTERY_CELL_12V_80Wh = cell(
         "lead_acid_battery_12v_80wh",
         BasicCellProvider.setup {
-            val model = leadAcid12Model(
+            val model = BatteryModels.TESTleadAcid12Model(
                 Quantity(80.0, WATT_HOUR),
                 Quantity(26.0, MILLI * OHM),
                 Quantity(2.6, KILOGRAM),
@@ -354,27 +304,26 @@ object Content {
     val BATTERY_PART_12V = partAndItem(
         "lead_acid_battery_12v",
         BasicPartProvider(Vector3d(6.0 / 16.0, 7.0 / 16.0, 10.0 / 16.0)) { ci ->
-            BatteryPart(ci, LEAD_ACID_BATTERY_CELL_12V_2200Wh.get()) { part ->
-                BasicPartRenderer(part, PartialModels.BATTERY)
-            }
+            BatteryPart(ci, LEAD_ACID_BATTERY_CELL_12V_840Wh.get())
         }
     )
 
+    /**
+     * We don't have a different model so we scale the big one we have
+     * */
+    const val BATTERY_SPEC_12V_SCALE = 0.35
     val BATTERY_SPEC_12V = specAndItem(
         "micro_grid_lead_acid_battery_12v",
         BasicSpecProvider.setup(null, Vector3d(6.0 / 16.0, 7.0 / 16.0, 10.0 / 16.0) * 0.35) {
-            val scale = 0.35
-            val size = Vector3d(1.5 / 16.0, 0.5 / 16.0, 1.5 / 16.0) * scale
-            val neg = BoundingBox3d.fromCenterSize(((Vector3d(7.25 / 16.0, 7 / 16.0, 3.25 / 16.0)) - Vector3d.one * maskXY / 2.0) * scale + size / 2.0, size)
-            val pos = BoundingBox3d.fromCenterSize(((Vector3d(7.25 / 16.0, 7 / 16.0, 11.25 / 16.0)) - Vector3d.one * maskXY / 2.0) * scale + size / 2.0, size)
+            val size = Vector3d(1.5 / 16.0, 0.5 / 16.0, 1.5 / 16.0) * BATTERY_SPEC_12V_SCALE
+            val neg = BoundingBox3d.fromCenterSize(((Vector3d(7.25 / 16.0, 7 / 16.0, 3.25 / 16.0)) - Vector3d.one * maskXY / 2.0) * BATTERY_SPEC_12V_SCALE + size / 2.0, size)
+            val pos = BoundingBox3d.fromCenterSize(((Vector3d(7.25 / 16.0, 7 / 16.0, 11.25 / 16.0)) - Vector3d.one * maskXY / 2.0) * BATTERY_SPEC_12V_SCALE + size / 2.0, size)
 
             SpecFactory {
-                BatterySpec(it, GRID_LEAD_ACID_BATTERY_CELL_12V_80Wh.get(), neg, pos) { spec ->
-                    BasicSpecRenderer(spec, PartialModels.BATTERY, scale = Vector3d(scale))
-                }
+                BatterySpec(it, GRID_LEAD_ACID_BATTERY_CELL_12V_80Wh.get(), neg, pos)
             }
         }
-    )*/
+    )
 
     //#endregion
 
@@ -397,7 +346,7 @@ object Content {
 
     //#region Photovoltaics
 
-  /*  val PHOTOVOLTAIC_GENERATOR_CELL = cell(
+    val PHOTOVOLTAIC_GENERATOR_CELL = cell(
         "photovoltaic_generator",
         BasicCellProvider.setup {
             val model = PhotovoltaicModel(
@@ -419,15 +368,15 @@ object Content {
     )
 
     val PHOTOVOLTAIC_PANEL_PART = partAndItem(
-        "photovoltaic_panel",
-        BasicPartProvider(Vector3d(1.0, 2.0 / 16.0, 1.0)) { ci ->
+      "photovoltaic_panel",
+      BasicPartProvider(Vector3d(1.0, 2.0 / 16.0, 1.0)) { ci ->
             PhotovoltaicPanelPart(
                 ci,
-                PHOTOVOLTAIC_GENERATOR_CELL.get()
+                 PHOTOVOLTAIC_GENERATOR_CELL.get()
             )
         }
     )
-*/
+
     //#endregion
 
     //#region Lights
@@ -917,5 +866,4 @@ object Content {
     )
 
     //#endregion
-
 }

@@ -28,12 +28,15 @@ import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.WirePatchType.Inner
 import org.eln2.mc.client.render.foundation.WirePatchType.Wrapped
 import org.eln2.mc.common.blocks.BlockRegistry
+import org.eln2.mc.common.content.BatteryPart
+import org.eln2.mc.common.content.BatterySpec
 import org.eln2.mc.common.content.Content
 import org.eln2.mc.common.content.ElectricalHeatEnginePart
 import org.eln2.mc.common.content.GridAnchorSpec
 import org.eln2.mc.common.content.GridInterfacePart
 import org.eln2.mc.common.content.GroundSpec
 import org.eln2.mc.common.content.LightFixtureRenderer
+import org.eln2.mc.common.content.PhotovoltaicPanelPart
 import org.eln2.mc.common.content.PolarPoweredLightPart
 import org.eln2.mc.common.content.RadiantBipolePartVisual
 import org.eln2.mc.common.content.SolarLightPart
@@ -151,6 +154,20 @@ object FlwVisualizerRegistry {
                 FlwModels.STANDARD_CONNECTION
             )
         }
+
+        setPartVisualizer<PhotovoltaicPanelPart>(Content.PHOTOVOLTAIC_PANEL_PART.part.get()) { ctx, part ->
+            BasicPartVisual(
+                ctx, part,
+                FlwModels.SOLAR_PANEL_ONE_BLOCK
+            )
+        }
+
+        setPartVisualizer<BatteryPart>(Content.BATTERY_PART_12V.part.get()) { ctx, part ->
+            BasicPartVisual(
+                ctx, part,
+                FlwModels.BATTERY
+            )
+        }
     }
 
     fun registerSpecVisualizers() {
@@ -165,6 +182,14 @@ object FlwVisualizerRegistry {
             BasicSpecVisual(
                 ctx, spec,
                 FlwModels.MICRO_GRID_ANCHOR
+            )
+        }
+
+        setSpecVisualizer<BatterySpec>(Content.BATTERY_SPEC_12V.spec.get()) { ctx, spec ->
+            BasicSpecVisual(
+                ctx, spec,
+                FlwModels.BATTERY,
+                scale = Vector3d(Content.BATTERY_SPEC_12V_SCALE)
             )
         }
     }
@@ -251,7 +276,7 @@ class SpecialVisualStorage<V : Visual> {
     val dynamicVisuals = PlanMap<DynamicVisual, DynamicVisual.Context>()
     val tickableVisuals = PlanMap<TickableVisual, TickableVisual.Context>()
 
-    fun add(visual: V, partialTick: Float) {
+    fun add(visual: V) {
         // Done once so no performance issues
         if(!visuals.add(visual)){
             error("Duplicate add visual $visual")
@@ -285,136 +310,6 @@ class SpecialVisualStorage<V : Visual> {
         }
     }
 }
-
-//fixme
-/*
-
-object ModelLightOverrideType : ModelType() {
-    private val PROGRAM_SPEC: ResourceLocation = resource("block_light_override")
-
-    override fun getProgramSpec() = PROGRAM_SPEC
-}
-
-object PolarType : Instanced<PolarData> {
-    private val FORMAT: BufferLayout = BufferLayout.builder()
-        .addItems(CommonItems.LIGHT)
-        .addItems(CommonItems.RGBA, CommonItems.RGBA)
-        .addItems(MatrixItems.MAT4, MatrixItems.MAT3)
-        .build()
-
-    private val PROGRAM_SPEC: ResourceLocation = resource("polar")
-
-    override fun create() = PolarData()
-    override fun getLayout() = FORMAT
-    override fun getWriter(backing: VecBuffer) = PolarWriterUnsafe(backing, this)
-    override fun getProgramSpec() = PROGRAM_SPEC
-}
-
-class PolarData : InstanceData(), FlatLit<PolarData>, Transform<PolarData> {
-    var blockLight = 0
-    var skyLight = 0
-    var color1 = Color.WHITE
-    var color2 = Color.WHITE
-    val model = Matrix4f()
-    val normal = Matrix3f()
-
-    override fun setBlockLight(blockLight: Int): PolarData {
-        markDirty()
-        this.blockLight = blockLight
-        return this
-    }
-
-    override fun setSkyLight(skyLight: Int): PolarData {
-        markDirty()
-        this.skyLight = skyLight
-        return this
-    }
-
-    override fun getPackedLight() = LightTexture.pack(blockLight, skyLight)
-
-    fun setColor1(value: Color) : PolarData {
-        markDirty()
-        color1 = value
-        return this
-    }
-
-    fun setColor2(value: Color) : PolarData {
-        markDirty()
-        color2 = value
-        return this
-    }
-
-
-    fun loadIdentity(): PolarData {
-        markDirty()
-        model.identity()
-        normal.identity()
-        return this
-    }
-
-    override fun multiply(quaternion: Quaternionf): PolarData {
-        markDirty()
-        model.rotate(quaternion)
-        normal.rotate(quaternion)
-        return this
-    }
-
-    override fun scale(pX: Float, pY: Float, pZ: Float): PolarData {
-        markDirty()
-        model.scale(pX, pY, pZ)
-        if (pX == pY && pY == pZ) {
-            if (pX > 0.0f) {
-                return this
-            }
-            normal.scale(-1.0f)
-        }
-        val f = 1.0f / pX
-        val f1 = 1.0f / pY
-        val f2 = 1.0f / pZ
-        val f3 = Mth.fastInvCubeRoot(f * f1 * f2)
-        normal.scale(f3 * f, f3 * f1, f3 * f2)
-        return this
-    }
-
-    override fun translate(x: Double, y: Double, z: Double): PolarData {
-        markDirty()
-        model.translate(x.toFloat(), y.toFloat(), z.toFloat())
-        return this
-    }
-
-    override fun mulPose(pose: Matrix4f?): PolarData {
-        model.mul(pose)
-        return this
-    }
-
-    override fun mulNormal(normal: Matrix3f?): PolarData {
-        this.normal.mul(normal)
-        return this
-    }
-}
-
-class PolarWriterUnsafe(backingBuffer: VecBuffer, vertexType: StructType<PolarData>) : UnsafeBufferWriter<PolarData>(backingBuffer, vertexType) {
-    override fun writeInternal(s: PolarData) {
-        val ptr = writePointer
-        MemoryUtil.memPutByte(ptr + 0, (s.blockLight shl 4).toByte())
-        MemoryUtil.memPutByte(ptr + 1, (s.skyLight shl 4).toByte())
-
-        // Todo blit in one operation? I tried to write the int value but it is not laid out like we need and I don't have time to fix it right now
-        MemoryUtil.memPutByte(ptr + 2, s.color1.red.toByte())
-        MemoryUtil.memPutByte(ptr + 3, s.color1.green.toByte())
-        MemoryUtil.memPutByte(ptr + 4, s.color1.blue.toByte())
-        MemoryUtil.memPutByte(ptr + 5, s.color1.alpha.toByte())
-
-        MemoryUtil.memPutByte(ptr + 6, s.color2.red.toByte())
-        MemoryUtil.memPutByte(ptr + 7, s.color2.green.toByte())
-        MemoryUtil.memPutByte(ptr + 8, s.color2.blue.toByte())
-        MemoryUtil.memPutByte(ptr + 9, s.color2.alpha.toByte())
-
-        MatrixWrite.writeUnsafe(s.model, ptr + 10)
-        MatrixWrite.writeUnsafe(s.normal, ptr + 74)
-    }
-}
-*/
 
 /**
  * Wraps a [PartialModel] and applies changes.

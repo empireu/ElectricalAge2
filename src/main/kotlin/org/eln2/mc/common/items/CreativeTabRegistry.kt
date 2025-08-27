@@ -18,6 +18,7 @@ import org.eln2.mc.MODID
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.content.Content
 import org.eln2.mc.common.parts.PartRegistry
+import org.eln2.mc.common.specs.SpecRegistry
 import java.util.function.Supplier
 
 object CreativeTabRegistry {
@@ -54,7 +55,7 @@ object CreativeTabRegistry {
     val ELN2_ALL: RegistryObject<CreativeModeTab> = REGISTRY.register("eln2") {
         CreativeModeTab.builder()
             .title(Component.translatable("item_group.${MODID}.all"))
-            //.icon { ItemStack(Content.VOLTAGE_SOURCE_PART.item.get()) } FIXME
+            .icon { ItemStack(Content.VOLTAGE_SOURCE_PART.item.get()) }
             .displayItems { _: ItemDisplayParameters?, output: CreativeModeTab.Output ->
                 realized = true
 
@@ -79,7 +80,7 @@ object CreativeTabRegistry {
                 map(ItemRegistry.ITEMS)
                 map(BlockRegistry.BLOCK_ITEMS)
                 map(PartRegistry.PART_ITEMS)
-                //map(SpecRegistry.SPEC_ITEMS) // FIXME
+                map(SpecRegistry.SPEC_ITEMS)
 
                 if(variantLookup.map.isNotEmpty()) {
                     LOG.error("Did not map variants $variantLookup")

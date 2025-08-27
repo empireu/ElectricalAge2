@@ -836,6 +836,8 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
         builder.debug("Specs: ${specsInternal.size}")
     }
 
+    override fun createVisual(ctx: MultipartVisualizationContext) = SpecContainerPartVisual(ctx, this)
+
     companion object {
         private const val ID = "id"
         private const val TYPE = "type"
@@ -1021,8 +1023,7 @@ abstract class AbstractSpecVisual<S>(val visualizationContext: SpecVisualization
 
 class SpecContainerPartVisual(
     ctx: MultipartVisualizationContext,
-    part: SpecContainerPart,
-    partialTick: Float
+    part: SpecContainerPart
 ) : AbstractPartVisual<SpecContainerPart>(ctx, part), DynamicVisual, TickableVisual, LightUpdatedVisual {
     val specs = HashMap<Spec, AbstractSpecVisual<*>>()
     val specVisualizationContext = SpecVisualizationContext(ctx, this)
@@ -1032,7 +1033,7 @@ class SpecContainerPartVisual(
 
     init {
         part.specs.values.forEach {
-            addSpec(it, partialTick)
+            addSpec(it)
         }
     }
 
@@ -1065,7 +1066,7 @@ class SpecContainerPartVisual(
 
             when (update.type) {
                 SpecUpdateType.Add -> {
-                    addSpec(spec, ctx.partialTick())
+                    addSpec(spec)
                 }
                 SpecUpdateType.Remove -> {
                     val visual = specs.remove(spec)
@@ -1079,7 +1080,7 @@ class SpecContainerPartVisual(
         }
     }
 
-    private fun addSpec(spec: Spec, partialTick: Float) {
+    private fun addSpec(spec: Spec) {
         if (!specs.contains(spec)) {
              val visual = spec.createVisual(specVisualizationContext)
 
@@ -1088,10 +1089,10 @@ class SpecContainerPartVisual(
                  return
              }
 
-            storage.add(visual, partialTick)
+            storage.add(visual)
             specs[spec] = visual
 
-            visual.updateLight(partialTick)
+            visual.updateLight(0.0f)
         }
     }
 }
