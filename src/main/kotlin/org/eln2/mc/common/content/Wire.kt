@@ -502,13 +502,7 @@ class WirePart<C : WireCell>(
     }
 
     @ClientOnly
-    val renderState: RenderState get() {
-        if(renderStateImpl == null) {
-            error("Tried to get render state of $this outside of the intended scope")
-        }
-
-        return renderStateImpl!!
-    }
+    val renderState: RenderState get() = renderStateImpl!!
 
     override fun createVisual(ctx: MultipartVisualizationContext): AbstractPartVisual<*>? {
         val model = renderModel
@@ -886,10 +880,10 @@ private fun getIsFilledVariant(connections: List<Int>) = if (connections.size ==
 } else false
 
 abstract class WirePartVisual<H : TransformedInstance, C : TransformedInstance>(
-    visualizationContext: MultipartVisualizationContext,
+    ctx: MultipartVisualizationContext,
     part: WirePart<*>,
     val model: WireRenderModel
-) : AbstractPartVisual<WirePart<*>>(visualizationContext, part), SimpleDynamicVisual {
+) : AbstractPartVisual<WirePart<*>>(ctx, part), SimpleDynamicVisual {
     protected var hubInstance: H? = null
     protected var connectionInstances = Int2ObjectOpenHashMap<C>(4)
 

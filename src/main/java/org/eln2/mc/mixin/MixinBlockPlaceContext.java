@@ -1,6 +1,7 @@
 package org.eln2.mc.mixin;
 
 import net.minecraft.world.item.context.BlockPlaceContext;
+import org.eln2.mc.common.grids.GridCollisions;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -16,10 +17,8 @@ public abstract class MixinBlockPlaceContext {
     public void checkCanPlaceClipsGrid(CallbackInfoReturnable<Boolean> cir) {
         BlockPlaceContext $this = (BlockPlaceContext) ((Object)this);
 
-        /*if(GridCollisions.intersectsPlacementBlock($this)) {
+        if(GridCollisions.intersectsPlacementBlock($this)) {
             cir.setReturnValue(false);
-        }*/
-
-        //FIXME
+        }
     }
 }

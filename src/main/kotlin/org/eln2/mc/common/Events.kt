@@ -21,7 +21,11 @@ import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityDummyRenderer
 import org.eln2.mc.common.cells.foundation.CellGraph
 import org.eln2.mc.common.cells.foundation.CellGraphManager
 import org.eln2.mc.common.events.schedulePost
+import org.eln2.mc.common.grids.GridCollisions
+import org.eln2.mc.common.grids.GridConnectionManagerClient
+import org.eln2.mc.common.grids.GridConnectionManagerServer
 import org.eln2.mc.common.parts.PartRegistry
+import org.eln2.mc.common.specs.foundation.SpecPlacementOverlayServer
 import org.eln2.mc.data.AveragingList
 
 @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.MOD)
@@ -102,13 +106,13 @@ object ForgeEvents {
     @SubscribeEvent @JvmStatic
     fun onPlayerWatch(event: ChunkWatchEvent.Watch) {
         GhostLightServer.playerWatch(event.level, event.player, event.pos)
-        //GridConnectionManagerServer.playerWatch(event.level, event.player, event.pos) //FIXME
+        GridConnectionManagerServer.playerWatch(event.level, event.player, event.pos)
     }
 
     @SubscribeEvent @JvmStatic
     fun onPlayerUnwatch(event: ChunkWatchEvent.UnWatch) {
         GhostLightServer.playerUnwatch(event.level, event.player, event.pos)
-        //GridConnectionManagerServer.playerUnwatch(event.level, event.player, event.pos) //FIXME
+        GridConnectionManagerServer.playerUnwatch(event.level, event.player, event.pos)
     }
 
     @SubscribeEvent @JvmStatic
@@ -120,9 +124,8 @@ object ForgeEvents {
 
         GhostLightServer.clear()
 
-        // FIXME
-        //GridConnectionManagerServer.clear()
-        //SpecPlacementOverlayServer.clear() //FIXME
+        GridConnectionManagerServer.clear()
+        SpecPlacementOverlayServer.clear()
     }
 
     private fun scheduleGhostEvent(event: BlockEvent) {
@@ -145,13 +148,11 @@ object ForgeEvents {
     }
 
     @SubscribeEvent @JvmStatic
-    fun onEntityPlaceEvent(event: BlockEvent.EntityPlaceEvent) { // not called client side?
-        // FIXME
-
-        /*if(event.level is Level && GridCollisions.intersectsPlacementBlock(event.level as Level, event.pos, event.state)) {
+    fun onEntityPlaceEvent(event: BlockEvent.EntityPlaceEvent) { // not called client side? Done for the clients in MixinBlockPlaceContext
+        if(event.level is Level && GridCollisions.intersectsPlacementBlock(event.level as Level, event.pos, event.state)) {
             event.isCanceled = true
         }
-*/
+
         if(!event.isCanceled) {
             scheduleGhostEvent(event)
         }
@@ -161,7 +162,7 @@ object ForgeEvents {
     fun onClientLevelClosed(event: LevelEvent.Unload) {
         if(event.level.isClientSide) {
             GhostLightHackClient.clear()
-            //GridConnectionManagerClient.clear() // FIXME
+            GridConnectionManagerClient.clear() // FIXME
             DebugVisualizer.clear()
         }
     }

@@ -31,6 +31,7 @@ import org.ageseries.libage.mathematics.InterpolationFunction
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.snzi
 import org.ageseries.libage.sim.ConnectionParameters
+import org.ageseries.libage.sim.STANDARD_TEMPERATURE
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.*
@@ -353,7 +354,7 @@ class HeatGeneratorBlock : CellBlock<HeatGeneratorCell>() {
         )
     }
 }
-/*
+
 data class ElectricalHeatEngineModel(
     val baseEfficiency: Double,
     val potential: InterpolationFunction<Quantity<Temperature>, Quantity<Potential>>,
@@ -477,20 +478,20 @@ class ElectricalHeatEngineCell(
     }
 }
 
+class ElectricalHeatEnginePart(ci: PartCreateInfo) : CellPart<ElectricalHeatEngineCell>(ci, Content.ELECTRICAL_HEAT_ENGINE_CELL.get()), InternalTemperatureConsumer, ComponentDisplay, RadiantBipoleGameObject {
+    @ClientOnly
+    override var renderTemperature1: Quantity<Temperature> = STANDARD_TEMPERATURE
+        private set
 
-class ElectricalHeatEnginePart(ci: PartCreateInfo) : CellPart<ElectricalHeatEngineCell, RadiantBipoleRenderer>(ci, Content.ELECTRICAL_HEAT_ENGINE_CELL.get()), InternalTemperatureConsumer, ComponentDisplay {
-    override fun createRenderer() = RadiantBipoleRenderer(
-        this,
-        PartialModels.PELTIER_BODY,
-        PartialModels.PELTIER_LEFT,
-        PartialModels.PELTIER_RIGHT,
-    )
+    @ClientOnly
+    override var renderTemperature2: Quantity<Temperature> = STANDARD_TEMPERATURE
+        private set
 
     @ClientOnly
     override fun registerPackets(builder: PacketHandlerBuilder) {
         builder.withHandler<SyncPacket> {
-            renderer.updateRightSideTemperature(Quantity(it.b1Temp, KELVIN))
-            renderer.updateLeftSideTemperature(Quantity(it.b2Temp, KELVIN))
+            renderTemperature1 = Quantity(it.b1Temp, KELVIN)
+            renderTemperature2 = Quantity(it.b2Temp, KELVIN)
         }
     }
 
@@ -518,4 +519,3 @@ class ElectricalHeatEnginePart(ci: PartCreateInfo) : CellPart<ElectricalHeatEngi
     @Serializable
     private data class SyncPacket(val b1Temp: Double, val b2Temp: Double)
 }
-*/

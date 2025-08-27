@@ -46,16 +46,14 @@ class GroundPart(ci: PartCreateInfo) : GridCellPart<GroundCell>(ci, Content.GROU
 
     override fun submitDisplay(builder: ComponentDisplayList) = cell.submitDisplay(builder)
 }
-/*
 
-class GroundSpec(ci: SpecCreateInfo) : CellSpec<GroundCell, BasicSpecRenderer>(ci, Content.GROUND_CELL.get()), ComponentDisplay {
+class GroundSpec(ci: SpecCreateInfo) : CellSpec<GroundCell>(ci, Content.GROUND_CELL.get()), ComponentDisplay {
     val terminal = defineCellBoxTerminal(
         0.0, 0.0, 0.0,
-        placement.provider.placementCollisionSize.x, placement.provider.placementCollisionSize.y, placement.provider.placementCollisionSize.z
+        placement.provider.placementCollisionSize.x,
+        placement.provider.placementCollisionSize.y,
+        placement.provider.placementCollisionSize.z
     )
-
-    override fun createRenderer() = BasicSpecRenderer(this, PartialModels.GROUND_MICRO_GRID)
 
     override fun submitDisplay(builder: ComponentDisplayList) = cell.submitDisplay(builder)
 }
-*/

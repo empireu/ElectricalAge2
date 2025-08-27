@@ -1,6 +1,7 @@
 package org.eln2.mc.common.content
 
 import dev.engine_room.flywheel.api.visual.DynamicVisual
+import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
@@ -21,9 +22,9 @@ import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.mathematics.MyColor
 
 /**
- * Represents a game object that is rendered with a [RadiantBodyVisual].
+ * Represents a game object that is rendered with a [RadiantBodyPartVisual].
  * */
-interface RadiantGameObject {
+interface RadiantMonopoleGameObject {
     /**
      * Gets the temperature of the object.
      * */
@@ -37,12 +38,12 @@ class RadiatorPart(
         coldTint = MyColor(0.0f, 1f, 1f, 1f)
         hotTint = MyColor( 0.4f, 1f, 0.1f, 0.1f)
     }.build()
-) : CellPart<ThermalWireCell>(ci, Content.THERMAL_RADIATOR_CELL.get()), InternalTemperatureConsumer, RadiantGameObject, ComponentDisplay {
+) : CellPart<ThermalWireCell>(ci, Content.THERMAL_RADIATOR_CELL.get()), InternalTemperatureConsumer, RadiantMonopoleGameObject, ComponentDisplay {
     override var renderTemperature: Quantity<Temperature> = STANDARD_TEMPERATURE
         private set
 
     override fun createVisual(ctx: MultipartVisualizationContext) =
-        RadiantBodyVisual(ctx, this, FlwModels.RADIATOR, radiantColor)
+        RadiantBodyPartVisual(ctx, this, FlwModels.RADIATOR, radiantColor)
 
     override fun registerPackets(builder: PacketHandlerBuilder) {
         builder.withHandler<Sync> {
@@ -62,14 +63,14 @@ class RadiatorPart(
     }
 }
 
-class RadiantBodyVisual<P>(
+class RadiantBodyPartVisual<P>(
     ctx: MultipartVisualizationContext,
     part: P,
     val model: PartialModel,
     val color: ThermalTint,
     val rotation: Double = 0.0
-) : AbstractPartVisual<P>(ctx, part), SimpleDynamicVisual where P : Part, P : RadiantGameObject {
-    private val bodyInstance = ctx.instancerProvider()
+) : AbstractPartVisual<P>(ctx, part), SimpleDynamicVisual where P : Part, P : RadiantMonopoleGameObject {
+    private val instance = ctx.instancerProvider()
         .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, Models.partial(model))
         .createInstance()
         .also { it.partTransformation(visualizationContext.parent, part, yRotation = rotation) }
@@ -78,114 +79,94 @@ class RadiantBodyVisual<P>(
 
     override fun beginFrame(ctx: DynamicVisual.Context?) {
         val desiredTemperature = part.renderTemperature
-
         if (desiredTemperature != temperature) {
             temperature = desiredTemperature
 
             val color = color.evaluate(temperature)
-            bodyInstance.color(color.r, color.g, color.b)
-            bodyInstance.lightOverride = color.a / 255.0f
-            bodyInstance.handle().setChanged()
+            instance.color(color.r, color.g, color.b)
+            instance.lightOverride = color.a / 255.0f
+            instance.handle().setChanged()
         }
     }
 
     override fun updateLight(partialTick: Float) {
-        visualizationContext.parent.relightInstances(bodyInstance)
+        visualizationContext.parent.relightInstances(instance)
+    }
+
+    override fun _delete() {
+        instance.delete()
+    }
+}
+
+/**
+ * Represents a game object that is rendered with a [RadiantBipolePartVisual].
+ * */
+interface RadiantBipoleGameObject {
+    @ClientOnly
+    val renderTemperature1: Quantity<Temperature>
+
+    @ClientOnly
+    val renderTemperature2: Quantity<Temperature>
+}
+
+class RadiantBipolePartVisual<P>(
+    ctx: MultipartVisualizationContext,
+    part: P,
+    body: PartialModel,
+    model1: PartialModel,
+    model2: PartialModel,
+    val flip: Boolean = false,
+    val tint1: ThermalTint = ThermalTint.DEFAULT_LIGHT_OVERRIDE,
+    val tint2: ThermalTint = ThermalTint.DEFAULT_LIGHT_OVERRIDE
+) : AbstractPartVisual<P>(ctx, part), SimpleDynamicVisual where P : Part, P : RadiantBipoleGameObject {
+    private var bodyInstance = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, Models.partial(body))
+        .createInstance()
+        .also { it.partTransformation(ctx.parent, part) }
+
+    private var instance1 = visualizationContext.instancerProvider()
+        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, Models.partial(model1))
+        .createInstance()
+        .also { it.partTransformation(ctx.parent, part) }
+
+    private var instance2 = visualizationContext.instancerProvider()
+        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, Models.partial(model2))
+        .createInstance()
+        .also { it.partTransformation(ctx.parent, part) }
+
+    private var temperature1 = Quantity(-1.0, KELVIN)
+    private var temperature2 = Quantity(-1.0, KELVIN)
+
+    override fun beginFrame(p0: DynamicVisual.Context?) {
+        val desiredTemperature1 = if(flip) part.renderTemperature2 else part.renderTemperature1
+
+        if(temperature1 != desiredTemperature1) {
+            temperature1 = desiredTemperature1
+            colorInstance(instance1, tint1, desiredTemperature1)
+        }
+
+        val desiredTemperature2 = if(flip) part.renderTemperature1 else part.renderTemperature2
+        if(temperature2 != desiredTemperature2) {
+            temperature2 = desiredTemperature2
+            colorInstance(instance2, tint2, desiredTemperature2)
+        }
+    }
+
+    private fun colorInstance(i: TransformedLightOverrideInstance, tint: ThermalTint, temperature: Quantity<Temperature>) {
+        val color = tint.evaluate(temperature)
+        i.color(color.r, color.g, color.b)
+        i.lightOverride = color.a / 255.0f
+        i.handle().setChanged()
+    }
+
+    override fun updateLight(p0: Float) {
+        visualizationContext.parent.relightInstances(bodyInstance, instance1, instance2)
     }
 
     override fun _delete() {
         bodyInstance.delete()
+        instance1.delete()
+        instance2.delete()
     }
 }
-/*
-
-class RadiantBipoleRenderer(
-    val part: Part<*>,
-    val body: PartialModel,
-    val left: PartialModel,
-    val right: PartialModel,
-    val leftColor: ThermalTint,
-    val rightColor: ThermalTint,
-) : PartRenderer(), PartRendererStateStorage {
-    constructor(
-        part: Part<*>,
-        body: PartialModel,
-        left: PartialModel,
-        right: PartialModel,
-    ) : this(part, body, left, right, defaultRadiantBodyColor(), defaultRadiantBodyColor())
-
-    private var bodyInstance: ModelData? = null
-    private var leftInstance: ModelData? = null
-    private var rightInstance: ModelData? = null
-
-    private val leftSideUpdate = AtomicUpdate<Quantity<Temperature>>()
-    private val rightSideUpdate = AtomicUpdate<Quantity<Temperature>>()
-    private var leftSide: Quantity<Temperature>? = null
-    private var rightSide: Quantity<Temperature>? = null
-
-    override fun restoreSnapshot(renderer: PartRenderer) {
-        if(renderer is RadiantBipoleRenderer) {
-            renderer.leftSide?.run(this::updateLeftSideTemperature)
-            renderer.rightSide?.run(this::updateRightSideTemperature)
-        }
-    }
-
-    fun updateLeftSideTemperature(value: Quantity<Temperature>) = leftSideUpdate.setLatest(value)
-
-    fun updateRightSideTemperature(value: Quantity<Temperature>) = rightSideUpdate.setLatest(value)
-
-    private fun createPoleInstance(model: PartialModel) =
-        multipart.materialManager
-            .defaultSolid()
-            .material(ModelLightOverrideType)
-            .getModel(model)
-            .createInstance()
-            .loadIdentity()
-            .transformPart(multipart, part)
-            .also {
-                it.setColor(Color(1.0f, 1.0f, 1.0f, 0.0f))
-            }
-
-    override fun setupRendering() {
-        bodyInstance?.delete()
-        leftInstance?.delete()
-        rightInstance?.delete()
-        bodyInstance = createPartInstance(multipart, body, part)
-        leftInstance = createPoleInstance(left)
-        rightInstance = createPoleInstance(right)
-    }
-
-    private fun applyTemperature(tint: ThermalTint, model: ModelData?, temperature: Quantity<Temperature>) {
-        if(model == null) {
-            return
-        }
-
-        val coreLightLevel = multipart.readBlockBrightness().toDouble()
-
-        model.setColor(tint.evaluateRGBL(temperature, coreLightLevel))
-    }
-
-    override fun beginFrame() {
-        leftSideUpdate.consume {
-            leftSide = it
-            applyTemperature(leftColor, leftInstance, it)
-        }
-
-        rightSideUpdate.consume {
-            rightSide = it
-            applyTemperature(rightColor, rightInstance, it)
-        }
-    }
-
-    override fun relight(source: RelightSource) {
-        multipart.relightModels(bodyInstance, leftInstance, rightInstance)
-    }
-
-    override fun remove() {
-        bodyInstance?.delete()
-        leftInstance?.delete()
-        rightInstance?.delete()
-    }
-}
-*/
 

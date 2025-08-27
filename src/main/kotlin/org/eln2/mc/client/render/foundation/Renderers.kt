@@ -11,7 +11,6 @@ import dev.engine_room.flywheel.api.visual.LightUpdatedVisual
 import dev.engine_room.flywheel.api.visual.SectionTrackedVisual
 import dev.engine_room.flywheel.api.visual.TickableVisual
 import dev.engine_room.flywheel.api.visual.Visual
-import dev.engine_room.flywheel.api.visualization.VisualEmbedding
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
 import dev.engine_room.flywheel.lib.instance.FlatLit
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
@@ -21,13 +20,16 @@ import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import dev.engine_room.flywheel.lib.task.RunnablePlan
 import dev.engine_room.flywheel.lib.transform.Affine
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
+import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
+import it.unimi.dsi.fastutil.ints.IntArrayList
 import net.minecraft.client.Camera
 import net.minecraft.client.renderer.LevelRenderer
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.core.Direction
-import net.minecraft.core.Vec3i
+import net.minecraft.nbt.CompoundTag
 import net.minecraft.util.RandomSource
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.phys.shapes.Shapes
@@ -41,17 +43,29 @@ import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
+import org.ageseries.libage.utils.putUnique
+import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
 import org.eln2.mc.buildDirectionTable
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
+import org.eln2.mc.common.content.PartConnectionRenderInfo
+import org.eln2.mc.common.content.WirePart
+import org.eln2.mc.common.content.getPartConnectionAsContactSectionConnectionOrNull
+import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.CellPartConnectionMode
 import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.common.parts.foundation.PartUpdateType
+import org.eln2.mc.common.specs.foundation.AbstractSpecVisual
+import org.eln2.mc.common.specs.foundation.Spec
+import org.eln2.mc.common.specs.foundation.SpecContainerPartVisual
+import org.eln2.mc.common.specs.foundation.SpecVisualizationContext
 import org.eln2.mc.extensions.cast
 import org.eln2.mc.extensions.rotationFast
+import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.MyColor
 import org.eln2.mc.requireIsOnRenderThread
 import java.util.function.Consumer
+import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.sqrt
 
@@ -89,24 +103,55 @@ fun createSpecInstance(
 open class BasicPartVisual<P : Part>(
     ctx: MultipartVisualizationContext,
     part: P,
-    val model: PartialModel,
-    val scale: Vector3d = Vector3d.one,
-    val rotation: Double = 0.0,
+    model: PartialModel,
+    scale: Vector3d = Vector3d.one,
+    rotation: Double = 0.0,
 ) : AbstractPartVisual<P>(ctx, part) {
-    private val modelInstance = createPartInstance(ctx, model, part, scale, rotation)
+    private val instance = ctx.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
+        .createInstance()
+        .also { it.partTransformation(ctx.parent, part, scale, rotation) }
 
     override fun updateLight(partialTick: Float) {
-        visualizationContext.parent.relightInstances(modelInstance)
+        visualizationContext.parent.relightInstances(instance)
     }
 
     override fun _delete() {
-        modelInstance.delete()
+        instance.delete()
     }
 }
 
-/*
+data class WireConnectionModelPartial(
+    val planar: PolarModel,
+    val inner: PolarModel,
+    val wrapped: PolarModel,
+) {
+    val variants = mapOf(
+        CellPartConnectionMode.Planar to planar,
+        CellPartConnectionMode.Inner to inner,
+        CellPartConnectionMode.Wrapped to wrapped
+    )
+}
 
-fun CellPart<*, ConnectedPartRenderer>.getConnectedPartTag() = CompoundTag().also { compoundTag ->
+interface ConnectedPartRenderState {
+    val version: Int
+    val connections: IntArray
+}
+
+class ConnectedPartRenderStateImpl : ConnectedPartRenderState {
+    override var version = 0
+        private set
+
+    override var connections = IntArray(0)
+        private set
+
+    fun set(connections: IntArray) {
+        this.connections = connections
+        version++
+    }
+}
+
+fun CellPart<*>.getConnectedPartTag() = CompoundTag().also { compoundTag ->
     if(this.hasCell) {
         val values = IntArrayList(2)
 
@@ -120,37 +165,32 @@ fun CellPart<*, ConnectedPartRenderer>.getConnectedPartTag() = CompoundTag().als
         compoundTag.putIntArray("connections", values)
     }
 }
-*/
-/*
 
-fun Part<ConnectedPartRenderer>.handleConnectedPartTag(tag: CompoundTag) = this.renderer.acceptConnections(
-    if(tag.contains("connections")) {
+fun<T> T.getConnectedPartsFromTag(tag: CompoundTag): IntArray where T : Part, T : ConnectedPart {
+    return if(tag.contains("connections")) {
         tag.getIntArray("connections")
     }
     else {
         IntArray(0)
     }
-)
-*/
-
-data class WireConnectionModelPartial(
-    val planar: PolarModel,
-    val inner: PolarModel,
-    val wrapped: PolarModel,
-) {
-    val variants = mapOf(
-        CellPartConnectionMode.Planar to planar,
-        CellPartConnectionMode.Inner to inner,
-        CellPartConnectionMode.Wrapped to wrapped
-    )
 }
-/*
-class ConnectedPartRenderer(
-    val part: Part<*>,
-    val body: PartialModel,
-    val connections: Map<Base6Direction3d, WireConnectionModelPartial>,
-) : PartRenderer(), PartConnectionRenderInfoSetConsumer, PartRendererStateStorage {
-    constructor(part: Part<*>, body: PartialModel, connection: WireConnectionModelPartial) : this(
+
+/**
+ * Represents a part that forms connections with neighbor game objects, used by the [ConnectedPartVisual].
+ * */
+interface ConnectedPart {
+    @ClientOnly
+    val renderState: ConnectedPartRenderState
+}
+
+class ConnectedPartVisual<P>(
+    ctx: MultipartVisualizationContext,
+    part: P,
+    body: PartialModel,
+    val connectionModels: Map<Base6Direction3d, WireConnectionModelPartial>,
+) : AbstractPartVisual<P>(ctx, part), SimpleDynamicVisual where P : Part, P : ConnectedPart {
+    constructor(ctx: MultipartVisualizationContext, part: P, body: PartialModel, connection: WireConnectionModelPartial) : this(
+        ctx,
         part,
         body,
         mapOf(
@@ -161,80 +201,78 @@ class ConnectedPartRenderer(
         )
     )
 
-    private var bodyInstance: ModelData? = null
-    private val connectionDirectionsUpdate = AtomicUpdate<IntArray>()
-    private val connectionInstances = Int2ObjectOpenHashMap<ModelData>()
+    val bodyInstance: TransformedInstance = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, Models.partial(body))
+        .createInstance()
+        .also { it.partTransformation(visualizationContext.parent, part) }
 
-    private var connectionsRestore = IntArray(0)
+    private val connectionInstances = Int2ObjectOpenHashMap<TransformedInstance>()
 
-    override fun restoreSnapshot(renderer: PartRenderer) {
-        if(renderer is ConnectedPartRenderer) {
-            this.acceptConnections(renderer.connectionsRestore)
+    /**
+     * Tracks the last acknowledged version of the connections from [WirePart.RenderState].
+     * */
+    private var connectionsVersion = -1
+
+    override fun beginFrame(ctx: DynamicVisual.Context) {
+        val partialTick = ctx.partialTick()
+        val partRenderState = part.renderState
+
+        val latestConnectionsVersion = partRenderState.version
+        if(connectionsVersion != latestConnectionsVersion) {
+            connectionsVersion = latestConnectionsVersion
+            applyConnectionData(partRenderState.connections, partialTick)
         }
     }
 
-    override fun acceptConnections(connections: IntArray) {
-        connectionDirectionsUpdate.setLatest(connections)
-    }
-
-    override fun setupRendering() {
-        buildBody()
-        applyConnectionData(connectionInstances.keys.toIntArray())
-    }
-
-    private fun buildBody() {
-        bodyInstance?.delete()
-        bodyInstance = createPartInstance(multipart, body, part)
-    }
-
-    private fun applyConnectionData(values: IntArray) {
-        connectionInstances.values.forEach { it.delete() }
-        connectionInstances.clear()
+    private fun applyConnectionData(values: IntArray, partialTick: Float) {
+        deleteConnectionInstances()
 
         for (value in values) {
             val info = PartConnectionRenderInfo(value)
             val direction = info.directionPart
 
-            val model = connections[direction]
+            val model = connectionModels[direction]
                 ?: continue
 
-            val instance = createPartInstance(
-                multipart,
-                model.variants[info.mode]!!,
-                part,
-                yRotation = when (direction) {
-                    Base6Direction3d.Front -> 0.0
-                    Base6Direction3d.Back -> PI
-                    Base6Direction3d.Left -> PI / 2.0
-                    Base6Direction3d.Right -> -PI / 2.0
-                    else -> error("Invalid connected part direction $direction")
-                }
-            )
+            val instance = visualizationContext.instancerProvider()
+                .instancer(InstanceTypes.TRANSFORMED, model.variants[info.mode]!!.get())
+                .createInstance()
+                .partTransformation(
+                    visualizationContext.parent,
+                    part,
+                    yRotation = when (direction) {
+                        Base6Direction3d.Front -> 0.0
+                        Base6Direction3d.Back -> PI
+                        Base6Direction3d.Left -> PI / 2.0
+                        Base6Direction3d.Right -> -PI / 2.0
+                        else -> error("Invalid connected part direction $direction")
+                    }
+                )
 
             connectionInstances.putUnique(value, instance)
         }
 
-        multipart.relightModels(connectionInstances.values)
+        updateLight(partialTick)
     }
 
-    override fun relight(source: RelightSource) {
-        multipart.relightModels(bodyInstance)
-        multipart.relightModels(connectionInstances.values)
+    override fun updateLight(partialTick: Float) {
+        visualizationContext.parent.relightInstances(bodyInstance)
+        visualizationContext.parent.relightInstances(connectionInstances.values)
     }
 
-    override fun beginFrame() {
-        connectionDirectionsUpdate.consume { values ->
-            applyConnectionData(values)
+    override fun _delete() {
+        bodyInstance.delete()
+        deleteConnectionInstances()
+    }
+
+    private fun deleteConnectionInstances() {
+        for (instance in connectionInstances.values) {
+            instance.delete()
         }
-    }
 
-    override fun remove() {
-        connectionsRestore = connectionInstances.keys.toIntArray()
-
-        bodyInstance?.delete()
-        connectionInstances.values.forEach { it.delete() }
+        connectionInstances.clear()
     }
-}*/
+}
 
 val partOffsetTable = buildDirectionTable {
     when(it) {
@@ -258,21 +296,20 @@ fun<T : Affine<T>> T.partTransformation(parent: MultipartBlockEntityVisual, part
         .scale(scale.x.toFloat(), scale.y.toFloat(), scale.z.toFloat())
         .translate(-0.5, 0.0, -0.5)
 }
-/*
 
-fun<T : Transform<T>> T.transformSpec(instance: SpecPartRenderer, spec: Spec<*>, scale: Vector3d, yRotation: Double): T {
-    val (dx, dy, dz) = partOffsetTable[instance.specPart.placement.face.get3DDataValue()]
-    val (dx1, dy1, dz1) = spec.placement.mountingPointWorld - instance.specPart.placement.mountingPointWorld
+
+fun<T : Affine<T>> T.specTransformation(parent: SpecContainerPartVisual, spec: Spec, scale: Vector3d = Vector3d.one, yRotation: Double = 0.0): T {
+    val (dx, dy, dz) = partOffsetTable[parent.part.placement.face.get3DDataValue()]
+    val (dx1, dy1, dz1) = spec.placement.mountingPointWorld - parent.part.placement.mountingPointWorld
 
     return this
-        .translate(instance.instancePosition)
+        .translate(parent.visualizationContext.parent.visualPosition)
         .translate(dx + dx1, dy + dy1, dz + dz1)
-        .multiply(instance.specPart.placement.face.rotationFast)
-        .rotateYRadians(yRotation + instance.specPart.placement.facing.angle + spec.placement.orientation.ln())
+        .rotate(parent.part.placement.face.rotationFast)
+        .rotateY((yRotation + parent.part.placement.facing.angle + spec.placement.orientation.ln()).toFloat())
         .scale(scale.x.toFloat(), scale.y.toFloat(), scale.z.toFloat())
         .translate(-0.5, 0.0, -0.5)
 }
-*/
 
 class ThermalTintBuilder {
     var coldTint = MyColor(1f, 1f, 1f, 1f)
@@ -298,6 +335,12 @@ class ThermalTint(
 ) {
     companion object {
         val DEFAULT = ThermalTintBuilder().build()
+        val DEFAULT_LIGHT_OVERRIDE = ThermalTint(
+            MyColor(0, DEFAULT.coldTint.r, DEFAULT.coldTint.g, DEFAULT.coldTint.b),
+            DEFAULT.hotTint,
+            DEFAULT.coldTemperature,
+            DEFAULT.hotTemperature
+        )
     }
 
     fun evaluate(temperature: Quantity<Temperature>) =
@@ -474,69 +517,51 @@ class MultipartBlockEntityVisual(
     }
 }
 
-/*
-fun interface SpecRendererSupplier<T : Spec<R>, R : SpecRenderer> {
-    fun create(part: T) : R
-}*/
-
-class TestBlockEntityInstance<T : BlockEntity>(
-    materialManager: VisualizationContext,
+class TestBlockEntityVisual<T : BlockEntity>(
+    ctx: VisualizationContext,
     blockEntity: T,
     partialTick: Float,
-    val model: PartialModel,
-    val transformer: (instance: TransformedInstance, renderer: TestBlockEntityInstance<T>, blockEntity: T) -> Unit,
-) : AbstractBlockEntityVisual<T>(materialManager, blockEntity, partialTick) {
-    var instance: TransformedInstance? = null
-
-    init {
-        instance?.delete()
-
-        instance = visualizationContext.instancerProvider().instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
-            .createInstance()
-
-        transformer(instance!!, this, blockEntity)
-    }
-
-    override fun _delete() {
-        instance?.delete()
-    }
-
-    override fun collectCrumblingInstances(consumer: Consumer<Instance?>?) {
-
-    }
+    model: PartialModel,
+    transformer: (instance: TransformedInstance, visual: TestBlockEntityVisual<T>) -> Unit,
+) : AbstractBlockEntityVisual<T>(ctx, blockEntity, partialTick) {
+    var instance: TransformedInstance = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
+        .createInstance()
+        .also { transformer(it, this) }
 
     override fun updateLight(partialTick: Float) {
         relight(instance)
     }
+
+    override fun collectCrumblingInstances(consumer: Consumer<Instance?>) {
+        consumer.accept(instance)
+    }
+
+    override fun _delete() {
+        instance.delete()
+    }
 }
-/*
-*//**
- * Part renderer with a single model.
- * *//*
-open class BasicSpecRenderer(val spec: Spec<*>, val model: PartialModel, val scale: Vector3d = Vector3d.one) : SpecRenderer() {
-    var yRotation = 0.0
 
-    private var modelInstance: ModelData? = null
+open class BasicSpecVisual<S : Spec>(
+    ctx: SpecVisualizationContext,
+    spec: S,
+    model: PartialModel,
+    scale: Vector3d = Vector3d.one,
+    rotation: Double = 0.0
+) : AbstractSpecVisual<S>(ctx, spec) {
+    private val instance = ctx.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
+        .createInstance()
+        .also { it.specTransformation(ctx.parent, spec, scale, rotation) }
 
-    override fun setupRendering() {
-        buildInstance()
+    override fun updateLight(p0: Float) {
+        visualizationContext.grandparent.relightInstances(instance)
     }
 
-    fun buildInstance() {
-        modelInstance?.delete()
-        modelInstance = createSpecInstance(partRenderer, model, spec, scale, yRotation)
+    override fun _delete() {
+        instance.delete()
     }
-
-    override fun relight(source: RelightSource) {
-        partRenderer.multipart.relightModels(modelInstance)
-    }
-
-    override fun beginFrame() {}
-
-    override fun remove() {
-        modelInstance?.delete()
-    }
-}*/
+}
 
 fun VertexConsumer.eln2SubmitUnshadedBakedModelQuads(
     renderType: RenderType,

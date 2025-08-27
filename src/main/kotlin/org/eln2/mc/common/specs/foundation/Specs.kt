@@ -987,15 +987,17 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
 
 class SpecVisualizationContext(
     ctx: MultipartVisualizationContext,
-    val parent: SpecContainerPartRenderer
-) : VisualizationContext by ctx
+    val parent: SpecContainerPartVisual
+) : VisualizationContext by ctx {
+    val grandparent get() = parent.visualizationContext.parent
+}
 
 
 fun interface SpecVisualizer<S : Spec> {
     fun create(ctx: SpecVisualizationContext, spec: S): AbstractSpecVisual<*>
 }
 
-abstract class AbstractSpecVisual<S> : Visual, LightUpdatedVisual {
+abstract class AbstractSpecVisual<S>(val visualizationContext: SpecVisualizationContext, val spec: Spec) : Visual, LightUpdatedVisual {
     private var deleted = false
 
     override fun update(partialTick: Float) { }
@@ -1017,7 +1019,7 @@ abstract class AbstractSpecVisual<S> : Visual, LightUpdatedVisual {
     protected abstract fun _delete()
 }
 
-class SpecContainerPartRenderer(
+class SpecContainerPartVisual(
     ctx: MultipartVisualizationContext,
     part: SpecContainerPart,
     partialTick: Float

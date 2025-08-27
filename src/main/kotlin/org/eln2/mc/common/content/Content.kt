@@ -5,10 +5,16 @@
 package org.eln2.mc.common.content
 
 import net.minecraft.client.gui.screens.MenuScreens
+import net.minecraft.core.Direction
+import net.minecraft.world.level.block.entity.BlockEntityType
+import net.minecraft.world.phys.AABB
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.CELSIUS
+import org.ageseries.libage.data.CENTIMETER
+import org.ageseries.libage.data.G_PER_CM3
 import org.ageseries.libage.data.KILOGRAM
 import org.ageseries.libage.data.OHM
+import org.ageseries.libage.data.OHM_METER
 import org.ageseries.libage.data.Potential
 import org.ageseries.libage.data.Power
 import org.ageseries.libage.data.Quantity
@@ -32,18 +38,33 @@ import org.eln2.mc.common.LightFieldPrimitives
 import org.eln2.mc.common.LightModel
 import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
+import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
+import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
+import org.eln2.mc.common.blocks.BlockRegistry.defineDelegateMap
+import org.eln2.mc.common.blocks.foundation.BigBlockItem
+import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
 import org.eln2.mc.common.cells.CellRegistry.cell
 import org.eln2.mc.common.cells.foundation.BasicCellProvider
 import org.eln2.mc.common.cells.foundation.CellFactory
+import org.eln2.mc.common.cells.foundation.CellProvider
 import org.eln2.mc.common.cells.foundation.RadiantBodyEmissionDescription
 import org.eln2.mc.common.cells.foundation.TemperatureExplosionBehaviorOptions
 import org.eln2.mc.common.containers.ContainerRegistry.menu
+import org.eln2.mc.common.grids.GridCablePliersItem
+import org.eln2.mc.common.grids.GridMaterial
+import org.eln2.mc.common.grids.GridMaterialCategory
+import org.eln2.mc.common.grids.GridMaterials
 import org.eln2.mc.common.items.CreativeTabRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.partAndItem
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.PartFactory
+import org.eln2.mc.common.parts.foundation.transformPartWorld
+import org.eln2.mc.common.specs.SpecRegistry.specAndItem
+import org.eln2.mc.common.specs.foundation.BasicSpecProvider
+import org.eln2.mc.data.cylinderResistance
 import org.eln2.mc.data.directionPoleMapPlanar
+import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.extensions.celestialPass
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.mathematics.Base6Direction3d
@@ -83,31 +104,15 @@ object Content {
     fun clientSetup() {
         requireIsOnRenderThread()
         setupScreens()
-        setupFlywheel()
         LOG.info("Content client work completed")
     }
 
     private fun setupScreens() {
         //FIXME
-        //MenuScreens.register(FURNACE_MENU.get(), ::FurnaceScreen)
+        MenuScreens.register(FURNACE_MENU.get(), ::FurnaceScreen)
         MenuScreens.register(HEAT_GENERATOR_MENU.get(), ::HeatGeneratorScreen)
 
         //LOG.info("Client screens completed")
-    }
-
-    private fun setupFlywheel() {
-        // FIXME
-       /* listOf(GRID_PASS_THROUGH_POLE_BLOCK_ENTITY).forEach {
-            InstancedRenderRegistry.configure(it.get())
-                .alwaysSkipRender()
-                .factory { manager, entity ->
-                    TestBlockEntityInstance(manager, entity, PartialModels.POLE_TEMPORARY.solid()) { instance, renderer, _ ->
-                        instance.translate(renderer.instancePosition).scale(1f, 3f, 1f)
-                    }
-                }.apply()
-        }
-*/
-        LOG.info("Client flywheel completed")
     }
 
     //#region Tools
@@ -211,9 +216,9 @@ object Content {
 
     //#region Creative Components
 
-   val VOLTAGE_SOURCE_CELL = cell(
-        "voltage_source",
-        BasicCellProvider(::VoltageSourceCell)
+    val VOLTAGE_SOURCE_CELL = cell(
+         "voltage_source",
+         BasicCellProvider(::VoltageSourceCell)
     )
 
     val VOLTAGE_SOURCE_PART = partAndItem(
@@ -237,15 +242,14 @@ object Content {
         )
     )
 
-    /*
-        val GROUND_SPEC = specAndItem(
-            "ground_micro_grid",
-            BasicSpecProvider(
-                PartialModels.GROUND_MICRO_GRID,
-                Vector3d(2.0 / 16.0),
-                ::GroundSpec
-            )
-        )*/
+    val GROUND_SPEC = specAndItem(
+        "ground_micro_grid",
+        BasicSpecProvider(
+            FlwModels.GROUND_MICRO_GRID,
+            Vector3d(2.0 / 16.0),
+            ::GroundSpec
+        )
+    )
 
     //#endregion
 
@@ -609,7 +613,7 @@ object Content {
     )
 
     val HEAT_GENERATOR_MENU = menu("heat_generator", ::HeatGeneratorMenu)
-/*
+
     val ELECTRICAL_HEAT_ENGINE_CELL = cell(
         "electrical_heat_engine",
         BasicCellProvider.setup {
@@ -667,7 +671,6 @@ object Content {
 
                 cell.source.ruleSet.withDirectionRulePlanar(electricalA + electricalB)
                 cell.thermalBipole.ruleSet.withDirectionRulePlanar(thermalA + thermalB)
-
                 cell
             }
         }
@@ -678,13 +681,13 @@ object Content {
         BasicPartProvider(Vector3d(4.0 / 16.0, 15.0 / 16.0, 14.0 / 16.0)) {
             ElectricalHeatEnginePart(it)
         }
-    )*/
+    )
 
     //#endregion
 
     //#region Furnaces
 
-    /*val FURNACE_CELL = cell(
+    val FURNACE_CELL = cell(
         "furnace_cell",
         BasicCellProvider {
             FurnaceCell(it, Base6Direction3d.Left, Base6Direction3d.Right)
@@ -700,11 +703,11 @@ object Content {
     )
 
     val FURNACE_MENU = menu("furnace_menu", ::FurnaceMenu)
-*/
+
     //#endregion
 
     //#region Grid
-/*
+
     val GRID_COPPER_TEXTURE = GridMaterials.gridAtlasSprite("copper_cable")
     val GRID_IRON_TEXTURE = GridMaterials.gridAtlasSprite("iron_cable")
 
@@ -797,7 +800,7 @@ object Content {
 
     val MICRO_GRID_ANCHOR_SPEC = specAndItem(
         "micro_grid_anchor",
-        BasicSpecProvider(PartialModels.MICRO_GRID_ANCHOR, Vector3d(1.0 / 16.0, 1.5 / 16.0, 1.0 / 16.0)) {
+        BasicSpecProvider(FlwModels.MICRO_GRID_ANCHOR, Vector3d(1.0 / 16.0, 1.5 / 16.0, 1.0 / 16.0)) {
             GridAnchorSpec(
                 it,
                 Vector3d(1.0 / 16.0, 1.5 / 16.0, 1.0 / 16.0),
@@ -830,7 +833,7 @@ object Content {
                 it,
                 Vector3d(2.0 / 16.0, 4.0 / 16.0, 2.0 / 16.0),
                 listOf(GridMaterialCategory.MicroGrid)
-            ) { PartialModels.MICRO_GRID_INTERFACE }
+            )
         }
     )
 
@@ -858,7 +861,7 @@ object Content {
                 it,
                 Vector3d(4.0 / 16.0, 8.0 / 16.0, 4.0 / 16.0) * 1.01,
                 listOf(GridMaterialCategory.PowerGrid)
-            ) { PartialModels.POWER_GRID_INTERFACE }
+            )
         }
     )
 
@@ -915,7 +918,4 @@ object Content {
 
     //#endregion
 
-
-
-  */
 }

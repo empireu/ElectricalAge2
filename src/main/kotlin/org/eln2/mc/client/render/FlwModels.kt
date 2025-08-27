@@ -4,6 +4,7 @@ import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.eln2.mc.client.render.foundation.PolarModel
 import org.eln2.mc.client.render.foundation.WireConnectionModel
+import org.eln2.mc.client.render.foundation.WireConnectionModelPartial
 import org.eln2.mc.client.render.foundation.WirePatchType
 import org.eln2.mc.client.render.foundation.WirePatchPolarModel
 
@@ -37,7 +38,7 @@ object FlwModels {
     val SOLAR_PANEL_ONE_BLOCK = partialBlock("solar_panel_one_block")
 
     val POWER_GRID_INTERFACE = partialBlock("power_grid_interface")
-    //val STANDARD_CONNECTION = patchPartial("standard_connection")
+    val STANDARD_CONNECTION = patchPartial("standard_connection")
 
     val SMALL_GARDEN_LIGHT = partialBlock("small_garden_light/full")
     val TALL_GARDEN_LIGHT_EMITTER = partialBlock("tall_garden_light/emitter")
@@ -70,15 +71,15 @@ object FlwModels {
         )
     }
 
-    /*fun patchPartial(connection: String): WireConnectionModelPartial {
+    fun patchPartial(connection: String): WireConnectionModelPartial {
         val resourceLocation = resource("block/$connection")
 
         return WireConnectionModelPartial(
             PolarModel(resourceLocation),
-            WirePolarPatchModel(resourceLocation, WirePatchType.Inner),
-            WirePolarPatchModel(resourceLocation, WirePatchType.Wrapped)
+            WirePatchPolarModel(resourceLocation, WirePatchType.Inner),
+            WirePatchPolarModel(resourceLocation, WirePatchType.Wrapped)
         )
-    }*/
+    }
 
     fun initialize() {
         ServerLifecycleHooks.getCurrentServer()?.also { server ->

@@ -854,7 +854,12 @@ class FaceOrientedLightVolumeProvider(val volumesByFace: Map<Direction, LightVol
 }
 
 object LightFieldPrimitives {
-    fun coneContentOnly(increments: Int, strength: Double, deviationMax: Double, baseRadius: Int): FaceOrientedLightVolumeProvider {
+    fun coneContentOnly(
+        increments: Int,
+        strength: Double,
+        deviationMax: Double,
+        baseRadius: Int
+    ): FaceOrientedLightVolumeProvider {
         check(!ModEvents.isFullyLoaded) {
             "Cannot use coneContentOnly now"
         }
@@ -882,7 +887,12 @@ object LightFieldPrimitives {
         return FaceOrientedLightVolumeProvider.createWithoutCopy(results)
     }
 
-    private fun coneTasks(increments: Int, strength: Double, deviationMax: Double, baseRadius: Int): Pair<List<Runnable>, HashMap<Direction, HashMap<Int, Int2ByteOpenHashMap>>> {
+    private fun coneTasks(
+        increments: Int,
+        strength: Double,
+        deviationMax: Double,
+        baseRadius: Int
+    ): Pair<List<Runnable>, HashMap<Direction, HashMap<Int, Int2ByteOpenHashMap>>> {
         val variantsByFace = HashMap<Direction, HashMap<Int, Int2ByteOpenHashMap>>()
         val cosDeviationMax = cos(deviationMax)
 

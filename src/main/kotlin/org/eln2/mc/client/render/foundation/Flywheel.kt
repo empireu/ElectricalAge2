@@ -29,8 +29,13 @@ import org.eln2.mc.client.render.foundation.WirePatchType.Inner
 import org.eln2.mc.client.render.foundation.WirePatchType.Wrapped
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.content.Content
+import org.eln2.mc.common.content.ElectricalHeatEnginePart
+import org.eln2.mc.common.content.GridAnchorSpec
+import org.eln2.mc.common.content.GridInterfacePart
+import org.eln2.mc.common.content.GroundSpec
 import org.eln2.mc.common.content.LightFixtureRenderer
 import org.eln2.mc.common.content.PolarPoweredLightPart
+import org.eln2.mc.common.content.RadiantBipolePartVisual
 import org.eln2.mc.common.content.SolarLightPart
 import org.eln2.mc.common.content.TerminalPoweredLightPart
 import org.eln2.mc.common.parts.foundation.CellPartConnectionMode
@@ -77,6 +82,15 @@ object FlwVisualizerRegistry {
             BlockRegistry.MULTIPART_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::MultipartBlockEntityVisual) { true }
         )
+
+        VisualizerRegistry.setVisualizer(
+            Content.GRID_PASS_THROUGH_POLE_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer({ ctx, blockEntity, partialTick ->
+                TestBlockEntityVisual(ctx, blockEntity, partialTick,FlwModels.POLE_TEMPORARY) { instance, renderer ->
+                    instance.translate(renderer.visualPosition).scale(1f, 3f, 1f)
+                }
+            }) { true }
+        )
     }
 
     fun registerPartVisualizers() {
@@ -111,10 +125,48 @@ object FlwVisualizerRegistry {
                 FlwModels.SMALL_WALL_LAMP_EMITTER
             )
         }
+
+        setPartVisualizer<ElectricalHeatEnginePart>(Content.ELECTRICAL_HEAT_ENGINE_PART.part.get()) { ctx, part ->
+            RadiantBipolePartVisual(
+                ctx, part,
+                FlwModels.PELTIER_BODY,
+                FlwModels.PELTIER_LEFT,
+                FlwModels.PELTIER_RIGHT,
+                true
+            )
+        }
+
+        setPartVisualizer<GridInterfacePart>(Content.MICRO_GRID_INTERFACE_PART.part.get()) { ctx, part ->
+            ConnectedPartVisual(
+                ctx, part,
+                FlwModels.MICRO_GRID_INTERFACE,
+                FlwModels.STANDARD_CONNECTION
+            )
+        }
+
+        setPartVisualizer<GridInterfacePart>(Content.POWER_GRID_INTERFACE_PART.part.get()) { ctx, part ->
+            ConnectedPartVisual(
+                ctx, part,
+                FlwModels.POWER_GRID_INTERFACE,
+                FlwModels.STANDARD_CONNECTION
+            )
+        }
     }
 
     fun registerSpecVisualizers() {
+        setSpecVisualizer<GroundSpec>(Content.GROUND_SPEC.spec.get()) { ctx, spec ->
+            BasicSpecVisual(
+                ctx, spec,
+                FlwModels.GROUND_MICRO_GRID
+            )
+        }
 
+        setSpecVisualizer<GridAnchorSpec>(Content.MICRO_GRID_ANCHOR_SPEC.spec.get()) { ctx, spec ->
+            BasicSpecVisual(
+                ctx, spec,
+                FlwModels.MICRO_GRID_ANCHOR
+            )
+        }
     }
 }
 
