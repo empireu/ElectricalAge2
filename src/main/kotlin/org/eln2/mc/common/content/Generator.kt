@@ -27,13 +27,15 @@ import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.items.ItemStackHandler
 import org.ageseries.libage.data.*
-import org.ageseries.libage.mathematics.InterpolationFunction
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.nz
+import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.mathematics.snzi
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.ThermalMassDefinition
+import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.CellBlock
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
@@ -355,12 +357,210 @@ class HeatGeneratorBlock : CellBlock<HeatGeneratorCell>() {
     }
 }
 
-data class ElectricalHeatEngineModel(
-    val baseEfficiency: Double,
-    val potential: InterpolationFunction<Quantity<Temperature>, Quantity<Potential>>,
-    val conductance: Quantity<ThermalConductance>,
-    val internalResistance: Double
+@DimensionClassifier("kg×m²") interface Inertia
+val KILOGRAM_METER_SQUARED = standardScale<Inertia>()
+
+@DimensionClassifier("N×m×s") interface ViscousFriction
+val NEWTON_METER_SECOND = standardScale<ViscousFriction>()
+
+@DimensionClassifier("rad/s") interface AngularVelocity
+val RADIAN_PER_SECOND = standardScale<AngularVelocity>()
+
+@DimensionClassifier("N×m") interface Torque
+val NEWTON_METER = standardScale<Torque>()
+
+@ScaleClassifier("rps")
+val REVOLUTION_PER_SECOND = RADIAN_PER_SECOND sourceAmplify 1.0 / 0.1591549430919
+// Why is it private in libage? :
+internal infix fun <U> SourceQuantityScale<U>.sourceAmplify(amplify: Double) = SourceQuantityScale<U>(dimensionType, Scale(scale.factor / amplify, scale.base))
+
+/**
+ * @param referenceAngularVelocity Reference **ω** for scaling the potential and torque.
+ * @param nominalPotential Open-circuit potential at reference **ΔT** at steady state.
+ * @param etaFactorEngine The efficiency factor of the engine, multiplied by the Carnot efficiency.
+ * @param heatExchangerConductance The conductance of the heat exchanger which limits how much heat can move from the hot to the cold side, so it puts a limit on the power output.
+ * @param leakConductance Leakage conductance from hot to cold or cold to hot. Applied regardless of their temperatures.
+ * @param inertia Rotational inertia of the whole shaft assembly.
+ * @param friction The viscous friction of the whole shaft assembly.
+ * @param maxElectricalTorque Maximum torque the alternator can apply to generate power.
+ * @param maxDevicePower A hard limit on the max power conversion of the alternator.
+ * @param etaElectrical Efficiency of the alternator.
+ * @param coreConstLoss Constant power loss in the core of the generator.
+ * @param coreDependentLoss Power loss in the core of the generator, dependent on **ω** (W / (rad/s)).
+ * */
+data class ThermalElectricalGeneratorModel(
+    val referenceAngularVelocity: Quantity<AngularVelocity>,
+    val nominalPotential: Quantity<Potential>,
+    val etaFactorEngine: Double,
+    val heatExchangerConductance: Quantity<ThermalConductance>, val leakConductance: Quantity<ThermalConductance>,
+    val inertia: Quantity<Inertia>, val friction: Quantity<ViscousFriction>,
+    val maxElectricalTorque: Quantity<Torque>, val maxDevicePower: Quantity<Power>,
+    val etaElectrical: Double, val coreConstLoss: Quantity<Power>, val coreDependentLoss: Double
 )
+
+class ThermalElectricalGenerator(val coldSide: ThermalMass, val hotSide: ThermalMass, val model: ThermalElectricalGeneratorModel) {
+    /**
+     * Gets the current angular velocity of the shaft.
+     * */
+    var angularVelocity = Quantity(0.0, RADIAN_PER_SECOND)
+        private set
+
+    /**
+     * Gets the temperature difference calculated in [preTick].
+     * */
+    var deltaT = Quantity(0.0, KELVIN)
+        private set
+
+    /**
+     * Gets the efficiency of the engine ([ThermalElectricalGeneratorModel.etaFactorEngine] × Carnot).
+     * */
+    var etaEngine = 0.0
+        private set
+
+    /**
+     * Gets the torque provided by the engine.
+     * */
+    var engineTorque = Quantity(0.0, NEWTON_METER)
+        private set
+
+    /**
+     * Gets the available mechanical/electrical power.
+     * */
+    var availablePower = Quantity(0.0, WATT)
+        private set
+
+    /**
+     * Gets the open-circuit voltage of the electrical component.
+     * */
+    var potentialOpenCircuit = Quantity(0.0, VOLT)
+        private set
+
+    /**
+     * Gets the expected resistance of the generator (if modeled as a Thevenin source).
+     * If used, the maximum of the [targetResistanceSuggestion] and the internal resistance of the source should be used.
+     * [LARGE_RESISTANCE] is set if the engine is not spinning.
+     * */
+    var targetResistanceSuggestion = Quantity(LARGE_RESISTANCE, OHM)
+        private set
+
+    /**
+     * Gets the kinetic energy of the shaft assembly, calculated in [preTick].
+     * */
+    var kineticEnergy = Quantity(0.0, JOULE)
+        private set
+
+    /**
+     * Max thermal power available for conversion.
+     * */
+    private var heatConversionAvailable = 0.0
+
+    /**
+     * The hard cap for available power.
+     * */
+    private var powerHardCap = 0.0
+
+    fun preTick(dt: Double) {
+        val coldT = coldSide.temperature
+        val hotT = hotSide.temperature
+        deltaT = (hotT - coldT)
+        etaEngine = (1.0 - !coldT / !hotT) * model.etaFactorEngine
+
+        // Heat available for conversion (larger than or equal to zero).
+        heatConversionAvailable = !model.heatExchangerConductance * (!deltaT).coerceAtLeast(0.0)
+        // Max thermal power that can be converted to mechanical power.
+        val maxThermalPower = etaEngine * heatConversionAvailable
+
+        // Engine torque proportional to ΔT and thermal conductance, scaled by reference ω.
+        val kTorque = (etaEngine * !model.heatExchangerConductance) / !model.referenceAngularVelocity
+        engineTorque = Quantity(kTorque * (!deltaT).coerceAtLeast(0.0), NEWTON_METER)
+
+        val omegaNz = (!angularVelocity).nz()
+
+        // Kinetic energy of the shaft assembly.
+        kineticEnergy = Quantity((0.5 * !model.inertia * (!angularVelocity * !angularVelocity)), JOULE)
+        // Upper bound on the power that can be provided this tick if all the kinetic energy was converted.
+        val inertiaPower = !kineticEnergy / dt // Upper bound for converting the kinetic energy stored
+
+        // Limit on power due to generator torque and device maximum power.
+        powerHardCap = min(
+            maxThermalPower + inertiaPower,
+            min(!model.maxElectricalTorque * omegaNz, !model.maxDevicePower)
+        ).coerceAtLeast(0.0)
+
+        availablePower = Quantity(powerHardCap)
+
+        // Scale potential with ΔT and angular velocity:
+        val velocityScale = (angularVelocity / model.referenceAngularVelocity)
+        potentialOpenCircuit = Quantity((!model.nominalPotential * velocityScale).coerceAtLeast(0.0))
+
+        // Compute target electrical resistance for load (based on power and voltage).
+        targetResistanceSuggestion = if(availablePower > 0.0 && potentialOpenCircuit > 0.0) {
+            Quantity((!potentialOpenCircuit * !potentialOpenCircuit) / (4.0 * !availablePower), OHM)
+        } else{
+            Quantity(LARGE_RESISTANCE, OHM)
+        }
+    }
+
+    fun postTick(circuitPower: Quantity<Power>, dt: Double) {
+        val electricalPower = (!circuitPower).coerceIn(0.0, powerHardCap)
+
+        val omegaNz = (!angularVelocity).nz()
+
+        // Torque required by electrical load:
+        val requiredElectricalTorque = electricalPower / omegaNz
+        val electricalTorque = min(requiredElectricalTorque, !model.maxElectricalTorque)
+
+        // Actual electrical power delivered:
+        val actualElectricalPower = electricalTorque * omegaNz
+
+        val frictionTorque = !model.friction * !angularVelocity
+        val netTorque = !engineTorque - electricalTorque - frictionTorque
+        val newAngularVelocity = (!angularVelocity + (netTorque / !model.inertia) * dt).coerceAtLeast(0.0)
+
+        val kineticEnergyOld = 0.5 * !model.inertia * (!angularVelocity * !angularVelocity)
+        val kineticEnergyNew = 0.5 * !model.inertia * (newAngularVelocity * newAngularVelocity)
+        val deltaKineticEnergy = kineticEnergyNew - kineticEnergyOld
+
+        // Power into/out of rotational kinetic energy.
+        val kineticPower = deltaKineticEnergy / dt
+
+        // Average friction power.
+        val frictionPower = frictionTorque * (0.5 * (!angularVelocity + newAngularVelocity))
+
+        // Generator core losses:
+        val coreLossPower = !model.coreConstLoss + model.coreDependentLoss * omegaNz
+
+        // Mechanical power required to generate electrical output including losses:
+        val mechanicalToElectricalPower = actualElectricalPower / model.etaElectrical
+        val generatorLossPower = (mechanicalToElectricalPower - actualElectricalPower).coerceAtLeast(0.0) + coreLossPower.coerceAtLeast(0.0)
+
+        // Total mechanical power extracted from shaft:
+        val mechanicalPower = actualElectricalPower + kineticPower + frictionPower + generatorLossPower
+
+        // Thermal energy actually converted:
+        val actualThermalEnergy = if(etaEngine > 0.0) {
+            (mechanicalPower / etaEngine).coerceIn(0.0, heatConversionAvailable)
+        }
+        else {
+            0.0
+        }
+
+        val rejectedThermalPower = actualThermalEnergy - mechanicalPower
+        val leakThermalPower = !model.leakConductance * (!deltaT)
+
+        hotSide.energy -= (actualThermalEnergy + leakThermalPower) * dt
+        coldSide.energy += (rejectedThermalPower + leakThermalPower + generatorLossPower + frictionPower) * dt
+        angularVelocity = Quantity(newAngularVelocity, RADIAN_PER_SECOND)
+    }
+
+    fun saveToTag(tag: CompoundTag) {
+        tag.putDouble("angularVelocity", !angularVelocity)
+    }
+
+    fun loadFromTag(tag: CompoundTag) {
+        angularVelocity = Quantity(tag.getDouble("angularVelocity"))
+    }
+}
 
 class ElectricalHeatEngineCell(
     ci: CellCreateInfo,
@@ -370,29 +570,28 @@ class ElectricalHeatEngineCell(
     b2Def: ThermalMassDefinition,
     b1Leakage: ConnectionParameters,
     b2Leakage: ConnectionParameters,
-    val model: ElectricalHeatEngineModel,
+    generatorModel: ThermalElectricalGeneratorModel,
+    sourceResistance: Double,
     radiantInfoB1: RadiantBodyEmissionDescription?,
     radiantInfoB2: RadiantBodyEmissionDescription?
 ) : Cell(ci) {
     @SimObject
-    val source = PowerVoltageSourceObject(this, electricalMap)
+    val source = PowerVoltageSourceObject(this, electricalMap).also {
+        it.resistor.resistance = sourceResistance
+    }
 
     @SimObject
     val thermalBipole = ThermalBipoleObject(
         this,
         thermalMap,
-        b1Def(),
-        b2Def(),
-        b1Leakage,
-        b2Leakage
+        b1Def(), b2Def(),
+        b1Leakage, b2Leakage
     )
 
     val cold by thermalBipole::b1
     val hot by thermalBipole::b2
 
-    init {
-        source.resistor.resistance = model.internalResistance
-    }
+    val generator = ThermalElectricalGenerator(cold, hot,  generatorModel)
 
     @Behavior
     val radiantEmitter = if(radiantInfoB1 != null || radiantInfoB2 != null) {
@@ -416,66 +615,29 @@ class ElectricalHeatEngineCell(
         subscribers.addPost(this::postTick)
     }
 
-    var efficiency = 0.0
-
     private fun preTick(dt: Double, phase: SubscriberPhase) {
-        val Th: Double
-        val Tc: Double
-
-        if(cold.temperature < hot.temperature) {
-            Th = !hot.temperature
-            Tc = !cold.temperature
-        }
-        else {
-            Th = !cold.temperature
-            Tc = !hot.temperature
-        }
-
-        efficiency = model.baseEfficiency * ((Th - Tc) / Th)
-
-        val ΔE = hot.energy - cold.energy
-        val ΔT = hot.temperature - cold.temperature
-
-        source.generator.potentialMax = !model.potential.evaluate(abs(ΔT))
-        source.generator.powerIdeal = efficiency * sign(!ΔT) * min((0.5 * abs(!ΔE) / dt), !model.conductance * !abs(ΔT))
+        generator.preTick(dt)
+        source.generator.potentialMax = !generator.potentialOpenCircuit
+        source.generator.powerIdeal = !generator.availablePower
     }
 
     private fun postTick(dt: Double, phase: SubscriberPhase) {
-        val electricalEnergy = source.generator.power * dt
+        val power = source.generator.power
 
-        val electricalDirection = snzi(electricalEnergy)
-        val thermalDirection = snzi((!hot.temperature - !cold.temperature))
-
-        if (electricalDirection == thermalDirection) {
-            val thermalEnergy = if(efficiency.approxEq(0.0)) {
-                0.0
-            }
-            else {
-                electricalEnergy / efficiency
-            }
-
-            val wastedEnergy = thermalEnergy * (1.0 - efficiency)
-
-            if (electricalDirection == 1) {
-                hot.energy -= electricalEnergy
-                hot.energy -= wastedEnergy
-                cold.energy += wastedEnergy
-            } else {
-                cold.energy += electricalEnergy
-                cold.energy += wastedEnergy
-                hot.energy -= wastedEnergy
-            }
-        } else {
-            if(electricalDirection == 1) {
-                hot.energy += electricalEnergy / 2.0
-                cold.energy += electricalEnergy / 2.0
-            }
-            else {
-                hot.energy -= electricalEnergy / 2.0
-                cold.energy -= electricalEnergy / 2.0
-            }
+        if(power < 0.0) {
+            // Alternatively, we could spin the shaft. Or add a diode.
+            // For testing, let's just sink it.
+            cold.energy -= power * dt
+            generator.postTick(Quantity(0.0), dt)
+        }
+        else {
+            generator.postTick(Quantity(source.generator.power), dt)
         }
     }
+
+    override fun saveCellData() = CompoundTag().also { generator.saveToTag(it) }
+
+    override fun loadCellData(tag: CompoundTag) = generator.loadFromTag(tag)
 }
 
 class ElectricalHeatEnginePart(ci: PartCreateInfo) : CellPart<ElectricalHeatEngineCell>(ci, Content.ELECTRICAL_HEAT_ENGINE_CELL.get()), InternalTemperatureConsumer, ComponentDisplay, RadiantBipoleGameObject {
@@ -506,14 +668,16 @@ class ElectricalHeatEnginePart(ci: PartCreateInfo) : CellPart<ElectricalHeatEngi
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.quantity(cell.thermalBipole.b1.temperature)
-        builder.quantity(cell.thermalBipole.b2.temperature)
-        builder.power(cell.source.generator.power)
-        builder.potential(cell.source.generator.potential)
-        builder.current(cell.source.generator.current)
-        builder.debug("Efficiency: ${cell.efficiency.formattedPercentNormalized()}")
-        builder.debug("Potential Max: ${Quantity(cell.source.generator.potentialMax ?: 0.0, VOLT).classify()}")
-        builder.debug("Power Ideal: ${Quantity(cell.source.generator.powerIdeal, WATT).classify()}")
+        builder.debug("Cold: ${cell.cold.temperature.classifyAuxiliary(::CELSIUS)}")
+        builder.debug("Hot: ${cell.hot.temperature.classifyAuxiliary(::CELSIUS)}")
+        builder.debug("SRC power: ${Quantity(cell.source.generator.power, WATT).classify()}")
+        builder.debug("SRC potential: ${Quantity(cell.source.generator.potential, VOLT).classify()}")
+        builder.debug("SRC current: ${Quantity(cell.source.generator.current, AMPERE).classify()}")
+        builder.debug("GEN angular velocity: ${(cell.generator.angularVelocity.classifyAuxiliary(::REVOLUTION_PER_SECOND))}")
+        builder.debug("GEN eta engine: ${(cell.generator.etaEngine * 100.0).rounded(2)}%")
+        builder.debug("GEN power available: ${cell.generator.availablePower.classify()}")
+        builder.debug("GEN potential OC: ${cell.generator.potentialOpenCircuit.classify()}")
+        builder.debug("GEN engine torque: ${cell.generator.engineTorque.classify()}")
     }
 
     @Serializable

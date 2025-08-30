@@ -12,6 +12,7 @@ import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.CENTIMETER
 import org.ageseries.libage.data.G_PER_CM3
+import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.KILOGRAM
 import org.ageseries.libage.data.METER2
 import org.ageseries.libage.data.MILLI
@@ -586,13 +587,19 @@ object Content {
                 conductance = Quantity(0.1, WATT_PER_KELVIN)
             )
 
-            val model = ElectricalHeatEngineModel(
-                baseEfficiency = 1.0,
-                potential = { ΔT ->
-                    Quantity(!ΔT * (220.0 / 180.0), VOLT)
-                },
-                conductance = Quantity(5.0, WATT_PER_KELVIN),
-                internalResistance = 5.1345
+            val generatorModel = ThermalElectricalGeneratorModel(
+                Quantity(20.0, REVOLUTION_PER_SECOND),
+                Quantity(120.0, VOLT),
+                0.5,
+                Quantity(10.0, WATT_PER_KELVIN),
+                Quantity(0.05, WATT_PER_KELVIN),
+                Quantity(1.0, KILOGRAM_METER_SQUARED),
+                Quantity(0.025, NEWTON_METER_SECOND),
+                Quantity(5.0, NEWTON_METER),
+                Quantity(2400.0, WATT),
+                0.9,
+                Quantity(2.5, WATT),
+                0.01
             )
 
             val hemispheres = Direction.entries.associateWith {
@@ -613,7 +620,8 @@ object Content {
                     thermalMap,
                     thermalDefinition, thermalDefinition,
                     leakage, leakage,
-                    model,
+                    generatorModel,
+                    0.075,
                     hemispheres[it.locator.transformPartWorld(Base6Direction3d.Left)]!!,
                     hemispheres[it.locator.transformPartWorld(Base6Direction3d.Right)]!!
                 )
