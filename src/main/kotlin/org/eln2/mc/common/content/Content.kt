@@ -9,6 +9,7 @@ import net.minecraft.core.Direction
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.phys.AABB
 import net.minecraftforge.registries.RegistryObject
+import org.ageseries.libage.data.AMPERE
 import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.CENTIMETER
 import org.ageseries.libage.data.G_PER_CM3
@@ -269,7 +270,8 @@ object Content {
                 Quantity(23.0, MILLI * OHM),
                 Quantity(12.0, KILOGRAM),
                 Quantity(0.1, METER2),
-                1e-7
+                1e-7,
+                Quantity(100.0, AMPERE)
             )
 
             val plusDir = Base6Direction3d.Front
@@ -291,7 +293,8 @@ object Content {
                 Quantity(26.0, MILLI * OHM),
                 Quantity(2.6, KILOGRAM),
                 Quantity(0.0006, METER2),
-                1e-6
+                1e-6,
+                Quantity(10.0, AMPERE)
             )
 
             CellFactory {

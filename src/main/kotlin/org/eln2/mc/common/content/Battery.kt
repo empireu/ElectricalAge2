@@ -4,11 +4,13 @@ package org.eln2.mc.common.content
 
 import net.minecraft.nbt.CompoundTag
 import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.InterpolatorBuilder
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.kdVectorDOf
 import org.ageseries.libage.mathematics.lerp
 import org.ageseries.libage.mathematics.map
+import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.electrical.mna.component.updateResistance
@@ -76,7 +78,7 @@ interface BatteryView {
      * Gets the energy increment this tick. It is equal to **[sourcePower] * dT**.
      * The signs are as per [sourcePower]
      * */
-    val energyIncrement: Quantity<Energy>
+    val electricalEnergyIncrement: Quantity<Energy>
     /**
      * Gets the capacity percentage of this battery, relative to the initial state.
      * */
@@ -119,6 +121,14 @@ fun interface BatteryEnergyCapacityFunction {
     fun computeCapacity(battery: BatteryView): Double
 }
 
+/**
+ * Computes the efficiency of the battery based on its state.
+ * The returned value should be in [0, 1].
+ */
+fun interface BatteryEfficiencyFunction {
+    fun computeEfficiency(battery: BatteryView): Double
+}
+
 object BatterySpecificHeats {
     // https://www.batterydesign.net/thermal/
     val PB_ACID_VENTED_FLOODED = 1080.0
@@ -141,12 +151,25 @@ object BatteryMaterials {
 }
 
 object BatteryModels {
+    private val leadAcidTemperatureEfficiencyCurve = InterpolatorBuilder()
+        .with(!Quantity(0.0, CELSIUS), 0.805)
+        .with(!Quantity(10.0, CELSIUS), 0.875)
+        .with(!Quantity(25.0, CELSIUS), 0.975)
+        .with(!Quantity(40.0, CELSIUS), 1.0)
+        .with(!Quantity(50.0, CELSIUS), 0.9)
+        .with(!Quantity(80.0, CELSIUS), 0.6) // thermal runaway
+        .with(!Quantity(90.0, CELSIUS), 0.4)
+        .buildCubic()
+
     fun TESTleadAcid12Model(
         capacity: Quantity<Energy>,
         internalResistance: Quantity<Resistance>,
         mass: Quantity<Mass>,
         surfaceArea: Quantity<Area>,
-        currentMultiplier: Double) = BatteryModel(
+        currentMultiplier: Double,
+        characteristicCurrent: Quantity<Current>,
+        baseEfficiency: Double = 0.90
+    ) = BatteryModel(
         voltageFunction = {
             // PS go to assets/eln2/datasets/lead_acid_12v/src.md to get the documentation. It is a bilinear map, see there
             val voltageDataset = Datasets.LEAD_ACID_VOLTAGE
@@ -194,7 +217,7 @@ object BatteryModels {
             var damage = 0.0
 
             damage += dt * (1.0 / 3.0) * 1e-6 // 1 month
-            damage += !(abs(battery.energyIncrement) / (!battery.model.energyCapacity * 50.0))
+            damage += !(abs(battery.electricalEnergyIncrement) / (!battery.model.energyCapacity * 50.0))
             damage += dt * abs(battery.current).pow(1.12783256261) * currentMultiplier *
                 if(battery.safeCharge > 0.0) 1.0
                 else map(battery.charge, 0.0, battery.model.damageChargeThreshold, 1.0, 5.0)
@@ -205,6 +228,19 @@ object BatteryModels {
         },
         capacityFunction = { battery ->
             battery.life.pow(0.5) // I don't remember if this is based on anything, probably just pulled out of my ass
+        },
+        efficiencyFunction = { battery ->
+            val tempFactor = leadAcidTemperatureEfficiencyCurve.evaluate(!battery.temperature).coerceIn(0.0, 1.0)
+
+            val alpha = 0.15  // 15% efficiency reduction at end of life
+            val cycleFactor = (1.0 - alpha * (1.0 - battery.life)).coerceIn(0.0, 1.0)
+
+            val cRatePenalty = run {
+                val current = abs(battery.current)
+                1.0 - (0.25 * (current / (current + !characteristicCurrent)))
+            }
+
+            (baseEfficiency * tempFactor * cycleFactor * cRatePenalty).coerceIn(0.3, 1.0)
         },
         energyCapacity = capacity,
         0.5,
@@ -219,6 +255,7 @@ data class BatteryModel(
     val resistanceFunction: BatteryResistanceFunction,
     val damageFunction: BatteryDamageFunction,
     val capacityFunction: BatteryEnergyCapacityFunction,
+    val efficiencyFunction: BatteryEfficiencyFunction,
     /**
      * The energy capacity of the battery. This is the total amount of energy that can be stored.
      * */
@@ -289,7 +326,7 @@ abstract class BatteryCell(
     final override var life = 1.0
     override val temperature get() = thermalWire.thermalBody.temperature
     override val sourcePower get() = Quantity(generator.source.power, WATT)
-    override var energyIncrement = Quantity(0.0, JOULE)
+    override var electricalEnergyIncrement = Quantity(0.0, JOULE)
 
     private var savedLife = life
     private val stateUpdate = AtomicUpdate<BatteryState>()
@@ -330,16 +367,29 @@ abstract class BatteryCell(
 
     private fun transfersEnergy(elapsed: Double): Boolean {
         // Get energy transfer:
-        energyIncrement = Quantity(generator.source.power * elapsed)
+        electricalEnergyIncrement = Quantity(generator.source.power * elapsed)
 
-        if(energyIncrement.value.approxEq(0.0)) {
+        if(electricalEnergyIncrement.value.approxEq(0.0)) {
             return false
         }
 
-        // Update total IO:
-        totalEnergyTransferred += abs(energyIncrement)
+        val efficiency = model.efficiencyFunction.computeEfficiency(this).coerceIn(0.0, 1.0)
 
-        energy -= energyIncrement
+        val storageIncrement: Quantity<Energy>
+        val rejectedEnergy: Quantity<Energy>
+
+        if (electricalEnergyIncrement.value < 0.0) {
+            storageIncrement = electricalEnergyIncrement * efficiency
+            rejectedEnergy = abs(electricalEnergyIncrement - storageIncrement)
+        } else {
+            storageIncrement = electricalEnergyIncrement / efficiency
+            rejectedEnergy = storageIncrement - electricalEnergyIncrement
+        }
+
+        // Update total IO:
+        totalEnergyTransferred += abs(electricalEnergyIncrement)
+
+        energy -= storageIncrement
 
         val capacity = adjustedEnergyCapacity
 
@@ -353,6 +403,8 @@ abstract class BatteryCell(
             // Conserve energy by increasing temperature:
             thermalWire.thermalBody.energy += extraEnergy
         }
+
+        thermalWire.thermalBody.energy += rejectedEnergy
 
         return true
     }
@@ -380,6 +432,7 @@ abstract class BatteryCell(
         builder.potential(generator.source.potential)
         builder.current(generator.source.current)
         builder.powerOutput(generator.source.power)
+        builder.debug("Eff: ${(model.efficiencyFunction.computeEfficiency(this) * 100).rounded(2)}%")
     }
 }
 
