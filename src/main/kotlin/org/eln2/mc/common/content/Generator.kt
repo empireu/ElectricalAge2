@@ -6,8 +6,12 @@ import kotlinx.serialization.Serializable
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.chat.Component
+import net.minecraft.sounds.SoundEvents
+import net.minecraft.sounds.SoundSource
+import net.minecraft.util.RandomSource
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.entity.player.Inventory
@@ -16,10 +20,13 @@ import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.inventory.ContainerLevelAccess
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.AbstractFurnaceBlock
+import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraftforge.common.ForgeHooks
 import net.minecraftforge.common.capabilities.Capability
@@ -137,6 +144,8 @@ class FuelBurnerBehavior(val cell: Cell, val body: ThermalMass) : CellBehavior {
 
     private var signal = 0.0
     private var thermalPower = 0.0
+
+    val isBurning get() = thermalPower > 10.0
 
     override fun subscribe(subscribers: SubscriberCollection) = subscribers.addPre(this::simulationTick)
 
@@ -270,7 +279,17 @@ class HeatGeneratorBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEnti
     }
 
     fun serverTick() {
-        if (!cell!!.needsFuel) {
+        val isHot = cell.burner.isBurning
+
+        if (isHot != blockState.getValue(AbstractFurnaceBlock.LIT)) {
+            level!!.setBlock(
+                blockPos,
+                blockState.setValue(AbstractFurnaceBlock.LIT, isHot),
+                Block.UPDATE_ALL
+            )
+        }
+
+        if (!cell.needsFuel) {
             return
         }
 
@@ -325,6 +344,15 @@ class HeatGeneratorScreen(menu: HeatGeneratorMenu, playerInventory: Inventory, t
 }
 
 class HeatGeneratorBlock : CellBlock<HeatGeneratorCell>() {
+    init {
+        registerDefaultState(defaultBlockState().setValue(AbstractFurnaceBlock.LIT, false))
+    }
+
+    override fun createBlockStateDefinition(pBuilder: StateDefinition.Builder<Block, BlockState>) {
+        super.createBlockStateDefinition(pBuilder)
+        pBuilder.add(AbstractFurnaceBlock.LIT)
+    }
+
     override fun getCellProvider() = Content.HEAT_GENERATOR_CELL.get()
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState): BlockEntity {
@@ -354,6 +382,37 @@ class HeatGeneratorBlock : CellBlock<HeatGeneratorCell>() {
             Component.literal("Test"),
             ::HeatGeneratorMenu
         )
+    }
+
+    override fun animateTick(pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {
+        if(pState.getValue(AbstractFurnaceBlock.LIT)) {
+            val d0 = pPos.x.toDouble() + 0.5
+            val d1 = pPos.y.toDouble()
+            val d2 = pPos.z.toDouble() + 0.5
+            if (pRandom.nextDouble() < 0.5) {
+                pLevel.playLocalSound(
+                    d0,
+                    d1,
+                    d2,
+                    SoundEvents.FURNACE_FIRE_CRACKLE,
+                    SoundSource.BLOCKS,
+                    1.0f,
+                    1.0f,
+                    false
+                )
+            }
+
+            val direction = pState.getValue(AbstractFurnaceBlock.FACING)
+
+            repeat(4) {
+                val d4 = pRandom.nextDouble() * 0.6 - 0.3
+                val d5 = if (direction.axis === Direction.Axis.X) direction.stepX.toDouble() * 0.52 else d4
+                val d6 = pRandom.nextDouble() * 6.0 / 16.0
+                val d7 = if (direction.axis === Direction.Axis.Z) direction.stepZ.toDouble() * 0.52 else d4
+                pLevel.addParticle(ParticleTypes.SMOKE, d0 + d5, d1 + d6, d2 + d7, 0.0, 0.0, 0.0)
+                pLevel.addParticle(ParticleTypes.FLAME, d0 + d5, d1 + d6, d2 + d7, 0.0, 0.0, 0.0)
+            }
+        }
     }
 }
 

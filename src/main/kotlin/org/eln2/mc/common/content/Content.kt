@@ -535,7 +535,7 @@ object Content {
         BasicCellProvider.setup {
             val thermalDefinition = ThermalMassDefinition(
                 Material(
-                    label = "Test thermal conduit - heat generator",
+                    label = "Heat generator",
                     electricalResistivity = Quantity(Double.POSITIVE_INFINITY),
                     thermalConductivity = Quantity(5000.0, WATT_PER_METER_KELVIN),
                     specificHeat = ChemicalElement.Copper.specificHeat,
@@ -545,7 +545,7 @@ object Content {
             )
 
             val leakageParameters = ConnectionParameters.DEFAULT.copy(
-                conductance = Quantity(0.01, WATT_PER_KELVIN)
+                conductance = Quantity(0.001, WATT_PER_KELVIN)
             )
 
             CellFactory {
