@@ -2,7 +2,7 @@ package org.eln2.mc.common.content
 
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.geometry.Vector3d
-import org.ageseries.libage.sim.electrical.mna.component.PowerVoltageSource
+import org.ageseries.libage.sim.electrical.mna.component.DiodeData
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
@@ -25,58 +25,43 @@ data class PhotovoltaicModel(
     val efficiency: Double,
 )
 
-class PhotovoltaicBehavior(
-    val cell: Cell,
-    val source: PolarTermObject<*, PowerVoltageSource>,
+class PhotovoltaicGeneratorCell(
+    ci: CellCreateInfo,
     val surfaceArea: Quantity<Area>,
     val model: PhotovoltaicModel,
-    val normalSupplier: () -> Vector3d
-) : CellBehavior {
+    val normalSupplier: (PhotovoltaicGeneratorCell) -> Vector3d
+) : Cell(ci) {
+    @SimObject
+    val generator = PowerVoltageSourceDiodeObject<PhotovoltaicGeneratorCell>(this, directionPoleMapPlanar())
+
     init {
-        cell.locator.requireLocator(Locators.BLOCK)
+        locator.requireLocator(Locators.BLOCK)
+        ruleSet.withDirectionRulePlanar(Base6Direction3d.Front + Base6Direction3d.Back)
     }
 
     override fun subscribe(subscribers: SubscriberCollection) {
+        super.subscribe(subscribers)
         subscribers.addPre(::update)
+
     }
 
-    fun irradianceFactor() = cell.graph.level.evaluateDiffuseIrradianceFactor(
-        normalSupplier(),
-        cell.locator.requireLocator(Locators.BLOCK)
+    fun irradianceFactor() = graph.level.evaluateDiffuseIrradianceFactor(
+        normalSupplier(this),
+        locator.requireLocator(Locators.BLOCK)
     )
 
     private fun update(dt: Double, phase: SubscriberPhase) {
         val irradiance = !LEVEL_INTENSITY * irradianceFactor()
-
-        source.term.potentialMax = !model.idealPotential * ((irradiance / model.b).pow(model.p) / model.d)
-        source.term.powerIdeal = irradiance * !surfaceArea * model.efficiency
-    }
-}
-
-class PhotovoltaicGeneratorCell(
-    ci: CellCreateInfo,
-    surfaceArea: Quantity<Area>,
-    model: PhotovoltaicModel,
-    val normalSupplier: (PhotovoltaicGeneratorCell) -> Vector3d
-) : Cell(ci) {
-    val normal get() = normalSupplier(this)
-
-    @SimObject
-    val generator = PolarTermObject(this, directionPoleMapPlanar(), PowerVoltageSource())
-
-    @Behavior
-    val photovoltaic = PhotovoltaicBehavior(this, generator, surfaceArea, model, this::normal)
-
-    init {
-        ruleSet.withDirectionRulePlanar(Base6Direction3d.Front + Base6Direction3d.Back)
+        generator.powerSource.potentialMax = !model.idealPotential * ((irradiance / model.b).pow(model.p) / model.d)
+        generator.powerSource.powerIdeal = irradiance * !surfaceArea * model.efficiency
     }
 }
 
 class PhotovoltaicPanelPart(ci: PartCreateInfo, provider: CellProvider<PhotovoltaicGeneratorCell>) : CellPart<PhotovoltaicGeneratorCell>(ci, provider), ComponentDisplay {
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.potential(cell.generator.term.potential)
-        builder.power(cell.generator.term.power)
-        builder.current(cell.generator.term.current)
-        builder.translatePercent("Irradiance", cell.photovoltaic.irradianceFactor())
+        builder.potential(cell.generator.powerSource.potential)
+        builder.power(cell.generator.powerSource.power)
+        builder.current(cell.generator.powerSource.current)
+        builder.translatePercent("Irradiance", cell.irradianceFactor())
     }
 }

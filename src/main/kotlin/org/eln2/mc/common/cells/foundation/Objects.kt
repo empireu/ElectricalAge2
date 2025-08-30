@@ -624,3 +624,25 @@ class PowerVoltageSourceObject<C : Cell>(cell: C, val map: PoleMap) : Electrical
         map.join(generator.offerNegative(), resistor.offerPositive())
     }
 }
+
+
+class PowerVoltageSourceDiodeObject<C : Cell>(cell: C, val map: PoleMap) : ElectricalObject<C>(cell) {
+    val powerSource = PowerVoltageSource()
+    val diode = IdealDiode()
+
+    override fun offerPolar(remote: ElectricalObject<*>) = when(map.evaluateOrNull(cell, remote.cell)) {
+        Pole.Plus -> powerSource.offerPositive()
+        Pole.Minus -> diode.offerPositive()
+        null -> null
+    }
+
+    override fun addComponents(circuit: ElectricalComponentSet) {
+        circuit.add(powerSource)
+        circuit.add(diode)
+    }
+
+    override fun build(map: ElectricalConnectivityMap) {
+        super.build(map)
+        map.join(powerSource.offerNegative(), diode.offerNegative())
+    }
+}
