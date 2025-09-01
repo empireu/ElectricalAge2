@@ -22,8 +22,8 @@ import org.ageseries.libage.sim.electrical.mna.POSITIVE
 import org.ageseries.libage.sim.electrical.mna.component.IResistor
 import org.ageseries.libage.sim.electrical.mna.component.updateResistance
 import org.eln2.mc.*
-import org.eln2.mc.client.render.foundation.AbstractPartVisual
-import org.eln2.mc.client.render.foundation.MultipartVisualizationContext
+import org.eln2.mc.common.parts.foundation.AbstractPartVisual
+import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.client.render.foundation.partTransformation
 import org.eln2.mc.common.*
 import org.eln2.mc.common.cells.foundation.Behavior
@@ -53,7 +53,7 @@ import org.eln2.mc.extensions.evaluateDiffuseIrradianceFactor
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.mathematics.MyColor
+import org.eln2.mc.client.render.foundation.MyColor
 import java.nio.ByteBuffer
 import kotlin.math.absoluteValue
 import kotlin.math.round

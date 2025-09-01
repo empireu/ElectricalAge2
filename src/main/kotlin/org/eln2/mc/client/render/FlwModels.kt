@@ -4,7 +4,7 @@ import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.eln2.mc.client.render.foundation.PolarModel
 import org.eln2.mc.client.render.foundation.WireConnectionModel
-import org.eln2.mc.client.render.foundation.WireConnectionModelPartial
+import org.eln2.mc.common.content.WireConnectionModelPartial
 import org.eln2.mc.client.render.foundation.WirePatchType
 import org.eln2.mc.client.render.foundation.WirePatchPolarModel
 

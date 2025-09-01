@@ -29,7 +29,7 @@ import org.eln2.mc.data.Locators
 import org.eln2.mc.data.SortedUUIDPair
 import org.eln2.mc.data.plusAssign
 import org.eln2.mc.extensions.*
-import org.eln2.mc.mathematics.MyColor
+import org.eln2.mc.client.render.foundation.MyColor
 import java.util.*
 import kotlin.math.*
 import kotlin.random.Random

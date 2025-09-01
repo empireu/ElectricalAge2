@@ -38,7 +38,7 @@ import org.eln2.mc.common.specs.foundation.SpecGeometry
 import org.eln2.mc.data.Locators
 import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
-import org.eln2.mc.mathematics.MyColor
+import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.mathematics.toHorizontalFacing
 import java.util.*
 

@@ -1,6 +1,5 @@
 package org.eln2.mc.common.content
 
-import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import it.unimi.dsi.fastutil.ints.IntArrayList
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -28,8 +27,7 @@ import org.eln2.mc.data.UnsafeLazyResettable
 import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.mathematics.MyColor
-import java.util.function.Supplier
+import org.eln2.mc.client.render.foundation.MyColor
 import kotlin.collections.HashMap
 import kotlin.math.abs
 

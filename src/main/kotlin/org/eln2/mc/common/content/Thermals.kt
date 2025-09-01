@@ -14,12 +14,13 @@ import org.ageseries.libage.sim.ThermalMass
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.*
+import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.InternalTemperatureConsumer
 import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
-import org.eln2.mc.mathematics.MyColor
+import org.eln2.mc.client.render.foundation.MyColor
 
 /**
  * Represents a game object that is rendered with a [RadiantBodyPartVisual].

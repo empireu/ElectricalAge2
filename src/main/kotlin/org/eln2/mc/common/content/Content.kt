@@ -13,7 +13,6 @@ import org.ageseries.libage.data.AMPERE
 import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.CENTIMETER
 import org.ageseries.libage.data.G_PER_CM3
-import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.KILOGRAM
 import org.ageseries.libage.data.METER2
 import org.ageseries.libage.data.MILLI
@@ -29,7 +28,6 @@ import org.ageseries.libage.data.WATT_HOUR
 import org.ageseries.libage.data.WATT_PER_KELVIN
 import org.ageseries.libage.data.WATT_PER_METER_KELVIN
 import org.ageseries.libage.data.requireLocator
-import org.ageseries.libage.mathematics.frac
 import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.ChemicalElement
@@ -69,36 +67,20 @@ import org.eln2.mc.common.parts.foundation.transformPartWorld
 import org.eln2.mc.common.specs.SpecRegistry.specAndItem
 import org.eln2.mc.common.specs.foundation.BasicSpecProvider
 import org.eln2.mc.common.specs.foundation.SpecFactory
+import org.eln2.mc.data.KILOGRAM_METER_SQUARED
 import org.eln2.mc.data.Locators
+import org.eln2.mc.data.NEWTON_METER
+import org.eln2.mc.data.NEWTON_METER_SECOND
+import org.eln2.mc.data.REVOLUTION_PER_SECOND
 import org.eln2.mc.data.cylinderResistance
 import org.eln2.mc.data.directionPoleMapPlanar
 import org.eln2.mc.data.withDirectionRulePlanar
-import org.eln2.mc.extensions.celestialPass
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.maskXY
 import org.eln2.mc.requireIsOnRenderThread
 import kotlin.math.PI
-import kotlin.math.cos
 import kotlin.math.pow
-
-// FIXME
-
-fun solarScan(normal: Vector3d) : Double {
-    var sum = 0.0
-
-    // Replaced integralScan with this because it is more representative of the discrete ticks
-    repeat(12000) {
-        val a = frac(it / 24000.0 - 0.25)
-        val b = 0.5 - cos(a * PI) / 2.0
-        val c = (a * 2.0 + b) / 3.0
-        val d = celestialPass(2.0 * PI * c)
-
-        sum += !Vector3d(d.re, d.im, 0.0) cosAngle normal
-    }
-
-    return 1.0 / sum
-}
 
 /**
  * Joint registry for content classes.
@@ -107,7 +89,7 @@ object Content {
     /**
      * Initializes the fields, in order to register the content.
      */
-    fun initialize() {}
+    fun initialize() { }
 
     fun clientSetup() {
         requireIsOnRenderThread()

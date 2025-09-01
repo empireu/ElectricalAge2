@@ -1,4 +1,4 @@
-package org.eln2.mc.common.containers.foundation
+package org.eln2.mc.common.containers
 
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen

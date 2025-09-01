@@ -5,23 +5,30 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 
 class AveragingList(private val sampleCount: Int) {
     init {
-        if (sampleCount <= 0) {
-            error("Invalid sample count $sampleCount")
+        require(sampleCount > 0) {
+            "Invalid sample count $sampleCount"
         }
     }
 
-    private val samples: ArrayList<Double> = ArrayList()
+    private val samples = DoubleArray(sampleCount)
+    private var index = 0
+    private var filled = 0
+    private var sum = 0.0
 
     fun addSample(value: Double) {
-        samples.add(value)
-
-        while (samples.size > sampleCount) {
-            samples.removeAt(0)
+        if (filled < sampleCount) {
+            filled++
+        } else {
+            sum -= samples[index] // remove old value
         }
+
+        samples[index] = value
+        sum += value
+        index = (index + 1) % sampleCount
     }
 
     fun calculate(): Double {
-        return samples.sum() / samples.size
+        return if (filled == 0) 0.0 else sum / filled
     }
 }
 

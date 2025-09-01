@@ -144,7 +144,7 @@ fun CompoundTag.putConnectionMode(key: String, mode: CellPartConnectionMode) {
 
 fun CompoundTag.getConnectionMode(key: String): CellPartConnectionMode {
     val value = this.getInt(key)
-    return CellPartConnectionMode.byId[value] ?: error("Invalid connection mode $value")
+    return CellPartConnectionMode.byId[value]
 }
 
 fun CompoundTag.getBase6Direction3d(key: String): Base6Direction3d {
@@ -201,15 +201,6 @@ fun CompoundTag.withSubTagOptional(key: String, tag: CompoundTag?): CompoundTag 
     }
 
     return this
-}
-
-fun CompoundTag.placeSubTag(key: String, consumer: ((CompoundTag) -> Unit)): CompoundTag {
-    val tag = CompoundTag()
-    consumer(tag)
-
-    this.put(key, tag)
-
-    return tag
 }
 
 /**

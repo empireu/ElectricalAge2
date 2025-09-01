@@ -17,7 +17,7 @@ import org.eln2.mc.extensions.destroyPart
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * *A cell behavior* manages routines ([Subscriber]) that run on the simulation thread.
+ * *A cell behavior* manages routines ([SimulationSubscriber]) that run on the simulation thread.
  * It is attached to a cell.
  * */
 interface CellBehavior {
@@ -25,14 +25,14 @@ interface CellBehavior {
      * Called when the behavior is added to the container.
      * */
     @OnServerThread
-    fun onAdded(container: CellBehaviorContainer) {}
+    fun onAdded(container: CellBehaviorContainer) { }
 
     /**
      * Called when the subscriber collection is being set up.
      * Subscribers can be added here.
      * */
     @OnServerThread
-    fun subscribe(subscribers: SubscriberCollection) {}
+    fun subscribe(subscribers: SubscriberCollection) { }
 
     /**
      * Called when the behavior is destroyed.
@@ -40,7 +40,7 @@ interface CellBehavior {
      * It can also be caused by the game object being detached, in the case of [ReplicatorBehavior]s.
      * */
     @OnServerThread
-    fun destroy() {}
+    fun destroy() { }
 }
 
 /**

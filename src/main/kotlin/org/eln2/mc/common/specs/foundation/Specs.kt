@@ -9,6 +9,8 @@ import dev.engine_room.flywheel.api.visual.SectionTrackedVisual
 import dev.engine_room.flywheel.api.visual.TickableVisual
 import dev.engine_room.flywheel.api.visual.Visual
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
+import dev.engine_room.flywheel.lib.instance.InstanceTypes.TRANSFORMED
+import dev.engine_room.flywheel.lib.model.Models.partial
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import dev.engine_room.flywheel.lib.task.RunnablePlan
 import net.minecraft.client.KeyMapping
@@ -51,7 +53,9 @@ import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.*
+import org.eln2.mc.client.render.foundation.partTransformation
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
+import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.grids.*
 import org.eln2.mc.common.items.foundation.PartItem
@@ -63,7 +67,7 @@ import org.eln2.mc.data.Locators
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.DebugComponentDisplay
-import org.eln2.mc.mathematics.MyColor
+import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.mathematics.FacingDirection
 import org.joml.Quaternionf
 import org.lwjgl.glfw.GLFW
@@ -1029,7 +1033,11 @@ class SpecContainerPartVisual(
     val specVisualizationContext = SpecVisualizationContext(ctx, this)
     val storage = SpecialVisualStorage<AbstractSpecVisual<*>>()
 
-    private var frameInstance = createPartInstance(ctx, FlwModels.SPEC_PART_FRAME, part)
+    private var frameInstance = ctx
+        .instancerProvider()
+        .instancer(TRANSFORMED, partial(FlwModels.SPEC_PART_FRAME))
+        .createInstance()
+        .partTransformation(ctx.parent, part)
 
     init {
         part.specs.values.forEach {
@@ -1836,10 +1844,7 @@ interface SpecWithCell<C : Cell> {
     fun neighborScan() : List<CellAndContainerHandle>
 }
 
-abstract class CellSpec<C : Cell>(
-    ci: SpecCreateInfo,
-    final override val provider: CellProvider<C>,
-) : GridSpec(ci), SpecWithCell<C> {
+abstract class CellSpec<C : Cell>(ci: SpecCreateInfo, final override val provider: CellProvider<C>, ) : GridSpec(ci), SpecWithCell<C> {
     companion object {
         private const val GRAPH_ID = "GraphID"
         private const val CUSTOM_SIMULATION_DATA = "SimulationData"

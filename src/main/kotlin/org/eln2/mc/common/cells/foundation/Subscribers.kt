@@ -1,13 +1,12 @@
 package org.eln2.mc.common.cells.foundation
 
 import org.ageseries.libage.data.mutableMultiMapOf
-import org.eln2.mc.common.cells.foundation.SubscriberPool.SubscriberPool
 import kotlin.math.max
 
 /**
  * Represents a function that is executed periodically from the simulation thread.
  * */
-fun interface Subscriber {
+fun interface SimulationSubscriber {
     /**
      * Called when the simulation updates.
      * @param dt The fixed time step.
@@ -34,7 +33,7 @@ data class SubscriberOptions(val interval: Int, val phase: SubscriberPhase)
  * */
 class SubscriberPool : SubscriberCollection {
     private val pools = HashMap<SubscriberOptions, SubscriberPool>()
-    private val subscribers = mutableMultiMapOf<Subscriber, SubscriberPool>()
+    private val subscribers = mutableMultiMapOf<SimulationSubscriber, SubscriberPool>()
 
     private var iterating = false
 
@@ -91,11 +90,11 @@ class SubscriberPool : SubscriberCollection {
         }
     }
 
-    override fun addSubscriber(parameters: SubscriberOptions, subscriber: Subscriber) {
+    override fun addSubscriber(parameters: SubscriberOptions, subscriber: SimulationSubscriber) {
         enqueueOrApply(AddUpdate(subscriber, parameters))
     }
 
-    override fun remove(subscriber: Subscriber) {
+    override fun remove(subscriber: SimulationSubscriber) {
         enqueueOrApply(RemoveAllUpdate(subscriber))
     }
 
@@ -113,11 +112,11 @@ class SubscriberPool : SubscriberCollection {
     }
 
     private interface Update
-    private class AddUpdate(val subscriber: Subscriber, val parameters: SubscriberOptions) : Update
-    private class RemoveAllUpdate(val subscriber: Subscriber) : Update
+    private class AddUpdate(val subscriber: SimulationSubscriber, val parameters: SubscriberOptions) : Update
+    private class RemoveAllUpdate(val subscriber: SimulationSubscriber) : Update
 
     class SubscriberPool(val parameters: SubscriberOptions) {
-        private val pool = ArrayList<Subscriber>()
+        private val pool = ArrayList<SimulationSubscriber>()
         private var isIterating = false
 
         val isEmpty get() = pool.isEmpty()
@@ -146,7 +145,7 @@ class SubscriberPool : SubscriberCollection {
             }
         }
 
-        fun add(subscriber: Subscriber) {
+        fun add(subscriber: SimulationSubscriber) {
             require(!isIterating) { "Tried to add subscriber $subscriber while iterating" }
 
             if (pool.contains(subscriber)) {
@@ -156,7 +155,7 @@ class SubscriberPool : SubscriberCollection {
             pool.add(subscriber)
         }
 
-        fun remove(subscriber: Subscriber) {
+        fun remove(subscriber: SimulationSubscriber) {
             require(!isIterating) { "Tried to remove subscriber $subscriber while iterating" }
 
             if (!pool.remove(subscriber)) {
@@ -167,37 +166,37 @@ class SubscriberPool : SubscriberCollection {
 }
 
 interface SubscriberCollection {
-    fun addSubscriber(parameters: SubscriberOptions, subscriber: Subscriber)
+    fun addSubscriber(parameters: SubscriberOptions, subscriber: SimulationSubscriber)
 
-    fun remove(subscriber: Subscriber)
+    fun remove(subscriber: SimulationSubscriber)
 }
 
 /**
  * Adds a subscriber that runs on [SubscriberPhase.Pre] every tick (interval is 0).
  * */
-fun SubscriberCollection.addPre(subscriber: Subscriber) {
+fun SubscriberCollection.addPre(subscriber: SimulationSubscriber) {
     this.addSubscriber(SubscriberOptions(0, SubscriberPhase.Pre), subscriber)
 }
 
-fun SubscriberCollection.addPre10(subscriber: Subscriber) {
+fun SubscriberCollection.addPre10(subscriber: SimulationSubscriber) {
     this.addSubscriber(SubscriberOptions(10, SubscriberPhase.Pre), subscriber)
 }
 
-fun SubscriberCollection.addPre100(subscriber: Subscriber) {
+fun SubscriberCollection.addPre100(subscriber: SimulationSubscriber) {
     this.addSubscriber(SubscriberOptions(100, SubscriberPhase.Pre), subscriber)
 }
 
 /**
  * Adds a subscriber that runs on [SubscriberPhase.Post] every tick (interval is 0).
  * */
-fun SubscriberCollection.addPost(subscriber: Subscriber) {
+fun SubscriberCollection.addPost(subscriber: SimulationSubscriber) {
     this.addSubscriber(SubscriberOptions(0, SubscriberPhase.Post), subscriber)
 }
 
-fun SubscriberCollection.addPost10(subscriber: Subscriber) {
+fun SubscriberCollection.addPost10(subscriber: SimulationSubscriber) {
     this.addSubscriber(SubscriberOptions(10, SubscriberPhase.Post), subscriber)
 }
 
-fun SubscriberCollection.addPost100(subscriber: Subscriber) {
+fun SubscriberCollection.addPost100(subscriber: SimulationSubscriber) {
     this.addSubscriber(SubscriberOptions(100, SubscriberPhase.Post), subscriber)
 }

@@ -17,7 +17,7 @@ import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.extensions.*
-import org.eln2.mc.mathematics.MyColor
+import org.eln2.mc.client.render.foundation.MyColor
 import kotlin.math.PI
 
 @ClientOnly

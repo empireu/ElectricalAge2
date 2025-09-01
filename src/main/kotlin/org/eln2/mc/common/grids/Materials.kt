@@ -25,7 +25,7 @@ import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.extensions.getVector3d
 import org.eln2.mc.extensions.putVector3d
-import org.eln2.mc.mathematics.MyColor
+import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.mathematics.floorBlockPos
 import org.eln2.mc.resource
 import java.util.HashSet

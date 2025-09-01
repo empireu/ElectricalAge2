@@ -122,7 +122,7 @@ enum class GhostLightUpdateType {
 /**
  * Event handler for ghost light updates.
  * */
-fun interface GhostLightNotifier {
+fun interface GhostLightEventHandler {
     fun onUpdate(handle: GhostLight, type: GhostLightUpdateType)
 }
 
@@ -277,12 +277,12 @@ object GhostLightServer {
 
     /**
      * Creates a handle in [level], at the specified [position].
-     * @param notifier An optional event handler.
+     * @param handler An optional event handler.
      * @return A ghost light handle, if a ghost light can be created (according to [canCreateHandle]). Otherwise, null.
      * */
-    fun createHandle(level: Level, position: BlockPos, notifier: GhostLightNotifier? = null): GhostLight? {
+    fun createHandle(level: Level, position: BlockPos, handler: GhostLightEventHandler? = null): GhostLight? {
         validateUsage()
-        return getLevelData(validateLevel(level)).createHandle(position, notifier)
+        return getLevelData(validateLevel(level)).createHandle(position, handler)
     }
 
     @JvmStatic
@@ -364,7 +364,7 @@ object GhostLightServer {
 
         fun canCreateHandle(pos: BlockPos) = gameLevel.isInWorldBounds(pos)
 
-        fun createHandle(pos: BlockPos, notifier: GhostLightNotifier? = null): GhostLight? {
+        fun createHandle(pos: BlockPos, notifier: GhostLightEventHandler? = null): GhostLight? {
             if(!canCreateHandle(pos)) {
                 return null
             }
@@ -411,7 +411,7 @@ object GhostLightServer {
             return cell
         }
 
-        fun createHandle(pos: BlockPos, notifier: GhostLightNotifier? = null): GhostLight {
+        fun createHandle(pos: BlockPos, notifier: GhostLightEventHandler? = null): GhostLight {
             validateUsage()
             return getOrCreateCellWorld(pos).createHandle(notifier)
         }
@@ -531,7 +531,7 @@ object GhostLightServer {
                 }
             }
 
-            fun createHandle(notifier: GhostLightNotifier?) = Handle(notifier).also {
+            fun createHandle(notifier: GhostLightEventHandler?) = Handle(notifier).also {
                 handles.add(it)
             }
 
@@ -548,7 +548,7 @@ object GhostLightServer {
                 isDirty = false
             }
 
-            private inner class Handle(val notifier: GhostLightNotifier?) : GhostLight {
+            private inner class Handle(val notifier: GhostLightEventHandler?) : GhostLight {
                 var handleBrightness: Int = 0
                 var isDestroyed = false
 
@@ -1814,7 +1814,7 @@ class LightVolumeInstance(val level: ServerLevel, val placementPosition: BlockPo
                 mask.contains(k)
             }
 
-            LOG.info("Intersected ${intersectionsVolume.size}")
+            LOG.debug("Intersected ${intersectionsVolume.size}")
 
             val iterator = intersectionsVolume.intIterator()
 

@@ -1,18 +1,9 @@
 package org.eln2.mc.extensions
 
-import net.minecraft.core.Direction
-import net.minecraft.core.Vec3i
 import net.minecraft.nbt.CompoundTag
-import net.minecraft.world.level.Level
-import net.minecraft.world.phys.Vec3
-import org.ageseries.libage.data.*
-import org.ageseries.libage.sim.Simulator
-import org.ageseries.libage.sim.ThermalMass
-import org.eln2.mc.*
-import org.eln2.mc.common.cells.foundation.Cell
-import org.eln2.mc.common.cells.foundation.CellEnvironment
+import org.ageseries.libage.data.MutableSetMapMultiMap
 import org.eln2.mc.control.PIDController
-import java.util.*
+
 /*
 //FIXME where is multiblock manager? what is it?
 inline fun <reified T : Cell> Level.getCellOrNull(mb: MultiblockManager, cellPosId: BlockPos): T? {
@@ -40,27 +31,6 @@ fun <K, V> MutableSetMapMultiMap<K, V>.bind(): MutableSetMapMultiMap<K, V> {
 
     return result
 }
-
-fun <T> ArrayList<T>.bind() = ArrayList<T>(this.size).also { it.addAll(this) }
-
-@Suppress("UNCHECKED_CAST")
-fun <K, V> HashMap<K, V>.bind() = this.clone() as HashMap<K, V>
-
-// FIXME
-/*
-fun <Self : Translate<Self>> Self.translateNormal(normal: Vec3, distance: Double) : Self {
-    this.translate(normal * distance)
-    return this
-}
-
-fun <Self : Translate<Self>> Self.translateNormal(normal: Vec3i, distance: Double) : Self {
-    this.translate(normal.toVec3() * distance)
-    return this
-}
-
-fun <Self : Translate<Self>> Self.translateNormal(normalDirection: Direction, distance: Double) : Self {
-    return this.translateNormal(normalDirection.normal, distance)
-}*/
 
 fun PIDController.stateToNbt() : CompoundTag {
     val tag = CompoundTag()

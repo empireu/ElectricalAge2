@@ -1,5 +1,8 @@
 package org.eln2.mc.common.parts.foundation
 
+import dev.engine_room.flywheel.api.visual.LightUpdatedVisual
+import dev.engine_room.flywheel.api.visual.SectionTrackedVisual
+import dev.engine_room.flywheel.api.visual.Visual
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -28,10 +31,8 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
-import org.eln2.mc.client.render.foundation.AbstractPartVisual
-import org.eln2.mc.client.render.foundation.MultipartVisualizationContext
+import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry
-import org.eln2.mc.client.render.foundation.PartVisualizer
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.cells.foundation.Cell
 import org.eln2.mc.common.cells.foundation.CellAndContainerHandle
@@ -60,7 +61,7 @@ import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.BlockPosInt
 import org.eln2.mc.mathematics.FacingDirection
-import org.eln2.mc.mathematics.MyColor
+import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.requireIsOnServerThread
 import org.joml.Vector3f
 import java.util.UUID
@@ -518,15 +519,38 @@ fun interface PartFactory {
  * The basic part provider uses a functional interface as part factory.
  * Often, the part's constructor can be passed in as factory.
  * */
-open class BasicPartProvider(
-    final override val placementCollisionSize: Vector3d,
-    val factory: PartFactory,
-) : PartProvider() {
+open class BasicPartProvider(final override val placementCollisionSize: Vector3d, val factory: PartFactory, ) : PartProvider() {
     override fun createCore(context: PartPlacementInfo) = factory(PartCreateInfo(id, context))
 
     companion object {
         fun setup(placementCollisionSize: Vector3d, supplier: () -> PartFactory) = BasicPartProvider(placementCollisionSize, supplier())
     }
+}
+
+fun interface PartVisualizer<P : Part> {
+    fun create(ctx: MultipartVisualizationContext, part: P): AbstractPartVisual<*>
+}
+
+abstract class AbstractPartVisual<T : Part>(val visualizationContext: MultipartVisualizationContext, val part: T) : Visual, LightUpdatedVisual {
+    private var deleted = false
+
+    override fun update(partialTick: Float) { }
+
+    final override fun delete() {
+        if(deleted) {
+            return
+        }
+
+        _delete()
+        deleted = true
+    }
+
+    override fun setSectionCollector(collector: SectionTrackedVisual.SectionCollector?) {
+        // Should be already done by the parent, right?
+    }
+
+    @Suppress("FunctionName") // Keep consistent with the flywheel API
+    protected abstract fun _delete()
 }
 
 /**

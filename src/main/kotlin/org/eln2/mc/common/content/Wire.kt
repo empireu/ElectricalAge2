@@ -39,6 +39,7 @@ import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.*
+import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
@@ -48,7 +49,7 @@ import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.*
-import org.eln2.mc.mathematics.MyColor
+import org.eln2.mc.client.render.foundation.MyColor
 import java.util.function.Supplier
 import kotlin.math.PI
 
@@ -878,6 +879,14 @@ private fun getIsFilledVariant(connections: List<Int>) = if (connections.size ==
     val c2 = PartConnectionDirection(connections[1])
     c1.directionPart == c2.directionPart.opposite
 } else false
+
+data class WireConnectionModelPartial(val planar: PolarModel, val inner: PolarModel, val wrapped: PolarModel, ) {
+    val variants = mapOf(
+        CellPartConnectionMode.Planar to planar,
+        CellPartConnectionMode.Inner to inner,
+        CellPartConnectionMode.Wrapped to wrapped
+    )
+}
 
 abstract class WirePartVisual<H : TransformedInstance, C : TransformedInstance>(
     ctx: MultipartVisualizationContext,

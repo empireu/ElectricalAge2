@@ -37,7 +37,6 @@ import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.nz
 import org.ageseries.libage.mathematics.rounded
-import org.ageseries.libage.mathematics.snzi
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
 import org.ageseries.libage.sim.ThermalMass
@@ -47,15 +46,22 @@ import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.CellBlock
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.containers.foundation.ContainerHelper
-import org.eln2.mc.common.containers.foundation.MyAbstractContainerScreen
-import org.eln2.mc.common.containers.foundation.SlotItemHandlerWithPlacePredicate
+import org.eln2.mc.common.containers.ContainerHelper
+import org.eln2.mc.common.containers.MyAbstractContainerScreen
+import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.control.PIDController
+import org.eln2.mc.data.AngularVelocity
+import org.eln2.mc.data.Inertia
+import org.eln2.mc.data.NEWTON_METER
 import org.eln2.mc.data.PoleMap
+import org.eln2.mc.data.RADIAN_PER_SECOND
+import org.eln2.mc.data.REVOLUTION_PER_SECOND
+import org.eln2.mc.data.Torque
+import org.eln2.mc.data.ViscousFriction
 import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
@@ -415,23 +421,6 @@ class HeatGeneratorBlock : CellBlock<HeatGeneratorCell>() {
         }
     }
 }
-
-@DimensionClassifier("kg×m²") interface Inertia
-val KILOGRAM_METER_SQUARED = standardScale<Inertia>()
-
-@DimensionClassifier("N×m×s") interface ViscousFriction
-val NEWTON_METER_SECOND = standardScale<ViscousFriction>()
-
-@DimensionClassifier("rad/s") interface AngularVelocity
-val RADIAN_PER_SECOND = standardScale<AngularVelocity>()
-
-@DimensionClassifier("N×m") interface Torque
-val NEWTON_METER = standardScale<Torque>()
-
-@ScaleClassifier("rps")
-val REVOLUTION_PER_SECOND = RADIAN_PER_SECOND sourceAmplify 1.0 / 0.1591549430919
-// Why is it private in libage? :
-internal infix fun <U> SourceQuantityScale<U>.sourceAmplify(amplify: Double) = SourceQuantityScale<U>(dimensionType, Scale(scale.factor / amplify, scale.base))
 
 /**
  * @param referenceAngularVelocity Reference **ω** for scaling the potential and torque.

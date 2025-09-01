@@ -2,9 +2,8 @@ package org.eln2.mc.common.content
 
 import net.minecraft.world.InteractionResult
 import org.eln2.mc.client.render.FlwModels
-import org.eln2.mc.client.render.foundation.AbstractPartVisual
 import org.eln2.mc.client.render.foundation.BasicPartVisual
-import org.eln2.mc.client.render.foundation.MultipartVisualizationContext
+import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.Cell
 import org.eln2.mc.common.cells.foundation.CellCreateInfo
 import org.eln2.mc.common.cells.foundation.SimObject
@@ -16,7 +15,6 @@ import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3dMask
-
 
 class VoltageSourceCell(ci: CellCreateInfo) : Cell(ci) {
     @SimObject

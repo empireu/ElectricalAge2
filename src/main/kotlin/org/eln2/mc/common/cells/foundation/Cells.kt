@@ -52,14 +52,14 @@ import kotlin.reflect.full.isSuperclassOf
  * @param underlyingCollection The parent subscriber collection that will actually run the subscribers.
  * */
 class TrackedSubscriberCollection(private val underlyingCollection: SubscriberCollection) : SubscriberCollection {
-    private val subscribers = HashMap<Subscriber, SubscriberOptions>()
+    private val subscribers = HashMap<SimulationSubscriber, SubscriberOptions>()
 
-    override fun addSubscriber(parameters: SubscriberOptions, subscriber: Subscriber) {
+    override fun addSubscriber(parameters: SubscriberOptions, subscriber: SimulationSubscriber) {
         require(subscribers.put(subscriber, parameters) == null) { "Duplicate subscriber $subscriber" }
         underlyingCollection.addSubscriber(parameters, subscriber)
     }
 
-    override fun remove(subscriber: Subscriber) {
+    override fun remove(subscriber: SimulationSubscriber) {
         require(subscribers.remove(subscriber) != null) { "Subscriber $subscriber was never added" }
         underlyingCollection.remove(subscriber)
     }

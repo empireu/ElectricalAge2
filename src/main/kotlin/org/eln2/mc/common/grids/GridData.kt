@@ -25,7 +25,7 @@ import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.utils.addUnique
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
-import org.eln2.mc.client.render.SketchExtrusion
+import org.eln2.mc.client.render.foundation.SketchExtrusion
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartBlock
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
@@ -33,7 +33,7 @@ import org.eln2.mc.common.items.foundation.PartItem
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.extensions.*
-import org.eln2.mc.mathematics.MyColor
+import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.mathematics.ceilBlockPos
 import org.eln2.mc.mathematics.floorBlockPos
 import java.util.*

@@ -8,8 +8,9 @@ import net.minecraft.core.BlockPos
 import net.minecraft.world.level.BlockAndTintGetter
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.avg
-import org.ageseries.libage.mathematics.geometry.Vector3d
-import org.eln2.mc.mathematics.*
+import org.eln2.mc.mathematics.directionIncrementX
+import org.eln2.mc.mathematics.directionIncrementY
+import org.eln2.mc.mathematics.directionIncrementZ
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 

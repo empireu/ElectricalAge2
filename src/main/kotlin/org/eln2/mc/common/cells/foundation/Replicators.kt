@@ -107,7 +107,7 @@ class InternalTemperatureReplicatorBehavior(
 
 /**
  * Generalized behavior for sending temperature changes of connected thermal objects to clients.
- * The temperatures are read from the [TemperatureField] of neighbor objects.
+ * The temperatures are read from the [ThermalContactInfo] of neighbor objects.
  * @param cell The cell that owns this behavior.
  * @param consumer The consumer for the changes.
  * */

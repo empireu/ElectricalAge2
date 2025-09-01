@@ -30,7 +30,7 @@ import org.eln2.mc.extensions.getQuantity
 import org.eln2.mc.extensions.useSubTagIfPreset
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.mathematics.MyColor
+import org.eln2.mc.client.render.foundation.MyColor
 import kotlin.math.abs
 import kotlin.math.pow
 

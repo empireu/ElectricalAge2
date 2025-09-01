@@ -1,6 +1,15 @@
 package org.eln2.mc.common.blocks.foundation
 
 import com.mojang.blaze3d.vertex.PoseStack
+import dev.engine_room.flywheel.api.instance.Instance
+import dev.engine_room.flywheel.api.task.Plan
+import dev.engine_room.flywheel.api.visual.DynamicVisual
+import dev.engine_room.flywheel.api.visual.LightUpdatedVisual
+import dev.engine_room.flywheel.api.visual.TickableVisual
+import dev.engine_room.flywheel.api.visualization.VisualizationContext
+import dev.engine_room.flywheel.lib.instance.FlatLit
+import dev.engine_room.flywheel.lib.task.RunnablePlan
+import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.renderer.MultiBufferSource
@@ -49,6 +58,7 @@ import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
+import org.eln2.mc.client.render.foundation.SpecialVisualStorage
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.parts.PartRegistry
@@ -60,12 +70,9 @@ import org.eln2.mc.mathematics.FacingDirection
 import org.eln2.mc.mathematics.toHorizontalFacing
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.function.Consumer
 
-class MultipartBlock : BaseEntityBlock(
-    Properties.copy(Blocks.STONE)
-    .noOcclusion()
-    .destroyTime(0.2f)), SimpleWaterloggedBlock
-{
+class MultipartBlock : BaseEntityBlock(Properties.copy(Blocks.STONE).noOcclusion().destroyTime(0.2f)), SimpleWaterloggedBlock {
     companion object {
         val WATERLOGGED: BooleanProperty = BlockStateProperties.WATERLOGGED
     }
@@ -401,37 +408,6 @@ class MultipartBlock : BaseEntityBlock(
         }*/
 
         return ItemStack(PartRegistry.getPartItem(picked.id))
-    }
-}
-
-class MultipartBlockEntityDummyRenderer : BlockEntityRendererProvider<MultipartBlockEntity> {
-    companion object {
-        private var warned = false
-    }
-
-    override fun create(p0: BlockEntityRendererProvider.Context): BlockEntityRenderer<MultipartBlockEntity> {
-        return Impl()
-    }
-
-    private class Impl : BlockEntityRenderer<MultipartBlockEntity> {
-        override fun render(
-            p0: MultipartBlockEntity,
-            p1: Float,
-            p2: PoseStack,
-            p3: MultiBufferSource,
-            p4: Int,
-            p5: Int,
-        ) {
-            if(warned) {
-                return
-            }
-
-            val player = Minecraft.getInstance().player
-                ?: return
-
-            player.sendSystemMessage(Component.literal("ELN2 only supports rendering with flywheel at the moment"))
-            warned = true
-        }
     }
 }
 
@@ -1487,5 +1463,136 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
 
             entity.tickingRemoveQueue.clear()
         }
+    }
+}
+
+class MultipartBlockEntityDummyRenderer : BlockEntityRendererProvider<MultipartBlockEntity> {
+    companion object {
+        private var warned = false
+    }
+
+    override fun create(p0: BlockEntityRendererProvider.Context): BlockEntityRenderer<MultipartBlockEntity> {
+        return Impl()
+    }
+
+    private class Impl : BlockEntityRenderer<MultipartBlockEntity> {
+        override fun render(
+            p0: MultipartBlockEntity,
+            p1: Float,
+            p2: PoseStack,
+            p3: MultiBufferSource,
+            p4: Int,
+            p5: Int,
+        ) {
+            if(warned) {
+                return
+            }
+
+            val player = Minecraft.getInstance().player
+                ?: return
+
+            player.sendSystemMessage(Component.literal("ELN2 only supports rendering with flywheel at the moment"))
+            warned = true
+        }
+    }
+}
+
+class MultipartVisualizationContext(
+    ctx: VisualizationContext,
+    val parent: MultipartBlockEntityVisual
+) : VisualizationContext by ctx
+
+class MultipartBlockEntityVisual(
+    ctx: VisualizationContext,
+    blockEntity: MultipartBlockEntity,
+    partialTick: Float,
+): AbstractBlockEntityVisual<MultipartBlockEntity>(ctx, blockEntity, partialTick), DynamicVisual, TickableVisual,
+    LightUpdatedVisual {
+    val parts = HashMap<Part, AbstractPartVisual<*>>()
+    val multipartVisualizationContext = MultipartVisualizationContext(visualizationContext, this)
+    val storage = SpecialVisualStorage<AbstractPartVisual<*>>()
+
+    init {
+        blockEntity.parts.values.forEach {
+            addPart(it, partialTick)
+        }
+    }
+
+    override fun _delete() {
+        storage.delete()
+        parts.clear()
+    }
+
+    override fun collectCrumblingInstances(consumer: Consumer<Instance?>?) {
+        // add the part being broken TODO
+    }
+
+    override fun updateLight(partialTick: Float) {
+        parts.values.forEach {
+            it.updateLight(partialTick) // TODO examine what he says about safety
+        }
+    }
+
+    override fun planFrame(): Plan<DynamicVisual.Context> = RunnablePlan
+        .of(::handlePartUpdates)
+        .then(storage.dynamicVisuals)
+
+    override fun planTick(): Plan<TickableVisual.Context> = storage.tickableVisuals
+
+    /**
+     * This method is called per tick. But it runs in parallel with the other multipart visuals.
+     * It dequeues all the part updates that were queued up.
+     * These updates may indicate:
+     *  - New parts added to the multipart.
+     *  - Parts that were destroyed.
+     * */
+    private fun handlePartUpdates(ctx: DynamicVisual.Context) {
+        while (true) {
+            val update = blockEntity.renderUpdates.poll()
+                ?: break
+
+            val part = update.part
+
+            when (update.type) {
+                PartUpdateType.Add -> {
+                    addPart(part, ctx.partialTick())
+
+                    // Can get duplicate adds if the client first receives the parts (and clientAddPart enqueues updates)
+                    // but just then the multipart renderer gets created and calls bindRenderer, which duplicate enqueues some more updates
+                }
+                PartUpdateType.Remove -> {
+                    val visual = parts.remove(part)
+
+                    if(visual != null) {
+                        storage.remove(visual)
+                        visual.delete()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun addPart(part: Part, partialTick: Float) {
+        if (!parts.contains(part)) {
+            val visual = part.createVisual(multipartVisualizationContext)
+
+            if(visual == null) {
+                LOG.debug("Part {} didn't create a visual", part)
+                return
+            }
+
+            storage.add(visual)
+            parts[part] = visual
+
+            visual.updateLight(partialTick)
+        }
+    }
+
+    fun relightInstances(vararg instances: FlatLit?) {
+        relight(pos, *instances)
+    }
+
+    fun relightInstances(instances: Iterable<FlatLit?>) {
+        relight(pos, instances)
     }
 }
