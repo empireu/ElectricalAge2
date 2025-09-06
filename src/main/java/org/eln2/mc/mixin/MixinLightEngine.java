@@ -41,7 +41,7 @@ public abstract class MixinLightEngine {
             chunkSource
         );
 
-        Eln2Kt.getLOG().info("ELN2 Injected Light Reader in " + this + " as " + ELN2$reader);
+        Eln2Kt.getLOG().info("ELN2 Injected Light Reader in {} as {}", this, ELN2$reader);
     }
 
     @Unique

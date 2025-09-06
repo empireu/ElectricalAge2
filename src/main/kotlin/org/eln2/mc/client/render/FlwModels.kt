@@ -4,15 +4,12 @@ import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.eln2.mc.client.render.foundation.PolarModel
 import org.eln2.mc.client.render.foundation.WireConnectionModel
-import org.eln2.mc.common.content.WireConnectionModelPartial
-import org.eln2.mc.client.render.foundation.WirePatchType
 import org.eln2.mc.client.render.foundation.WirePatchPolarModel
-
+import org.eln2.mc.client.render.foundation.WirePatchType
+import org.eln2.mc.common.content.WireConnectionModelPartial
 import org.eln2.mc.resource
 
 object FlwModels {
-    //FIXME
-
     val ELECTRICAL_WIRE_HUB = partialBlock("wire/electrical/hub")
     val ELECTRICAL_WIRE_CONNECTION = wireConnection("wire/electrical/connection_hub", "wire/electrical/connection_full")
 
@@ -50,6 +47,9 @@ object FlwModels {
 
     val MICRO_GRID_ANCHOR = partialBlock("micro_grid_anchor")
     val MICRO_GRID_INTERFACE = partialBlock("micro_grid_interface")
+
+    val LAMP_POLE_BODY = partialBlock("lamp_pole/body")
+    val LAMP_POLE_EMITTER = partialBlock("lamp_pole/emitter")
 
     private fun partial(path: String) = PartialModel.of(resource(path))
 

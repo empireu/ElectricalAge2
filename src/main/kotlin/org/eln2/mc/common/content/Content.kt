@@ -5,6 +5,7 @@
 package org.eln2.mc.common.content
 
 import net.minecraft.client.gui.screens.MenuScreens
+import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.phys.AABB
@@ -40,6 +41,7 @@ import org.eln2.mc.client.render.foundation.ThermalTint
 import org.eln2.mc.common.LightBulbItem
 import org.eln2.mc.common.LightFieldPrimitives
 import org.eln2.mc.common.LightModel
+import org.eln2.mc.common.LightVariantType
 import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
@@ -367,24 +369,31 @@ object Content {
 
     //#region Lights
 
-    val POLAR_LIGHT_CELL = cell(
-        "polar_light",
+    val POLAR_LIGHT_CELL_CONE_45DEG = cell(
+        "polar_light_45deg",
         BasicCellProvider { ci ->
-            PolarLightCell(ci, directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right))
+            PolarLightCell(ci, directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right), LightVariantType.Cone45Deg)
         }
     )
 
-    val TERMINAL_LIGHT_CELL = cell(
-        "terminal_light",
+    val POLAR_LIGHT_CELL_CONE_SPHERE = cell(
+        "polar_light_sphere",
         BasicCellProvider { ci ->
-            TerminalLightCell(ci)
+            PolarLightCell(ci, directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right), LightVariantType.Sphere)
+        }
+    )
+
+    val TERMINAL_LIGHT_CELL_45DEG = cell(
+        "terminal_light_45deg",
+        BasicCellProvider { ci ->
+            TerminalLightCell(ci, LightVariantType.Cone45Deg)
         }
     )
 
     val LIGHT_PART = partAndItem(
         "small_wall_lamp",
         BasicPartProvider(Vector3d(8.0 / 16.0, (1.0 + 2.302) / 16.0, 5.0 / 16.0)) { ci ->
-            PolarPoweredLightPart(ci, POLAR_LIGHT_CELL.get())
+            PolarPoweredLightPart(ci, POLAR_LIGHT_CELL_CONE_45DEG.get())
         }
     )
 
@@ -398,7 +407,7 @@ object Content {
             PartFactory { ci ->
                 TerminalPoweredLightPart(
                     ci,
-                    TERMINAL_LIGHT_CELL.get(),
+                    TERMINAL_LIGHT_CELL_45DEG.get(),
                     neg, pos
                 )
             }
@@ -411,7 +420,6 @@ object Content {
         resistance: Quantity<Resistance>,
         damageRate: Double,
         strength: Double,
-        deviationMax: Double,
         increments: Int = 128,
         baseRadius: Int = 1
     ) : RegistryObject<LightBulbItem> {
@@ -426,11 +434,16 @@ object Content {
                 damageFunction = { v, dt ->
                     dt * (v.power / !powerRating) * damageRate
                 },
-                volumeProvider = LightFieldPrimitives.coneContentOnly(
+                volumeProvider45Deg = LightFieldPrimitives.coneContentOnly(
                     increments,
                     strength,
-                    deviationMax,
+                    PI / 4.0,
                     baseRadius
+                ),
+                volumeProviderSphere = LightFieldPrimitives.sphere(
+                    increments,
+                    strength,
+                    baseRadius.toDouble()
                 )
             )
 
@@ -453,7 +466,6 @@ object Content {
         potentialRating: Quantity<Potential>,
         damageRate: Double,
         strength: Double,
-        deviationMax: Double,
         increments: Int = 128,
         baseRadius: Int = 1
     ) = registerLightBulbPR(
@@ -462,7 +474,6 @@ object Content {
         Quantity((!potentialRating).pow(2) / !powerRating, OHM),
         damageRate,
         strength,
-        deviationMax,
         increments,
         baseRadius
     )
@@ -472,8 +483,7 @@ object Content {
         powerRating = Quantity(100.0, WATT),
         potentialRating = Quantity(12.0, VOLT),
         damageRate = 1e-6,
-        strength = 24.0,
-        deviationMax = PI / 4.0
+        strength = 24.0
     )
 
     val LIGHT_BULB_800V_100W = registerLightBulbPP(
@@ -481,8 +491,7 @@ object Content {
         powerRating = Quantity(100.0, WATT),
         potentialRating = Quantity(800.0, VOLT),
         damageRate = 1e-6,
-        strength = 24.0,
-        deviationMax = PI / 4.0
+        strength = 24.0
     )
 
     private fun gardenLightModel(strength: Double) = SolarLightModel(
@@ -859,4 +868,40 @@ object Content {
     )
 
     //#endregion
+
+    val LAMP_POLE_BLOCK_DELEGATE_MAP = defineDelegateMap("lamp_pole") {
+        val column = registerDelegateOf(
+            AABB(
+                0.325, 0.0, 0.325,
+                0.675, 1.0, 0.675
+            )
+        )
+
+        val lamp = registerDelegateOf(
+            AABB(
+                0.25, 0.0, 0.25,
+                0.75, 0.65, 0.75
+            )
+        )
+
+        principal(0, 2, 0, column)
+        principal(0, 3, 0, column)
+        principal(0, 4, 0, column)
+        principal(0, 5, 0, lamp)
+    }
+
+    val LAMP_POLE_BLOCK = blockOnly("lamp_pole") {
+        LampPoleBlock(POLAR_LIGHT_CELL_CONE_SPHERE, BlockPos(0, 5, 0))
+    }
+
+    val LAMP_POLE_BLOCK_ENTITY = blockEntityOnly("lamp_pole", LAMP_POLE_BLOCK) { pos, state ->
+        LampPoleBlockEntity(pos, state)
+    }
+
+    val LAMP_POLE_BLOCK_ITEM = blockItemOnly("lamp_pole") {
+        BigBlockItem(
+            LAMP_POLE_BLOCK_DELEGATE_MAP.value,
+            LAMP_POLE_BLOCK.get()
+        )
+    }
 }

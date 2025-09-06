@@ -2,6 +2,7 @@ package org.eln2.mc.mixin;
 
 import net.minecraft.client.renderer.chunk.RenderRegionCache;
 import net.minecraft.core.BlockPos;
+import org.eln2.mc.common.grids.GridConnectionManagerClient;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -22,9 +23,8 @@ public abstract class MixinRenderRegionCache {
         RenderRegionCache.ChunkInfo[][] pArrInfo,
         CallbackInfoReturnable<Boolean> cir
     ) {
-        // FIXME
-        /*if(GridConnectionManagerClient.containsRangeVisual(pStart, pEnd)) {
+        if(GridConnectionManagerClient.containsRangeVisual(pStart, pEnd)) {
             cir.setReturnValue(false);
-        }*/
+        }
     }
 }

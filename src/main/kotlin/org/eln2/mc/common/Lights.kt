@@ -1504,14 +1504,22 @@ class LightVolume private constructor(private val variants: Map<Int, Int2ByteMap
 }
 
 /**
- * Describes the behavior of a light source.
+ * Describes the behavior of a light source, and holds the baked light volumes.
+ * @param volumeProvider45Deg Volume constrained to a 45 degree cone.
+ * @param volumeProviderSphere Volume not constrained (spherical).
  * */
 data class LightModel(
     val temperatureFunction: LightTemperatureFunction,
     val resistanceFunction: LightResistanceFunction,
     val damageFunction: LightDamageFunction,
-    val volumeProvider: LocatorLightVolumeProvider,
-)
+    val volumeProvider45Deg: LocatorLightVolumeProvider,
+    val volumeProviderSphere: LocatorLightVolumeProvider
+) {
+    fun getVolumeProvider(variant: LightVariantType) = when(variant) {
+        LightVariantType.Cone45Deg -> volumeProvider45Deg
+        LightVariantType.Sphere -> volumeProviderSphere
+    }
+}
 
 /**
  * Event sent when the state increment changes.
@@ -1547,7 +1555,14 @@ interface LightBulbEmitterView {
     fun resetValues()
 }
 
-class LightBulbItem(val model: LightModel) : Item(Properties()) {
+
+enum class LightVariantType {
+    Cone45Deg,
+    Sphere
+}
+
+class LightBulbItem(
+    val model: LightModel) : Item(Properties()) {
     companion object {
         private const val LIFE = "life"
         private const val ID = "id"
@@ -1849,7 +1864,11 @@ class LightVolumeInstance(val level: ServerLevel, val placementPosition: BlockPo
     }
 
     companion object {
-        fun loadLightFromBulb(instance: LightVolumeInstance, emitter: LightBulbEmitterView, stack: ItemStack) : LightLoadResult {
+        fun loadLightFromBulb(
+            instance: LightVolumeInstance,
+            emitter: LightBulbEmitterView,
+            stack: ItemStack
+        ) : LightLoadResult {
             var result = LightLoadResult.Fail
 
             val existingItem = emitter.lightBulb

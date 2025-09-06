@@ -1,0 +1,5 @@
+{
+    "loader": "forge:obj",
+    "model": "eln2:models/block/lamp_pole/body.obj",
+    "flip_v": true
+}

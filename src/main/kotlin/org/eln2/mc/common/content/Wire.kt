@@ -880,7 +880,7 @@ private fun getIsFilledVariant(connections: List<Int>) = if (connections.size ==
     c1.directionPart == c2.directionPart.opposite
 } else false
 
-data class WireConnectionModelPartial(val planar: PolarModel, val inner: PolarModel, val wrapped: PolarModel, ) {
+data class WireConnectionModelPartial(val planar: PolarModel, val inner: PolarModel, val wrapped: PolarModel) {
     val variants = mapOf(
         CellPartConnectionMode.Planar to planar,
         CellPartConnectionMode.Inner to inner,

@@ -1,17 +1,33 @@
 package org.eln2.mc.common.content
 
+import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.visual.DynamicVisual
+import dev.engine_room.flywheel.api.visual.SectionTrackedVisual
+import dev.engine_room.flywheel.api.visual.ShaderLightVisual
+import dev.engine_room.flywheel.api.visualization.VisualizationContext
+import dev.engine_room.flywheel.lib.instance.FlatLit
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
+import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
+import it.unimi.dsi.fastutil.longs.LongSet
+import net.minecraft.client.renderer.LevelRenderer
+import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
+import net.minecraft.core.SectionPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
+import net.minecraft.world.entity.player.Player
+import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.phys.BlockHitResult
+import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.registerHandler
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.BoundingBox3d
@@ -22,24 +38,15 @@ import org.ageseries.libage.sim.electrical.mna.POSITIVE
 import org.ageseries.libage.sim.electrical.mna.component.IResistor
 import org.ageseries.libage.sim.electrical.mna.component.updateResistance
 import org.eln2.mc.*
-import org.eln2.mc.common.parts.foundation.AbstractPartVisual
-import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
+import org.eln2.mc.client.render.FlwMaterials
+import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.FlwInstanceTypes
+import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.client.render.foundation.SpecialModels
 import org.eln2.mc.client.render.foundation.partTransformation
 import org.eln2.mc.common.*
-import org.eln2.mc.common.cells.foundation.Behavior
-import org.eln2.mc.common.cells.foundation.Cell
-import org.eln2.mc.common.cells.foundation.CellCreateInfo
-import org.eln2.mc.common.cells.foundation.CellProvider
-import org.eln2.mc.common.cells.foundation.Node
-import org.eln2.mc.common.cells.foundation.PolarResistorObjectVirtual
-import org.eln2.mc.common.cells.foundation.SimObject
-import org.eln2.mc.common.cells.foundation.SubscriberCollection
-import org.eln2.mc.common.cells.foundation.SubscriberPhase
-import org.eln2.mc.common.cells.foundation.TemperatureExplosionBehavior
-import org.eln2.mc.common.cells.foundation.TemperatureExplosionBehaviorOptions
-import org.eln2.mc.common.cells.foundation.TerminalResistorObjectVirtual
-import org.eln2.mc.common.cells.foundation.addPre
-import org.eln2.mc.common.cells.foundation.self
+import org.eln2.mc.common.blocks.foundation.*
+import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.events.EventListener
 import org.eln2.mc.common.events.EventQueue
 import org.eln2.mc.common.events.Scheduler
@@ -50,15 +57,16 @@ import org.eln2.mc.common.network.serverToClient.with
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.data.PoleMap
 import org.eln2.mc.extensions.evaluateDiffuseIrradianceFactor
+import org.eln2.mc.extensions.plus
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.client.render.foundation.MyColor
 import java.nio.ByteBuffer
+import java.util.function.Consumer
 import kotlin.math.absoluteValue
 import kotlin.math.round
 
-abstract class LightCell(ci: CellCreateInfo) : Cell(ci), LightView, LightBulbEmitterView {
+abstract class LightCell(ci: CellCreateInfo, val lightVariantType: LightVariantType) : Cell(ci), LightView, LightBulbEmitterView {
     companion object {
         private const val RENDER_EPS = 1e-4
         private const val RESISTANCE_EPS = 0.1
@@ -152,7 +160,10 @@ abstract class LightCell(ci: CellCreateInfo) : Cell(ci), LightView, LightBulbEmi
         }
 
         // Fetch volume if not fetched:
-        volume = volume ?: lightModel.volumeProvider.getVolume(locator)
+        volume = volume ?: lightModel
+            .getVolumeProvider(lightVariantType)
+            .getVolume(locator)
+
         val volume = volume!!
 
         val gameEventReceiver = this.serverThreadReceiver
@@ -208,7 +219,7 @@ abstract class LightCell(ci: CellCreateInfo) : Cell(ci), LightView, LightBulbEmi
     }
 }
 
-class PolarLightCell(ci: CellCreateInfo, map: PoleMap) : LightCell(ci) {
+class PolarLightCell(ci: CellCreateInfo, map: PoleMap, variantType: LightVariantType) : LightCell(ci, variantType) {
     @SimObject
     override val resistor = PolarResistorObjectVirtual(self(), map)
 
@@ -217,7 +228,7 @@ class PolarLightCell(ci: CellCreateInfo, map: PoleMap) : LightCell(ci) {
     }
 }
 
-class TerminalLightCell(ci: CellCreateInfo, plus: Int = POSITIVE, minus: Int = NEGATIVE) : LightCell(ci) {
+class TerminalLightCell(ci: CellCreateInfo, variantType: LightVariantType, plus: Int = POSITIVE, minus: Int = NEGATIVE) : LightCell(ci, variantType) {
     @Node
     val grid = GridNode(self())
 
@@ -231,10 +242,10 @@ class TerminalLightCell(ci: CellCreateInfo, plus: Int = POSITIVE, minus: Int = N
 
 abstract class PoweredLightPart<T : LightCell>(
     ci: PartCreateInfo,
-    cellProvider: CellProvider<T>
+    cellProvider: CellProvider<T>,
 ) : GridCellPart<LightCell>(ci, cellProvider), EventListener, WrenchRotatablePart, ComponentDisplay, LightFixtureGameObject {
     @ClientOnly
-    override var visualBrightness: Double = 0.0
+    override var visualBrightness = 0.0
         protected set
 
     val instance = serverOnlyHolder {
@@ -361,7 +372,7 @@ abstract class PoweredLightPart<T : LightCell>(
 
 class PolarPoweredLightPart(
     ci: PartCreateInfo,
-    cellProvider: CellProvider<PolarLightCell>
+    cellProvider: CellProvider<PolarLightCell>,
 ) : PoweredLightPart<PolarLightCell>(ci, cellProvider)
 
 class TerminalPoweredLightPart(
@@ -396,13 +407,13 @@ class TerminalPoweredLightPart(
 data class SolarLightModel(
     val rechargeRate: Double,
     val dischargeRate: Double,
-    val volumeProvider: LocatorLightVolumeProvider
+    val volumeProvider: LocatorLightVolumeProvider,
 )
 
 class SolarLightPart(
     ci: PartCreateInfo,
     val model: SolarLightModel,
-    normalSupplier: ((SolarLightPart) -> Vector3d)? = null
+    normalSupplier: ((SolarLightPart) -> Vector3d)? = null,
 ) : Part(ci), TickablePart, ComponentDisplay, LightFixtureGameObject {
     val volume = model.volumeProvider.getVolume(placement.createLocator())
     val normal = if(normalSupplier == null) placement.face.vector3d else normalSupplier(this)
@@ -541,7 +552,7 @@ class SolarLightPart(
 }
 
 /**
- * Implemented by game objects that are rendered with a [LightFixtureRenderer].
+ * Implemented by game objects that are rendered with a [LightFixturePartVisual].
  * The [visualBrightness] is polled by the renderer, so safety must be guaranteed.
  * */
 interface LightFixtureGameObject {
@@ -553,7 +564,7 @@ interface LightFixtureGameObject {
     val visualBrightness : Double
 }
 
-class LightFixtureRenderer<P>(
+class LightFixturePartVisual<P>(
     ctx: MultipartVisualizationContext,
     part: P,
     cageModel: PartialModel,
@@ -604,5 +615,217 @@ class LightFixtureRenderer<P>(
     override fun _delete() {
         cageInstance.delete()
         emitterInstance.delete()
+    }
+}
+
+class LampPoleBlock(private val cellProvider: RegistryObject<CellProvider<PolarLightCell>>, val lightOffset: BlockPos) : CellBlock<PolarLightCell>() {
+    @Deprecated("Deprecated in Java", ReplaceWith("true"))
+    override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction): Boolean {
+        return true
+    }
+
+    override fun getCellProvider() = cellProvider.get()
+    override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = LampPoleBlockEntity(pPos, pState)
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun use(
+        pState: BlockState,
+        pLevel: Level,
+        pPos: BlockPos,
+        pPlayer: Player,
+        pHand: InteractionHand,
+        pHit: BlockHitResult,
+    ): InteractionResult {
+        val blockEntity = pLevel.getBlockEntity(pPos) as? LampPoleBlockEntity
+        return blockEntity?.onUsedBy(pPlayer, pHand) ?: InteractionResult.FAIL
+    }
+}
+
+class LampPoleBlockEntityVisual(
+    ctx: VisualizationContext,
+    blockEntity: LampPoleBlockEntity,
+    partialTick: Float,
+) : AbstractBlockEntityVisual<LampPoleBlockEntity>(ctx, blockEntity, partialTick), ShaderLightVisual {
+    val body = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, SpecialModels.partial(FlwModels.LAMP_POLE_BODY, FlwMaterials.TRANSLUCENT_SMOOTH_LIT))
+        .createInstance()
+        .also {
+            it.translate(visualPosition)
+            it.center()
+            it.rotateToFace(blockEntity.representativeFacing.clockWise)
+            it.uncenter()
+        }
+
+    val emitter = visualizationContext.instancerProvider()
+        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, SpecialModels.partial(FlwModels.LAMP_POLE_EMITTER, FlwMaterials.SMOOTH_LIT))
+        .createInstance()
+        .also {
+            it.translate(
+                visualPosition.x.toDouble(),
+                visualPosition.y.toDouble() + 5.0,
+                visualPosition.z.toDouble()
+            )
+            it.center()
+            it.rotateToFace(blockEntity.representativeFacing.clockWise)
+            it.uncenter()
+        }
+
+    override fun setSectionCollector(sectionCollector: SectionTrackedVisual.SectionCollector) {
+        this.lightSections = sectionCollector
+
+        val s0 = SectionPos.asLong(pos)
+        val s1 = SectionPos.asLong(pos.above(5))
+
+        if(s0 == s1) {
+            lightSections.sections(LongSet.of(s0))
+        }
+        else {
+            lightSections.sections(LongSet.of(s0, s1))
+        }
+    }
+
+    override fun collectCrumblingInstances(consumer: Consumer<Instance?>) {
+        consumer.accept(body)
+        consumer.accept(emitter)
+    }
+
+    override fun updateLight(partialTick: Float) {
+        // No-op since it looks like the smooth lights handle themselves
+        //FlatLit.relight(LevelRenderer.getLightColor(level, pos.above(2)), body)
+    }
+
+    override fun _delete() {
+        body.delete()
+        emitter.delete()
+    }
+}
+
+class LampPoleBlockEntity(pos: BlockPos, state: BlockState) :
+    CellBlockEntity<PolarLightCell>(pos, state, Content.LAMP_POLE_BLOCK_ENTITY.get()),
+    BigBlockRepresentativeBlockEntity<LampPoleBlockEntity>,
+    EventListener,
+    ComponentDisplay,
+    LightFixtureGameObject
+{
+    val instance = serverOnlyHolder {
+        LightVolumeInstance(
+            level as ServerLevel,
+            blockPos + (blockState.block as LampPoleBlock).lightOffset
+        )
+    }
+
+    override var visualBrightness = 0.0
+        private set
+
+    override val delegateMap: MultiblockDelegateMap
+        get() = Content.LAMP_POLE_BLOCK_DELEGATE_MAP.value
+
+    override fun setDestroyed() {
+        destroyDelegates()
+
+        val level = this.level
+        if (level != null && !level.isClientSide) {
+            instance().destroyCells()
+        }
+
+        super.setDestroyed()
+    }
+
+    fun onUsedBy(player: Player, hand: InteractionHand): InteractionResult {
+        val level = this.level ?: return InteractionResult.FAIL
+
+        if (level.isClientSide || hand != InteractionHand.MAIN_HAND) {
+            return InteractionResult.PASS
+        }
+
+        val instance = instance()
+        val stack = player.mainHandItem
+
+        var result = LightLoadResult.Fail
+
+        cell.graph.runSuspended {
+            result = LightVolumeInstance.loadLightFromBulb(instance, cell, stack)
+        }
+
+        return when (result) {
+            LightLoadResult.RemoveExisting -> {
+                sendClientBrightness(0.0)
+                InteractionResult.SUCCESS
+            }
+
+            LightLoadResult.AddNew -> {
+                InteractionResult.CONSUME
+            }
+
+            LightLoadResult.Fail -> {
+                InteractionResult.FAIL
+            }
+        }
+    }
+
+    @ServerOnly
+    @OnServerThread
+    override fun onCellAcquired() {
+        super.onCellAcquired()
+        val events = Scheduler.register(this)
+
+        events.registerHandler(this::onVolumeUpdated)
+        events.registerHandler(this::onLightBurnedOut)
+
+        cell.bind(
+            serverThreadAccess = Scheduler.getEventAccess(this),
+            renderBrightnessConsumer = ::sendClientBrightness,
+            true
+        )
+    }
+
+    private fun onVolumeUpdated(event: VolumetricLightChangeEvent) {
+        // Item is only mutated on onUsedBy (server thread), when the bulb is added/removed, so it is safe to access here
+        // if it is null, it means we got this update possibly after the bulb was removed by a player, so we will ignore it
+        if (!hasCell || cell.lightBulb == null) {
+            return
+        }
+
+        instance().checkoutState(event.volume, event.targetState)
+    }
+
+    @ServerOnly
+    private fun sendClientBrightness(value: Double) {
+        //val buffer = ByteBuffer.allocate(8) with value
+        //enqueueBulkMessage(buffer.array())
+    }
+
+    @ServerOnly
+    @OnServerThread
+    private fun onLightBurnedOut(event: LightBurnedOutEvent) {
+        sendClientBrightness(0.0)
+        instance().destroyCells()
+        level?.playLocalSound(
+            blockPos.x.toDouble(),
+            blockPos.y.toDouble(),
+            blockPos.z.toDouble(),
+            SoundEvents.FIRE_EXTINGUISH,
+            SoundSource.BLOCKS,
+            1.0f,
+            randomFloat(0.9f, 1.1f),
+            false
+        )
+    }
+
+    override fun onChunkUnloaded() {
+        super.onChunkUnloaded()
+
+        if(hasCell) {
+            cell.unbind()
+            Scheduler.remove(this)
+            instance().destroyCells()
+        }
+    }
+
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        builder.quantity(cell.thermalWire.thermalBody.temperature)
+        builder.current(cell.current)
+        builder.power(cell.power)
+        builder.integrity(cell.life)
     }
 }

@@ -1466,37 +1466,6 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     }
 }
 
-class MultipartBlockEntityDummyRenderer : BlockEntityRendererProvider<MultipartBlockEntity> {
-    companion object {
-        private var warned = false
-    }
-
-    override fun create(p0: BlockEntityRendererProvider.Context): BlockEntityRenderer<MultipartBlockEntity> {
-        return Impl()
-    }
-
-    private class Impl : BlockEntityRenderer<MultipartBlockEntity> {
-        override fun render(
-            p0: MultipartBlockEntity,
-            p1: Float,
-            p2: PoseStack,
-            p3: MultiBufferSource,
-            p4: Int,
-            p5: Int,
-        ) {
-            if(warned) {
-                return
-            }
-
-            val player = Minecraft.getInstance().player
-                ?: return
-
-            player.sendSystemMessage(Component.literal("ELN2 only supports rendering with flywheel at the moment"))
-            warned = true
-        }
-    }
-}
-
 class MultipartVisualizationContext(
     ctx: VisualizationContext,
     val parent: MultipartBlockEntityVisual

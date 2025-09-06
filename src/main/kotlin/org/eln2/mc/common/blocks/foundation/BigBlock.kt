@@ -212,9 +212,9 @@ interface BigBlockRepresentativeBlockEntity<Self> : MultiblockRepresentative whe
 }
 
 open class MultiblockDelegateBlock(properties: Properties? = null) : BaseEntityBlock(
-    properties ?: Properties.copy(Blocks.STONE)
-        .noOcclusion()
-        .destroyTime(0.2f))
+    properties ?: Properties.copy(Blocks.STONE).noOcclusion()
+        .destroyTime(0.2f)
+)
 {
     companion object {
         val SKIP_RENDERING: BooleanProperty = BooleanProperty.create("skip_rendering")
@@ -369,6 +369,8 @@ open class MultiblockDelegateBlockWithCustomCollider(properties: Properties? = n
         pPos: BlockPos,
         pContext: CollisionContext
     ): VoxelShape = getDelegateCollider(pState)
+
+    override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction) = true
 }
 
 class MultiblockDelegateBlockEntity(pPos: BlockPos, pBlockState: BlockState) :

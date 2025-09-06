@@ -8,12 +8,18 @@ import it.unimi.dsi.fastutil.doubles.Double2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntArrayList
 import net.minecraft.client.Camera
+import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.LevelRenderer
+import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderer
+import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider
 import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.client.resources.model.BakedModel
+import net.minecraft.network.chat.Component
 import net.minecraft.util.FastColor
 import net.minecraft.util.RandomSource
+import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.phys.shapes.Shapes
 import net.minecraft.world.phys.shapes.VoxelShape
 import net.minecraftforge.client.model.data.ModelData
@@ -25,6 +31,7 @@ import org.ageseries.libage.mathematics.*
 import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
 import org.eln2.mc.client.render.foundation.ThermalTint.Companion.DEFAULT
+import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.extensions.bind
 import org.eln2.mc.extensions.cast
 import org.eln2.mc.requireIsOnRenderThread
@@ -564,5 +571,36 @@ value class MyColor(val data : Int) {
         MemoryUtil.memPutByte(ptr + 1, g.toByte())
         MemoryUtil.memPutByte(ptr + 2, b.toByte())
         MemoryUtil.memPutByte(ptr + 3, a.toByte())
+    }
+}
+
+class DummyBlockEntityRendererProvider<T : BlockEntity> : BlockEntityRendererProvider<T> {
+    companion object {
+        private var warned = false
+    }
+
+    override fun create(p0: BlockEntityRendererProvider.Context): BlockEntityRenderer<T> {
+        return Impl()
+    }
+
+    private class Impl<T : BlockEntity> : BlockEntityRenderer<T> {
+        override fun render(
+            p0: T,
+            p1: Float,
+            p2: PoseStack,
+            p3: MultiBufferSource,
+            p4: Int,
+            p5: Int,
+        ) {
+            if(warned) {
+                return
+            }
+
+            val player = Minecraft.getInstance().player
+                ?: return
+
+            player.sendSystemMessage(Component.literal("ELN2 only supports rendering with flywheel at the moment!"))
+            warned = true
+        }
     }
 }

@@ -16,10 +16,11 @@ import net.minecraftforge.server.ServerLifecycleHooks
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.DebugVisualizer
+import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
 import org.eln2.mc.common.blocks.BlockRegistry
-import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityDummyRenderer
 import org.eln2.mc.common.cells.foundation.CellGraph
 import org.eln2.mc.common.cells.foundation.CellGraphManager
+import org.eln2.mc.common.content.Content
 import org.eln2.mc.common.events.schedulePost
 import org.eln2.mc.common.grids.GridCollisions
 import org.eln2.mc.common.grids.GridConnectionManagerClient
@@ -37,7 +38,12 @@ object ModEvents {
     fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
         event.registerBlockEntityRenderer(
             BlockRegistry.MULTIPART_BLOCK_ENTITY.get(),
-            MultipartBlockEntityDummyRenderer()
+            DummyBlockEntityRendererProvider()
+        )
+
+        event.registerBlockEntityRenderer(
+            Content.LAMP_POLE_BLOCK_ENTITY.get(),
+            DummyBlockEntityRendererProvider()
         )
     }
 

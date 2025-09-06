@@ -6,6 +6,7 @@ import dev.engine_room.flywheel.api.instance.InstanceType
 import dev.engine_room.flywheel.api.layout.FloatRepr
 import dev.engine_room.flywheel.api.layout.IntegerRepr
 import dev.engine_room.flywheel.api.layout.LayoutBuilder
+import dev.engine_room.flywheel.api.material.Material
 import dev.engine_room.flywheel.api.model.Model
 import dev.engine_room.flywheel.api.visual.DynamicVisual
 import dev.engine_room.flywheel.api.visual.TickableVisual
@@ -38,6 +39,7 @@ import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
 import org.eln2.mc.buildDirectionTable
+import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.WirePatchType.Inner
 import org.eln2.mc.client.render.foundation.WirePatchType.Wrapped
@@ -93,9 +95,14 @@ object FlwVisualizerRegistry {
             Content.GRID_PASS_THROUGH_POLE_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer({ ctx, blockEntity, partialTick ->
                 TestBlockEntityVisual(ctx, blockEntity, partialTick,FlwModels.POLE_TEMPORARY) { instance, renderer ->
-                    instance.translate(renderer.visualPosition).scale(1f, 3f, 1f)
+                    instance.translate(renderer.visualPosition)
                 }
             }) { true }
+        )
+
+        VisualizerRegistry.setVisualizer(
+            Content.LAMP_POLE_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::LampPoleBlockEntityVisual) { true }
         )
     }
 
@@ -109,7 +116,7 @@ object FlwVisualizerRegistry {
         }
 
         setPartVisualizer<SolarLightPart>(Content.TALL_GARDEN_LIGHT.part.get()) { ctx, part ->
-            LightFixtureRenderer(
+            LightFixturePartVisual(
                 ctx, part,
                 FlwModels.TALL_GARDEN_LIGHT_CAGE,
                 FlwModels.TALL_GARDEN_LIGHT_EMITTER
@@ -117,7 +124,7 @@ object FlwVisualizerRegistry {
         }
 
         setPartVisualizer<PolarPoweredLightPart>(Content.LIGHT_PART.part.get()) { ctx, part ->
-            LightFixtureRenderer(
+            LightFixturePartVisual(
                 ctx, part,
                 FlwModels.SMALL_WALL_LAMP_CAGE,
                 FlwModels.SMALL_WALL_LAMP_EMITTER
@@ -125,7 +132,7 @@ object FlwVisualizerRegistry {
         }
 
         setPartVisualizer<TerminalPoweredLightPart>(Content.LIGHT_PART_MICRO_GRID.part.get()) { ctx, part ->
-            LightFixtureRenderer(
+            LightFixturePartVisual(
                 ctx, part,
                 FlwModels.SMALL_WALL_LAMP_CAGE_MICRO_GRID,
                 FlwModels.SMALL_WALL_LAMP_EMITTER
@@ -312,6 +319,20 @@ class SpecialVisualStorage<V : Visual> {
             tickableVisuals.remove(visual)
         }
     }
+}
+
+object SpecialModels {
+    private val PARTIAL_WITH_MATERIAL = RendererReloadCache<PartialWithMaterial, Model> { (partial, material) ->
+        BakedModelBuilder.create(partial.get())
+            .materialFunc { _, _ -> material }
+            .build()
+    }
+
+    private data class PartialWithMaterial(val partialModel: PartialModel, val material: Material)
+
+    fun partial(model: PartialModel, material: Material) = PARTIAL_WITH_MATERIAL.get(
+        PartialWithMaterial(model, material)
+    )
 }
 
 /**
@@ -836,7 +857,7 @@ class TestBlockEntityVisual<T : BlockEntity>(
     transformer: (instance: TransformedInstance, visual: TestBlockEntityVisual<T>) -> Unit,
 ) : AbstractBlockEntityVisual<T>(ctx, blockEntity, partialTick) {
     var instance: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
+        .instancer(InstanceTypes.TRANSFORMED, SpecialModels.partial(model, FlwMaterials.TRANSLUCENT_SMOOTH_LIT))
         .createInstance()
         .also { transformer(it, this) }
 
