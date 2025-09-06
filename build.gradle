@@ -210,8 +210,7 @@ dependencies {
 
     implementation fg.deobf("curse.maven:jade-324717:4801177")
 
-    compileOnly fg.deobf("dev.engine-room.flywheel:flywheel-forge-api-${minecraft_version}:${flywheel_version}")
-    runtimeOnly fg.deobf("dev.engine-room.flywheel:flywheel-forge-${minecraft_version}:${flywheel_version}")
+    implementation fg.deobf("dev.engine-room.flywheel:flywheel-forge-${minecraft_version}:${flywheel_version}")
 
     implementation fg.deobf("maven.modrinth:embeddium:${embeddium_version}")
 
@@ -249,6 +248,7 @@ mixin {
 
     config "eln2.mixins.json"
     config "eln2.mixins.sodium.json"
+    config "eln2.mixins.flywheel.json"
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.
