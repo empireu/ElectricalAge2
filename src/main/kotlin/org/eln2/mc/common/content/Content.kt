@@ -73,9 +73,12 @@ import org.eln2.mc.data.KILOGRAM_METER_SQUARED
 import org.eln2.mc.data.Locators
 import org.eln2.mc.data.NEWTON_METER
 import org.eln2.mc.data.NEWTON_METER_SECOND
+import org.eln2.mc.data.Pole
+import org.eln2.mc.data.PoleMap
 import org.eln2.mc.data.REVOLUTION_PER_SECOND
 import org.eln2.mc.data.cylinderResistance
 import org.eln2.mc.data.directionPoleMapPlanar
+import org.eln2.mc.data.findDirActualPlanarOrNull
 import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.mathematics.Base6Direction3d
@@ -562,26 +565,45 @@ object Content {
         "electrical_heat_engine",
         BasicCellProvider.setup {
             // The electrical plus and minus:
-            val electricalA = Base6Direction3d.Front
-            val electricalB = Base6Direction3d.Back
+            val electricalA = Base6Direction3d.Left
+            val electricalB = Base6Direction3d.Right
 
-            // The hot and cold side:
-            val thermalA = Base6Direction3d.Left
-            val thermalB = Base6Direction3d.Right
+            // The hot side:
+            val thermalA = Base6Direction3d.Front
 
-            val electricalMap = directionPoleMapPlanar(plusDir = electricalA, minusDir = electricalB)
-            val thermalMap = directionPoleMapPlanar(plusDir = thermalA, minusDir = thermalB)
+            val electricalMap = directionPoleMapPlanar(
+                plusDir = electricalA,
+                minusDir = electricalB
+            )
 
-            val thermalDefinition = ThermalMassDefinition(
+            val thermalMap = PoleMap { c1, c2 ->
+                when (c1.locator.findDirActualPlanarOrNull(c2.locator)) {
+                    thermalA -> Pole.Minus
+                    else -> null
+                }
+            }
+
+
+            val coldSideDefinition = ThermalMassDefinition(
                 ChemicalElement.Copper.asMaterial,
                 mass = Quantity(5.0, KILOGRAM)
             )
 
-            val leakage = ConnectionParameters(
+            val hotSideDefinition = ThermalMassDefinition(
+                ChemicalElement.Copper.asMaterial,
+                mass = Quantity(5.0, KILOGRAM)
+            )
+
+            // Radiator:
+            val leakageCold = ConnectionParameters(
+                conductance = Quantity(10.0, WATT_PER_KELVIN)
+            )
+
+            val leakageHot = ConnectionParameters(
                 conductance = Quantity(0.1, WATT_PER_KELVIN)
             )
 
-            val generatorModel = ThermalElectricalGeneratorModel(
+            val generatorModel = ThermalElectricGeneratorModel(
                 Quantity(20.0, REVOLUTION_PER_SECOND),
                 Quantity(120.0, VOLT),
                 0.5,
@@ -612,8 +634,8 @@ object Content {
                     it,
                     electricalMap,
                     thermalMap,
-                    thermalDefinition, thermalDefinition,
-                    leakage, leakage,
+                    coldSideDefinition, hotSideDefinition,
+                    leakageCold, leakageHot,
                     generatorModel,
                     0.075,
                     hemispheres[it.locator.transformPartWorld(Base6Direction3d.Left)]!!,
@@ -621,7 +643,7 @@ object Content {
                 )
 
                 cell.source.ruleSet.withDirectionRulePlanar(electricalA + electricalB)
-                cell.thermalBipole.ruleSet.withDirectionRulePlanar(thermalA + thermalB)
+                cell.thermalBipole.ruleSet.withDirectionRulePlanar(thermalA)
                 cell
             }
         }

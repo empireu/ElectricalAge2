@@ -10,19 +10,18 @@ import org.ageseries.libage.data.*
  * */
 fun Quantity<ElectricalResistivity>.cylinderResistance(L: Quantity<Distance>, A: Quantity<Area>) = Quantity((!this * !L) / !A, OHM)
 @DimensionClassifier("kg×m²") interface Inertia
-
 val KILOGRAM_METER_SQUARED = standardScale<Inertia>()
 
 @DimensionClassifier("Nms") interface ViscousFriction
-
 val NEWTON_METER_SECOND = standardScale<ViscousFriction>()
 
-@DimensionClassifier("rad/s") interface AngularVelocity
+@DimensionClassifier("rad") interface Angle
+val RADIAN = standardScale<Angle>()
 
+@DimensionClassifier("rad/s") interface AngularVelocity
 val RADIAN_PER_SECOND = standardScale<AngularVelocity>()
 
 @DimensionClassifier("Nm") interface Torque
-
 val NEWTON_METER = standardScale<Torque>()
 
 @ScaleClassifier("rps")

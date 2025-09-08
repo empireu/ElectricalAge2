@@ -2,6 +2,12 @@
 
 package org.eln2.mc.common.content
 
+import dev.engine_room.flywheel.api.visual.DynamicVisual
+import dev.engine_room.flywheel.lib.instance.InstanceTypes
+import dev.engine_room.flywheel.lib.instance.TransformedInstance
+import dev.engine_room.flywheel.lib.material.Materials
+import dev.engine_room.flywheel.lib.model.Models
+import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import kotlinx.serialization.Serializable
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.core.BlockPos
@@ -35,6 +41,7 @@ import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.items.ItemStackHandler
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.nz
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.ConnectionParameters
@@ -42,19 +49,29 @@ import org.ageseries.libage.sim.STANDARD_TEMPERATURE
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
+import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.*
+import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.FlwInstanceTypes
+import org.eln2.mc.client.render.foundation.SpecialModels
+import org.eln2.mc.client.render.foundation.ThermalTint
+import org.eln2.mc.client.render.foundation.TransformedLightOverrideInstance
+import org.eln2.mc.client.render.foundation.partTransformation
 import org.eln2.mc.common.blocks.foundation.CellBlock
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
+import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.containers.ContainerHelper
 import org.eln2.mc.common.containers.MyAbstractContainerScreen
 import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
+import org.eln2.mc.common.parts.foundation.AbstractPartVisual
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.control.PIDController
 import org.eln2.mc.data.AngularVelocity
+import org.eln2.mc.data.Average3d
 import org.eln2.mc.data.Inertia
 import org.eln2.mc.data.NEWTON_METER
 import org.eln2.mc.data.PoleMap
@@ -67,6 +84,7 @@ import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3dMask
+import java.nio.ByteBuffer
 import kotlin.math.*
 
 /**
@@ -436,7 +454,7 @@ class HeatGeneratorBlock : CellBlock<HeatGeneratorCell>() {
  * @param coreConstLoss Constant power loss in the core of the generator.
  * @param coreDependentLoss Power loss in the core of the generator, dependent on **ω** (W / (rad/s)).
  * */
-data class ThermalElectricalGeneratorModel(
+data class ThermalElectricGeneratorModel(
     val referenceAngularVelocity: Quantity<AngularVelocity>,
     val nominalPotential: Quantity<Potential>,
     val etaFactorEngine: Double,
@@ -446,7 +464,7 @@ data class ThermalElectricalGeneratorModel(
     val etaElectrical: Double, val coreConstLoss: Quantity<Power>, val coreDependentLoss: Double
 )
 
-class ThermalElectricalGenerator(val coldSide: ThermalMass, val hotSide: ThermalMass, val model: ThermalElectricalGeneratorModel) {
+class ThermalElectricGenerator(val coldSide: ThermalMass, val hotSide: ThermalMass, val model: ThermalElectricGeneratorModel) {
     /**
      * Gets the current angular velocity of the shaft.
      * */
@@ -460,7 +478,7 @@ class ThermalElectricalGenerator(val coldSide: ThermalMass, val hotSide: Thermal
         private set
 
     /**
-     * Gets the efficiency of the engine ([ThermalElectricalGeneratorModel.etaFactorEngine] × Carnot).
+     * Gets the efficiency of the engine ([ThermalElectricGeneratorModel.etaFactorEngine] × Carnot).
      * */
     var etaEngine = 0.0
         private set
@@ -614,11 +632,11 @@ class ElectricalHeatEngineCell(
     ci: CellCreateInfo,
     electricalMap: PoleMap,
     thermalMap: PoleMap,
-    b1Def: ThermalMassDefinition,
-    b2Def: ThermalMassDefinition,
-    b1Leakage: ConnectionParameters,
-    b2Leakage: ConnectionParameters,
-    generatorModel: ThermalElectricalGeneratorModel,
+    coldDef: ThermalMassDefinition,
+    hotDef: ThermalMassDefinition,
+    coldLeakage: ConnectionParameters,
+    hotLeakage: ConnectionParameters,
+    generatorModel: ThermalElectricGeneratorModel,
     sourceResistance: Double,
     radiantInfoB1: RadiantBodyEmissionDescription?,
     radiantInfoB2: RadiantBodyEmissionDescription?
@@ -632,14 +650,19 @@ class ElectricalHeatEngineCell(
     val thermalBipole = ThermalBipoleObject(
         this,
         thermalMap,
-        b1Def(), b2Def(),
-        b1Leakage, b2Leakage
+        coldDef(), hotDef(),
+        coldLeakage, hotLeakage
     )
 
     val cold by thermalBipole::b1
     val hot by thermalBipole::b2
 
-    val generator = ThermalElectricalGenerator(cold, hot,  generatorModel)
+    val generator = ThermalElectricGenerator(cold, hot,  generatorModel)
+
+    var shaftRotation = Rotation2d.identity
+        private set
+
+    val kineticState get() = RotatingKineticState(shaftRotation.ln(), !generator.angularVelocity)
 
     @Behavior
     val radiantEmitter = if(radiantInfoB1 != null || radiantInfoB2 != null) {
@@ -654,8 +677,14 @@ class ElectricalHeatEngineCell(
     }
 
     @Replicator
-    fun replicator(target: InternalTemperatureConsumer) = InternalTemperatureReplicatorBehavior(
+    fun temperatureReplicator(target: InternalTemperatureConsumer) = InternalTemperatureReplicatorBehavior(
         listOf(thermalBipole.b1, thermalBipole.b2), target
+    )
+
+    @Replicator
+    fun kineticReplicator(target: InternalKineticStateConsumer) = InternalKineticReplicatorBehavior(
+        this::kineticState,
+        target
     )
 
     override fun subscribe(subscribers: SubscriberCollection) {
@@ -681,36 +710,95 @@ class ElectricalHeatEngineCell(
         else {
             generator.postTick(Quantity(source.generator.power), dt)
         }
+
+        shaftRotation += !generator.angularVelocity * dt
     }
 
-    override fun saveCellData() = CompoundTag().also { generator.saveToTag(it) }
+    override fun saveCellData() = CompoundTag().also { tag ->
+        generator.saveToTag(tag)
+        tag.putDouble(ROTATION, shaftRotation.ln())
+    }
 
-    override fun loadCellData(tag: CompoundTag) = generator.loadFromTag(tag)
+    override fun loadCellData(tag: CompoundTag) = run {
+        generator.loadFromTag(tag)
+        shaftRotation = Rotation2d.exp(tag.getDouble(ROTATION))
+    }
+
+    companion object {
+        private const val ROTATION = "rotation"
+    }
 }
 
-class ElectricalHeatEnginePart(ci: PartCreateInfo) : CellPart<ElectricalHeatEngineCell>(ci, Content.ELECTRICAL_HEAT_ENGINE_CELL.get()), InternalTemperatureConsumer, ComponentDisplay, RadiantBipoleGameObject {
+class ElectricalHeatEnginePart(ci: PartCreateInfo) :
+    CellPart<ElectricalHeatEngineCell>(ci, Content.ELECTRICAL_HEAT_ENGINE_CELL.get()),
+    InternalTemperatureConsumer,
+    InternalKineticStateConsumer,
+    ComponentDisplay
+{
     @ClientOnly
-    override var renderTemperature1: Quantity<Temperature> = STANDARD_TEMPERATURE
-        private set
+    interface RenderState {
+        val b1Temperature: Quantity<Temperature>
+        val b2Temperature: Quantity<Temperature>
+        val angle: Double
+        val angularVelocity: Double
+        val angularAccelerationEstimate: Double
+        val kinematicVersion: Int
+    }
 
     @ClientOnly
-    override var renderTemperature2: Quantity<Temperature> = STANDARD_TEMPERATURE
-        private set
+    private class RenderStateImpl : RenderState {
+        override var b1Temperature: Quantity<Temperature> = STANDARD_TEMPERATURE
+        override var b2Temperature: Quantity<Temperature> = STANDARD_TEMPERATURE
+        override var angle = 0.0
+        override var angularVelocity = 0.0
+        override var angularAccelerationEstimate = 0.0
+        override var kinematicVersion = 0
+    }
+
+    @ClientOnly
+    private var renderStateImpl: RenderStateImpl? = if(ci.placement.level.isClientSide) {
+        RenderStateImpl()
+    } else {
+        null
+    }
+
+    @ClientOnly
+    val renderState: RenderState get() = renderStateImpl!!
 
     @ClientOnly
     override fun registerPackets(builder: PacketHandlerBuilder) {
-        builder.withHandler<SyncPacket> {
-            renderTemperature1 = Quantity(it.b1Temp, KELVIN)
-            renderTemperature2 = Quantity(it.b2Temp, KELVIN)
+        val renderState = renderStateImpl!!
+
+        builder.withHandler<TemperatureSyncPacket> {
+            renderState.b1Temperature = Quantity(it.b1Temp, KELVIN)
+            renderState.b2Temperature = Quantity(it.b2Temp, KELVIN)
+        }
+
+        builder.withHandler<RotationSyncPacket> {
+            renderState.angle = it.angle
+            renderState.angularVelocity = it.angularVelocity
+            renderState.angularAccelerationEstimate = it.angularAccelerationEstimate
+            renderState.kinematicVersion++
         }
     }
 
     @ServerOnly
     override fun onInternalTemperatureChanges(dirty: List<ThermalMass>) {
         sendBulkPacket(
-            SyncPacket(
+            TemperatureSyncPacket(
                 !cell.thermalBipole.b1.temperature,
                 !cell.thermalBipole.b2.temperature
+            )
+        )
+    }
+
+    @ServerOnly
+    override fun onKineticStateChanged(state: RotatingKineticState, angularAccelerationEstimate: Double) {
+        sendBulkPacket(
+            RotationSyncPacket(
+                state.angle,
+                state.angularVelocity,
+                angularAccelerationEstimate
             )
         )
     }
@@ -729,5 +817,233 @@ class ElectricalHeatEnginePart(ci: PartCreateInfo) : CellPart<ElectricalHeatEngi
     }
 
     @Serializable
-    private data class SyncPacket(val b1Temp: Double, val b2Temp: Double)
+    private data class TemperatureSyncPacket(
+        val b1Temp: Double,
+        val b2Temp: Double
+    )
+
+    @Serializable
+    private data class RotationSyncPacket(
+        val angle: Double,
+        val angularVelocity: Double,
+        val angularAccelerationEstimate: Double
+    )
+}
+
+class RotationUpdateProfile2d(val p0: Rotation2d, val v0: Double, val a1: Double, val a2: Double, val duration: Double) {
+    var currentTime = 0.0
+    val timeRemaining get() = (duration - currentTime).coerceIn(0.0, duration)
+
+    var sampleP = p0
+        private set
+
+    var sampleV = v0
+        private set
+
+    fun sampleTrajectory() : Double {
+        val x = currentTime.coerceIn(0.0, duration)
+        val t = duration / 2.0
+
+        return if (x <= t) {
+            sampleP = p0 + (v0 * x + 0.5 * a1 * x * x)
+            sampleV = v0 + a1 * x
+            a1
+        }
+        else {
+            val p1 = p0 + (v0 * t + 0.5 * a1 * t * t)
+            val v1 = v0 + a1 * t
+            val y = x - t
+
+            sampleP = p1 + (v1 * y + 0.5 * a2 * y * y)
+            sampleV = v1 + a2 * y
+            a2
+        }
+    }
+}
+
+@Suppress("LocalVariableName")
+fun computeRotationUpdateAccelerationProfile(targetPos: Rotation2d, targetVel: Double, sourcePos: Rotation2d, sourceVel: Double, T: Double) : RotationUpdateProfile2d {
+    val dp = targetPos - sourcePos
+    val dv = targetVel - sourceVel
+
+    val t = T / 2.0
+    val t2 = t * t
+
+    val a1 = (dp + targetVel * T) / t2 - (2.0 * sourceVel) / t - dv / T
+    val a2 = dv / t - a1
+
+    return RotationUpdateProfile2d(sourcePos, sourceVel, a1, a2, T)
+}
+
+fun computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
+    accelerationEstimate: Double,
+    targetPos: Rotation2d, targetVel: Double,
+    sourcePos: Rotation2d, sourceVel: Double,
+    maxTransitionTime: Double = 0.25
+) : RotationUpdateProfile2d {
+
+    val dv = abs(targetVel - sourceVel)
+    val accelEstimate = abs(accelerationEstimate).coerceAtLeast(dv / maxTransitionTime)
+    val duration = dv / accelEstimate
+
+    return computeRotationUpdateAccelerationProfile(
+        targetPos, targetVel,
+        sourcePos, sourceVel,
+        duration
+    )
+}
+
+class ElectricalHeatEnginePartVisual(
+    visualizationContext: MultipartVisualizationContext,
+    part: ElectricalHeatEnginePart
+) : AbstractPartVisual<ElectricalHeatEnginePart>(visualizationContext, part), SimpleDynamicVisual {
+    companion object {
+        private val tint = ThermalTint.DEFAULT_LIGHT_OVERRIDE
+
+        private val flywheelsCenter = run {
+            val accumulator = Average3d()
+
+            val model = FlwModels.SMALL_THERMAL_ELECTRIC_GENERATOR_FLYWHEELS.get() ?: error(
+                "ElectricalHeatEnginePartVisual static fields initialized before baked models were available"
+            )
+
+            @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")
+            model.getQuads(null, null, null).forEach { quad ->
+                require(quad.vertices.size == 32)
+
+                val buffer = ByteBuffer.allocate(32)
+                val intView = buffer.asIntBuffer()
+
+                for (i in 0 until 4) {
+                    intView.clear()
+                    intView.put(quad.vertices, i * 8, 8)
+
+                    accumulator.add(
+                        buffer.getFloat(0).toDouble(),
+                        buffer.getFloat(4).toDouble(),
+                        buffer.getFloat(8).toDouble(),
+                    )
+                }
+            }
+
+            accumulator.average
+        }
+    }
+
+    val body: TransformedInstance = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, SpecialModels.partial(FlwModels.SMALL_THERMAL_ELECTRIC_GENERATOR_BODY, Materials.CUTOUT_BLOCK))
+        .createInstance()
+        .also {
+            it.partTransformation(visualizationContext.parent, part)
+            it.translate(0.5, 0.0, 0.5)
+        }
+
+    val coldSide: TransformedLightOverrideInstance = visualizationContext.instancerProvider()
+        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, Models.partial(FlwModels.SMALL_THERMAL_ELECTRIC_GENERATOR_COLD_SIDE))
+        .createInstance()
+        .also {
+            it.partTransformation(visualizationContext.parent, part)
+            it.translate(0.5, 0.0, 0.5)
+        }
+
+    val hotSide: TransformedLightOverrideInstance = visualizationContext.instancerProvider()
+        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, Models.partial(FlwModels.SMALL_THERMAL_ELECTRIC_GENERATOR_HOT_SIDE))
+        .createInstance()
+        .also {
+            it.partTransformation(visualizationContext.parent, part)
+            it.translate(0.5, 0.0, 0.5)
+        }
+
+    val flywheels: TransformedInstance = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, Models.partial(FlwModels.SMALL_THERMAL_ELECTRIC_GENERATOR_FLYWHEELS))
+        .createInstance()
+
+    var temperatureCold = Quantity(-1.0, KELVIN)
+    var temperatureHot = Quantity(-1.0, KELVIN)
+
+    var kinematicVersion = 0
+    var flywheelRotation = Rotation2d.identity
+    var flywheelVelocity = 0.0
+    var interpolationState: RotationUpdateProfile2d? = null
+    val frameTimer = Stopwatch()
+
+    private fun poseFlywheels() {
+        val y = flywheelsCenter.y
+        val z = flywheelsCenter.z
+
+        flywheels.setIdentityTransform()
+            .partTransformation(visualizationContext.parent, part)
+            .translate(0.5, 0.0, 0.5)
+            .translate(0.0, y, z)
+            .rotateX(flywheelRotation.ln().toFloat())
+            .translate(0.0, -y, -z)
+            .handle()
+            .setChanged()
+    }
+
+    init {
+        poseFlywheels()
+    }
+
+    override fun beginFrame(p0: DynamicVisual.Context?) {
+        val renderState = part.renderState
+
+        val targetColdTemp = renderState.b1Temperature
+        if(temperatureCold != targetColdTemp) {
+            temperatureCold = targetColdTemp
+            coldSide.colorWithOverride(tint, targetColdTemp).handle().setChanged()
+        }
+
+        val targetHotTemp = renderState.b2Temperature
+        if(temperatureHot != targetHotTemp) {
+            temperatureHot = targetHotTemp
+            hotSide.colorWithOverride(tint, targetHotTemp).handle().setChanged()
+        }
+
+        val targetKinematicVersion = renderState.kinematicVersion
+        if(kinematicVersion != targetKinematicVersion) {
+            kinematicVersion = targetKinematicVersion
+
+            interpolationState = computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
+                renderState.angularAccelerationEstimate,
+                Rotation2d.exp(renderState.angle), renderState.angularVelocity,
+                flywheelRotation, flywheelVelocity
+            )
+        }
+
+        val dt = !frameTimer.sample()
+
+        if(interpolationState == null) {
+            flywheelRotation += flywheelVelocity * dt
+        }
+        else {
+            val state = interpolationState!!
+            state.currentTime += dt
+            state.sampleTrajectory()
+            flywheelRotation = state.sampleP
+            flywheelVelocity = state.sampleV
+
+            if(state.timeRemaining == 0.0) {
+                interpolationState = null
+            }
+        }
+
+        poseFlywheels()
+    }
+
+    override fun updateLight(p0: Float) {
+        visualizationContext.parent.relightInstances(
+            body,
+            coldSide,
+            hotSide,
+            flywheels
+        )
+    }
+
+    override fun _delete() {
+        body.delete()
+        coldSide.delete()
+        hotSide.delete()
+        flywheels.delete()
+    }
 }

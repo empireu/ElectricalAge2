@@ -143,21 +143,14 @@ class RadiantBipolePartVisual<P>(
 
         if(temperature1 != desiredTemperature1) {
             temperature1 = desiredTemperature1
-            colorInstance(instance1, tint1, desiredTemperature1)
+            instance1.colorWithOverride(tint1, desiredTemperature1).handle().setChanged()
         }
 
         val desiredTemperature2 = if(flip) part.renderTemperature1 else part.renderTemperature2
         if(temperature2 != desiredTemperature2) {
             temperature2 = desiredTemperature2
-            colorInstance(instance2, tint2, desiredTemperature2)
+            instance2.colorWithOverride(tint2, desiredTemperature2).handle().setChanged()
         }
-    }
-
-    private fun colorInstance(i: TransformedLightOverrideInstance, tint: ThermalTint, temperature: Quantity<Temperature>) {
-        val color = tint.evaluate(temperature)
-        i.color(color.r, color.g, color.b)
-        i.lightOverride = color.a / 255.0f
-        i.handle().setChanged()
     }
 
     override fun updateLight(p0: Float) {
@@ -168,6 +161,10 @@ class RadiantBipolePartVisual<P>(
         bodyInstance.delete()
         instance1.delete()
         instance2.delete()
+    }
+
+    companion object {
+
     }
 }
 

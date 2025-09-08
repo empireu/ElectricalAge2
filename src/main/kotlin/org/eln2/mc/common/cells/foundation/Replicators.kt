@@ -4,8 +4,13 @@ import it.unimi.dsi.fastutil.objects.Reference2DoubleArrayMap
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.sim.ThermalMass
+import org.ageseries.libage.utils.Stopwatch
 import java.util.concurrent.ConcurrentHashMap
+import java.util.function.Supplier
+import kotlin.collections.set
+import kotlin.math.abs
 import kotlin.reflect.KClass
 import kotlin.reflect.full.*
 
@@ -61,26 +66,15 @@ fun interface InternalTemperatureConsumer {
     fun onInternalTemperatureChanges(dirty: List<ThermalMass>)
 }
 
-fun interface ExternalTemperatureConsumer {
-    fun onExternalTemperatureChanges(
-        removed: HashSet<ThermalObject<*>>,
-        dirty: HashMap<ThermalObject<*>, Double>,
-        all: HashMap<ThermalObject<*>, Double>
-    )
-}
-
 /**
  * Generalized behavior for sending temperature changes to clients (for e.g. rendering hot bodies)
  * @param bodies The list of bodies to track.
  * @param consumer The consumer for the changes.
  * */
-class InternalTemperatureReplicatorBehavior(
-    val bodies: List<ThermalMass>,
-    val consumer: InternalTemperatureConsumer
-) : ReplicatorBehavior {
-    var scanInterval: Int = 5
-    var scanPhase: SubscriberPhase = SubscriberPhase.Pre
-    var tolerance: Double = 1.0
+class InternalTemperatureReplicatorBehavior(val bodies: List<ThermalMass>, val consumer: InternalTemperatureConsumer) : ReplicatorBehavior {
+    var scanInterval = 5
+    var scanPhase = SubscriberPhase.Pre
+    var tolerance = 1.0
 
     private val tracked = Reference2DoubleArrayMap<ThermalMass>()
 
@@ -105,19 +99,24 @@ class InternalTemperatureReplicatorBehavior(
     }
 }
 
+fun interface ExternalTemperatureConsumer {
+    fun onExternalTemperatureChanges(
+        removed: HashSet<ThermalObject<*>>,
+        dirty: HashMap<ThermalObject<*>, Double>,
+        all: HashMap<ThermalObject<*>, Double>
+    )
+}
+
 /**
  * Generalized behavior for sending temperature changes of connected thermal objects to clients.
  * The temperatures are read from the [ThermalContactInfo] of neighbor objects.
  * @param cell The cell that owns this behavior.
  * @param consumer The consumer for the changes.
  * */
-class ExternalTemperatureReplicatorBehavior(
-    val cell: Cell,
-    val consumer: ExternalTemperatureConsumer
-) : ReplicatorBehavior {
-    var scanInterval: Int = 5
-    var scanPhase: SubscriberPhase = SubscriberPhase.Pre
-    var tolerance: Double = 1.0
+class ExternalTemperatureReplicatorBehavior(val cell: Cell, val consumer: ExternalTemperatureConsumer) : ReplicatorBehavior {
+    var scanInterval = 5
+    var scanPhase = SubscriberPhase.Pre
+    var tolerance = 1.0
 
     /**
      * Holds the last seen temperature for the remote thermal object.
@@ -191,5 +190,61 @@ class ExternalTemperatureReplicatorBehavior(
                 }
             }
         }
+    }
+}
+
+data class RotatingKineticState(val angle: Double, val angularVelocity: Double)
+
+fun interface InternalKineticStateConsumer {
+    /**
+     * Called when the estimated client orientation and the actual simulation orientation have deviated more than the [InternalKineticReplicatorBehavior.angleTolerance].
+     * @param state The state supplied by the simulation.
+     * @param angularAccelerationEstimate The estimated angular acceleration, currently calculated from the difference between the current state and the previous state (timespan is [InternalKineticReplicatorBehavior.scanInterval] simulation ticks).
+     * */
+    fun onKineticStateChanged(
+        state: RotatingKineticState,
+        angularAccelerationEstimate: Double
+    )
+}
+
+/**
+ * Special behavior for sending kinetic rotation changes of a single rotating assembly to clients.
+ * */
+class InternalKineticReplicatorBehavior(val stateSupplier: Supplier<RotatingKineticState>, val consumer: InternalKineticStateConsumer) : ReplicatorBehavior {
+    var scanInterval = 5
+    var scanPhase = SubscriberPhase.Pre
+    var angleTolerance = Math.toRadians(1.0)
+
+    var trackedAngle = 0.0
+        private set
+
+    var trackedVelocity = 0.0
+        private set
+
+    val stopwatch = Stopwatch()
+
+    var previousAngularVelocity = 0.0
+        private set
+
+    override fun subscribe(subscribers: SubscriberCollection) {
+        subscribers.addSubscriber(SubscriberOptions(scanInterval, scanPhase), this::scan)
+    }
+
+    private fun scan(dt: Double, phase: SubscriberPhase) {
+        val currentState = stateSupplier.get()
+
+        val trackedRotation = Rotation2d.exp(trackedAngle + trackedVelocity * !stopwatch.total)
+        val currentRotation = Rotation2d.exp(currentState.angle)
+
+        if(abs(currentRotation - trackedRotation) > angleTolerance) {
+            val angularAccelerationEstimate = (currentState.angularVelocity - previousAngularVelocity) / dt
+
+            consumer.onKineticStateChanged(currentState, angularAccelerationEstimate)
+            trackedAngle = currentRotation.ln()
+            trackedVelocity = currentState.angularVelocity
+            stopwatch.resetTotal()
+        }
+
+        previousAngularVelocity = currentState.angularVelocity
     }
 }

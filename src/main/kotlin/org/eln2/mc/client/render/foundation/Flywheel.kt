@@ -34,6 +34,8 @@ import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.level.block.entity.BlockEntity
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.ClientOnly
@@ -140,12 +142,8 @@ object FlwVisualizerRegistry {
         }
 
         setPartVisualizer<ElectricalHeatEnginePart>(Content.ELECTRICAL_HEAT_ENGINE_PART.part.get()) { ctx, part ->
-            RadiantBipolePartVisual(
-                ctx, part,
-                FlwModels.PELTIER_BODY,
-                FlwModels.PELTIER_LEFT,
-                FlwModels.PELTIER_RIGHT,
-                true
+            ElectricalHeatEnginePartVisual(
+                ctx, part
             )
         }
 
@@ -279,6 +277,13 @@ class TransformedLightOverrideInstance(
     handle: InstanceHandle
 ) : TransformedInstance(type, handle) {
     var lightOverride = 0.0f
+
+    fun colorWithOverride(tint: ThermalTint, temperature: Quantity<Temperature>) : TransformedLightOverrideInstance {
+        val color = tint.evaluate(temperature)
+        color(color.r, color.g, color.b)
+        lightOverride = color.a / 255.0f
+        return this
+    }
 }
 
 class SpecialVisualStorage<V : Visual> {
@@ -823,7 +828,7 @@ val partOffsetTable = buildDirectionTable {
     }
 }
 
-fun<T : Affine<T>> T.partTransformation(parent: MultipartBlockEntityVisual, part: Part, scale: Vector3d = Vector3d.Companion.one, yRotation: Double = 0.0): T {
+fun<T : Affine<T>> T.partTransformation(parent: MultipartBlockEntityVisual, part: Part, scale: Vector3d = Vector3d.one, yRotation: Double = 0.0): T {
     val (dx, dy, dz) = partOffsetTable[part.placement.face.get3DDataValue()]
 
     return this
@@ -836,7 +841,7 @@ fun<T : Affine<T>> T.partTransformation(parent: MultipartBlockEntityVisual, part
 }
 
 
-fun<T : Affine<T>> T.specTransformation(parent: SpecContainerPartVisual, spec: Spec, scale: Vector3d = Vector3d.Companion.one, yRotation: Double = 0.0): T {
+fun<T : Affine<T>> T.specTransformation(parent: SpecContainerPartVisual, spec: Spec, scale: Vector3d = Vector3d.one, yRotation: Double = 0.0): T {
     val (dx, dy, dz) = partOffsetTable[parent.part.placement.face.get3DDataValue()]
     val (dx1, dy1, dz1) = spec.placement.mountingPointWorld - parent.part.placement.mountingPointWorld
 

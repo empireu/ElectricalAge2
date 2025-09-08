@@ -51,6 +51,11 @@ object FlwModels {
     val LAMP_POLE_BODY = partialBlock("lamp_pole/body")
     val LAMP_POLE_EMITTER = partialBlock("lamp_pole/emitter")
 
+    val SMALL_THERMAL_ELECTRIC_GENERATOR_BODY = partialBlock("small_thermal_electric_generator/body")
+    val SMALL_THERMAL_ELECTRIC_GENERATOR_COLD_SIDE = partialBlock("small_thermal_electric_generator/cold_side")
+    val SMALL_THERMAL_ELECTRIC_GENERATOR_HOT_SIDE = partialBlock("small_thermal_electric_generator/hot_side")
+    val SMALL_THERMAL_ELECTRIC_GENERATOR_FLYWHEELS = partialBlock("small_thermal_electric_generator/flywheels")
+
     private fun partial(path: String) = PartialModel.of(resource(path))
 
     fun partialBlock(path: String) = PartialModel.of(resource("block/$path"))
