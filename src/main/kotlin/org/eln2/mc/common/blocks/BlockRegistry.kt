@@ -96,7 +96,7 @@ object BlockRegistry {
         supplier: () -> T
     ) : RegistryObject<T> = BLOCKS.register(name) { supplier() }
 
-    fun blockItemOnly(name: String, supplier: () -> BlockItem) = BLOCK_ITEMS.register(name) {
+    fun blockItemOnly(name: String, supplier: () -> BlockItem): RegistryObject<BlockItem> = BLOCK_ITEMS.register(name) {
         supplier()
     }
 

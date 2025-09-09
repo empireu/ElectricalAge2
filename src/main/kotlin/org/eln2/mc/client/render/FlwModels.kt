@@ -56,11 +56,9 @@ object FlwModels {
     val SMALL_THERMAL_ELECTRIC_GENERATOR_HOT_SIDE = partialBlock("small_thermal_electric_generator/hot_side")
     val SMALL_THERMAL_ELECTRIC_GENERATOR_FLYWHEELS = partialBlock("small_thermal_electric_generator/flywheels")
 
-    private fun partial(path: String) = PartialModel.of(resource(path))
-
-    fun partialBlock(path: String) = PartialModel.of(resource("block/$path"))
-
-    fun polarBlock(path: String) = PolarModel(resource("block/$path"))
+    private fun partial(path: String): PartialModel = PartialModel.of(resource(path))
+    fun partialBlock(path: String): PartialModel = PartialModel.of(resource("block/$path"))
+    fun polarBlock(path: String): PolarModel = PolarModel(resource("block/$path"))
 
     fun wireConnection(connectionHub: String, connectionFull: String): WireConnectionModel {
         val hubResourceLocation = resource("block/$connectionHub")

@@ -247,6 +247,16 @@ fun directionPoleMapPlanar(plusDir: Base6Direction3d = Base6Direction3d.Front, m
     }
 
 /**
+ * Creates a [PoleMap] that maps [dir] to [pole]. Used for devices that have only one port (e.g. [pole] is the input for a radiator).
+ * */
+fun directionMonopolarMapPlanar(dir: Base6Direction3d, pole: Pole) = PoleMap { c1, c2 ->
+    when (c1.locator.findDirActualPlanarOrNull(c2.locator)) {
+        dir -> pole
+        else -> null
+    }
+}
+
+/**
  * Creates a [PoleMap] that maps [plusDir] to plus and [minusDir] to minus.
  * These directions are in the observer's frame.
  * This means that, from the object's perspective, [Pole.Plus] is returned when the other object is towards [plusDir], and [Pole.Minus] is returned when the target is towards [minusDir].

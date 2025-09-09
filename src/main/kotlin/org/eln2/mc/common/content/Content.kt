@@ -77,6 +77,7 @@ import org.eln2.mc.data.Pole
 import org.eln2.mc.data.PoleMap
 import org.eln2.mc.data.REVOLUTION_PER_SECOND
 import org.eln2.mc.data.cylinderResistance
+import org.eln2.mc.data.directionMonopolarMapPlanar
 import org.eln2.mc.data.directionPoleMapPlanar
 import org.eln2.mc.data.findDirActualPlanarOrNull
 import org.eln2.mc.data.withDirectionRulePlanar
@@ -521,8 +522,42 @@ object Content {
         }
     )
 
- /*
-*/
+    val LAMP_POLE_BLOCK_DELEGATE_MAP = defineDelegateMap("lamp_pole") {
+        val column = registerDelegateOf(
+            AABB(
+                0.325, 0.0, 0.325,
+                0.675, 1.0, 0.675
+            )
+        )
+
+        val lamp = registerDelegateOf(
+            AABB(
+                0.25, 0.0, 0.25,
+                0.75, 0.65, 0.75
+            )
+        )
+
+        principal(0, 2, 0, column)
+        principal(0, 3, 0, column)
+        principal(0, 4, 0, column)
+        principal(0, 5, 0, lamp)
+    }
+
+    val LAMP_POLE_BLOCK = blockOnly("lamp_pole") {
+        LampPoleBlock(POLAR_LIGHT_CELL_CONE_SPHERE, BlockPos(0, 5, 0))
+    }
+
+    val LAMP_POLE_BLOCK_ENTITY = blockEntityOnly("lamp_pole", LAMP_POLE_BLOCK) { pos, state ->
+        LampPoleBlockEntity(pos, state)
+    }
+
+    val LAMP_POLE_BLOCK_ITEM = blockItemOnly("lamp_pole") {
+        BigBlockItem(
+            LAMP_POLE_BLOCK_DELEGATE_MAP.value,
+            LAMP_POLE_BLOCK.get()
+        )
+    }
+
     //#endregion
 
     //#region Heat Generator
@@ -561,6 +596,10 @@ object Content {
 
     val HEAT_GENERATOR_MENU = menu("heat_generator", ::HeatGeneratorMenu)
 
+    //#endregion
+
+    //#region Thermal-Electrical Generator
+
     val ELECTRICAL_HEAT_ENGINE_CELL = cell(
         "electrical_heat_engine",
         BasicCellProvider.setup {
@@ -576,13 +615,10 @@ object Content {
                 minusDir = electricalB
             )
 
-            val thermalMap = PoleMap { c1, c2 ->
-                when (c1.locator.findDirActualPlanarOrNull(c2.locator)) {
-                    thermalA -> Pole.Minus
-                    else -> null
-                }
-            }
-
+            val thermalMap = directionMonopolarMapPlanar(
+                thermalA,
+                Pole.Minus
+            )
 
             val coldSideDefinition = ThermalMassDefinition(
                 ChemicalElement.Copper.asMaterial,
@@ -638,8 +674,8 @@ object Content {
                     leakageCold, leakageHot,
                     generatorModel,
                     0.075,
-                    hemispheres[it.locator.transformPartWorld(Base6Direction3d.Left)]!!,
-                    hemispheres[it.locator.transformPartWorld(Base6Direction3d.Right)]!!
+                    hemispheres[it.locator.transformPartWorld(Base6Direction3d.Front)]!!,
+                    hemispheres[it.locator.transformPartWorld(Base6Direction3d.Back)]!!
                 )
 
                 cell.source.ruleSet.withDirectionRulePlanar(electricalA + electricalB)
@@ -651,7 +687,7 @@ object Content {
 
     val ELECTRICAL_HEAT_ENGINE_PART = partAndItem(
         "electrical_heat_engine",
-        BasicPartProvider(Vector3d(4.0 / 16.0, 15.0 / 16.0, 14.0 / 16.0)) {
+        BasicPartProvider(Vector3d(4.0 / 16.0, 10.0 / 16.0, 14.0 / 16.0)) {
             ElectricalHeatEnginePart(it)
         }
     )
@@ -850,6 +886,7 @@ object Content {
         principal(0, 2, 0, column)
     }
 
+    @Suppress("SameParameterValue")
     private fun registerGridPole(
         name: String,
         delegateMap: Lazy<MultiblockDelegateMap>,
@@ -890,40 +927,4 @@ object Content {
     )
 
     //#endregion
-
-    val LAMP_POLE_BLOCK_DELEGATE_MAP = defineDelegateMap("lamp_pole") {
-        val column = registerDelegateOf(
-            AABB(
-                0.325, 0.0, 0.325,
-                0.675, 1.0, 0.675
-            )
-        )
-
-        val lamp = registerDelegateOf(
-            AABB(
-                0.25, 0.0, 0.25,
-                0.75, 0.65, 0.75
-            )
-        )
-
-        principal(0, 2, 0, column)
-        principal(0, 3, 0, column)
-        principal(0, 4, 0, column)
-        principal(0, 5, 0, lamp)
-    }
-
-    val LAMP_POLE_BLOCK = blockOnly("lamp_pole") {
-        LampPoleBlock(POLAR_LIGHT_CELL_CONE_SPHERE, BlockPos(0, 5, 0))
-    }
-
-    val LAMP_POLE_BLOCK_ENTITY = blockEntityOnly("lamp_pole", LAMP_POLE_BLOCK) { pos, state ->
-        LampPoleBlockEntity(pos, state)
-    }
-
-    val LAMP_POLE_BLOCK_ITEM = blockItemOnly("lamp_pole") {
-        BigBlockItem(
-            LAMP_POLE_BLOCK_DELEGATE_MAP.value,
-            LAMP_POLE_BLOCK.get()
-        )
-    }
 }
