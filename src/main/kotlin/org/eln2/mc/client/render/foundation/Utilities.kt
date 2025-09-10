@@ -483,6 +483,9 @@ data class SketchExtrusion(
 @JvmInline
 value class MyColor(val data : Int) {
     companion object {
+        val RED = MyColor(255, 255, 0, 0)
+        val GREEN = MyColor(255, 0, 255, 0)
+        val BLUE = MyColor(255, 0, 0, 255)
         val WHITE = MyColor(255, 255, 255,  255)
 
         fun lerp(from: MyColor, to: MyColor, blend: Float): MyColor =

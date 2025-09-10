@@ -168,7 +168,7 @@ object ForgeEvents {
     fun onClientLevelClosed(event: LevelEvent.Unload) {
         if(event.level.isClientSide) {
             GhostLightHackClient.clear()
-            GridConnectionManagerClient.clear() // FIXME
+            GridConnectionManagerClient.clear()
             DebugVisualizer.clear()
         }
     }

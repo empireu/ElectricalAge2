@@ -98,7 +98,7 @@ class Eln2 {
         forgeEventBus.addListener(EventPriority.LOWEST, SpecContainerPart::renderHighlightEvent)
         forgeEventBus.addListener(TerminalHighlightRenderer::render)
         forgeEventBus.addListener(SpecPlacementOverlayClient::onScroll)
-        forgeEventBus.addListener(SpecPlacementOverlayClient::onCycleOrientation)
+        forgeEventBus.addListener(SpecPlacementOverlayClient::onKey)
         forgeEventBus.addListener(SpecPreviewRenderer::render)
 
         if(SodiumPlugin.shouldApply()) {

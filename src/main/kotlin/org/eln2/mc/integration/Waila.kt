@@ -12,6 +12,8 @@ import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlock
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
+import org.eln2.mc.common.specs.foundation.GridSpec
+import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.extensions.forEachCompound
 import org.eln2.mc.extensions.formattedPercentNormalized
 import snownee.jade.api.*
@@ -66,11 +68,10 @@ class Eln2WailaPlugin : IWailaPlugin {
             if(blockEntity is MultipartBlockEntity) {
                 val part = blockEntity.pickPart(p1.player)
 
-                // FIXME
-                /*if(part is SpecContainerPart) {
+                if(part is SpecContainerPart) {
                     val spec = part.pickSpec(p1.player)?.second
 
-                    if(spec is GridSpec<*>) {
+                    if(spec is GridSpec) {
                         val terminal = spec.pickTerminal(p1.player)
 
                         if(terminal is T) {
@@ -80,7 +81,7 @@ class Eln2WailaPlugin : IWailaPlugin {
 
                     return spec as? T
                 }
-*/
+
                 return part as? T
             }
 

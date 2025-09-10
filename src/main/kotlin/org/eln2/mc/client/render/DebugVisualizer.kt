@@ -36,6 +36,9 @@ object DebugVisualizer {
         var removed = false
             protected set
 
+        var renderedOnce = false
+            protected set
+
         open fun remove() {
             removed = true
         }
@@ -78,6 +81,8 @@ object DebugVisualizer {
             }
         }
 
+        open fun removeAfterFrame() = withRemover { renderedOnce }
+
         open fun withinScopeOf(part: Part) = withRemover(part::isRemoved)
     }
 
@@ -115,6 +120,8 @@ object DebugVisualizer {
                 children.forEach {
                     it.render(pPoseStack, pBufferSource, pCamX, pCamY, pCamZ, level, player)
                 }
+
+                renderedOnce = true
             }
         }
 
@@ -138,6 +145,8 @@ object DebugVisualizer {
                 color.rF, color.gF, color.bF, color.aF,
                 color.rF, color.gF, color.bF
             )
+
+            renderedOnce = true
         }
     }
 
@@ -170,6 +179,8 @@ object DebugVisualizer {
             )
 
             pPoseStack.popPose()
+
+            renderedOnce = true
         }
 
     }
@@ -273,6 +284,8 @@ object DebugVisualizer {
             }
 
             pPoseStack.popPose()
+
+            renderedOnce = true
         }
     }
 

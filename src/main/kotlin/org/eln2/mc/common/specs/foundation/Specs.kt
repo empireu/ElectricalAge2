@@ -34,6 +34,7 @@ import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.context.UseOnContext
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.shapes.BooleanOp
@@ -51,6 +52,7 @@ import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
+import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.client.render.foundation.partTransformation
@@ -76,6 +78,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.function.Supplier
 import kotlin.collections.HashSet
+import kotlin.math.PI
 import kotlin.math.abs
 
 object SpecGeometry {
@@ -252,14 +255,18 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
     /**
      * Gets the mounting position picked by the [player] in the world frame. This position will be on the [substratePlane].
      * */
-    fun getSpecMountingPointWorld(player: LivingEntity) = player.getViewRay() intersectionWith substratePlane
+    fun getSpecMountingPointWorld(player: LivingEntity, desiredSnap: SpecPlacementSnap) : Vector3d {
+        val intersection = player.getViewRay() intersectionWith substratePlane
+
+        return desiredSnap.snapPickedPosition(placement.face, intersection)
+    }
 
     /**
      * Gets the bounding box of a spec with the special [desiredOrientation], provided by [provider].
      * */
-    fun getSpecBoundingBox(player: LivingEntity, desiredOrientation: Rotation2d, provider: SpecProvider) =
+    fun getSpecBoundingBox(player: LivingEntity, desiredOrientation: Rotation2d, desiredSnap: SpecPlacementSnap, provider: SpecProvider) =
         SpecGeometry.boundingBox(
-            getSpecMountingPointWorld(player),
+            getSpecMountingPointWorld(player, desiredSnap),
             desiredOrientation,
             provider.placementCollisionSize,
             placement.facing,
@@ -269,10 +276,11 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
     /**
      * Checks if the placement of a spec with the special [desiredOrientation], provided by [provider] collides with any other specs present in this container.
      * */
-    fun placementCollides(player: LivingEntity, desiredOrientation: Rotation2d, provider: SpecProvider) : Boolean {
+    fun placementCollides(player: LivingEntity, desiredOrientation: Rotation2d, desiredSnap: SpecPlacementSnap, provider: SpecProvider) : Boolean {
         val boundingBox = getSpecBoundingBox(
             player,
             desiredOrientation,
+            desiredSnap,
             provider
         )
 
@@ -289,8 +297,8 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
         return false
     }
 
-    private fun createSpecPlacementInfo(player: LivingEntity, desiredOrientation: Rotation2d, provider: SpecProvider) : SpecPlacementInfo {
-        val mountingPointWorld = getSpecMountingPointWorld(player)
+    private fun createSpecPlacementInfo(player: LivingEntity, desiredOrientation: Rotation2d, desiredSnap: SpecPlacementSnap, provider: SpecProvider) : SpecPlacementInfo {
+        val mountingPointWorld = getSpecMountingPointWorld(player, desiredSnap)
 
         val id = if(placement.level.isClientSide) {
             -1
@@ -378,6 +386,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
     fun placeSpec(
         player: LivingEntity,
         desiredOrientation: Rotation2d,
+        desiredSnap: SpecPlacementSnap,
         provider: SpecProvider,
         isFreshlyPlacedSpecContainer: Boolean = false,
         saveTag: CompoundTag? = null,
@@ -386,11 +395,11 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
             "Cannot explicitly place spec on client side"
         }
 
-        if(placementCollides(player, desiredOrientation, provider)) {
+        if(placementCollides(player, desiredOrientation, desiredSnap, provider)) {
             return false
         }
 
-        val context = createSpecPlacementInfo(player, desiredOrientation, provider)
+        val context = createSpecPlacementInfo(player, desiredOrientation, desiredSnap, provider)
 
         val spec = provider.create(context)
 
@@ -1029,15 +1038,20 @@ class SpecContainerPartVisual(
     ctx: MultipartVisualizationContext,
     part: SpecContainerPart
 ) : AbstractPartVisual<SpecContainerPart>(ctx, part), DynamicVisual, TickableVisual, LightUpdatedVisual {
+    companion object {
+        private const val DEBUG = false
+    }
+
     val specs = HashMap<Spec, AbstractSpecVisual<*>>()
     val specVisualizationContext = SpecVisualizationContext(ctx, this)
     val storage = SpecialVisualStorage<AbstractSpecVisual<*>>()
 
-    private var frameInstance = ctx
-        .instancerProvider()
-        .instancer(TRANSFORMED, partial(FlwModels.SPEC_PART_FRAME))
-        .createInstance()
-        .partTransformation(ctx.parent, part)
+    private var frameInstance = if(DEBUG) {
+        ctx.instancerProvider()
+            .instancer(TRANSFORMED, partial(FlwModels.SPEC_PART_FRAME))
+            .createInstance()
+            .partTransformation(ctx.parent, part)
+    } else null
 
     init {
         part.specs.values.forEach {
@@ -1046,7 +1060,7 @@ class SpecContainerPartVisual(
     }
 
     override fun _delete() {
-        frameInstance.delete()
+        frameInstance?.delete()
         storage.delete()
         specs.clear()
     }
@@ -1117,7 +1131,10 @@ class SpecItem(val provider: SpecProvider) : PartItem(PartRegistry.SPEC_CONTAINE
         val overlayState = SpecPlacementOverlay.getSnapshot(level, player)
         val partMountingPoint = multipartPos.toVector3d() + Vector3d(0.5) - face.vector3d * 0.5
         val substratePlane = Plane3d(face.vector3d, partMountingPoint)
-        val mountingPoint = player.getViewRay() intersectionWith substratePlane
+        val mountingPoint = overlayState.snap.snapPickedPosition(
+            face,
+            player.getViewRay() intersectionWith substratePlane
+        )
 
         if(!SpecContainerPart.canPlaceSpecInSubstrate(
                 level,
@@ -1161,7 +1178,7 @@ class SpecItem(val provider: SpecProvider) : PartItem(PartRegistry.SPEC_CONTAINE
             }
         }
 
-        if(part.placementCollides(player, overlayState.orientation, provider)) {
+        if(part.placementCollides(player, overlayState.orientation, overlayState.snap, provider)) {
             cleanupNew()
             return InteractionResult.FAIL
         }
@@ -1172,7 +1189,7 @@ class SpecItem(val provider: SpecProvider) : PartItem(PartRegistry.SPEC_CONTAINE
             return InteractionResult.SUCCESS // Assume it works out
         }
 
-        if(!part.placeSpec(player, overlayState.orientation, provider, isFreshlyPlacedSpecContainer = isNewPart)) {
+        if(!part.placeSpec(player, overlayState.orientation, overlayState.snap, provider, isFreshlyPlacedSpecContainer = isNewPart)) {
             LOG.debug("Did not place")
             cleanupNew()
             return InteractionResult.FAIL
@@ -1383,18 +1400,65 @@ abstract class Spec(ci: SpecCreateInfo) {
             .create(ctx, this)
 }
 
-data class SpecPlacementOverlayState(val orientation: Rotation2d)
+enum class SpecPlacementSnap(val description: String, val id: Byte, val gridSize: Int) {
+    Free("Free", 0, 0),
+    Grid8("8x8 Grid", 1, 8),
+    Grid9("9x9 Grid", 2, 9),
+    Grid15("15x15 Grid", 3, 15),
+    Grid16("16x16 Grid", 4, 16);
+
+    val index = id.toInt()
+
+    fun snapPickedPosition(normal: Direction, pickedPosWorld: Vector3d) : Vector3d {
+        if(this == Free) {
+            return pickedPosWorld
+        }
+
+        val blockOrigin = pickedPosWorld.floor()
+        val pickedPosBlock = pickedPosWorld - blockOrigin
+
+        val transform = when(normal) {
+            Direction.DOWN -> Rotation3d.exp(Vector3d.unitX * PI)
+            Direction.UP -> Rotation3d.identity
+            Direction.NORTH -> Rotation3d.exp(Vector3d.unitX * PI / 2.0)
+            Direction.SOUTH -> Rotation3d.exp(-Vector3d.unitX * PI / 2.0)
+            Direction.WEST -> Rotation3d.exp(Vector3d.unitZ * PI / 2.0)
+            Direction.EAST -> Rotation3d.exp(-Vector3d.unitZ * PI / 2.0)
+        }
+
+        val pickedPosPlane = (transform * pickedPosBlock).copy(y = 0.0)
+
+        val pickedPosPlaneExpanded = pickedPosPlane * gridSize.toDouble()
+        val squareSize = 1.0 / gridSize
+        val pickedPosPlaneSnapped = pickedPosPlaneExpanded.floor() / gridSize.toDouble() + Vector3d(squareSize, 0.0, squareSize) * 0.5
+
+        val pickedPosBlockSnapped = transform.inverse * pickedPosPlaneSnapped
+        val pickedPosSnapped = pickedPosBlockSnapped + blockOrigin
+
+        return pickedPosSnapped
+    }
+
+    companion object {
+        private val byId = SpecPlacementSnap.entries.associateBy { it.id }
+
+        fun fromId(id: Byte) = byId[id] ?: Free
+    }
+}
+
+data class SpecPlacementOverlayState(val orientation: Rotation2d, val snap: SpecPlacementSnap)
 
 data class SpecOverlayMessage(val state: SpecPlacementOverlayState) {
     companion object {
         fun encode(message: SpecOverlayMessage, buf: FriendlyByteBuf) {
             val state = message.state
             buf.writeRotation2d(state.orientation)
+            buf.writeByte(state.snap.id.toInt())
         }
 
         fun decode(buf: FriendlyByteBuf) = SpecOverlayMessage(
             SpecPlacementOverlayState(
-                buf.readRotation2d()
+                buf.readRotation2d(),
+                SpecPlacementSnap.fromId(buf.readByte())
             )
         )
 
@@ -1432,6 +1496,7 @@ object SpecPlacementOverlayClient : IGuiOverlay {
     )
 
     private var orientation = Rotation2d.identity
+    private var snap = SpecPlacementSnap.Free
 
     val CYCLE_ORIENTATION = KeyMapping(
         "key.$MODID.cycle_spec_orientation",
@@ -1441,9 +1506,15 @@ object SpecPlacementOverlayClient : IGuiOverlay {
         "key.$MODID.category"
     )
 
-    fun createSnapshot() = SpecPlacementOverlayState(
-        orientation
+    val CYCLE_SNAP_MODE = KeyMapping(
+        "key.$MODID.cycle_snap_mode",
+        KeyConflictContext.UNIVERSAL,
+        InputConstants.Type.KEYSYM,
+        GLFW.GLFW_KEY_LEFT_CONTROL,
+        "key.$MODID.category"
     )
+
+    fun createSnapshot() = SpecPlacementOverlayState(orientation, snap)
 
     override fun render(
         gui: ForgeGui,
@@ -1458,7 +1529,7 @@ object SpecPlacementOverlayClient : IGuiOverlay {
 
         guiGraphics.drawString(
             font,
-            "θ×=${Math.toDegrees(orientation.ln()).formatted(2)}°",
+            "θ×=${Math.toDegrees(orientation.ln()).formatted(2)}° mode: ${snap.description}",
             0,
             0,
             MyColor(255, 0, 0).data
@@ -1473,7 +1544,8 @@ object SpecPlacementOverlayClient : IGuiOverlay {
             return
         }
 
-        getClientSpecItem() ?: return
+        getClientSpecItem()
+            ?: return
 
         if(event.scrollDelta.approxEq(0.0)) {
             return
@@ -1488,8 +1560,9 @@ object SpecPlacementOverlayClient : IGuiOverlay {
         sendSnapshot()
     }
 
-    fun onCycleOrientation(event: InputEvent.Key) {
-        getClientSpecItem() ?: return
+    fun onKey(event: InputEvent.Key) {
+        getClientSpecItem()
+            ?: return
 
         if(CYCLE_ORIENTATION.key.value == event.key && event.action == InputConstants.RELEASE) {
             val closest = DEFAULT_ORIENTATIONS.minBy { abs((it / orientation).ln()) }
@@ -1501,6 +1574,10 @@ object SpecPlacementOverlayClient : IGuiOverlay {
                 closest
             }
 
+            sendSnapshot()
+        }
+        else if(CYCLE_SNAP_MODE.key.value == event.key && event.action == InputConstants.RELEASE) {
+            snap = SpecPlacementSnap.entries[(snap.index + 1) % SpecPlacementSnap.entries.size]
             sendSnapshot()
         }
     }
@@ -1515,7 +1592,8 @@ object SpecPlacementOverlayServer {
     private val states = WeakHashMap<ServerPlayer, SpecPlacementOverlayState>()
 
     fun getState(player: ServerPlayer) = states[player] ?: SpecPlacementOverlayState(
-        Rotation2d.identity
+        Rotation2d.identity,
+        SpecPlacementSnap.Free
     )
 
     fun clear() {
@@ -1548,6 +1626,7 @@ object SpecPreviewRenderer {
     private val CANNOT_PLACE_COLOR = MyColor(0.6f, 1.0f, 0.1f, 0.2f)
     private val CAN_PLACE_PREVIEW_COLOR = MyColor(0.9f, 0.1f, 1.0f, 0.15f)
     private val CANNOT_PLACE_PREVIEW_COLOR = MyColor(0.2f, 1.0f, 0.1f, 0.2f)
+    private val GRID_COLOR = MyColor(0.3f, 1.0f, 1.0f, 1.0f)
     private const val AXIS_THICKNESS = 0.01
     private const val CAN_PLACE_AXIS_ALPHA = 0.8f
     private const val CANNOT_PLACE_AXIS_ALPHA = 0.1f
@@ -1581,15 +1660,44 @@ object SpecPreviewRenderer {
         clipResult as BlockHitResult
 
         val substratePos = clipResult.blockPos
+
+        val isHoveringSpec = run {
+            val blockEntity = level.getBlockEntity(substratePos) as? MultipartBlockEntity
+                ?: return@run false
+
+            val specContainer = blockEntity.pickPart(player) as? SpecContainerPart
+                ?: return@run  false
+
+            return@run specContainer.pickSpec(player) != null
+        }
+
+        if(isHoveringSpec) {
+            return
+        }
+
         val face = clipResult.direction
         val multipartPos = substratePos + face
 
         val blockEntity = level.getBlockEntity(multipartPos)
         val specContainer = (blockEntity as? MultipartBlockEntity)?.getPart(face) as? SpecContainerPart
 
-        val mountingPoint = clipResult.location.cast()
-
         val overlayState = SpecPlacementOverlayClient.createSnapshot()
+        val stack = event.poseStack
+        stack.pushPose()
+
+        stack.translate(
+            -event.camera.position.x + substratePos.x.toDouble(),
+            -event.camera.position.y + substratePos.y.toDouble(),
+            -event.camera.position.z + substratePos.z.toDouble()
+        )
+
+        submitGrid(stack, overlayState.snap, face)
+
+        val mountingPoint = overlayState.snap
+            .snapPickedPosition(
+                clipResult.direction,
+                clipResult.location.cast()
+            )
 
         val canPlace = run {
             if(!SpecContainerPart.canPlaceSpecInSubstrate(
@@ -1610,7 +1718,12 @@ object SpecPreviewRenderer {
                 }
 
                 if(specContainer != null) {
-                    return@run !specContainer.placementCollides(player, overlayState.orientation, item.provider)
+                    return@run !specContainer.placementCollides(
+                        player,
+                        overlayState.orientation,
+                        overlayState.snap,
+                        item.provider
+                    )
                 }
             }
 
@@ -1618,6 +1731,7 @@ object SpecPreviewRenderer {
                 return@run false
             }
 
+            @Suppress("USELESS_CAST", "GrazieInspection") // FUCK YOU FUCK YOU
             if(blockEntity != null && (blockEntity as MultipartBlockEntity).placementCollides(player, face, item.partProvider.value)) {
                 return@run false
             }
@@ -1628,16 +1742,6 @@ object SpecPreviewRenderer {
 
             return@run true
         }
-
-        val stack = event.poseStack
-
-        stack.pushPose()
-
-        stack.translate(
-            -event.camera.position.x + substratePos.x.toDouble(),
-            -event.camera.position.y + substratePos.y.toDouble(),
-            -event.camera.position.z + substratePos.z.toDouble()
-        )
 
         val (dx, dy, dz) = partOffsetTable[face.get3DDataValue()]
         val (dx1, dy1, dz1) = mountingPoint - (substratePos.toVector3d() + Vector3d(0.5) - face.vector3d * 0.5)
@@ -1671,6 +1775,51 @@ object SpecPreviewRenderer {
             if(canPlace) CAN_PLACE_PREVIEW_COLOR else CANNOT_PLACE_PREVIEW_COLOR,
             item.provider
         )
+
+        stack.popPose()
+    }
+
+    private fun submitGrid(stack: PoseStack, mode: SpecPlacementSnap, face: Direction) {
+        if(mode == SpecPlacementSnap.Free) {
+            return
+        }
+
+        stack.pushPose()
+
+        stack.translate(face.vector3d)
+
+        val (dx, dy, dz) = partOffsetTable[face.get3DDataValue()]
+        stack.translate(dx, dy, dz)
+
+        stack.mulPose(face.rotationFast)
+        stack.translate(-0.5, 0.0, -0.5)
+
+        val vertexConsumer = Minecraft.getInstance()
+            .renderBuffers()
+            .bufferSource()
+            .getBuffer(RenderType.lines())
+
+        // half above the face, half under
+        val size = mode.gridSize
+        val height = 0.01
+        val squareSize = 1.0 / size
+
+        for (i in 0 until size) {
+            for (j in 0 until size) {
+                vertexConsumer.eln2SubmitAABBLines(
+                    stack.last(),
+                    BoundingBox3d.fromCenterSize(
+                        Vector3d(
+                            i * squareSize + squareSize / 2.0,
+                            0.0,
+                            j * squareSize + squareSize / 2.0
+                        ),
+                        Vector3d(squareSize, height, squareSize)
+                    ),
+                    GRID_COLOR
+                )
+            }
+        }
 
         stack.popPose()
     }
