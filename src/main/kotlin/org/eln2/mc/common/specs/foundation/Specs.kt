@@ -34,7 +34,6 @@ import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.context.UseOnContext
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Blocks
-import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.shapes.BooleanOp
@@ -52,7 +51,6 @@ import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
-import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.client.render.foundation.partTransformation
@@ -70,7 +68,9 @@ import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.DebugComponentDisplay
 import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.common.content.Content.BATTERY_SPEC_12V_SCALE
 import org.eln2.mc.mathematics.FacingDirection
+import org.eln2.mc.mathematics.maskXY
 import org.joml.Quaternionf
 import org.lwjgl.glfw.GLFW
 import java.util.*
@@ -1904,7 +1904,7 @@ abstract class GridSpec(ci: SpecCreateInfo) : Spec(ci), GridTerminalContainer {
      * @param sizeZ Size along Z in the local frame.
      * @return A bounding box in the world frame.
      * */
-    protected fun boundingBox(
+    fun boundingBox(
         x: Double,
         y: Double,
         z: Double,
@@ -1922,6 +1922,12 @@ abstract class GridSpec(ci: SpecCreateInfo) : Spec(ci), GridTerminalContainer {
         placement.part.placement.facing,
         placement.face
     )
+
+    fun boundingBox(box: BoundingBox3d, orientation: Rotation2d = Rotation2d.identity) : OrientedBoundingBox3d {
+        val center = box.center
+        val size = box.size
+        return boundingBox(center.x, center.y, center.z, size.x, size.y, size.z, orientation)
+    }
 
     @ServerOnly
     override fun onPlaced() {
@@ -1993,7 +1999,7 @@ interface SpecWithCell<C : Cell> {
     fun neighborScan() : List<CellAndContainerHandle>
 }
 
-abstract class CellSpec<C : Cell>(ci: SpecCreateInfo, final override val provider: CellProvider<C>, ) : GridSpec(ci), SpecWithCell<C> {
+abstract class CellSpec<C : Cell>(ci: SpecCreateInfo, final override val provider: CellProvider<C>) : GridSpec(ci), SpecWithCell<C> {
     companion object {
         private const val GRAPH_ID = "GraphID"
         private const val CUSTOM_SIMULATION_DATA = "SimulationData"
@@ -2192,6 +2198,19 @@ abstract class CellSpec<C : Cell>(ci: SpecCreateInfo, final override val provide
             { GridTerminalClient(it, locator, attachment ?: box3d.center, box3d, highlightColor) }
         )
     )
+
+    protected fun defineCellBoxTerminal(
+        box3d: OrientedBoundingBox3d,
+        highlightColor : MyColor?,
+        vararg categories: GridMaterialCategory
+    ) = defineCellBoxTerminal(box3d, null, highlightColor, categories.toList())
+
+    protected fun defineCellBoxTerminal(
+        box3dModel: BoundingBox3d, // The box is in the model's frame
+        highlightColor : MyColor?,
+        vararg categories: GridMaterialCategory
+    ) = defineCellBoxTerminal(boundingBox(box3dModel), null, highlightColor, categories.toList())
+
     protected fun defineCellBoxTerminal(
         x: Double, y: Double, z: Double,
         sizeX: Double, sizeY: Double, sizeZ: Double,
@@ -2200,4 +2219,19 @@ abstract class CellSpec<C : Cell>(ci: SpecCreateInfo, final override val provide
         highlightColor: MyColor? = MyColor(0.8f, 1f, 0.58f, 0.44f),
         categories: List<GridMaterialCategory> = listOf(GridMaterialCategory.MicroGrid),
     ) = defineCellBoxTerminal(boundingBox(x, y, z, sizeX, sizeY, sizeZ, orientation), attachment, highlightColor, categories)
+
+    // BB = BlockBench
+    protected fun defineCellBoxTerminalBB(
+        x: Double, y: Double, z: Double,
+        sizeX: Double, sizeY: Double, sizeZ: Double,
+        orientation: Rotation2d = Rotation2d.identity,
+        attachment: Vector3d? = null,
+        highlightColor: MyColor? = MyColor(0.8f, 1f, 0.58f, 0.44f),
+        categories: List<GridMaterialCategory> = listOf(GridMaterialCategory.MicroGrid),
+        modelScale: Double = 1.0
+    ) : Supplier<GridTerminal> {
+        val size = Vector3d(sizeX / 16.0, sizeY / 16.0, sizeZ / 16.0) * modelScale
+        val box = BoundingBox3d.fromCenterSize(((Vector3d(x / 16.0, y / 16.0, z / 16.0)) - Vector3d.one * maskXY / 2.0) * modelScale + size / 2.0, size)
+        return defineCellBoxTerminal(boundingBox(box, orientation), attachment, highlightColor, categories)
+    }
 }

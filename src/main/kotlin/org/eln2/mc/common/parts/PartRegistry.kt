@@ -50,7 +50,7 @@ object PartRegistry {
      *  @param name The name for all the registry items.
      *  @param provider The part provider that will be used to create the part.
      * */
-    fun partAndItem(name: String, provider: PartProvider): PartRegistryItem {
+    fun partAndItemWithProvider(name: String, provider: PartProvider): PartRegistryItem {
         val part = PARTS.register(name) { provider }
         val item = PART_ITEMS.register(name) { PartItem(provider) }
 
@@ -73,7 +73,7 @@ object PartRegistry {
         return ForgeRegistries.ITEMS.getValue(id) as PartItem
     }
 
-    val SPEC_CONTAINER_PART = partAndItem(
+    val SPEC_CONTAINER_PART = partAndItemWithProvider(
         "spec_container",
         BasicPartProvider(Vector3d.zero) {
             SpecContainerPart(it)

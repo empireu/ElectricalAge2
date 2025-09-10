@@ -19,8 +19,6 @@ import org.ageseries.libage.sim.Simulator
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.CircuitBuilder
-import org.ageseries.libage.sim.electrical.mna.NEGATIVE
-import org.ageseries.libage.sim.electrical.mna.POSITIVE
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.ageseries.libage.utils.Stopwatch
 import org.ageseries.libage.utils.measureDuration
@@ -1704,17 +1702,15 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         var stage = UpdateStep.Start
 
         try {
-            val fixedDt = 1.0 / 100.0
-
             stage = UpdateStep.UpdateSubsPre
-            simulationSubscribers.update(fixedDt, SubscriberPhase.Pre)
+            simulationSubscribers.update(DT, SubscriberPhase.Pre)
 
             lastTickTime = !measureDuration {
 
                 stage = UpdateStep.UpdateElectricalSims
                 val electricalTime = measureDuration {
                     electricalSims.forEach {
-                        val success = it.step(fixedDt)
+                        val success = it.step(DT)
 
                         if (!success && !it.isFloating) {
                             LOG.error("Failed to update non-floating circuit!")
@@ -1725,13 +1721,13 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
                 stage = UpdateStep.UpdateThermalSims
                 val thermalTime = measureDuration {
                     thermalSims.forEach {
-                        it.step(fixedDt)
+                        it.step(DT)
                     }
                 }
             }
 
             stage = UpdateStep.UpdateSubsPost
-            simulationSubscribers.update(fixedDt, SubscriberPhase.Post)
+            simulationSubscribers.update(DT, SubscriberPhase.Post)
 
             updates++
 
@@ -2005,6 +2001,8 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
     }
 
     companion object {
+        const val DT = 1.0 / 100.0
+
         private const val NBT_CELL_DATA = "data"
         private const val NBT_ID = "id"
         private const val NBT_CELLS = "cells"
@@ -2318,12 +2316,3 @@ class BasicCellProvider<T : Cell>(val factory: CellFactory<T>) : CellProvider<T>
     }
 }
 
-/**
- * Convention for the pin "exported" to other Electrical Objects.
- * */
-const val EXTERNAL_PIN: Int = POSITIVE
-
-/**
- * Convention for the pin used "internally" by Electrical Objects.
- * */
-const val INTERNAL_PIN: Int = NEGATIVE

@@ -159,8 +159,6 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     }
 }
 
-data class TermRef(val component: Term, val index: Int)
-
 abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     /**
      * The circuit this object is part of.

@@ -247,7 +247,7 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
 
         val smokeTemperature = this.smokeTemperature ?: (!properties.damageOptions.temperatureThreshold * 0.9)
 
-        PartRegistry.partAndItem(
+        PartRegistry.partAndItemWithProvider(
             id,
             BasicPartProvider(hubSize) { ci ->
                 WirePart(
@@ -267,16 +267,13 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
 class ThermalWireBuilder(id: String) : WireBuilder<ThermalWireCell>(id) {
     fun register(): ThermalWireRegistryObject {
         val material = createThermalProperties()
-        val cell = CellRegistry.cell(
-            id,
-            BasicCellProvider { ci ->
-                ThermalWireCell(
-                    ci,
-                    contactSurfaceArea,
-                    material,
-                )
-            }
-        )
+        val cell = CellRegistry.cellImmediate(id) {
+            ThermalWireCell(
+                it,
+                contactSurfaceArea,
+                material,
+            )
+        }
         registerPart(material, cell)
         return ThermalWireRegistryObject(material, cell.id)
     }
@@ -288,17 +285,14 @@ class ElectricalWireBuilder(id: String) : WireBuilder<ElectrothermalWireCell>(id
     fun register(): ElectricalWireRegistryObject {
         val material = createThermalProperties()
         val electrical = WireElectricalProperties(resistance)
-        val cell = CellRegistry.cell(
-            id,
-            BasicCellProvider { ci ->
-                ElectrothermalWireCell(
-                    ci,
-                    contactSurfaceArea,
-                    material,
-                    electrical
-                )
-            }
-        )
+        val cell = CellRegistry.cellImmediate(id) {
+            ElectrothermalWireCell(
+                it,
+                contactSurfaceArea,
+                material,
+                electrical
+            )
+        }
         registerPart(material, cell)
         return ElectricalWireRegistryObject(material, electrical, cell.id)
     }

@@ -49,8 +49,8 @@ import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
 import org.eln2.mc.common.blocks.BlockRegistry.defineDelegateMap
 import org.eln2.mc.common.blocks.foundation.BigBlockItem
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
-import org.eln2.mc.common.cells.CellRegistry.cell
-import org.eln2.mc.common.cells.foundation.BasicCellProvider
+import org.eln2.mc.common.cells.CellRegistry.cellMemoize
+import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.cells.foundation.CellProvider
 import org.eln2.mc.common.cells.foundation.RadiantBodyEmissionDescription
@@ -62,11 +62,11 @@ import org.eln2.mc.common.grids.GridMaterialCategory
 import org.eln2.mc.common.grids.GridMaterials
 import org.eln2.mc.common.items.CreativeTabRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
-import org.eln2.mc.common.parts.PartRegistry.partAndItem
+import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.PartFactory
 import org.eln2.mc.common.parts.foundation.transformPartWorld
-import org.eln2.mc.common.specs.SpecRegistry.specAndItem
+import org.eln2.mc.common.specs.SpecRegistry.specAndItemWithProvider
 import org.eln2.mc.common.specs.foundation.BasicSpecProvider
 import org.eln2.mc.common.specs.foundation.SpecFactory
 import org.eln2.mc.data.KILOGRAM_METER_SQUARED
@@ -74,12 +74,10 @@ import org.eln2.mc.data.Locators
 import org.eln2.mc.data.NEWTON_METER
 import org.eln2.mc.data.NEWTON_METER_SECOND
 import org.eln2.mc.data.Pole
-import org.eln2.mc.data.PoleMap
 import org.eln2.mc.data.REVOLUTION_PER_SECOND
 import org.eln2.mc.data.cylinderResistance
 import org.eln2.mc.data.directionMonopolarMapPlanar
 import org.eln2.mc.data.directionPoleMapPlanar
-import org.eln2.mc.data.findDirActualPlanarOrNull
 import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.mathematics.Base6Direction3d
@@ -175,32 +173,29 @@ object Content {
         }
     }.register()
 
-    val THERMAL_RADIATOR_CELL = cell(
-        "thermal_radiator",
-        BasicCellProvider.setup {
-            val thermalProperties = WireThermalProperties(
-                ThermalMassDefinition(
-                    ChemicalElement.Copper.asMaterial,
-                    mass = Quantity(50.0, KILOGRAM)
-                ),
-                TemperatureExplosionBehaviorOptions(
-                    temperatureThreshold = Quantity(900.0, CELSIUS)
-                ),
-                replicatesInternalTemperature = true,
-                replicatesExternalTemperature = true,
-                null, // TODO maybe it does radiate?
-                leakageParameters = ConnectionParameters(
-                    area = 5.0
-                )
+    val THERMAL_RADIATOR_CELL = cellMemoize("thermal_radiator") {
+        val thermalProperties = WireThermalProperties(
+            ThermalMassDefinition(
+                ChemicalElement.Copper.asMaterial,
+                mass = Quantity(50.0, KILOGRAM)
+            ),
+            TemperatureExplosionBehaviorOptions(
+                temperatureThreshold = Quantity(900.0, CELSIUS)
+            ),
+            replicatesInternalTemperature = true,
+            replicatesExternalTemperature = true,
+            null, // TODO maybe it does radiate?
+            leakageParameters = ConnectionParameters(
+                area = 5.0
             )
+        )
 
-            CellFactory {
-                ThermalWireCell(it, Double.POSITIVE_INFINITY, thermalProperties)
-            }
+        CellFactory {
+            ThermalWireCell(it, Double.POSITIVE_INFINITY, thermalProperties)
         }
-    )
+    }
 
-    val THERMAL_RADIATOR_PART = partAndItem(
+    val THERMAL_RADIATOR_PART = partAndItemWithProvider(
         "thermal_radiator",
         BasicPartProvider(Vector3d(1.0, 3.0 / 16.0, 1.0)) { ci ->
             RadiatorPart(ci)
@@ -211,12 +206,9 @@ object Content {
 
     //#region Creative Components
 
-    val VOLTAGE_SOURCE_CELL = cell(
-         "voltage_source",
-         BasicCellProvider(::VoltageSourceCell)
-    )
+    val VOLTAGE_SOURCE_CELL = cellImmediate("voltage_source", ::VoltageSourceCell)
 
-    val VOLTAGE_SOURCE_PART = partAndItem(
+    val VOLTAGE_SOURCE_PART = partAndItemWithProvider(
         "voltage_source",
         BasicPartProvider(
             Vector3d(6.0 / 16.0, 2.5 / 16.0, 6.0 / 16.0),
@@ -224,20 +216,16 @@ object Content {
         )
     )
 
-    val GROUND_CELL = cell(
-        "ground",
-        BasicCellProvider(::GroundCell)
-    )
+    val GROUND_CELL = cellImmediate("ground", ::GroundCell)
 
-    val GROUND_PART = partAndItem(
-        "ground",
+    val GROUND_PART = partAndItemWithProvider("ground",
         BasicPartProvider(
             Vector3d(4.0 / 16.0, 4.0 / 16.0, 4.0 / 16.0),
             ::GroundPart
         )
     )
 
-    val GROUND_SPEC = specAndItem(
+    val GROUND_SPEC = specAndItemWithProvider(
         "ground_micro_grid",
         BasicSpecProvider(
             FlwModels.GROUND_MICRO_GRID,
@@ -250,50 +238,44 @@ object Content {
 
     //#region Batteries
 
-    val LEAD_ACID_BATTERY_CELL_12V_840Wh = cell(
-        "lead_acid_battery_12v_840wh",
-        BasicCellProvider.setup {
-            val model = BatteryModels.TESTleadAcid12Model(
-                Quantity(840.0, WATT_HOUR),
-                Quantity(23.0, MILLI * OHM),
-                Quantity(12.0, KILOGRAM),
-                Quantity(0.1, METER2),
-                1e-7,
-                Quantity(100.0, AMPERE)
-            )
+    val LEAD_ACID_BATTERY_CELL_12V_840Wh = cellMemoize("lead_acid_battery_12v_840wh") {
+        val model = BatteryModels.TESTleadAcid12Model(
+            Quantity(840.0, WATT_HOUR),
+            Quantity(23.0, MILLI * OHM),
+            Quantity(12.0, KILOGRAM),
+            Quantity(0.1, METER2),
+            1e-7,
+            Quantity(100.0, AMPERE)
+        )
 
-            val plusDir = Base6Direction3d.Front
-            val minusDir = Base6Direction3d.Back
+        val plusDir = Base6Direction3d.Front
+        val minusDir = Base6Direction3d.Back
 
-            CellFactory {
-                val cell = PolarBatteryCell(it, model, directionPoleMapPlanar(plusDir, minusDir))
-                cell.energy = cell.model.energyCapacity * 0.9
-                cell
-            }
+        CellFactory {
+            val cell = PolarBatteryCell(it, model, directionPoleMapPlanar(plusDir, minusDir))
+            cell.energy = cell.model.energyCapacity * 0.9
+            cell
         }
-    )
+    }
 
-    val GRID_LEAD_ACID_BATTERY_CELL_12V_80Wh = cell(
-        "lead_acid_battery_12v_80wh",
-        BasicCellProvider.setup {
-            val model = BatteryModels.TESTleadAcid12Model(
-                Quantity(80.0, WATT_HOUR),
-                Quantity(26.0, MILLI * OHM),
-                Quantity(2.6, KILOGRAM),
-                Quantity(0.0006, METER2),
-                1e-6,
-                Quantity(10.0, AMPERE)
-            )
+    val GRID_LEAD_ACID_BATTERY_CELL_12V_80Wh = cellMemoize("lead_acid_battery_12v_80wh") {
+        val model = BatteryModels.TESTleadAcid12Model(
+            Quantity(80.0, WATT_HOUR),
+            Quantity(26.0, MILLI * OHM),
+            Quantity(2.6, KILOGRAM),
+            Quantity(0.0006, METER2),
+            1e-6,
+            Quantity(10.0, AMPERE)
+        )
 
-            CellFactory {
-                val cell = TerminalBatteryCell(it, model)
-                cell.energy = cell.model.energyCapacity * 0.9
-                cell
-            }
+        CellFactory {
+            val cell = TerminalBatteryCell(it, model)
+            cell.energy = cell.model.energyCapacity * 0.9
+            cell
         }
-    )
+    }
 
-    val BATTERY_PART_12V = partAndItem(
+    val BATTERY_PART_12V = partAndItemWithProvider(
         "lead_acid_battery_12v",
         BasicPartProvider(Vector3d(6.0 / 16.0, 7.0 / 16.0, 10.0 / 16.0)) { ci ->
             BatteryPart(ci, LEAD_ACID_BATTERY_CELL_12V_840Wh.get())
@@ -304,7 +286,7 @@ object Content {
      * We don't have a different model so we scale the big one we have
      * */
     const val BATTERY_SPEC_12V_SCALE = 0.35
-    val BATTERY_SPEC_12V = specAndItem(
+    val BATTERY_SPEC_12V = specAndItemWithProvider(
         "micro_grid_lead_acid_battery_12v",
         BasicSpecProvider.setup(null, Vector3d(6.0 / 16.0, 7.0 / 16.0, 10.0 / 16.0) * 0.35) {
             val size = Vector3d(1.5 / 16.0, 0.5 / 16.0, 1.5 / 16.0) * BATTERY_SPEC_12V_SCALE
@@ -321,12 +303,9 @@ object Content {
 
     //#region Basic Electrical Components
 
-    val RESISTOR_CELL = cell(
-        "resistor",
-        BasicCellProvider(::ResistorCell)
-    )
+    val RESISTOR_CELL = cellImmediate("resistor", ::ResistorCell)
 
-    val RESISTOR_PART = partAndItem(
+    val RESISTOR_PART = partAndItemWithProvider(
         "resistor",
         BasicPartProvider(
             Vector3d(3.5 / 16.0, 2.25 / 16.0, 5.0 / 16.0),
@@ -338,28 +317,25 @@ object Content {
 
     //#region Photovoltaics
 
-    val PHOTOVOLTAIC_GENERATOR_CELL = cell(
-        "photovoltaic_generator",
-        BasicCellProvider.setup {
-            val model = PhotovoltaicModel(
-                Quantity(32.0, VOLT),
-                7000.0,
-                0.1,
-                0.8,
-                0.35,
-            )
+    val PHOTOVOLTAIC_GENERATOR_CELL = cellMemoize("photovoltaic_generator") {
+        val model = PhotovoltaicModel(
+            Quantity(32.0, VOLT),
+            7000.0,
+            0.1,
+            0.8,
+            0.35,
+        )
 
-            val surface = Quantity(1.0, METER2)
+        val surface = Quantity(1.0, METER2)
 
-            CellFactory {
-                PhotovoltaicGeneratorCell(it, surface, model) { cell ->
-                    cell.locator.requireLocator(Locators.FACE).vector3d
-                }
+        CellFactory {
+            PhotovoltaicGeneratorCell(it, surface, model) { cell ->
+                cell.locator.requireLocator(Locators.FACE).vector3d
             }
         }
-    )
+    }
 
-    val PHOTOVOLTAIC_PANEL_PART = partAndItem(
+    val PHOTOVOLTAIC_PANEL_PART = partAndItemWithProvider(
       "photovoltaic_panel",
       BasicPartProvider(Vector3d(1.0, 2.0 / 16.0, 1.0)) { ci ->
             PhotovoltaicPanelPart(
@@ -373,35 +349,34 @@ object Content {
 
     //#region Lights
 
-    val POLAR_LIGHT_CELL_CONE_45DEG = cell(
-        "polar_light_45deg",
-        BasicCellProvider { ci ->
-            PolarLightCell(ci, directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right), LightVariantType.Cone45Deg)
-        }
-    )
+    val POLAR_LIGHT_CELL_CONE_45DEG = cellImmediate("polar_light_45deg") {
+        PolarLightCell(
+            it,
+            directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right),
+            LightVariantType.Cone45Deg
+        )
+    }
 
-    val POLAR_LIGHT_CELL_CONE_SPHERE = cell(
-        "polar_light_sphere",
-        BasicCellProvider { ci ->
-            PolarLightCell(ci, directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right), LightVariantType.Sphere)
-        }
-    )
+    val POLAR_LIGHT_CELL_CONE_SPHERE = cellImmediate("polar_light_sphere") {
+        PolarLightCell(
+            it,
+            directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right),
+            LightVariantType.Sphere
+        )
+    }
 
-    val TERMINAL_LIGHT_CELL_45DEG = cell(
-        "terminal_light_45deg",
-        BasicCellProvider { ci ->
-            TerminalLightCell(ci, LightVariantType.Cone45Deg)
-        }
-    )
+    val TERMINAL_LIGHT_CELL_45DEG = cellImmediate("terminal_light_45deg") {
+        TerminalLightCell(it, LightVariantType.Cone45Deg)
+    }
 
-    val LIGHT_PART = partAndItem(
+    val LIGHT_PART = partAndItemWithProvider(
         "small_wall_lamp",
         BasicPartProvider(Vector3d(8.0 / 16.0, (1.0 + 2.302) / 16.0, 5.0 / 16.0)) { ci ->
             PolarPoweredLightPart(ci, POLAR_LIGHT_CELL_CONE_45DEG.get())
         }
     )
 
-    val LIGHT_PART_MICRO_GRID = partAndItem(
+    val LIGHT_PART_MICRO_GRID = partAndItemWithProvider(
         "small_wall_lamp_micro_grid",
         BasicPartProvider.setup(Vector3d(8.0 / 16.0, (1.0 + 2.302) / 16.0, 5.0 / 16.0)) {
             val size = Vector3d(0.5 / 16.0, 2.0 / 16.0, 1.0 / 16.0)
@@ -506,7 +481,7 @@ object Content {
 
     private val SMALL_GARDEN_LIGHT_MODEL = gardenLightModel(3.0)
 
-    val SMALL_GARDEN_LIGHT = partAndItem(
+    val SMALL_GARDEN_LIGHT = partAndItemWithProvider(
         "small_garden_light",
         BasicPartProvider(Vector3d(4.0 / 16.0, 6.0 / 16.0, 4.0 / 16.0)) { ci ->
             SolarLightPart(ci, SMALL_GARDEN_LIGHT_MODEL)
@@ -515,7 +490,7 @@ object Content {
 
     private val TALL_GARDEN_LIGHT_MODEL = gardenLightModel(5.0)
 
-    val TALL_GARDEN_LIGHT = partAndItem(
+    val TALL_GARDEN_LIGHT = partAndItemWithProvider(
         "tall_garden_light",
         BasicPartProvider(Vector3d(3.0 / 16.0, 15.5 / 16.0, 3.0 / 16.0)) { ci ->
             SolarLightPart(ci, TALL_GARDEN_LIGHT_MODEL)
@@ -562,29 +537,26 @@ object Content {
 
     //#region Heat Generator
 
-    val HEAT_GENERATOR_CELL = cell(
-        "heat_generator",
-        BasicCellProvider.setup {
-            val thermalDefinition = ThermalMassDefinition(
-                Material(
-                    label = "Heat generator",
-                    electricalResistivity = Quantity(Double.POSITIVE_INFINITY),
-                    thermalConductivity = Quantity(5000.0, WATT_PER_METER_KELVIN),
-                    specificHeat = ChemicalElement.Copper.specificHeat,
-                    density = ChemicalElement.Copper.density
-                ),
-                mass = Quantity(10.0, KILOGRAM)
-            )
+    val HEAT_GENERATOR_CELL = cellMemoize("heat_generator") {
+        val thermalDefinition = ThermalMassDefinition(
+            Material(
+                label = "Heat generator",
+                electricalResistivity = Quantity(Double.POSITIVE_INFINITY),
+                thermalConductivity = Quantity(5000.0, WATT_PER_METER_KELVIN),
+                specificHeat = ChemicalElement.Copper.specificHeat,
+                density = ChemicalElement.Copper.density
+            ),
+            mass = Quantity(10.0, KILOGRAM)
+        )
 
-            val leakageParameters = ConnectionParameters.DEFAULT.copy(
-                conductance = Quantity(0.001, WATT_PER_KELVIN)
-            )
+        val leakageParameters = ConnectionParameters.DEFAULT.copy(
+            conductance = Quantity(0.001, WATT_PER_KELVIN)
+        )
 
-            CellFactory {
-                HeatGeneratorCell(it, thermalDefinition, leakageParameters)
-            }
+        CellFactory {
+            HeatGeneratorCell(it, thermalDefinition, leakageParameters)
         }
-    )
+    }
 
     val HEAT_GENERATOR_BLOCK = blockAndItem("heat_generator") { HeatGeneratorBlock() }
 
@@ -600,92 +572,89 @@ object Content {
 
     //#region Thermal-Electrical Generator
 
-    val ELECTRICAL_HEAT_ENGINE_CELL = cell(
-        "electrical_heat_engine",
-        BasicCellProvider.setup {
-            // The electrical plus and minus:
-            val electricalA = Base6Direction3d.Left
-            val electricalB = Base6Direction3d.Right
+    val ELECTRICAL_HEAT_ENGINE_CELL = cellMemoize("electrical_heat_engine") {
+        // The electrical plus and minus:
+        val electricalA = Base6Direction3d.Left
+        val electricalB = Base6Direction3d.Right
 
-            // The hot side:
-            val thermalA = Base6Direction3d.Front
+        // The hot side:
+        val thermalA = Base6Direction3d.Front
 
-            val electricalMap = directionPoleMapPlanar(
-                plusDir = electricalA,
-                minusDir = electricalB
-            )
+        val electricalMap = directionPoleMapPlanar(
+            plusDir = electricalA,
+            minusDir = electricalB
+        )
 
-            val thermalMap = directionMonopolarMapPlanar(
-                thermalA,
-                Pole.Minus
-            )
+        val thermalMap = directionMonopolarMapPlanar(
+            thermalA,
+            Pole.Minus
+        )
 
-            val coldSideDefinition = ThermalMassDefinition(
-                ChemicalElement.Copper.asMaterial,
-                mass = Quantity(5.0, KILOGRAM)
-            )
+        val coldSideDefinition = ThermalMassDefinition(
+            ChemicalElement.Copper.asMaterial,
+            mass = Quantity(5.0, KILOGRAM)
+        )
 
-            val hotSideDefinition = ThermalMassDefinition(
-                ChemicalElement.Copper.asMaterial,
-                mass = Quantity(5.0, KILOGRAM)
-            )
+        val hotSideDefinition = ThermalMassDefinition(
+            ChemicalElement.Copper.asMaterial,
+            mass = Quantity(5.0, KILOGRAM)
+        )
 
-            // Radiator:
-            val leakageCold = ConnectionParameters(
-                conductance = Quantity(10.0, WATT_PER_KELVIN)
-            )
+        // Radiator:
+        val leakageCold = ConnectionParameters(
+            conductance = Quantity(10.0, WATT_PER_KELVIN)
+        )
 
-            val leakageHot = ConnectionParameters(
-                conductance = Quantity(0.1, WATT_PER_KELVIN)
-            )
+        val leakageHot = ConnectionParameters(
+            conductance = Quantity(0.1, WATT_PER_KELVIN)
+        )
 
-            val generatorModel = ThermalElectricGeneratorModel(
-                Quantity(20.0, REVOLUTION_PER_SECOND),
-                Quantity(120.0, VOLT),
-                0.5,
-                Quantity(10.0, WATT_PER_KELVIN),
-                Quantity(0.05, WATT_PER_KELVIN),
-                Quantity(1.0, KILOGRAM_METER_SQUARED),
-                Quantity(0.025, NEWTON_METER_SECOND),
-                Quantity(5.0, NEWTON_METER),
-                Quantity(2400.0, WATT),
-                0.9,
-                Quantity(2.5, WATT),
-                0.01
-            )
+        val generatorModel = ThermalElectricGeneratorModel(
+            Quantity(20.0, REVOLUTION_PER_SECOND),
+            Quantity(120.0, VOLT),
+            0.5,
+            Quantity(10.0, WATT_PER_KELVIN),
+            Quantity(0.05, WATT_PER_KELVIN),
+            Quantity(1.0, KILOGRAM_METER_SQUARED),
+            Quantity(0.025, NEWTON_METER_SECOND),
+            Quantity(5.0, NEWTON_METER),
+            Quantity(2400.0, WATT),
+            0.9,
+            Quantity(2.5, WATT),
+            0.01
+        )
 
-            val hemispheres = Direction.entries.associateWith {
-                val volume = LightFieldPrimitives.hemisphereIncremental(
-                    15 + 64,
-                    3.0,
-                    it,
-                    1,
-                ).volume
+        val hemispheres = Direction.entries.associateWith {
+            val volume = LightFieldPrimitives.hemisphereIncremental(
+                15 + 64,
+                3.0,
+                it,
+                1,
+            ).volume
 
-                RadiantBodyEmissionDescription({ volume })
-            }
-
-            CellFactory {
-                val cell = ElectricalHeatEngineCell(
-                    it,
-                    electricalMap,
-                    thermalMap,
-                    coldSideDefinition, hotSideDefinition,
-                    leakageCold, leakageHot,
-                    generatorModel,
-                    0.075,
-                    hemispheres[it.locator.transformPartWorld(Base6Direction3d.Front)]!!,
-                    hemispheres[it.locator.transformPartWorld(Base6Direction3d.Back)]!!
-                )
-
-                cell.source.ruleSet.withDirectionRulePlanar(electricalA + electricalB)
-                cell.thermalBipole.ruleSet.withDirectionRulePlanar(thermalA)
-                cell
-            }
+            RadiantBodyEmissionDescription({ volume })
         }
-    )
 
-    val ELECTRICAL_HEAT_ENGINE_PART = partAndItem(
+        CellFactory {
+            val cell = ElectricalHeatEngineCell(
+                it,
+                electricalMap,
+                thermalMap,
+                coldSideDefinition, hotSideDefinition,
+                leakageCold, leakageHot,
+                generatorModel,
+                0.075,
+                hemispheres[it.locator.transformPartWorld(Base6Direction3d.Front)]!!,
+                hemispheres[it.locator.transformPartWorld(Base6Direction3d.Back)]!!
+            )
+
+            cell.source.ruleSet.withDirectionRulePlanar(electricalA + electricalB)
+            cell.thermalBipole.ruleSet.withDirectionRulePlanar(thermalA)
+            cell
+        }
+    }
+
+    val ELECTRICAL_HEAT_ENGINE_PART = partAndItemWithProvider(
         "electrical_heat_engine",
         BasicPartProvider(Vector3d(4.0 / 16.0, 10.0 / 16.0, 14.0 / 16.0)) {
             ElectricalHeatEnginePart(it)
@@ -694,14 +663,42 @@ object Content {
 
     //#endregion
 
+    //#region Power Converter
+
+    val TERMINAL_DC_TO_DC_CONVERTER_CELL_800W = cellMemoize("terminal_dc_to_dc_converter_800w") {
+        val thermalDef = ThermalMassDefinition(
+            ChemicalElement.Copper.asMaterial
+        )
+
+        val model = DcToDcConverterModel(
+            Quantity(800.0, WATT),
+            0.8,
+            5.0,
+            Quantity(800.0, VOLT),
+            Quantity(0.1, OHM)
+        )
+
+        CellFactory {
+            TerminalDcToDcConverterCell(it, thermalDef, model)
+        }
+    }
+
+    val DC_TO_DC_CONVERTER_SPEC = specAndItemWithProvider(
+        "dc_to_dc_converter",
+        BasicSpecProvider(
+            FlwModels.SMALL_DC_TO_DC_CONVERTER,
+            Vector3d(9.8, 2.625, 4.85) / 16.0,
+            ::DcToDcConverterSpec
+        )
+    )
+
+    //#endregion
+
     //#region Furnaces
 
-    val FURNACE_CELL = cell(
-        "furnace_cell",
-        BasicCellProvider {
-            FurnaceCell(it, Base6Direction3d.Left, Base6Direction3d.Right)
-        }
-    )
+    val FURNACE_CELL = cellImmediate("furnace_cell") {
+        FurnaceCell(it, Base6Direction3d.Left, Base6Direction3d.Right)
+    }
 
     val FURNACE_BLOCK = blockAndItem("furnace") { FurnaceBlock() }
 
@@ -794,20 +791,17 @@ object Content {
         )
     )
 
-    val MICRO_GRID_ANCHOR_CELL = cell(
-        "micro_grid_anchor",
-        BasicCellProvider {
-            GridAnchorCell(
-                it,
-                !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
-                    L = Quantity(1.0, CENTIMETER),
-                    A = Quantity(PI * Quantity(2.0, CENTIMETER).value.pow(2))
-                )
+    val MICRO_GRID_ANCHOR_CELL = cellImmediate("micro_grid_anchor") {
+        GridAnchorCell(
+            it,
+            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
+                L = Quantity(1.0, CENTIMETER),
+                A = Quantity(PI * Quantity(2.0, CENTIMETER).value.pow(2))
             )
-        }
-    )
+        )
+    }
 
-    val MICRO_GRID_ANCHOR_SPEC = specAndItem(
+    val MICRO_GRID_ANCHOR_SPEC = specAndItemWithProvider(
         "micro_grid_anchor",
         BasicSpecProvider(FlwModels.MICRO_GRID_ANCHOR, Vector3d(1.0 / 16.0, 1.5 / 16.0, 1.0 / 16.0)) {
             GridAnchorSpec(
@@ -818,24 +812,21 @@ object Content {
         }
     )
 
-    val MICRO_GRID_INTERFACE_CELL = cell(
-        "micro_grid_interface",
-        BasicCellProvider {
-            GridInterfaceCell(
-                it,
-                !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
-                    L = Quantity(2.5, CENTIMETER),
-                    A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
-                ),
-                !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
-                    L = Quantity(1.5, CENTIMETER),
-                    A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
-                )
+    val MICRO_GRID_INTERFACE_CELL = cellImmediate("micro_grid_interface") {
+        GridInterfaceCell(
+            it,
+            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
+                L = Quantity(2.5, CENTIMETER),
+                A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
+            ),
+            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
+                L = Quantity(1.5, CENTIMETER),
+                A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
             )
-        }
-    )
+        )
+    }
 
-    val MICRO_GRID_INTERFACE_PART = partAndItem(
+    val MICRO_GRID_INTERFACE_PART = partAndItemWithProvider(
         "micro_grid_interface",
         BasicPartProvider(Vector3d(4.0 / 16.0)) {
             GridInterfacePart(
@@ -846,24 +837,21 @@ object Content {
         }
     )
 
-    val POWER_GRID_INTERFACE_CELL = cell(
-        "power_grid_interface",
-        BasicCellProvider {
-            GridInterfaceCell(
-                it,
-                !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
-                    L = Quantity(10.0, CENTIMETER),
-                    A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
-                ),
-                !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
-                    L = Quantity(2.5, CENTIMETER),
-                    A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
-                )
+    val POWER_GRID_INTERFACE_CELL = cellImmediate("power_grid_interface") {
+        GridInterfaceCell(
+            it,
+            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
+                L = Quantity(10.0, CENTIMETER),
+                A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
+            ),
+            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
+                L = Quantity(2.5, CENTIMETER),
+                A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
             )
-        }
-    )
+        )
+    }
 
-    val POWER_GRID_INTERFACE_PART = partAndItem(
+    val POWER_GRID_INTERFACE_PART = partAndItemWithProvider(
         "power_grid_interface",
         BasicPartProvider(Vector3d(4.0 / 16.0, 8.0 / 16.0, 4.0 / 16.0)) {
             GridInterfacePart(

@@ -21,7 +21,6 @@ import org.ageseries.libage.mathematics.*
 import org.ageseries.libage.sim.*
 import org.ageseries.libage.sim.electrical.mna.VirtualResistor
 import org.eln2.mc.*
-import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.events.schedulePre

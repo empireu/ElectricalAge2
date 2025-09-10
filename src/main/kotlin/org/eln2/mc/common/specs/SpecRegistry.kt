@@ -36,7 +36,7 @@ object SpecRegistry {
 
     fun getId(provider: SpecProvider) = specs.forward[provider] ?: error("Failed to get spec id $provider")
 
-    fun specAndItem(name: String, provider: SpecProvider): SpecRegistryItem {
+    fun specAndItemWithProvider(name: String, provider: SpecProvider): SpecRegistryItem {
         val spec = SPECS.register(name) { provider }
         val item = SPEC_ITEMS.register(name) { SpecItem(provider) }
 

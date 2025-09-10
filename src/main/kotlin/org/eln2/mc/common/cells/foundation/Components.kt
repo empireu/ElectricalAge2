@@ -6,6 +6,8 @@ import org.ageseries.libage.sim.electrical.mna.VirtualResistor
 import org.ageseries.libage.sim.electrical.mna.component.IResistor
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.electrical.mna.component.Term
+import org.eln2.mc.EXTERNAL_PIN
+import org.eln2.mc.TermRef
 import kotlin.math.abs
 
 open class ResistorBundle<T>(val factory: () -> T) where T : IResistor, T : Term {

@@ -200,6 +200,13 @@ object FlwVisualizerRegistry {
                 scale = Vector3d(Content.BATTERY_SPEC_12V_SCALE)
             )
         }
+
+        setSpecVisualizer<DcToDcConverterSpec>(Content.DC_TO_DC_CONVERTER_SPEC.spec.get()) { ctx, spec ->
+            BasicSpecVisual(
+                ctx, spec,
+                FlwModels.SMALL_DC_TO_DC_CONVERTER
+            )
+        }
     }
 }
 
