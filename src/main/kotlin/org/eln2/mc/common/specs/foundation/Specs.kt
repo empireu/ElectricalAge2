@@ -170,6 +170,7 @@ data class SpecPlacementInfo(
     }
 
     fun createLocator() = Locators.buildLocator {
+        it.put(CELL_LAYER, CellLayer.Spec)
         it.put(BLOCK, blockPos)
         it.put(FACE, face)
         it.put(MOUNTING_POINT, mountingPointWorld)

@@ -17,6 +17,7 @@ inline fun <reified T : Cell> Level.getCell(mb: MultiblockManager, cellPosId: Bl
     getCellOrNull(mb, cellPosId) ?: error("Cell was not present")
 */
 
+fun Boolean.toInt() = if(this) 1 else 0
 
 fun Double.formattedPercentNormalized(decimals: Int = 2): String {
     return "${(this * 100.0).formatted(decimals)}%"

@@ -375,6 +375,27 @@ object Cell_onBuildStarted : CellLifetimeEvent
 object Cell_onBuildFinished : CellLifetimeEvent
 
 /**
+ * Indicates the container of the cell. It is used for implicit connection filtering, during placement:
+ * - [Block] can connect to [Block] and [Part]
+ * - [Part] can connect to [Part] and [Block]
+ * - [Spec] doesn't connect on placement
+ * */
+enum class CellLayer(val id: Byte) {
+    Block(1.toByte()),
+    Part(2.toByte()),
+    Spec(3.toByte());
+
+    companion object {
+        fun fromId(id: Byte) = when(id) {
+            Block.id -> Block
+            Part.id -> Part
+            Spec.id -> Spec
+            else -> error("Invalid cell layer $id")
+        }
+    }
+}
+
+/**
  * The cell is a physical unit, that may participate in multiple simulations. Each simulation will
  * have a Simulation Object associated with it.
  * Cells create connections with other cells, and objects create connections with other objects of the same simulation type.
@@ -1031,7 +1052,23 @@ inline fun<reified T : UniqueCellNode> Cell.requireNode() = requireNotNull(getNo
     "The required node ${T::class.java} was not present in $this"
 }
 
-fun isConnectionAccepted(a: Cell, b: Cell) = a.allowsConnection(b) && b.allowsConnection(a)
+fun isConnectionAcceptedByGameObjectProximity(a: Cell, b: Cell) : Boolean {
+    val layerA = a.locator.get(Locators.CELL_LAYER)
+    val layerB = b.locator.get(Locators.CELL_LAYER)
+
+    val layersCompatible = if(layerA != null && layerB != null) {
+        when(layerA) {
+            CellLayer.Block -> layerB == CellLayer.Block || layerB == CellLayer.Part
+            CellLayer.Part -> layerB == CellLayer.Block || layerB == CellLayer.Part
+            CellLayer.Spec -> false
+        }
+    }
+    else {
+        true
+    }
+
+    return layersCompatible && a.allowsConnection(b) && b.allowsConnection(a)
+}
 
 /**
  * [CellConnections] has all Cell-Cell connection logic and is responsible for building *physical* networks.
@@ -1408,7 +1445,7 @@ inline fun planarCellScan(level: Level, actualCell: Cell, searchDirection: Direc
             val targetFaceTarget = targetCell.locator.requireLocator(Locators.FACE)
 
             if (targetFaceTarget == actualFaceTarget) {
-                if (isConnectionAccepted(actualCell, targetCell)) {
+                if (isConnectionAcceptedByGameObjectProximity(actualCell, targetCell)) {
                     consumer(CellAndContainerHandle.captureInScope(targetCell))
                 }
             }
@@ -1448,7 +1485,7 @@ inline fun wrappedCellScan(
             val targetFaceTarget = targetCell.locator.requireLocator(Locators.FACE)
 
             if (targetFaceTarget == searchDirection) {
-                if (isConnectionAccepted(actualCell, targetCell)) {
+                if (isConnectionAcceptedByGameObjectProximity(actualCell, targetCell)) {
                     consumer(CellAndContainerHandle.captureInScope(targetCell))
                 }
             }

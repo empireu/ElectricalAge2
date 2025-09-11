@@ -10,6 +10,7 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.electrical.mna.NEGATIVE
 import org.ageseries.libage.sim.electrical.mna.POSITIVE
 import org.eln2.mc.common.cells.foundation.Cell
+import org.eln2.mc.common.cells.foundation.CellLayer
 import org.eln2.mc.common.network.serverToClient.getBlockPos
 import org.eln2.mc.common.network.serverToClient.putBlockPos
 import org.eln2.mc.common.parts.foundation.getPartConnectionOrNull
@@ -77,6 +78,10 @@ object Locators : LocatorDispatcher<Locators>() {
 
     private fun readInt(buffer: ByteBuffer) = buffer.getInt()
 
+    private fun readCellLayer(buffer: ByteBuffer) = CellLayer.fromId(buffer.get())
+
+    private fun writeCellLayer(layer: CellLayer, buffer: ByteBuffer) = buffer.put(layer.id)
+
     private fun writeBlockPos(blockPos: BlockPos, buffer: ByteBuffer) {
         buffer.putInt(blockPos.x)
         buffer.putInt(blockPos.y)
@@ -117,6 +122,12 @@ object Locators : LocatorDispatcher<Locators>() {
         buffer.getDouble(),
         buffer.getDouble(),
         buffer.getDouble()
+    )
+
+    val CELL_LAYER = register<CellLayer>(
+        ::writeCellLayer,
+        ::readCellLayer,
+        1
     )
 
     val BLOCK = register<BlockPos>(

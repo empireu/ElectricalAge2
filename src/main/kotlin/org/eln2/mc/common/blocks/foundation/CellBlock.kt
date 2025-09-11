@@ -91,6 +91,7 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
     open val cellFace = Direction.UP
 
     val locator = Locators.buildLocator {
+        it.put(CELL_LAYER, CellLayer.Block)
         it.put(BLOCK, blockPos)
         it.put(FACE, cellFace)
         it.put(FACING, blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing())

@@ -1,6 +1,5 @@
 package org.eln2.mc.common.blocks.foundation
 
-import com.mojang.blaze3d.vertex.PoseStack
 import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.task.Plan
 import dev.engine_room.flywheel.api.visual.DynamicVisual
@@ -12,15 +11,11 @@ import dev.engine_room.flywheel.lib.task.RunnablePlan
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
-import net.minecraft.client.renderer.MultiBufferSource
-import net.minecraft.client.renderer.blockentity.BlockEntityRenderer
-import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.network.Connection
-import net.minecraft.network.chat.Component
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ClientGamePacketListener
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket
@@ -1202,7 +1197,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
 
                         val innerCell = innerPart.cell
 
-                        if (!isConnectionAccepted(actualCell, innerCell)) {
+                        if (!isConnectionAcceptedByGameObjectProximity(actualCell, innerCell)) {
                             return
                         }
 

@@ -62,6 +62,8 @@ import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.BlockPosInt
 import org.eln2.mc.mathematics.FacingDirection
 import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.common.cells.foundation.CellLayer
+import org.eln2.mc.common.specs.foundation.Spec
 import org.eln2.mc.requireIsOnServerThread
 import org.joml.Vector3f
 import java.util.UUID
@@ -146,6 +148,14 @@ data class PartPlacementInfo(
     val mountingPointWorld = position.toVector3d() + Vector3d(0.5) - face.vector3d * 0.5
 
     fun createLocator() = Locators.buildLocator {
+        val layer = if(provider == PartRegistry.SPEC_CONTAINER_PART.part.get()) {
+            CellLayer.Spec
+        }
+        else {
+            CellLayer.Part
+        }
+
+        it.put(CELL_LAYER, layer)
         it.put(BLOCK, position)
         it.put(FACING, facing)
         it.put(FACE, face)

@@ -87,6 +87,7 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
     val theveninResistor = TheveninEstimatingResistor().also { it.resistance = !model.initialResistance }
     val source = PowerVoltageSource()
     val outputResistor = Resistor().also { it.resistance = !model.outputResistance }
+    val tempResistor = Resistor().also { it.resistance = 1e5 } // FIXME remove once solver forests are in
 
     var setpointPotential = 0.0
 
@@ -94,6 +95,7 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
         circuit.add(theveninResistor)
         circuit.add(source)
         circuit.add(outputResistor)
+        circuit.add(tempResistor)
     }
 
     protected fun offerInputNegative() = theveninResistor.offerNegative()
@@ -104,6 +106,9 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
     override fun build(map: ElectricalConnectivityMap) {
         super.build(map)
         map.join(source.offerNegative(), outputResistor.offerPositive())
+        // FIXME:
+        map.join(source.offerNegative(), tempResistor.offerPositive())
+        map.join(theveninResistor.offerPositive(), tempResistor.offerNegative())
     }
 
     override fun subscribe(subscribers: SubscriberCollection) {
@@ -206,6 +211,7 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
 
         rejectedEnergy += collectInputEnergy(dt)
         rejectedEnergy += drainOutputtedEnergy(dt)
+        rejectedEnergy += tempResistor.power * dt
 
         rejectedEnergyAcceptor?.accept(Quantity(rejectedEnergy, JOULE))
     }
@@ -318,6 +324,6 @@ class DcToDcConverterSpec(ci: SpecCreateInfo) : CellSpec<TerminalDcToDcConverter
         builder.debug("Out Power: ${Quantity(cell.converter.source.power, WATT).classify()}")
         builder.debug("Out PotentialMax: ${Quantity(cell.converter.source.potentialMax ?: -1.0, VOLT).classify()}")
         builder.debug("Out potential: ${Quantity(cell.converter.source.potential, VOLT).classify()}")
-
+        builder.debug("Sink res: ${Quantity(cell.converter.theveninResistor.resistance, OHM).classify()}")
     }
 }
