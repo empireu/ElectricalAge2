@@ -27,6 +27,7 @@ import net.minecraft.world.entity.player.Player
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.BlockHitResult
+import net.minecraftforge.client.extensions.common.IClientBlockExtensions
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.registerHandler
 import org.ageseries.libage.mathematics.approxEq
@@ -43,6 +44,7 @@ import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.FlwInstanceTypes
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.client.render.foundation.SpecialModels
+import org.eln2.mc.client.render.foundation.TransformedLightOverrideInstance
 import org.eln2.mc.client.render.foundation.partTransformation
 import org.eln2.mc.common.*
 import org.eln2.mc.common.blocks.foundation.*
@@ -619,6 +621,10 @@ class LightFixturePartVisual<P>(
 }
 
 class LampPoleBlock(private val cellProvider: RegistryObject<CellProvider<PolarLightCell>>, val lightOffset: BlockPos) : CellBlock<PolarLightCell>() {
+    override fun initializeClient(consumer: Consumer<IClientBlockExtensions?>) {
+        consumer.accept(ReplaceVanillaParticlesBlockExtension)
+    }
+
     @Deprecated("Deprecated in Java", ReplaceWith("true"))
     override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction): Boolean {
         return true
@@ -646,7 +652,7 @@ class LampPoleBlockEntityVisual(
     blockEntity: LampPoleBlockEntity,
     partialTick: Float,
 ) : AbstractBlockEntityVisual<LampPoleBlockEntity>(ctx, blockEntity, partialTick), ShaderLightVisual {
-    val body = visualizationContext.instancerProvider()
+    val body: TransformedInstance = visualizationContext.instancerProvider()
         .instancer(InstanceTypes.TRANSFORMED, SpecialModels.partial(FlwModels.LAMP_POLE_BODY, FlwMaterials.TRANSLUCENT_SMOOTH_LIT))
         .createInstance()
         .also {
@@ -656,7 +662,7 @@ class LampPoleBlockEntityVisual(
             it.uncenter()
         }
 
-    val emitter = visualizationContext.instancerProvider()
+    val emitter: TransformedLightOverrideInstance = visualizationContext.instancerProvider()
         .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, SpecialModels.partial(FlwModels.LAMP_POLE_EMITTER, FlwMaterials.SMOOTH_LIT))
         .createInstance()
         .also {

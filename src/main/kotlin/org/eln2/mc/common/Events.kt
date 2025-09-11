@@ -1,5 +1,6 @@
 package org.eln2.mc.common
 
+import net.minecraft.client.particle.ParticleEngine
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraftforge.client.event.EntityRenderersEvent

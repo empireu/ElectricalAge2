@@ -2,6 +2,7 @@
 
 package org.eln2.mc.common.blocks.foundation
 
+import net.minecraft.client.particle.ParticleEngine
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
@@ -19,17 +20,18 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.level.LevelAccessor
 import net.minecraft.world.level.block.*
 import net.minecraft.world.level.block.entity.BlockEntity
-import net.minecraft.world.level.block.state.BlockBehaviour
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.level.block.state.properties.BooleanProperty
 import net.minecraft.world.level.material.FluidState
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
+import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.shapes.BooleanOp
 import net.minecraft.world.phys.shapes.CollisionContext
 import net.minecraft.world.phys.shapes.Shapes
 import net.minecraft.world.phys.shapes.VoxelShape
+import net.minecraftforge.client.extensions.common.IClientBlockExtensions
 import org.eln2.mc.LOG
 import org.eln2.mc.OnServerThread
 import org.eln2.mc.ServerOnly
@@ -41,6 +43,7 @@ import org.eln2.mc.integration.DebugComponentDisplay
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.requireIsOnServerThread
 import org.joml.Quaternionf
+import java.util.function.Consumer
 import kotlin.math.PI
 import kotlin.math.ceil
 
@@ -125,19 +128,19 @@ interface MultiblockRepresentative {
         delegate: MultiblockDelegateBlockEntity,
         pPlayer: Player,
         pHand: InteractionHand,
-        pHit: BlockHitResult
+        pHit: BlockHitResult,
     ) = InteractionResult.PASS
 
     fun onDelegateDestroyedByPlayer(
         delegate: MultiblockDelegateBlockEntity,
         pPlayer: Player,
         pWillHarvest: Boolean,
-        pFluid: FluidState
+        pFluid: FluidState,
     ) = onDelegateDestroyed(delegate)
 
     fun onDelegateExploded(
         delegate: MultiblockDelegateBlockEntity,
-        pExplosion: Explosion?
+        pExplosion: Explosion?,
     ) = onDelegateDestroyed(delegate)
 
     fun onDelegateDestroyed(pDelegate: MultiblockDelegateBlockEntity) { }
@@ -181,7 +184,7 @@ interface BigBlockRepresentativeBlockEntity<Self> : MultiblockRepresentative whe
         delegate: MultiblockDelegateBlockEntity,
         pPlayer: Player,
         pWillHarvest: Boolean,
-        pFluid: FluidState
+        pFluid: FluidState,
     ) {
         destroyDelegates()
 
@@ -211,11 +214,31 @@ interface BigBlockRepresentativeBlockEntity<Self> : MultiblockRepresentative whe
     }
 }
 
-open class MultiblockDelegateBlock(properties: Properties? = null) : BaseEntityBlock(
-    properties ?: Properties.copy(Blocks.STONE).noOcclusion()
-        .destroyTime(0.2f)
-)
-{
+object ReplaceVanillaParticlesBlockExtension : IClientBlockExtensions {
+    override fun addDestroyEffects(
+        state: BlockState?,
+        @Suppress("LocalVariableName") Level: Level?,
+        pos: BlockPos?,
+        manager: ParticleEngine?
+    ): Boolean {
+        if(pos != null) {
+            manager?.destroy(pos, Blocks.IRON_BLOCK.defaultBlockState())
+        }
+
+        return true
+    }
+
+    override fun addHitEffects(
+        state: BlockState?,
+        level: Level?,
+        target: HitResult?,
+        manager: ParticleEngine?
+    ): Boolean {
+        return true
+    }
+}
+
+open class MultiblockDelegateBlock(properties: Properties? = null) : BaseEntityBlock(properties ?: Properties.copy(Blocks.STONE).noOcclusion().destroyTime(0.2f)) {
     companion object {
         val SKIP_RENDERING: BooleanProperty = BooleanProperty.create("skip_rendering")
 
@@ -255,6 +278,10 @@ open class MultiblockDelegateBlock(properties: Properties? = null) : BaseEntityB
             .setValue(SKIP_RENDERING, true)
             .setValue(HorizontalDirectionalBlock.FACING, Direction.EAST)
         )
+    }
+
+    override fun initializeClient(consumer: Consumer<IClientBlockExtensions?>) {
+        consumer.accept(ReplaceVanillaParticlesBlockExtension)
     }
 
     override fun createBlockStateDefinition(pBuilder: StateDefinition.Builder<Block, BlockState>) {
@@ -351,7 +378,7 @@ open class MultiblockDelegateBlockWithCustomCollider(properties: Properties? = n
         pState: BlockState,
         pLevel: BlockGetter,
         pPos: BlockPos,
-        pContext: CollisionContext
+        pContext: CollisionContext,
     ): VoxelShape = getDelegateCollider(pState)
 
     @Suppress("OVERRIDE_DEPRECATION")
@@ -359,7 +386,7 @@ open class MultiblockDelegateBlockWithCustomCollider(properties: Properties? = n
         pState: BlockState,
         pLevel: BlockGetter,
         pPos: BlockPos,
-        pContext: CollisionContext
+        pContext: CollisionContext,
     ): VoxelShape = getDelegateCollider(pState)
 
     @Suppress("OVERRIDE_DEPRECATION")
@@ -367,17 +394,13 @@ open class MultiblockDelegateBlockWithCustomCollider(properties: Properties? = n
         pState: BlockState,
         pLevel: BlockGetter,
         pPos: BlockPos,
-        pContext: CollisionContext
+        pContext: CollisionContext,
     ): VoxelShape = getDelegateCollider(pState)
 
     override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction) = true
 }
 
-class MultiblockDelegateBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
-    BlockEntity(BlockRegistry.MULTIBLOCK_DELEGATE_BLOCK_ENTITY.get(), pPos, pBlockState),
-    ComponentDisplay,
-    DebugComponentDisplay
-{
+class MultiblockDelegateBlockEntity(pPos: BlockPos, pBlockState: BlockState) : BlockEntity(BlockRegistry.MULTIBLOCK_DELEGATE_BLOCK_ENTITY.get(), pPos, pBlockState), ComponentDisplay, DebugComponentDisplay {
     var representativePos: BlockPos? = null
         private set
 

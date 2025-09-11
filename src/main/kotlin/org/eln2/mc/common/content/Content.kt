@@ -684,7 +684,7 @@ object Content {
     }
 
     val DC_TO_DC_CONVERTER_SPEC = specAndItemWithProvider(
-        "dc_to_dc_converter",
+        "micro_grid_dc_to_dc_converter_800w",
         BasicSpecProvider(
             FlwModels.SMALL_DC_TO_DC_CONVERTER,
             Vector3d(9.8, 2.625, 4.85) / 16.0,
