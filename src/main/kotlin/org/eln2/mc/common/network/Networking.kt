@@ -31,14 +31,21 @@ object Networking {
 
     @Suppress("INFERRED_INVISIBLE_RETURN_TYPE_WARNING") // what?
     fun setup() {
-        LOG.info("Network packets registered")
+        channel.registerMessage(
+            id(),
+            BulkDimensionMessagePart::class.java,
+            BulkDimensionMessagePart::encode,
+            BulkDimensionMessagePart::decode,
+            BulkDimensionMessagePart::handle,
+            Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        )
 
         channel.registerMessage(
             id(),
-            BulkPartMessage::class.java,
-            BulkPartMessage::encode,
-            BulkPartMessage::decode,
-            BulkPartMessage::handle,
+            BulkDimensionMessageBlockEntity::class.java,
+            BulkDimensionMessageBlockEntity::encode,
+            BulkDimensionMessageBlockEntity::decode,
+            BulkDimensionMessageBlockEntity::handle,
             Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         )
 
@@ -95,6 +102,8 @@ object Networking {
             SpecOverlayMessage::handle,
             Optional.of(NetworkDirection.PLAY_TO_SERVER)
         )
+
+        LOG.info("Network packets registered")
     }
 
     /**

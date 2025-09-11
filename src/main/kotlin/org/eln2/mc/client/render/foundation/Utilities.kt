@@ -490,20 +490,20 @@ value class MyColor(val data : Int) {
 
         fun lerp(from: MyColor, to: MyColor, blend: Float): MyColor =
             MyColor(
-                org.ageseries.libage.mathematics.lerp(from.aF, to.aF, blend),
-                org.ageseries.libage.mathematics.lerp(from.rF, to.rF, blend),
-                org.ageseries.libage.mathematics.lerp(from.gF, to.gF, blend),
-                org.ageseries.libage.mathematics.lerp(from.bF, to.bF, blend),
+                lerp(from.aF, to.aF, blend),
+                lerp(from.rF, to.rF, blend),
+                lerp(from.gF, to.gF, blend),
+                lerp(from.bF, to.bF, blend),
             )
 
         fun lerpA(from: MyColor, to: MyColor, blend: Float) : Float =
-            org.ageseries.libage.mathematics.lerp(from.aF, to.aF, blend)
+            lerp(from.aF, to.aF, blend)
         fun lerpR(from: MyColor, to: MyColor, blend: Float) : Float =
-            org.ageseries.libage.mathematics.lerp(from.rF, to.rF, blend)
+            lerp(from.rF, to.rF, blend)
         fun lerpG(from: MyColor, to: MyColor, blend: Float) : Float =
-            org.ageseries.libage.mathematics.lerp(from.gF, to.gF, blend)
+            lerp(from.gF, to.gF, blend)
         fun lerpB(from: MyColor, to: MyColor, blend: Float) : Float =
-            org.ageseries.libage.mathematics.lerp(from.bF, to.bF, blend)
+            lerp(from.bF, to.bF, blend)
     }
 
     val a get() = FastColor.ARGB32.alpha(data)

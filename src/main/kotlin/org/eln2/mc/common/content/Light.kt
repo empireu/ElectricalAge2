@@ -44,6 +44,7 @@ import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.FlwInstanceTypes
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.client.render.foundation.SpecialModels
+import org.eln2.mc.client.render.foundation.ThermalTint
 import org.eln2.mc.client.render.foundation.TransformedLightOverrideInstance
 import org.eln2.mc.client.render.foundation.partTransformation
 import org.eln2.mc.common.*
@@ -55,9 +56,11 @@ import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.grids.GridCableItem
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridNode
+import org.eln2.mc.common.network.serverToClient.BulkMessageHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.with
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.data.PoleMap
+import org.eln2.mc.extensions.enqueueBulkMessage
 import org.eln2.mc.extensions.evaluateDiffuseIrradianceFactor
 import org.eln2.mc.extensions.plus
 import org.eln2.mc.extensions.vector3d
@@ -651,7 +654,12 @@ class LampPoleBlockEntityVisual(
     ctx: VisualizationContext,
     blockEntity: LampPoleBlockEntity,
     partialTick: Float,
-) : AbstractBlockEntityVisual<LampPoleBlockEntity>(ctx, blockEntity, partialTick), ShaderLightVisual {
+) : AbstractBlockEntityVisual<LampPoleBlockEntity>(ctx, blockEntity, partialTick), ShaderLightVisual, SimpleDynamicVisual {
+    companion object {
+        private val coldTint = MyColor(0, 255, 255, 255)
+        private val warmTint = MyColor(255, 255, 196, 127)
+    }
+
     val body: TransformedInstance = visualizationContext.instancerProvider()
         .instancer(InstanceTypes.TRANSFORMED, SpecialModels.partial(FlwModels.LAMP_POLE_BODY, FlwMaterials.TRANSLUCENT_SMOOTH_LIT))
         .createInstance()
@@ -676,6 +684,8 @@ class LampPoleBlockEntityVisual(
             it.uncenter()
         }
 
+    private var lastRenderBrightness = 0.0
+
     override fun setSectionCollector(sectionCollector: SectionTrackedVisual.SectionCollector) {
         this.lightSections = sectionCollector
 
@@ -687,6 +697,19 @@ class LampPoleBlockEntityVisual(
         }
         else {
             lightSections.sections(LongSet.of(s0, s1))
+        }
+    }
+
+    override fun beginFrame(p0: DynamicVisual.Context?) {
+        val targetRenderBrightness = blockEntity.visualBrightness
+
+        if(lastRenderBrightness != targetRenderBrightness) {
+            lastRenderBrightness = targetRenderBrightness
+            val tint = MyColor.lerp(coldTint, warmTint, targetRenderBrightness.toFloat())
+
+            emitter.color(tint.r, tint.g, tint.b)
+            emitter.lightOverride = tint.a / 255.0f
+            emitter.setChanged()
         }
     }
 
@@ -711,7 +734,8 @@ class LampPoleBlockEntity(pos: BlockPos, state: BlockState) :
     BigBlockRepresentativeBlockEntity<LampPoleBlockEntity>,
     EventListener,
     ComponentDisplay,
-    LightFixtureGameObject
+    LightFixtureGameObject,
+    BulkMessageHandlerBlockEntity
 {
     val instance = serverOnlyHolder {
         LightVolumeInstance(
@@ -722,6 +746,10 @@ class LampPoleBlockEntity(pos: BlockPos, state: BlockState) :
 
     override var visualBrightness = 0.0
         private set
+
+    override fun handleBulkMessage(payload: ByteArray) {
+        visualBrightness = ByteBuffer.wrap(payload).getDouble()
+    }
 
     override val delegateMap: MultiblockDelegateMap
         get() = Content.LAMP_POLE_BLOCK_DELEGATE_MAP.value
@@ -797,8 +825,16 @@ class LampPoleBlockEntity(pos: BlockPos, state: BlockState) :
 
     @ServerOnly
     private fun sendClientBrightness(value: Double) {
-        //val buffer = ByteBuffer.allocate(8) with value
-        //enqueueBulkMessage(buffer.array())
+        val buffer = ByteBuffer.allocate(8) with value
+        enqueueBulkMessage(buffer.array())
+    }
+
+    override fun getUpdateTag(): CompoundTag {
+        if(hasCell) {
+            sendClientBrightness(cell.modelTemperature)
+        }
+
+        return super.getUpdateTag()
     }
 
     @ServerOnly

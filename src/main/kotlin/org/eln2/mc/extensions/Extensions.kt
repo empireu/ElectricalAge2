@@ -1,7 +1,13 @@
 package org.eln2.mc.extensions
 
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.MutableSetMapMultiMap
+import org.eln2.mc.LOG
+import org.eln2.mc.common.network.serverToClient.BlockEntityMessage
+import org.eln2.mc.common.network.serverToClient.BulkMessageHandlerBlockEntity
+import org.eln2.mc.common.network.serverToClient.BulkMessages
 import org.eln2.mc.control.PIDController
 
 /*
@@ -16,6 +22,17 @@ inline fun <reified T : Cell> Level.getCellOrNull(mb: MultiblockManager, cellPos
 inline fun <reified T : Cell> Level.getCell(mb: MultiblockManager, cellPosId: BlockPos): T =
     getCellOrNull(mb, cellPosId) ?: error("Cell was not present")
 */
+
+fun<T> T.enqueueBulkMessage(payload: ByteArray) where T : BlockEntity, T : BulkMessageHandlerBlockEntity {
+    val level = this.level as? ServerLevel
+
+    if(level == null) {
+        LOG.error("The level of $this is null in enqueueBulkMessage")
+        return
+    }
+
+    BulkMessages.enqueueBlockEntityMessage(level, BlockEntityMessage(this.blockPos, payload))
+}
 
 fun Boolean.toInt() = if(this) 1 else 0
 

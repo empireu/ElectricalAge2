@@ -5,6 +5,7 @@ package org.eln2.mc.common.network.serverToClient
 import kotlinx.serialization.*
 import kotlinx.serialization.cbor.Cbor
 import net.minecraft.client.Minecraft
+import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.network.FriendlyByteBuf
@@ -106,8 +107,29 @@ fun loadByteArrays(buffer: ByteBuffer): ArrayList<ByteArray> {
     return results
 }
 
-class PartMessage(val pos: BlockPos, val face: Direction, val payload: ByteArray) {
-    val size get() = 3 * 4 + 1 * 4 + (4 + payload.size)
+interface InWorldMessage {
+    val pos: BlockPos
+    val size: Int
+}
+
+class BlockEntityMessage(override val pos: BlockPos, val payload: ByteArray) : InWorldMessage {
+    override val size get() = 3 * 4 + (4 + payload.size)
+
+    fun save(buffer: ByteBuffer) {
+        buffer.putBlockPos(pos)
+        buffer.putArray(payload)
+    }
+
+    companion object {
+        fun load(buffer: ByteBuffer) = BlockEntityMessage(
+            buffer.getBlockPos(),
+            buffer.getArray()
+        )
+    }
+}
+
+class PartMessage(override val pos: BlockPos, val face: Direction, val payload: ByteArray) : InWorldMessage {
+    override val size get() = 3 * 4 + 1 * 4 + (4 + payload.size)
 
     fun save(buffer: ByteBuffer) {
         buffer.putBlockPos(pos)
@@ -124,44 +146,56 @@ class PartMessage(val pos: BlockPos, val face: Direction, val payload: ByteArray
     }
 }
 
-class BulkPartMessage(val dim: Int, val messages: List<PartMessage>) {
+fun interface MessageWriter<M : InWorldMessage> {
+    fun write(message: M, buffer: ByteBuffer)
+}
+
+fun interface MessageReader<M : InWorldMessage> {
+    fun read(buffer: ByteBuffer) : M
+}
+
+/**
+ * Collection of [InWorldMessage]s aimed at a particular level.
+ * */
+abstract class BulkDimensionMessage<M : InWorldMessage>(val dim: Int, val messages: List<M>) {
     private fun calculateSize() = 1 * 4 + 1 * 4 + messages.sumOf { it.size }
 
-    fun toArray(): ByteArray {
-        val result = ByteArray(calculateSize())
-        val buffer = ByteBuffer.wrap(result)
-
-        buffer.putInt(dim)
-        buffer.putInt(messages.size)
-
-        messages.forEach {
-            it.save(buffer)
-        }
-
-        return result
-    }
+    /**
+     * Dispatches the [messages] to their target game objects.
+     * */
+    abstract fun dispatch(level: ClientLevel)
 
     companion object {
-        private fun fromArray(data: ByteArray): BulkPartMessage {
+        fun<M : InWorldMessage> packArray(bulkDimensionMessage: BulkDimensionMessage<M>, writer: MessageWriter<M>): ByteArray {
+            val result = ByteArray(bulkDimensionMessage.calculateSize())
+            val buffer = ByteBuffer.wrap(result)
+
+            buffer.putInt(bulkDimensionMessage.dim)
+            buffer.putInt(bulkDimensionMessage.messages.size)
+
+            bulkDimensionMessage.messages.forEach {
+                writer.write(it, buffer)
+            }
+
+            return result
+        }
+
+        fun<M : InWorldMessage, B : BulkDimensionMessage<M>> unpackArray(data: ByteArray, reader: MessageReader<M>, factory: (Int, List<M>) -> B): B {
             val buffer = ByteBuffer.wrap(data)
 
             val dim = buffer.int
-            val cnt = buffer.int
+            val count = buffer.int
 
-            val results = ArrayList<PartMessage>(cnt)
+            val results = ArrayList<M>(count)
 
-            repeat(cnt) {
-                results.add(PartMessage.load(buffer))
+            repeat(count) {
+                results.add(reader.read(buffer))
             }
 
-            return BulkPartMessage(dim, results)
+            return factory(dim, results)
         }
 
-        fun encode(message: BulkPartMessage, buf: FriendlyByteBuf): FriendlyByteBuf = buf.writeByteArray(message.toArray())
-
-        fun decode(buf: FriendlyByteBuf): BulkPartMessage = BulkPartMessage.fromArray(buf.readByteArray())
-
-        fun handle(message: BulkPartMessage, ctx: Supplier<NetworkEvent.Context>) {
+        fun<M : InWorldMessage> handle(message: BulkDimensionMessage<M>, ctx: Supplier<NetworkEvent.Context>) {
             ctx.get().enqueueWork {
                 DistExecutor.unsafeRunWhenOn(Dist.CLIENT) {
                     Runnable {
@@ -177,23 +211,7 @@ class BulkPartMessage(val dim: Int, val messages: List<PartMessage>) {
                             return@Runnable
                         }
 
-                        message.messages.forEach { msg ->
-                            val entity = actualLevel.getBlockEntity(msg.pos)
-
-                            if (entity !is MultipartBlockEntity) {
-                                LOG.error("Rogue multipart message $msg")
-                                return@forEach
-                            }
-
-                            val part = entity.getPart(msg.face)
-
-                            if (part == null) {
-                                LOG.error("Lingering multipart $msg")
-                                return@forEach
-                            }
-
-                            part.handleBulkMessage(msg.payload)
-                        }
+                        message.dispatch(actualLevel)
                     }
                 }
             }
@@ -203,58 +221,154 @@ class BulkPartMessage(val dim: Int, val messages: List<PartMessage>) {
     }
 }
 
+/**
+ * Implemented by block entities that wish to receive bulk messages.
+ * */
+interface BulkMessageHandlerBlockEntity {
+    fun handleBulkMessage(payload: ByteArray)
+}
+
+class BulkDimensionMessageBlockEntity(dim: Int, messages: List<BlockEntityMessage>) : BulkDimensionMessage<BlockEntityMessage>(dim, messages) {
+    override fun dispatch(level: ClientLevel) {
+        messages.forEach { msg ->
+            val entity = level.getBlockEntity(msg.pos) as? BulkMessageHandlerBlockEntity
+
+            if (entity == null) {
+                LOG.error("Rogue block entity message $msg")
+                return@forEach
+            }
+
+            entity.handleBulkMessage(msg.payload)
+        }
+    }
+
+    companion object {
+        fun encode(message: BulkDimensionMessage<BlockEntityMessage>, buf: FriendlyByteBuf): FriendlyByteBuf = buf.writeByteArray(
+            packArray(
+                message,
+                BlockEntityMessage::save
+            )
+        )
+
+        fun decode(buf: FriendlyByteBuf) : BulkDimensionMessageBlockEntity = unpackArray(
+            buf.readByteArray(),
+            BlockEntityMessage::load,
+            ::BulkDimensionMessageBlockEntity
+        )
+
+        fun handle(message: BulkDimensionMessageBlockEntity, ctx: Supplier<NetworkEvent.Context>) = handle<BlockEntityMessage>(message, ctx)
+    }
+}
+
+class BulkDimensionMessagePart(dim: Int, messages: List<PartMessage>) : BulkDimensionMessage<PartMessage>(dim, messages) {
+    override fun dispatch(level: ClientLevel) {
+        messages.forEach { msg ->
+            val entity = level.getBlockEntity(msg.pos)
+
+            if (entity !is MultipartBlockEntity) {
+                LOG.error("Rogue multipart message $msg")
+                return@forEach
+            }
+
+            val part = entity.getPart(msg.face)
+
+            if (part == null) {
+                LOG.error("Lingering multipart $msg")
+                return@forEach
+            }
+
+            part.handleBulkMessage(msg.payload)
+        }
+    }
+
+    companion object {
+        fun encode(message: BulkDimensionMessage<PartMessage>, buf: FriendlyByteBuf): FriendlyByteBuf = buf.writeByteArray(
+            packArray(
+                message,
+                PartMessage::save
+            )
+        )
+
+        fun decode(buf: FriendlyByteBuf) : BulkDimensionMessagePart = unpackArray(
+            buf.readByteArray(),
+            PartMessage::load,
+            ::BulkDimensionMessagePart
+        )
+
+        fun handle(message: BulkDimensionMessagePart, ctx: Supplier<NetworkEvent.Context>) = handle<PartMessage>(message, ctx)
+    }
+}
+
 fun ResourceLocation.id(): Int = this.hashCode()
 
 @Mod.EventBusSubscriber
 object BulkMessages {
-    private val messagesPerTickAverage = AveragingList(100)
+    private val blockMessagesPerTickAverage = AveragingList(100)
+    private val partMessagesPerTickAverage = AveragingList(100)
     private var lastLog = 0
 
     @CrossThreadAccess
+    private val bulkBlockEntityMessages = ConcurrentHashMap<ServerLevel, ConcurrentLinkedDeque<BlockEntityMessage>>()
+
+    @CrossThreadAccess
     private val bulkPartMessages = ConcurrentHashMap<ServerLevel, ConcurrentLinkedDeque<PartMessage>>()
-    fun enqueuePartMessage(level: ServerLevel, msg: PartMessage) = bulkPartMessages.getOrPut(level, ::ConcurrentLinkedDeque).add(msg)
+
+    fun enqueueBlockEntityMessage(level: ServerLevel, msg: BlockEntityMessage) = bulkBlockEntityMessages
+        .getOrPut(level, ::ConcurrentLinkedDeque)
+        .add(msg)
+
+    fun enqueuePartMessage(level: ServerLevel, msg: PartMessage) = bulkPartMessages
+        .getOrPut(level, ::ConcurrentLinkedDeque)
+        .add(msg)
 
     @SubscribeEvent
     @JvmStatic
     fun onServerTick(event: TickEvent.ServerTickEvent) {
         if (event.phase == TickEvent.Phase.END) {
-            flushPartData()
+            //flushPartData()
+            blockMessagesPerTickAverage.addSample(
+                flush(bulkBlockEntityMessages, ::BulkDimensionMessageBlockEntity).toDouble()
+            )
+
+            partMessagesPerTickAverage.addSample(
+                flush(bulkPartMessages, ::BulkDimensionMessagePart).toDouble()
+            )
 
             if(++lastLog == 100) {
                 lastLog = 0
-                //LOG.debug("Bulk messages per tick: ${messagesPerTickAverage.calculate().formatted()}")
+                LOG.debug("Bulk messages per tick: ${blockMessagesPerTickAverage.calculate().formatted()} BE, ${partMessagesPerTickAverage.calculate().formatted()} Part")
             }
         }
     }
 
-    private fun flushPartData() {
+    private fun<I : InWorldMessage> flush(map: Map<ServerLevel, ConcurrentLinkedDeque<I>>, factory: (Int, List<I>) -> BulkDimensionMessage<I>) : Int {
         var total = 0
 
-        bulkPartMessages.forEach { (level, messageQueue) ->
-            val perChunkMessages = HashMap<ChunkPos, ArrayList<PartMessage>>()
+        map.forEach { (level, packetQueue) ->
+            val perChunkPackets = HashMap<ChunkPos, ArrayList<I>>()
 
             while (true) {
-                val message = messageQueue.poll() ?: break
-                val chunkPos = ChunkPos(message.pos)
-                var messageList = perChunkMessages[chunkPos]
+                val packet = packetQueue.poll()
+                    ?: break
 
-                if(messageList == null) {
-                    messageList = ArrayList()
-                    require(perChunkMessages.put(chunkPos, messageList) == null)
+                val chunkPos = ChunkPos(packet.pos)
+                var packetList = perChunkPackets[chunkPos]
+
+                if(packetList == null) {
+                    packetList = ArrayList()
+                    require(perChunkPackets.put(chunkPos, packetList) == null)
                 }
 
-                messageList.add(message)
+                packetList.add(packet)
             }
 
             val chunkMap = level.chunkSource.chunkMap
+            val dim = level.dimension().registry().id()
 
-            perChunkMessages.forEach { (chunkPos, messages) ->
-                total += messages.size
+            perChunkPackets.forEach { (chunkPos, packets) ->
+                total += packets.size
 
-                val message = BulkPartMessage(
-                    level.dimension().registry().id(),
-                    messages
-                )
+                val message = factory(dim, packets)
 
                 chunkMap.getPlayers(chunkPos, false).forEach { player ->
                     Networking.send(message, player)
@@ -262,7 +376,7 @@ object BulkMessages {
             }
         }
 
-        messagesPerTickAverage.addSample(total.toDouble())
+        return total
     }
 }
 
