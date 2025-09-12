@@ -161,7 +161,7 @@ object BatteryModels {
         .with(!Quantity(90.0, CELSIUS), 0.4)
         .buildCubic()
 
-    fun TESTleadAcid12Model(
+    fun leadAcid12v(
         capacity: Quantity<Energy>,
         internalResistance: Quantity<Resistance>,
         mass: Quantity<Mass>,
@@ -469,18 +469,18 @@ class BatteryPart(ci: PartCreateInfo, provider: CellProvider<BatteryCell>, ) : C
 class BatterySpec(
     ci: SpecCreateInfo,
     provider: CellProvider<TerminalBatteryCell>,
-    neg: BoundingBox3d,
-    pos: BoundingBox3d
+    negX: Double, negY: Double, negZ: Double, negSX: Double, negSY: Double, negSZ: Double,
+    posX: Double, posY: Double, posZ: Double, posSX: Double, posSY: Double, posSZ: Double,
 ) : CellSpec<TerminalBatteryCell>(ci, provider), ItemPersistent, ComponentDisplay {
-    val negative = defineCellBoxTerminal(
-        neg.center.x, neg.center.y, neg.center.z,
-        neg.size.x, neg.size.y, neg.size.z,
+    val negative = defineCellBoxTerminalBB(
+        negX, negY, negZ,
+        negSX, negSY, negSZ,
         highlightColor = MyColor(1f, 0f, 0f, 1f)
     )
 
-    val positive = defineCellBoxTerminal(
-        pos.center.x, pos.center.y, pos.center.z,
-        pos.size.x, pos.size.y, pos.size.z,
+    val positive = defineCellBoxTerminalBB(
+        posX, posY, posZ,
+        posSX, posSY, posSZ,
         highlightColor = MyColor(1f, 1f, 0f, 0f)
     )
 

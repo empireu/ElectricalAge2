@@ -12,6 +12,7 @@ import org.eln2.mc.MODID
 import org.eln2.mc.common.items.blacklistCreativeTab
 import org.eln2.mc.common.items.foundation.PartItem
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
+import org.eln2.mc.common.parts.foundation.PartFactory
 import org.eln2.mc.common.parts.foundation.PartProvider
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.resource
@@ -58,6 +59,18 @@ object PartRegistry {
 
         return PartRegistryItem(name, part, item)
     }
+
+    fun partMemoizeBB(name: String, size: Vector3d, memoizer: Supplier<PartFactory>) =
+        partAndItemWithProvider(name, BasicPartProvider(size / 16.0, memoizer.get()))
+
+    fun partMemoizeBB(name: String, sx: Double, sy: Double, sz: Double, memoizer: Supplier<PartFactory>) =
+        partMemoizeBB(name, Vector3d(sx, sy, sz), memoizer)
+
+    fun partImmediateBB(name: String, size: Vector3d, factory: PartFactory) =
+        partAndItemWithProvider(name, BasicPartProvider(size / 16.0, factory))
+
+    fun partImmediateBB(name: String, sx: Double, sy: Double, sz: Double, factory: PartFactory) =
+        partImmediateBB(name, Vector3d(sx, sy, sz), factory)
 
     /**
      * Gets the Part Provider with the specified ID, or null, if it does not exist.

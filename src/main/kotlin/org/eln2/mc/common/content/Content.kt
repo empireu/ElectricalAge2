@@ -63,10 +63,14 @@ import org.eln2.mc.common.grids.GridMaterials
 import org.eln2.mc.common.items.CreativeTabRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
+import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
+import org.eln2.mc.common.parts.PartRegistry.partMemoizeBB
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.PartFactory
 import org.eln2.mc.common.parts.foundation.transformPartWorld
 import org.eln2.mc.common.specs.SpecRegistry.specAndItemWithProvider
+import org.eln2.mc.common.specs.SpecRegistry.specImmediateBB
+import org.eln2.mc.common.specs.SpecRegistry.specMemoizeBB
 import org.eln2.mc.common.specs.foundation.BasicSpecProvider
 import org.eln2.mc.common.specs.foundation.SpecFactory
 import org.eln2.mc.data.KILOGRAM_METER_SQUARED
@@ -195,12 +199,7 @@ object Content {
         }
     }
 
-    val THERMAL_RADIATOR_PART = partAndItemWithProvider(
-        "thermal_radiator",
-        BasicPartProvider(Vector3d(1.0, 3.0 / 16.0, 1.0)) { ci ->
-            RadiatorPart(ci)
-        }
-    )
+    val THERMAL_RADIATOR_PART = partImmediateBB("thermal_radiator", 16.0, 3.0, 16.0, ::RadiatorPart)
 
     //#endregion
 
@@ -208,30 +207,17 @@ object Content {
 
     val VOLTAGE_SOURCE_CELL = cellImmediate("voltage_source", ::VoltageSourceCell)
 
-    val VOLTAGE_SOURCE_PART = partAndItemWithProvider(
-        "voltage_source",
-        BasicPartProvider(
-            Vector3d(6.0 / 16.0, 2.5 / 16.0, 6.0 / 16.0),
-            ::VoltageSourcePart
-        )
-    )
+    val VOLTAGE_SOURCE_PART = partImmediateBB("voltage_source", 6.0, 2.5, 6.0, ::VoltageSourcePart)
 
     val GROUND_CELL = cellImmediate("ground", ::GroundCell)
 
-    val GROUND_PART = partAndItemWithProvider("ground",
-        BasicPartProvider(
-            Vector3d(4.0 / 16.0, 4.0 / 16.0, 4.0 / 16.0),
-            ::GroundPart
-        )
-    )
+    val GROUND_PART = partImmediateBB("ground", 4.0, 4.0, 4.0, ::GroundPart)
 
-    val GROUND_SPEC = specAndItemWithProvider(
+    val GROUND_SPEC = specImmediateBB(
         "ground_micro_grid",
-        BasicSpecProvider(
-            FlwModels.GROUND_MICRO_GRID,
-            Vector3d(2.0 / 16.0),
-            ::GroundSpec
-        )
+        FlwModels.GROUND_MICRO_GRID,
+        2.0, 2.0, 2.0,
+        ::GroundSpec
     )
 
     //#endregion
@@ -239,7 +225,7 @@ object Content {
     //#region Batteries
 
     val LEAD_ACID_BATTERY_CELL_12V_840Wh = cellMemoize("lead_acid_battery_12v_840wh") {
-        val model = BatteryModels.TESTleadAcid12Model(
+        val model = BatteryModels.leadAcid12v(
             Quantity(840.0, WATT_HOUR),
             Quantity(23.0, MILLI * OHM),
             Quantity(12.0, KILOGRAM),
@@ -259,7 +245,7 @@ object Content {
     }
 
     val GRID_LEAD_ACID_BATTERY_CELL_12V_80Wh = cellMemoize("lead_acid_battery_12v_80wh") {
-        val model = BatteryModels.TESTleadAcid12Model(
+        val model = BatteryModels.leadAcid12v(
             Quantity(80.0, WATT_HOUR),
             Quantity(26.0, MILLI * OHM),
             Quantity(2.6, KILOGRAM),
@@ -275,29 +261,16 @@ object Content {
         }
     }
 
-    val BATTERY_PART_12V = partAndItemWithProvider(
-        "lead_acid_battery_12v",
-        BasicPartProvider(Vector3d(6.0 / 16.0, 7.0 / 16.0, 10.0 / 16.0)) { ci ->
-            BatteryPart(ci, LEAD_ACID_BATTERY_CELL_12V_840Wh.get())
-        }
-    )
+    val BATTERY_PART_12V = partImmediateBB("lead_acid_battery_12v", 6.0, 7.0, 10.0) {
+        BatteryPart(it, LEAD_ACID_BATTERY_CELL_12V_840Wh.get())
+    }
 
-    /**
-     * We don't have a different model so we scale the big one we have
-     * */
-    const val BATTERY_SPEC_12V_SCALE = 0.35
-    val BATTERY_SPEC_12V = specAndItemWithProvider(
-        "micro_grid_lead_acid_battery_12v",
-        BasicSpecProvider.setup(null, Vector3d(6.0 / 16.0, 7.0 / 16.0, 10.0 / 16.0) * 0.35) {
-            val size = Vector3d(1.5 / 16.0, 0.5 / 16.0, 1.5 / 16.0) * BATTERY_SPEC_12V_SCALE
-            val neg = BoundingBox3d.fromCenterSize(((Vector3d(7.25 / 16.0, 7 / 16.0, 3.25 / 16.0)) - Vector3d.one * maskXY / 2.0) * BATTERY_SPEC_12V_SCALE + size / 2.0, size)
-            val pos = BoundingBox3d.fromCenterSize(((Vector3d(7.25 / 16.0, 7 / 16.0, 11.25 / 16.0)) - Vector3d.one * maskXY / 2.0) * BATTERY_SPEC_12V_SCALE + size / 2.0, size)
-
-            SpecFactory {
-                BatterySpec(it, GRID_LEAD_ACID_BATTERY_CELL_12V_80Wh.get(), neg, pos)
-            }
-        }
-    )
+    val BATTERY_SPEC_12V = specImmediateBB("micro_grid_lead_acid_battery_12v", FlwModels.SPEC_LEAD_ACID_BATTERY, 1.0, 1.1, 2.0) {
+        BatterySpec(it, GRID_LEAD_ACID_BATTERY_CELL_12V_80Wh.get(),
+            7.675, 1.125, 7.125, 0.1, 0.1, 0.15,
+            8.225,1.125,7.125, 0.1,0.1,0.15
+        )
+    }
 
     //#endregion
 
@@ -305,13 +278,7 @@ object Content {
 
     val RESISTOR_CELL = cellImmediate("resistor", ::ResistorCell)
 
-    val RESISTOR_PART = partAndItemWithProvider(
-        "resistor",
-        BasicPartProvider(
-            Vector3d(3.5 / 16.0, 2.25 / 16.0, 5.0 / 16.0),
-            ::ResistorPart
-        )
-    )
+    val RESISTOR_PART = partImmediateBB("resistor", 3.5, 2.25, 5.0, ::ResistorPart)
 
     //#endregion
 
@@ -335,15 +302,9 @@ object Content {
         }
     }
 
-    val PHOTOVOLTAIC_PANEL_PART = partAndItemWithProvider(
-      "photovoltaic_panel",
-      BasicPartProvider(Vector3d(1.0, 2.0 / 16.0, 1.0)) { ci ->
-            PhotovoltaicPanelPart(
-                ci,
-                 PHOTOVOLTAIC_GENERATOR_CELL.get()
-            )
-        }
-    )
+    val PHOTOVOLTAIC_PANEL_PART = partImmediateBB("photovoltaic_panel", 16.0, 2.0, 16.0) {
+        PhotovoltaicPanelPart(it, PHOTOVOLTAIC_GENERATOR_CELL.get())
+    }
 
     //#endregion
 
@@ -369,12 +330,9 @@ object Content {
         TerminalLightCell(it, LightVariantType.Cone45Deg)
     }
 
-    val LIGHT_PART = partAndItemWithProvider(
-        "small_wall_lamp",
-        BasicPartProvider(Vector3d(8.0 / 16.0, (1.0 + 2.302) / 16.0, 5.0 / 16.0)) { ci ->
-            PolarPoweredLightPart(ci, POLAR_LIGHT_CELL_CONE_45DEG.get())
-        }
-    )
+    val LIGHT_PART = partImmediateBB("small_wall_lamp", 4.0, 1.0 + 2.302, 5.0) {
+        PolarPoweredLightPart(it, POLAR_LIGHT_CELL_CONE_45DEG.get())
+    }
 
     val LIGHT_PART_MICRO_GRID = partAndItemWithProvider(
         "small_wall_lamp_micro_grid",
@@ -479,23 +437,21 @@ object Content {
         LightFieldPrimitives.sphere(1, strength)
     )
 
-    private val SMALL_GARDEN_LIGHT_MODEL = gardenLightModel(3.0)
+    val SMALL_GARDEN_LIGHT = partMemoizeBB("small_garden_light", 4.0, 6.0, 4.0) {
+        val model = gardenLightModel(3.0)
 
-    val SMALL_GARDEN_LIGHT = partAndItemWithProvider(
-        "small_garden_light",
-        BasicPartProvider(Vector3d(4.0 / 16.0, 6.0 / 16.0, 4.0 / 16.0)) { ci ->
-            SolarLightPart(ci, SMALL_GARDEN_LIGHT_MODEL)
+        PartFactory {
+            SolarLightPart(it, model)
         }
-    )
+    }
 
-    private val TALL_GARDEN_LIGHT_MODEL = gardenLightModel(5.0)
+    val TALL_GARDEN_LIGHT = partMemoizeBB("tall_garden_light", 3.0, 15.5, 3.0) {
+        val model = gardenLightModel(5.0)
 
-    val TALL_GARDEN_LIGHT = partAndItemWithProvider(
-        "tall_garden_light",
-        BasicPartProvider(Vector3d(3.0 / 16.0, 15.5 / 16.0, 3.0 / 16.0)) { ci ->
-            SolarLightPart(ci, TALL_GARDEN_LIGHT_MODEL)
+        PartFactory {
+            SolarLightPart(it, model)
         }
-    )
+    }
 
     val LAMP_POLE_BLOCK_DELEGATE_MAP = defineDelegateMap("lamp_pole") {
         val column = registerDelegateOf(
@@ -560,11 +516,7 @@ object Content {
 
     val HEAT_GENERATOR_BLOCK = blockAndItem("heat_generator") { HeatGeneratorBlock() }
 
-    val HEAT_GENERATOR_BLOCK_ENTITY = blockEntityOnly(
-        "heat_generator",
-        HEAT_GENERATOR_BLOCK,
-        ::HeatGeneratorBlockEntity
-    )
+    val HEAT_GENERATOR_BLOCK_ENTITY = blockEntityOnly("heat_generator", HEAT_GENERATOR_BLOCK, ::HeatGeneratorBlockEntity)
 
     val HEAT_GENERATOR_MENU = menu("heat_generator", ::HeatGeneratorMenu)
 
@@ -654,12 +606,7 @@ object Content {
         }
     }
 
-    val ELECTRICAL_HEAT_ENGINE_PART = partAndItemWithProvider(
-        "electrical_heat_engine",
-        BasicPartProvider(Vector3d(4.0 / 16.0, 10.0 / 16.0, 14.0 / 16.0)) {
-            ElectricalHeatEnginePart(it)
-        }
-    )
+    val ELECTRICAL_HEAT_ENGINE_PART = partImmediateBB("electrical_heat_engine", 4.0, 10.0, 14.0, ::ElectricalHeatEnginePart)
 
     //#endregion
 
@@ -683,13 +630,11 @@ object Content {
         }
     }
 
-    val DC_TO_DC_CONVERTER_SPEC = specAndItemWithProvider(
+    val DC_TO_DC_CONVERTER_SPEC = specImmediateBB(
         "micro_grid_dc_to_dc_converter_800w",
-        BasicSpecProvider(
-            FlwModels.SMALL_DC_TO_DC_CONVERTER,
-            Vector3d(9.8, 2.625, 4.85) / 16.0,
-            ::DcToDcConverterSpec
-        )
+        FlwModels.SMALL_DC_TO_DC_CONVERTER,
+        9.8, 2.625, 4.85,
+        ::DcToDcConverterSpec
     )
 
     //#endregion
@@ -801,16 +746,18 @@ object Content {
         )
     }
 
-    val MICRO_GRID_ANCHOR_SPEC = specAndItemWithProvider(
-        "micro_grid_anchor",
-        BasicSpecProvider(FlwModels.MICRO_GRID_ANCHOR, Vector3d(1.0 / 16.0, 1.5 / 16.0, 1.0 / 16.0)) {
+    val MICRO_GRID_ANCHOR_SPEC = specMemoizeBB("micro_grid_anchor", FlwModels.MICRO_GRID_ANCHOR, 1.0, 1.5, 1.0) {
+        val terminalSize = Vector3d(1.0 / 16.0, 1.5 / 16.0, 1.0 / 16.0)
+        val categories = listOf(GridMaterialCategory.MicroGrid)
+
+        SpecFactory {
             GridAnchorSpec(
                 it,
-                Vector3d(1.0 / 16.0, 1.5 / 16.0, 1.0 / 16.0),
-                listOf(GridMaterialCategory.MicroGrid)
+                terminalSize,
+                categories
             )
         }
-    )
+    }
 
     val MICRO_GRID_INTERFACE_CELL = cellImmediate("micro_grid_interface") {
         GridInterfaceCell(
@@ -826,16 +773,17 @@ object Content {
         )
     }
 
-    val MICRO_GRID_INTERFACE_PART = partAndItemWithProvider(
-        "micro_grid_interface",
-        BasicPartProvider(Vector3d(4.0 / 16.0)) {
+    val MICRO_GRID_INTERFACE_PART = partMemoizeBB("micro_grid_interface", 4.0, 4.0, 4.0) {
+        val categories = listOf(GridMaterialCategory.MicroGrid)
+
+        PartFactory {
             GridInterfacePart(
                 it,
                 Vector3d(2.0 / 16.0, 4.0 / 16.0, 2.0 / 16.0),
-                listOf(GridMaterialCategory.MicroGrid)
+                categories
             )
         }
-    )
+    }
 
     val POWER_GRID_INTERFACE_CELL = cellImmediate("power_grid_interface") {
         GridInterfaceCell(
@@ -851,16 +799,18 @@ object Content {
         )
     }
 
-    val POWER_GRID_INTERFACE_PART = partAndItemWithProvider(
-        "power_grid_interface",
-        BasicPartProvider(Vector3d(4.0 / 16.0, 8.0 / 16.0, 4.0 / 16.0)) {
+    val POWER_GRID_INTERFACE_PART = partMemoizeBB("power_grid_interface", 4.0, 8.0, 4.0) {
+        val terminalSize = Vector3d(4.0 / 16.0, 8.0 / 16.0, 4.0 / 16.0) * 1.01
+        val categories = listOf(GridMaterialCategory.PowerGrid)
+
+        PartFactory {
             GridInterfacePart(
                 it,
-                Vector3d(4.0 / 16.0, 8.0 / 16.0, 4.0 / 16.0) * 1.01,
-                listOf(GridMaterialCategory.PowerGrid)
+                terminalSize,
+                categories
             )
         }
-    )
+    }
 
     val GRID_POLE_DELEGATE_MAP = defineDelegateMap("grid_pole") {
         val column = registerDelegateOf(

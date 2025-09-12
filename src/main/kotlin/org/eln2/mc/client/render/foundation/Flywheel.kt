@@ -173,7 +173,7 @@ object FlwVisualizerRegistry {
         setPartVisualizer<BatteryPart>(Content.BATTERY_PART_12V.part.get()) { ctx, part ->
             BasicPartVisual(
                 ctx, part,
-                FlwModels.BATTERY
+                FlwModels.LEAD_ACID_BATTERY
             )
         }
     }
@@ -196,8 +196,7 @@ object FlwVisualizerRegistry {
         setSpecVisualizer<BatterySpec>(Content.BATTERY_SPEC_12V.spec.get()) { ctx, spec ->
             BasicSpecVisual(
                 ctx, spec,
-                FlwModels.BATTERY,
-                scale = Vector3d(Content.BATTERY_SPEC_12V_SCALE)
+                FlwModels.SPEC_LEAD_ACID_BATTERY
             )
         }
 

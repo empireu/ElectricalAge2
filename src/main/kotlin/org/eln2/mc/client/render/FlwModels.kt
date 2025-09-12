@@ -16,7 +16,8 @@ object FlwModels {
     val THERMAL_WIRE_HUB = partialBlock("wire/thermal/hub")
     val THERMAL_WIRE_CONNECTION = wireConnection("wire/thermal/connection_hub", "wire/thermal/connection_full")
 
-    val BATTERY = partialBlock("battery/lead_acid")
+    val LEAD_ACID_BATTERY = partialBlock("battery/lead_acid")
+    val SPEC_LEAD_ACID_BATTERY = partialBlock("battery/spec_lead_acid_battery")
 
     val VOLTAGE_SOURCE = partialBlock("voltage_source")
     val RESISTOR = partialBlock("resistor")

@@ -68,7 +68,6 @@ import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.DebugComponentDisplay
 import org.eln2.mc.client.render.foundation.MyColor
-import org.eln2.mc.common.content.Content.BATTERY_SPEC_12V_SCALE
 import org.eln2.mc.mathematics.FacingDirection
 import org.eln2.mc.mathematics.maskXY
 import org.joml.Quaternionf

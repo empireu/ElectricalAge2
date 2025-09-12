@@ -1,12 +1,16 @@
 package org.eln2.mc.common.specs
 
+import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import net.minecraft.resources.ResourceLocation
 import net.minecraftforge.eventbus.api.IEventBus
 import net.minecraftforge.registries.*
 import org.ageseries.libage.data.mutableBiMapOf
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
+import org.eln2.mc.common.specs.foundation.BasicSpecProvider
 import org.eln2.mc.common.specs.foundation.Spec
+import org.eln2.mc.common.specs.foundation.SpecFactory
 import org.eln2.mc.common.specs.foundation.SpecItem
 import org.eln2.mc.common.specs.foundation.SpecProvider
 import org.eln2.mc.resource
@@ -44,6 +48,18 @@ object SpecRegistry {
 
         return SpecRegistryItem(name, spec, item)
     }
+
+    fun specMemoizeBB(name: String, previewModel: PartialModel?, placementCollisionSize: Vector3d, memoizer: Supplier<SpecFactory>) =
+        specAndItemWithProvider(name, BasicSpecProvider(previewModel, placementCollisionSize / 16.0, memoizer.get()))
+
+    fun specMemoizeBB(name: String, previewModel: PartialModel?, sx: Double, sy: Double, sz: Double, memoizer: Supplier<SpecFactory>) =
+        specMemoizeBB(name, previewModel, Vector3d(sx, sy, sz), memoizer)
+
+    fun specImmediateBB(name: String, previewModel: PartialModel?, placementCollisionSize: Vector3d, factory: SpecFactory) =
+        specAndItemWithProvider(name, BasicSpecProvider(previewModel, placementCollisionSize / 16.0, factory))
+
+    fun specImmediateBB(name: String, previewModel: PartialModel?, sx: Double, sy: Double, sz: Double, factory: SpecFactory) =
+        specImmediateBB(name, previewModel, Vector3d(sx, sy, sz), factory)
 
     /**
      * Gets the Spec Provider with the specified ID, or null, if it does not exist.
