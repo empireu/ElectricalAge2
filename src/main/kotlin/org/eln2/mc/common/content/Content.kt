@@ -116,6 +116,8 @@ object Content {
 
     val WRENCH = item("wrench") { WrenchItem() }
 
+    val SCREWDRIVER = item("screwdriver") { ScrewdriverItem() }
+
     //#endregion
 
     //#region Wires

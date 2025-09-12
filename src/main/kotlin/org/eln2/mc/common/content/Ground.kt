@@ -32,7 +32,7 @@ class GroundCell(ci: CellCreateInfo) : Cell(ci) {
     }
 }
 
-class GroundPart(ci: PartCreateInfo) : GridCellPart<GroundCell>(ci, Content.GROUND_CELL.get()), WrenchRotatablePart, ComponentDisplay {
+class GroundPart(ci: PartCreateInfo) : GridCellPart<GroundCell>(ci, Content.GROUND_CELL.get()), WrenchRotatable, ComponentDisplay {
     val terminal = defineCellBoxTerminal(
         0.0, 0.0, 0.0,
         placement.provider.placementCollisionSize.x,

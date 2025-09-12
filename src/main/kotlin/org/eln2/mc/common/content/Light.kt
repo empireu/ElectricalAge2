@@ -5,7 +5,6 @@ import dev.engine_room.flywheel.api.visual.DynamicVisual
 import dev.engine_room.flywheel.api.visual.SectionTrackedVisual
 import dev.engine_room.flywheel.api.visual.ShaderLightVisual
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
-import dev.engine_room.flywheel.lib.instance.FlatLit
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.model.Models
@@ -13,7 +12,6 @@ import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import it.unimi.dsi.fastutil.longs.LongSet
-import net.minecraft.client.renderer.LevelRenderer
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.SectionPos
@@ -44,7 +42,6 @@ import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.FlwInstanceTypes
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.client.render.foundation.SpecialModels
-import org.eln2.mc.client.render.foundation.ThermalTint
 import org.eln2.mc.client.render.foundation.TransformedLightOverrideInstance
 import org.eln2.mc.client.render.foundation.partTransformation
 import org.eln2.mc.common.*
@@ -248,7 +245,7 @@ class TerminalLightCell(ci: CellCreateInfo, variantType: LightVariantType, plus:
 abstract class PoweredLightPart<T : LightCell>(
     ci: PartCreateInfo,
     cellProvider: CellProvider<T>,
-) : GridCellPart<LightCell>(ci, cellProvider), EventListener, WrenchRotatablePart, ComponentDisplay, LightFixtureGameObject {
+) : GridCellPart<LightCell>(ci, cellProvider), EventListener, WrenchRotatable, ComponentDisplay, LightFixtureGameObject {
     @ClientOnly
     override var visualBrightness = 0.0
         protected set

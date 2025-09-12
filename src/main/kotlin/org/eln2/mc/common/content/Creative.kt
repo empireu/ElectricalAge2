@@ -27,7 +27,7 @@ class VoltageSourceCell(ci: CellCreateInfo) : Cell(ci) {
     }
 }
 
-class VoltageSourcePart(ci: PartCreateInfo) : CellPart<VoltageSourceCell>(ci, Content.VOLTAGE_SOURCE_CELL.get()), ComponentDisplay, WrenchRotatablePart {
+class VoltageSourcePart(ci: PartCreateInfo) : CellPart<VoltageSourceCell>(ci, Content.VOLTAGE_SOURCE_CELL.get()), ComponentDisplay, WrenchRotatable {
     override fun createVisual(ctx: MultipartVisualizationContext) = BasicPartVisual(ctx, this, FlwModels.VOLTAGE_SOURCE)
 
     override fun onUsedBy(context: PartUseInfo): InteractionResult {

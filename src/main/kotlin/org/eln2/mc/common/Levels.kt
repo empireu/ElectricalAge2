@@ -1,10 +1,14 @@
 package org.eln2.mc.common
 
 import net.minecraft.core.BlockPos
+import net.minecraft.world.entity.player.Player
 import net.minecraft.world.level.ChunkPos
+import net.minecraft.world.level.ClipContext
+import net.minecraft.world.level.Level
 import net.minecraft.world.level.LevelReader
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.phys.BlockHitResult
 import net.minecraftforge.event.TickEvent.ServerTickEvent
 import net.minecraftforge.event.level.BlockEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
@@ -17,6 +21,9 @@ import org.ageseries.libage.data.MutableSetMapMultiMap
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 data class LocatedBlockState(val position: BlockPos, val state: BlockState)
 data class BlockEventFrame(val set: List<LocatedBlockState>)
@@ -212,4 +219,27 @@ object BlockStreamEvents {
             )
         }
     }
+}
+
+fun getPlayerPOVHitResult(pLevel: Level, pPlayer: Player): BlockHitResult {
+    val f = pPlayer.xRot
+    val f1 = pPlayer.yRot
+    val vec3 = pPlayer.eyePosition
+    val f2 = cos(-f1 * (PI.toFloat() / 180f) - PI.toFloat())
+    val f3 = sin(-f1 * (PI.toFloat() / 180f) - PI.toFloat())
+    val f4 = -cos(-f * (PI.toFloat() / 180f))
+    val f5 = sin(-f * (PI.toFloat() / 180f))
+    val f6 = f3 * f4
+    val f7 = f2 * f4
+    val d0 = pPlayer.getBlockReach()
+    val vec31 = vec3.add(f6.toDouble() * d0, f5.toDouble() * d0, f7.toDouble() * d0)
+    return pLevel.clip(
+        ClipContext(
+            vec3,
+            vec31,
+            ClipContext.Block.OUTLINE,
+            ClipContext.Fluid.SOURCE_ONLY,
+            pPlayer
+        )
+    )
 }

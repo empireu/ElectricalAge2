@@ -436,7 +436,7 @@ class WirePart<C : WireCell>(
     InternalTemperatureConsumer,
     ExternalTemperatureConsumer,
     AnimatedPart,
-    WrenchInteractablePart,
+    WrenchInteractable,
     ComponentDisplay
 {
     companion object {

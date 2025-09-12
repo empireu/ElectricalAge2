@@ -1,55 +1,26 @@
 package org.eln2.mc.common.content
 
 import net.minecraft.nbt.CompoundTag
-import org.ageseries.libage.data.Energy
-import org.ageseries.libage.data.JOULE
-import org.ageseries.libage.data.OHM
-import org.ageseries.libage.data.Potential
-import org.ageseries.libage.data.Power
-import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.Resistance
-import org.ageseries.libage.data.VOLT
-import org.ageseries.libage.data.WATT
-import org.ageseries.libage.data.classify
+import net.minecraft.server.level.ServerPlayer
+import net.minecraft.world.item.context.UseOnContext
+import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.SYMFORCE_EPS
 import org.ageseries.libage.mathematics.approxEq
-import org.ageseries.libage.mathematics.geometry.BoundingBox3d
-import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
 import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
-import org.ageseries.libage.sim.electrical.mna.NEGATIVE
-import org.ageseries.libage.sim.electrical.mna.POSITIVE
 import org.ageseries.libage.sim.electrical.mna.component.PowerVoltageSource
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
-import org.eln2.mc.LOG
-import org.eln2.mc.TermRef
-import org.eln2.mc.TheveninEstimatingResistor
+import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.MyColor
-import org.eln2.mc.common.cells.foundation.Cell
-import org.eln2.mc.common.cells.foundation.CellCreateInfo
-import org.eln2.mc.common.cells.foundation.CellGraph
-import org.eln2.mc.common.cells.foundation.ElectricalObject
-import org.eln2.mc.common.cells.foundation.Node
-import org.eln2.mc.common.cells.foundation.PersistentObject
-import org.eln2.mc.common.cells.foundation.SimObject
-import org.eln2.mc.common.cells.foundation.SubscriberCollection
-import org.eln2.mc.common.cells.foundation.SubscriberPhase
-import org.eln2.mc.common.cells.foundation.addPost
-import org.eln2.mc.common.cells.foundation.addPre
-import org.eln2.mc.common.cells.foundation.hasNode
+import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.grids.GridConnectionCell
-import org.eln2.mc.common.grids.GridMaterialCategory
 import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.specs.foundation.CellSpec
 import org.eln2.mc.common.specs.foundation.SpecCreateInfo
-import org.eln2.mc.data.PoleMap
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.join
-import org.eln2.mc.offerNegative
-import org.eln2.mc.offerPositive
 import kotlin.math.min
 
 /**
@@ -223,6 +194,7 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
         tag.putDouble(THEVENIN_RESISTANCE_ESTIMATE, theveninResistor.theveninResistanceEstimate)
         tag.putDouble(OPEN_CIRCUIT_POTENTIAL_ESTIMATE, theveninResistor.openCircuitPotentialEstimate)
         tag.putDouble(SOURCE_POWER, source.powerIdeal)
+        tag.putDouble(SETPOINT, setpointPotential)
         return tag
     }
 
@@ -232,6 +204,7 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
         theveninResistor.theveninResistanceEstimate = tag.getDouble(THEVENIN_RESISTANCE_ESTIMATE)
         theveninResistor.openCircuitPotentialEstimate = tag.getDouble(OPEN_CIRCUIT_POTENTIAL_ESTIMATE)
         source.powerIdeal = tag.getDouble(SOURCE_POWER)
+        setpointPotential = tag.getDouble(SETPOINT)
     }
 
     companion object {
@@ -240,6 +213,7 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
         private const val THEVENIN_RESISTANCE_ESTIMATE = "RthEstimate"
         private const val OPEN_CIRCUIT_POTENTIAL_ESTIMATE = "ocPotentialEstimate"
         private const val SOURCE_POWER = "sourcePower"
+        private const val SETPOINT = "setpoint"
     }
 }
 
@@ -287,7 +261,11 @@ class TerminalDcToDcConverterCell(
 
 }
 
-class DcToDcConverterSpec(ci: SpecCreateInfo) : CellSpec<TerminalDcToDcConverterCell>(ci, Content.TERMINAL_DC_TO_DC_CONVERTER_CELL_800W.get()), ComponentDisplay {
+class DcToDcConverterSpec(ci: SpecCreateInfo) :
+    CellSpec<TerminalDcToDcConverterCell>(ci, Content.TERMINAL_DC_TO_DC_CONVERTER_CELL_800W.get()),
+    ScrewdriverScrollable,
+    ComponentDisplay
+{
     val inputNegative = defineCellBoxTerminalBB(
         3.1, 0.275, 6.425,
         0.4, 0.475, 0.575,
@@ -312,6 +290,20 @@ class DcToDcConverterSpec(ci: SpecCreateInfo) : CellSpec<TerminalDcToDcConverter
         highlightColor = MyColor.RED,
     )
 
+    override fun scrollScrewdriver(player: ServerPlayer, delta: Double) : Boolean {
+        if(!hasCell) {
+            return false
+        }
+
+        val increment = delta / 10.0
+        val newPotential = (cell.converter.setpointPotential + increment).coerceIn(0.0, !cell.converter.model.potentialRating)
+
+        cell.converter.setpointPotential = newPotential
+        cell.setChanged()
+
+        return true
+    }
+
     override fun submitDisplay(builder: ComponentDisplayList) {
         if(!hasCell) {
             return
@@ -325,5 +317,6 @@ class DcToDcConverterSpec(ci: SpecCreateInfo) : CellSpec<TerminalDcToDcConverter
         builder.debug("Out PotentialMax: ${Quantity(cell.converter.source.potentialMax ?: -1.0, VOLT).classify()}")
         builder.debug("Out potential: ${Quantity(cell.converter.source.potential, VOLT).classify()}")
         builder.debug("Sink res: ${Quantity(cell.converter.theveninResistor.resistance, OHM).classify()}")
+        builder.debug("Setpoint: ${Quantity(cell.converter.setpointPotential, VOLT).classify()}")
     }
 }

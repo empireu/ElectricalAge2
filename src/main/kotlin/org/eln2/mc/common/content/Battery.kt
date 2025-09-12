@@ -6,7 +6,6 @@ import net.minecraft.nbt.CompoundTag
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.InterpolatorBuilder
 import org.ageseries.libage.mathematics.approxEq
-import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.kdVectorDOf
 import org.ageseries.libage.mathematics.lerp
 import org.ageseries.libage.mathematics.map
@@ -459,7 +458,7 @@ class TerminalBatteryCell(ci: CellCreateInfo, model: BatteryModel) : BatteryCell
 
 private const val BATTERY = "battery"
 
-class BatteryPart(ci: PartCreateInfo, provider: CellProvider<BatteryCell>, ) : CellPart<BatteryCell>(ci, provider), ItemPersistent, WrenchRotatablePart, ComponentDisplay {
+class BatteryPart(ci: PartCreateInfo, provider: CellProvider<BatteryCell>, ) : CellPart<BatteryCell>(ci, provider), ItemPersistent, WrenchRotatable, ComponentDisplay {
     override val order get() = ItemPersistentLoadOrder.AfterSim
     override fun saveToItemNbt(tag: CompoundTag) { tag.put(BATTERY, cell.serializeNbt()) }
     override fun loadFromItemNbt(tag: CompoundTag?) { tag?.useSubTagIfPreset(BATTERY, cell::deserializeNbt) }

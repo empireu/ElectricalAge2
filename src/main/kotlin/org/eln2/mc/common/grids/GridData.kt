@@ -29,7 +29,7 @@ import org.eln2.mc.client.render.foundation.SketchExtrusion
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartBlock
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
-import org.eln2.mc.common.items.foundation.PartItem
+import org.eln2.mc.common.parts.foundation.PartItem
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.extensions.*

@@ -9,6 +9,7 @@ import net.minecraftforge.network.NetworkRegistry
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.common.*
+import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.grids.GridConnectionCreateMessage
 import org.eln2.mc.common.grids.GridConnectionDeleteMessage
 import org.eln2.mc.common.grids.GridConnectionUpdateRenderMessage
@@ -100,6 +101,15 @@ object Networking {
             SpecOverlayMessage::encode,
             SpecOverlayMessage::decode,
             SpecOverlayMessage::handle,
+            Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        )
+
+        channel.registerMessage(
+            id(),
+            ScrewdriverItem.Scroll::class.java,
+            ScrewdriverItem.Scroll::encode,
+            ScrewdriverItem.Scroll::decode,
+            ScrewdriverItem.Scroll::handle,
             Optional.of(NetworkDirection.PLAY_TO_SERVER)
         )
 

@@ -25,6 +25,7 @@ import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.containers.ContainerRegistry
 import org.eln2.mc.common.content.Content
+import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.entities.EntityRegistry
 import org.eln2.mc.common.grids.TerminalHighlightRenderer
 import org.eln2.mc.common.items.CreativeTabRegistry
@@ -98,6 +99,7 @@ class Eln2 {
         forgeEventBus.addListener(EventPriority.LOWEST, SpecContainerPart::renderHighlightEvent)
         forgeEventBus.addListener(TerminalHighlightRenderer::render)
         forgeEventBus.addListener(SpecPlacementOverlayClient::onScroll)
+        forgeEventBus.addListener(EventPriority.HIGHEST, ScrewdriverItem::onScroll)
         forgeEventBus.addListener(SpecPlacementOverlayClient::onKey)
         forgeEventBus.addListener(SpecPreviewRenderer::render)
 

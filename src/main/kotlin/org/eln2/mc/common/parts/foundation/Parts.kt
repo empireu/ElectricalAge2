@@ -15,7 +15,9 @@ import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
+import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.context.UseOnContext
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.phys.AABB
@@ -62,11 +64,13 @@ import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.BlockPosInt
 import org.eln2.mc.mathematics.FacingDirection
 import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.CellLayer
 import org.eln2.mc.common.specs.foundation.Spec
 import org.eln2.mc.requireIsOnServerThread
 import org.joml.Vector3f
 import java.util.UUID
+import java.util.function.Supplier
 
 object PartGeometry {
     fun transform(aabb: AABB, face: Direction): AABB = aabb
@@ -1176,5 +1180,109 @@ abstract class GridCellPart<C : Cell>(
     companion object {
         private const val CONTAINER_ID = "containerID"
         private const val GRID_TERMINAL_SYSTEM = "gridTerminalSystem"
+    }
+}
+
+/**
+ * The Part Item delegates the placement of a Part to the Multipart Container.
+ * */
+open class PartItem(val partProvider: Lazy<PartProvider>) : BlockItem(BlockRegistry.MULTIPART_BLOCK.get(), Properties()) {
+    // Patch for SpecItem
+    // Items get registered before our specs, parts, etc so we don't have the registered part provider when the spec item gets registred
+    // we add this lazy to mitigate, and sort of compensate by calling this ensureResolved in our finishing pass
+
+    fun ensureResolved() {
+        if(partProvider.isInitialized()) {
+            return
+        }
+
+        LOG.debug("Resolved part item {}", partProvider.value)
+    }
+
+    constructor(provider: PartProvider) : this(lazy { provider }) {
+        ensureResolved() // We were passed the item, we can do immediately
+    }
+
+    constructor(supplier: Supplier<PartProvider>) : this(lazy { supplier.get() })
+
+    override fun useOn(pContext: UseOnContext): InteractionResult {
+        val player = pContext.player
+
+        if (player == null) {
+            LOG.error("Null player!")
+            return InteractionResult.FAIL
+        }
+
+        val level = pContext.level
+        val substratePos = pContext.clickedPos
+        val face = pContext.clickedFace
+
+        val flag = MultipartBlockEntity.canPlacePartInSubstrate(
+            level,
+            substratePos,
+            face,
+            partProvider.value,
+            player
+        )
+
+        if(!flag) {
+            return InteractionResult.FAIL
+        }
+
+        val multipartPos = substratePos + face
+
+        LOG.debug("Placing part at {}", multipartPos)
+
+        var multipartBlockEntity = level.getBlockEntity(multipartPos)
+
+        if (multipartBlockEntity == null) {
+            if(level.isClientSide) {
+                // Assume it works out
+                return InteractionResult.SUCCESS
+            }
+
+            // Place multipart
+            super.useOn(pContext)
+            multipartBlockEntity = level.getBlockEntity(multipartPos)
+        } else {
+            multipartBlockEntity as MultipartBlockEntity
+
+            if (multipartBlockEntity.placementCollides(player, face, partProvider.value)) {
+                LOG.debug("Collides with part")
+                return InteractionResult.FAIL
+            }
+
+            if(level.isClientSide) {
+                return InteractionResult.SUCCESS
+            }
+        }
+
+        check(!level.isClientSide)
+        level as ServerLevel
+
+        LOG.debug("Target multipart entity: {}", multipartBlockEntity)
+
+        if (multipartBlockEntity == null) {
+            LOG.error("Placed multipart is null") // Maybe an entity is standing or some other external thing? I'
+            return InteractionResult.FAIL
+        }
+
+        val isPlaced = (multipartBlockEntity as MultipartBlockEntity).place(
+            player,
+            multipartPos,
+            pContext.clickedFace,
+            partProvider.value,
+            pContext.itemInHand.tag
+        )
+
+        return if (isPlaced) InteractionResult.CONSUME
+        else InteractionResult.FAIL
+    }
+
+    override fun getDescriptionId(): String {
+        // By default, this uses the block's description ID.
+        // This is not what we want.
+
+        return orCreateDescriptionId
     }
 }

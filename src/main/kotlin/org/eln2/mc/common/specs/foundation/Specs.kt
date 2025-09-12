@@ -58,7 +58,7 @@ import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.grids.*
-import org.eln2.mc.common.items.foundation.PartItem
+import org.eln2.mc.common.parts.foundation.PartItem
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.foundation.*

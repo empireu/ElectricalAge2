@@ -7,9 +7,7 @@ import net.minecraft.nbt.ListTag
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
-import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.Level
-import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraftforge.client.event.RenderHighlightEvent
 import org.ageseries.libage.data.Locator
@@ -31,13 +29,11 @@ import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.data.Notifier
 import org.eln2.mc.extensions.*
 import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.common.getPlayerPOVHitResult
 import org.eln2.mc.requireIsOnRenderThread
 import org.eln2.mc.requireIsOnServerThread
 import java.util.*
 import java.util.function.Supplier
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
 
 /**
  * Holds a reference to a [GridTerminal], along with the game object and any other metadata.
@@ -199,29 +195,6 @@ abstract class GridTerminalHandle(val terminal: GridTerminal) {
                     BlockEntityHandle(terminal, blockEntity)
                 }
             }
-        }
-
-        private fun getPlayerPOVHitResult(pLevel: Level, pPlayer: Player): BlockHitResult {
-            val f = pPlayer.xRot
-            val f1 = pPlayer.yRot
-            val vec3 = pPlayer.eyePosition
-            val f2 = cos(-f1 * (PI.toFloat() / 180f) - PI.toFloat())
-            val f3 = sin(-f1 * (PI.toFloat() / 180f) - PI.toFloat())
-            val f4 = -cos(-f * (PI.toFloat() / 180f))
-            val f5 = sin(-f * (PI.toFloat() / 180f))
-            val f6 = f3 * f4
-            val f7 = f2 * f4
-            val d0 = pPlayer.getBlockReach()
-            val vec31 = vec3.add(f6.toDouble() * d0, f5.toDouble() * d0, f7.toDouble() * d0)
-            return pLevel.clip(
-                ClipContext(
-                    vec3,
-                    vec31,
-                    ClipContext.Block.OUTLINE,
-                    ClipContext.Fluid.SOURCE_ONLY,
-                    pPlayer
-                )
-            )
         }
 
         /**

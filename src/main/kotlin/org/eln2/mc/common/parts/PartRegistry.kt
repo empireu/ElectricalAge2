@@ -10,7 +10,7 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.common.items.blacklistCreativeTab
-import org.eln2.mc.common.items.foundation.PartItem
+import org.eln2.mc.common.parts.foundation.PartItem
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.PartFactory
 import org.eln2.mc.common.parts.foundation.PartProvider
