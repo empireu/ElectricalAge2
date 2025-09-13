@@ -416,13 +416,12 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
         private const val NODE_ID = "id"
         private const val NODE_CLASS_ID = "type"
         private const val NODE_TAG = "data"
-
-        private val ID_ATOMIC = AtomicInteger()
     }
 
     constructor(ci: CellCreateInfo) : this(ci.locator, ci.id, ci.environment)
 
-    val uniqueCellId = ID_ATOMIC.getAndIncrement()
+    private val displayerImpl = SimulationDisplayerImpl()
+    val displayer: SimulationDisplayer get() = displayerImpl
 
     // Persistent behaviors are used by cell logic, and live throughout the lifetime of the cell:
     private var persistentPoolInternal: TrackedSubscriberCollection? = null
@@ -1013,6 +1012,10 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
                 "Duplicate add unique cell node $node ($id)"
             }
         }
+    }
+
+    fun updateDisplayer(dt: Double) {
+        displayerImpl.step(dt)
     }
 }
 
@@ -1743,7 +1746,6 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
             simulationSubscribers.update(DT, SubscriberPhase.Pre)
 
             lastTickTime = !measureDuration {
-
                 stage = UpdateStep.UpdateElectricalSims
                 val electricalTime = measureDuration {
                     electricalSims.forEach {
@@ -1765,6 +1767,10 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
 
             stage = UpdateStep.UpdateSubsPost
             simulationSubscribers.update(DT, SubscriberPhase.Post)
+
+            cells.forEach {
+                it.updateDisplayer(DT)
+            }
 
             updates++
 

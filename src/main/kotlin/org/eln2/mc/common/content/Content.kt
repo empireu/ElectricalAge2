@@ -73,13 +73,13 @@ import org.eln2.mc.common.specs.SpecRegistry.specImmediateBB
 import org.eln2.mc.common.specs.SpecRegistry.specMemoizeBB
 import org.eln2.mc.common.specs.foundation.BasicSpecProvider
 import org.eln2.mc.common.specs.foundation.SpecFactory
-import org.eln2.mc.data.KILOGRAM_METER_SQUARED
+import org.eln2.mc.KILOGRAM_METER_SQUARED
 import org.eln2.mc.data.Locators
-import org.eln2.mc.data.NEWTON_METER
-import org.eln2.mc.data.NEWTON_METER_SECOND
+import org.eln2.mc.NEWTON_METER
+import org.eln2.mc.NEWTON_METER_SECOND
 import org.eln2.mc.data.Pole
-import org.eln2.mc.data.REVOLUTION_PER_SECOND
-import org.eln2.mc.data.cylinderResistance
+import org.eln2.mc.REVOLUTION_PER_SECOND
+import org.eln2.mc.cylinderResistance
 import org.eln2.mc.data.directionMonopolarMapPlanar
 import org.eln2.mc.data.directionPoleMapPlanar
 import org.eln2.mc.data.withDirectionRulePlanar
@@ -624,7 +624,8 @@ object Content {
             0.8,
             5.0,
             Quantity(800.0, VOLT),
-            Quantity(0.1, OHM)
+            Quantity(25.0, MILLI * OHM),
+            Quantity(2.3, VOLT)
         )
 
         CellFactory {

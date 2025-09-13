@@ -66,7 +66,6 @@ import org.eln2.mc.common.specs.SpecRegistry
 import org.eln2.mc.data.Locators
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.integration.DebugComponentDisplay
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.mathematics.FacingDirection
 import org.eln2.mc.mathematics.maskXY
@@ -203,7 +202,7 @@ data class SpecUseInfo(
 
 data class SpecCreateInfo(val id: ResourceLocation, val placement: SpecPlacementInfo)
 
-class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, PartCellContainer {
+class SpecContainerPart(ci: PartCreateInfo) : Part(ci), PartCellContainer {
     @ServerOnly
     var containerID: UUID = UUID.randomUUID()
         private set
@@ -843,10 +842,6 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), DebugComponentDisplay, P
         )
 
         return intersection.second.onUsedBy(specContext)
-    }
-
-    override fun submitDebugDisplay(builder: ComponentDisplayList) {
-        builder.debug("Specs: ${specsInternal.size}")
     }
 
     override fun createVisual(ctx: MultipartVisualizationContext) = SpecContainerPartVisual(ctx, this)

@@ -39,7 +39,6 @@ import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.integration.DebugComponentDisplay
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.requireIsOnServerThread
 import org.joml.Quaternionf
@@ -400,7 +399,7 @@ open class MultiblockDelegateBlockWithCustomCollider(properties: Properties? = n
     override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction) = true
 }
 
-class MultiblockDelegateBlockEntity(pPos: BlockPos, pBlockState: BlockState) : BlockEntity(BlockRegistry.MULTIBLOCK_DELEGATE_BLOCK_ENTITY.get(), pPos, pBlockState), ComponentDisplay, DebugComponentDisplay {
+class MultiblockDelegateBlockEntity(pPos: BlockPos, pBlockState: BlockState) : BlockEntity(BlockRegistry.MULTIBLOCK_DELEGATE_BLOCK_ENTITY.get(), pPos, pBlockState), ComponentDisplay {
     var representativePos: BlockPos? = null
         private set
 
@@ -476,21 +475,11 @@ class MultiblockDelegateBlockEntity(pPos: BlockPos, pBlockState: BlockState) : B
         return ClientboundBlockEntityDataPacket.create(this) { tag }
     }
 
-    override fun submitDebugDisplay(builder: ComponentDisplayList) {
-        val representativePos = this.representativePos
-
-        builder.debug("Representative Position: $representativePos")
-
-        if(level != null && representativePos != null) {
-            builder.debug("Representative: ${level!!.getBlockEntity(representativePos!!)}")
-            (level?.getBlockEntity(representativePos) as? DebugComponentDisplay)?.submitDebugDisplay(builder)
-        }
-    }
-
     override fun submitDisplay(builder: ComponentDisplayList) {
         val representativePos = this.representativePos
 
         if(level != null && representativePos != null) {
+            builder.debugInIDE { "Representative: ${level!!.getBlockEntity(representativePos)}" }
             (level?.getBlockEntity(representativePos) as? ComponentDisplay)?.submitDisplay(builder)
         }
     }

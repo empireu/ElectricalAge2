@@ -1,5 +1,7 @@
 package org.eln2.mc.common.content
 
+import org.ageseries.libage.data.OHM
+import org.ageseries.libage.data.Quantity
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.BasicPartVisual
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
@@ -26,9 +28,9 @@ class GroundCell(ci: CellCreateInfo) : Cell(ci) {
     }
 
     fun submitDisplay(builder: ComponentDisplayList) {
-        builder.resistance(ground.resistors.resistance)
-        builder.current(ground.resistors.totalCurrent)
-        builder.power(ground.resistors.totalPower)
+        builder.quantity(Quantity(ground.resistors.resistance, OHM))
+        builder.quantity(ground.resistors.totalCurrentDisplay)
+        builder.quantity(ground.resistors.totalPowerDisplay)
     }
 }
 

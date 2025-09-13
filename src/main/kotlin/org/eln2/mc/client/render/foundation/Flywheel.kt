@@ -173,7 +173,8 @@ object FlwVisualizerRegistry {
         setPartVisualizer<BatteryPart>(Content.BATTERY_PART_12V.part.get()) { ctx, part ->
             BasicPartVisual(
                 ctx, part,
-                FlwModels.LEAD_ACID_BATTERY
+                FlwModels.LEAD_ACID_BATTERY,
+                rotation = PI
             )
         }
     }

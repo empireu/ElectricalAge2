@@ -36,9 +36,10 @@ class ResistorPart(ci: PartCreateInfo) : CellPart<ResistorCell>(ci, Content.RESI
     override fun createVisual(ctx: MultipartVisualizationContext) = BasicPartVisual(ctx, this, FlwModels.RESISTOR)
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.quantity(cell.thermalWire.thermalBody.temperature)
-        builder.resistance(cell.resistor.resistance)
-        builder.power(cell.resistor.power)
-        builder.current(cell.resistor.current)
+        builder.quantity(cell.thermalWire.thermalBodyDisplay.temperature)
+        builder.quantity(cell.resistor.resistorDisplay.resistance)
+        builder.quantity(cell.resistor.resistorDisplay.potential)
+        builder.quantity(cell.resistor.resistorDisplay.current)
+        builder.quantity(cell.resistor.resistorDisplay.power)
     }
 }

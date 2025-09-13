@@ -31,6 +31,7 @@ import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.ImmutableIntArrayView
+import org.ageseries.libage.data.OHM
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Vector3d
@@ -67,6 +68,8 @@ class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass, val environmen
     constructor(cell: Cell, definition: ThermalMassDefinition) : this(cell, definition())
 
     private var lastTemperature: Double
+
+    val thermalBodyDisplay = thermalBody.display()
 
     init {
         cell.environmentData.loadTemperature(thermalBody)
@@ -115,10 +118,12 @@ class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass, val environmen
  * */
 class ElectricalWireObjectVirtual(cell: Cell) : ElectricalObject<Cell>(cell) {
     // Optimization opportunity: make bundle create one resistor when possible. But it isn't that worthwhile because it is virtual.
-    private val resistors = resistorVirtualBundle(0.05)
+    private val resistors = resistorVirtualBundle(cell, 0.05)
 
-    val totalCurrent get() = resistors.totalCurrent
-    val totalPower get() = resistors.totalPower
+    val totalPowerSimulation get() = resistors.totalPowerSimulation
+
+    val totalCurrentDisplay get() = resistors.totalCurrentDisplay
+    val totalPowerDisplay get() = resistors.totalPowerDisplay
 
     /**
      * Gets or sets the resistance of the bundle.
@@ -417,7 +422,7 @@ open class ElectrothermalWireCell(ci: CellCreateInfo, contactCrossSection: Doubl
 
     @Behavior
     val heater = PowerHeatingBehavior(
-        electricalWire::totalPower,
+        electricalWire::totalPowerSimulation,
         thermalWire.thermalBody
     )
 
@@ -799,9 +804,9 @@ class WirePart<C : WireCell>(
         }
 
         if(cell is ElectrothermalWireCell) {
-            builder.resistance(cell.electricalWire.resistance)
-            builder.power(cell.electricalWire.totalPower)
-            builder.current(cell.electricalWire.totalCurrent)
+            builder.quantity(Quantity(cell.electricalWire.resistance, OHM))
+            builder.quantity(cell.electricalWire.totalCurrentDisplay)
+            builder.quantity(cell.electricalWire.totalPowerDisplay)
         }
     }
 }

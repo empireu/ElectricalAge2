@@ -29,18 +29,70 @@
     "item.eln2.power_grid_interface": "Power Grid Interface",
     "item.eln2.micro_grid_anchor": "Micro-Grid Anchor",
 
-    "waila.eln2.Temperature": "Temperature",
-    "waila.eln2.Potential": "Potential",
-    "waila.eln2.Current": "Current",
-    "waila.eln2.Resistance": "Resistance",
-    "waila.eln2.Capacitance": "Capacitance",
-    "waila.eln2.Inductance": "Inductance",
-    "waila.eln2.Energy": "Energy",
-    "waila.eln2.Power": "Power",
-    "waila.eln2.power_output": "Power Output",
-    "waila.eln2.power_dissipated": "Dissipated Power",
-    "waila.eln2.thermal_power": "Thermal Power",
-    "waila.eln2.Mass": "Mass",
+    // All implicit units:
+    "waila.eln2.Mass_implicit": "Mass",
+    "waila.eln2.Temperature_implicit": "Temperature",
+    "waila.eln2.Potential_implicit": "Potential",
+    "waila.eln2.Current_implicit": "Current",
+    "waila.eln2.Resistance_implicit": "Resistance",
+    "waila.eln2.Capacitance_implicit": "Capacitance",
+    "waila.eln2.Inductance_implicit": "Inductance",
+    "waila.eln2.Energy_implicit": "Energy",
+    "waila.eln2.Power_implicit": "Power",
+    "waila.eln2.AngularVelocity_implicit": "Angular Velocity",
+    "waila.eln2.Torque_implicit": "Torque",
+    "waila.eln2.TemperatureRate_implicit": "Heating Rate",
+
+    // All implicit setpoints:
+    "waila.eln2.Temperature_setpoint_implicit": "Setpoint Temperature",
+    "waila.eln2.Potential_setpoint_implicit": "Setpoint Potential",
+    "waila.eln2.Current_setpoint_implicit": "Setpoint Current",
+    "waila.eln2.Power_setpoint_implicit": "Setpoint Power",
+    "waila.eln2.AngularVelocity_setpoint_implicit": "Setpoint Angular Velocity",
+    "waila.eln2.Torque_setpoint_implicit": "Setpoint Torque",
+
+    // All implicit inputs:
+    "waila.eln2.Temperature_input_implicit": "Input Temperature",
+    "waila.eln2.Potential_input_implicit": "Input Potential",
+    "waila.eln2.Current_input_implicit": "Input Current",
+    "waila.eln2.Energy_input_implicit": "Input Energy",
+    "waila.eln2.Power_input_implicit": "Input Power",
+
+    // All implicit outputs:
+    "waila.eln2.Temperature_output_implicit": "Output Temperature",
+    "waila.eln2.Potential_output_implicit": "Output Potential",
+    "waila.eln2.Current_output_implicit": "Output Current",
+    "waila.eln2.Energy_output_implicit": "Output Energy",
+    "waila.eln2.Power_output_implicit": "Output Power",
+
+    // All thermal units:
+    "waila.eln2.Energy_thermal": "Thermal Energy",
+    "waila.eln2.Power_thermal": "Thermal Power",
+
+    // All thermal inputs:
+    "waila.eln2.Energy_input_thermal": "Input Thermal Energy",
+    "waila.eln2.Power_input_thermal": "Input Thermal Power",
+
+    // All thermal outputs:
+    "waila.eln2.Energy_output_thermal": "Output Thermal Energy",
+    "waila.eln2.Power_output_thermal": "Output Thermal Power",
+
+    // All electrical units:
+    "waila.eln2.Energy_electrical": "Electrical Energy",
+    "waila.eln2.Power_electrical": "Electrical Power",
+
+    // All electrical inputs:
+    "waila.eln2.Energy_input_electrical": "Input Electrical Energy",
+    "waila.eln2.Power_input_electrical": "Input Electrical Power",
+
+    // All electrical outputs:
+    "waila.eln2.Energy_output_electrical": "Output Electrical Energy",
+    "waila.eln2.Power_output_electrical": "Output Electrical Power",
+
+    "waila.eln2.cold_temperature": "Cold Temperature",
+    "waila.eln2.hot_temperature": "Hot Temperature",
+    "waila.eln2.eta": "Efficiency",
+
     "waila.eln2.charge": "Charge",
     "waila.eln2.integrity": "Integrity",
     "waila.eln2.fuel_mass": "Fuel Amount",

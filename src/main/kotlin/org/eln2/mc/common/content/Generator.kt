@@ -70,15 +70,15 @@ import org.eln2.mc.common.parts.foundation.AbstractPartVisual
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.control.PIDController
-import org.eln2.mc.data.AngularVelocity
+import org.eln2.mc.AngularVelocity
 import org.eln2.mc.data.Average3d
-import org.eln2.mc.data.Inertia
-import org.eln2.mc.data.NEWTON_METER
+import org.eln2.mc.Inertia
+import org.eln2.mc.NEWTON_METER
 import org.eln2.mc.data.PoleMap
-import org.eln2.mc.data.RADIAN_PER_SECOND
-import org.eln2.mc.data.REVOLUTION_PER_SECOND
-import org.eln2.mc.data.Torque
-import org.eln2.mc.data.ViscousFriction
+import org.eln2.mc.RADIAN_PER_SECOND
+import org.eln2.mc.REVOLUTION_PER_SECOND
+import org.eln2.mc.Torque
+import org.eln2.mc.ViscousFriction
 import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
@@ -197,7 +197,7 @@ class FuelBurnerBehavior(val cell: Cell, val body: ThermalMass) : CellBehavior {
 
     fun submitDisplay(builder: ComponentDisplayList) {
         builder.debug("*Control Signal ${(signal * 1000).formatted(2)}")
-        builder.power(thermalPower)
+        builder.quantityOutput(Quantity(thermalPower, WATT), ComponentDisplayList.Domain.Thermal)
         builder.translateQuantityRow("fuel_remaining", (fuel?.fuelAmount ?: Quantity(0.0)))
         builder.translateQuantityRow("energy_remaining", availableEnergy)
     }
@@ -657,6 +657,9 @@ class ElectricalHeatEngineCell(
     val cold by thermalBipole::b1
     val hot by thermalBipole::b2
 
+    val coldDisplay = displayer.display(cold)
+    val hotDisplay = displayer.display(hot)
+
     val generator = ThermalElectricGenerator(cold, hot,  generatorModel)
 
     var shaftRotation = Rotation2d.identity
@@ -804,16 +807,16 @@ class ElectricalHeatEnginePart(ci: PartCreateInfo) :
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.debug("Cold: ${cell.cold.temperature.classifyAuxiliary(::CELSIUS)}")
-        builder.debug("Hot: ${cell.hot.temperature.classifyAuxiliary(::CELSIUS)}")
-        builder.debug("SRC power: ${Quantity(cell.source.generator.power, WATT).classify()}")
-        builder.debug("SRC potential: ${Quantity(cell.source.generator.potential, VOLT).classify()}")
-        builder.debug("SRC current: ${Quantity(cell.source.generator.current, AMPERE).classify()}")
-        builder.debug("GEN angular velocity: ${(cell.generator.angularVelocity.classifyAuxiliary(::REVOLUTION_PER_SECOND))}")
-        builder.debug("GEN eta engine: ${(cell.generator.etaEngine * 100.0).rounded(2)}%")
-        builder.debug("GEN power available: ${cell.generator.availablePower.classify()}")
-        builder.debug("GEN potential OC: ${cell.generator.potentialOpenCircuit.classify()}")
-        builder.debug("GEN engine torque: ${cell.generator.engineTorque.classify()}")
+        builder.debugInIDE { "Gen availablePower: ${cell.generator.availablePower.classify()} "}
+        builder.debugInIDE { "Gen potentialOpenCircuit: ${cell.generator.potentialOpenCircuit.classify()}" }
+        builder.coldTemperature(cell.coldDisplay.temperature)
+        builder.hotTemperature(cell.hotDisplay.temperature)
+        builder.efficiency(cell.generator.etaEngine)
+        builder.quantity(cell.generator.angularVelocity)
+        builder.quantity(cell.generator.engineTorque)
+        builder.quantityOutput(cell.source.generatorDisplay.potential)
+        builder.quantityOutput(cell.source.generatorDisplay.current)
+        builder.quantityOutput(cell.source.generatorDisplay.power)
     }
 
     @Serializable

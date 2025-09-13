@@ -62,9 +62,9 @@ class PhotovoltaicGeneratorCell(
 
 class PhotovoltaicPanelPart(ci: PartCreateInfo, provider: CellProvider<PhotovoltaicGeneratorCell>) : CellPart<PhotovoltaicGeneratorCell>(ci, provider), ComponentDisplay {
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.potential(cell.generator.powerSource.potential)
-        builder.power(cell.generator.powerSource.power)
-        builder.current(cell.generator.powerSource.current)
+        builder.quantity(cell.generator.powerSourceDisplay.potential)
+        builder.quantity(cell.generator.powerSourceDisplay.current)
+        builder.quantity(cell.generator.powerSourceDisplay.power)
         builder.translatePercent("Irradiance", cell.irradianceFactor())
     }
 }

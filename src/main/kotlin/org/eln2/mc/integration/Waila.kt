@@ -9,9 +9,12 @@ import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.*
 import org.ageseries.libage.utils.sourceName
 import org.eln2.mc.*
+import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlock
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
+import org.eln2.mc.common.parts.foundation.CellPart
+import org.eln2.mc.common.specs.foundation.CellSpec
 import org.eln2.mc.common.specs.foundation.GridSpec
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.extensions.forEachCompound
@@ -19,6 +22,7 @@ import org.eln2.mc.extensions.formattedPercentNormalized
 import snownee.jade.api.*
 import snownee.jade.api.config.IPluginConfig
 import java.util.*
+import java.util.function.Supplier
 import kotlin.math.absoluteValue
 
 
@@ -91,29 +95,34 @@ class Eln2WailaPlugin : IWailaPlugin {
         override fun appendServerData(p0: CompoundTag, p1: BlockAccessor) {
             val display = castGameObject<ComponentDisplay>(p1)
 
-            // FIXME SharedConstants.IS_RUNNING_IN_IDE is not working
-            val debugDisplay = if(true) {
-                castGameObject<DebugComponentDisplay>(p1)
-            } else {
-                null
-            }
-
             val components = mutableListOf<Component>()
             val builder = ComponentDisplayList(components)
 
             if(display != null) {
                 try {
-                    display.submitDisplay(builder)
+                    run {
+                        if(display is CellBlockEntity<*>) {
+                            if(!display.hasCell) {
+                                return@run
+                            }
+                        }
+
+                        if(display is CellPart<*>) {
+                            if(!display.hasCell) {
+                                return@run
+                            }
+                        }
+
+                        if(display is CellSpec<*>) {
+                            if(!display.hasCell) {
+                                return@run
+                            }
+                        }
+
+                        display.submitDisplay(builder)
+                    }
                 } catch (e : Throwable) {
                     LOG.error("Display error $display: $e")
-                }
-            }
-
-            if(debugDisplay != null) {
-                try {
-                    debugDisplay.submitDebugDisplay(builder)
-                } catch (e : Throwable) {
-                    LOG.error("DEBUG Display error $display: $e")
                 }
             }
 
@@ -141,13 +150,6 @@ class Eln2WailaPlugin : IWailaPlugin {
  * */
 interface ComponentDisplay {
     fun submitDisplay(builder: ComponentDisplayList)
-}
-
-/**
- * Debug-only version of [ComponentDisplay]. It will be used if the mod is running in the IDE.
- * */
-interface DebugComponentDisplay {
-    fun submitDebugDisplay(builder: ComponentDisplayList)
 }
 
 private const val ENTRIES = "entries"
@@ -183,7 +185,7 @@ private fun unpackComponentList(tag: CompoundTag): List<Component> {
                         .substringAfter(ComponentDisplayList.QUANTITY_SUFFIX)
                         .toDouble()
 
-                    val dimensionClass = checkNotNull(DIMENSION_TYPES.backward[dimensionName])
+                    val dimensionClass = checkNotNull(ELN2_DIMENSION_TYPES.backward[dimensionName])
                     val auxiliaryScale = Eln2Config.clientConfig.getScaleOverride(dimensionClass)
 
                     component.siblings[i] = Component.literal(
@@ -225,6 +227,8 @@ class ComponentDisplayList(private val entries: MutableList<Component>) {
         private const val QUANTITY_IDENTIFIER = "Eln2Quantity"
         const val QUANTITY_PREFIX = "$QUANTITY_IDENTIFIER["
         const val QUANTITY_SUFFIX = "]"
+
+        const val EPS = 1e-4
     }
 
     fun add(component: Component) {
@@ -235,8 +239,18 @@ class ComponentDisplayList(private val entries: MutableList<Component>) {
         return "waila.$MODID.$identifier"
     }
 
+    @Deprecated("Use debugInIDE")
     fun debug(text: String) {
         add(Component.literal("*$text"))
+    }
+
+    /**
+     * Displays if the mod is running in IDE.
+     * */
+    fun debugInIDE(supplier: Supplier<String>) {
+        if(ELN2_DEBUG) {
+            debug("*" + supplier.get()) // another star to indicate [debugInIDE] was called and not just [debug]
+        }
     }
 
     fun translatePercent(key: String, percentage: Double) {
@@ -262,7 +276,7 @@ class ComponentDisplayList(private val entries: MutableList<Component>) {
     // mixin (there's no easy place to attach to) so I rather just do it like this
 
     inline fun<reified T> translateQuantityRow(key: String, quantity: Quantity<T>, eps: Double = 1e-6) {
-        val name = DIMENSION_TYPES.forward[T::class.java]
+        val name = ELN2_DIMENSION_TYPES.forward[T::class.java]
 
         checkNotNull(name) {
             "Invalid dimension ${T::class.java}"
@@ -274,20 +288,56 @@ class ComponentDisplayList(private val entries: MutableList<Component>) {
         )
     }
 
-    inline fun<reified T> quantity(quantity: Quantity<T>, eps: Double = 1e-6) {
-        translateQuantityRow(T::class.java.sourceName(), quantity, eps)
+    data class Domain(val identifier: String) {
+        companion object {
+            val None = Domain("implicit")
+            val Electrical = Domain("electrical")
+            val Thermal = Domain("thermal")
+        }
     }
 
-    fun current(value: Double) = quantity(Quantity(value, AMPERE))
-    fun potential(value: Double) = quantity(Quantity(value, VOLT))
-    fun resistance(value: Double) = quantity(Quantity(value, OHM))
-    fun power(value: Double) = quantity(Quantity(value, WATT))
-    fun powerOutput(value: Double, eps: Double = 1e-4) = translateQuantityRow("power_output", Quantity(value, WATT), eps)
-    fun powerDissipated(value: Double, eps: Double = 1e-4) = translateQuantityRow("power_dissipated", Quantity(value, WATT), eps)
-    fun thermalPower(value: Double, eps: Double = 1e-4) = translateQuantityRow("thermal_power", Quantity(value, WATT), eps)
-    fun energy(value: Double) = quantity(Quantity(value, JOULE))
-    fun temperature(value: Double) = quantity(Quantity(value, KELVIN))
+    inline fun<reified T> quantity(quantity: Quantity<T>, domain: Domain = Domain.None, eps: Double = EPS) {
+        translateQuantityRow(T::class.java.sourceName() + "_${domain.identifier}", quantity, eps)
+    }
+
+    inline fun<reified T> quantityInput(quantity: Quantity<T>, domain: Domain = Domain.None,eps: Double = EPS) {
+        translateQuantityRow(T::class.java.sourceName() + "_input_${domain.identifier}", quantity, eps)
+    }
+
+    inline fun<reified T> quantityOutput(quantity: Quantity<T>, domain: Domain = Domain.None,eps: Double = EPS) {
+        translateQuantityRow(T::class.java.sourceName() + "_output_${domain.identifier}", quantity, eps)
+    }
+
+    inline fun<reified T> quantitySetpoint(quantity: Quantity<T>, domain: Domain = Domain.None,eps: Double = EPS) {
+        translateQuantityRow(T::class.java.sourceName() + "_setpoint_${domain.identifier}", quantity, eps)
+    }
+
+    inline fun<reified T> quantityMax(quantity: Quantity<T>, domain: Domain = Domain.None,eps: Double = EPS) {
+        translateQuantityRow(T::class.java.sourceName() + "_max_${domain.identifier}", quantity, eps)
+    }
+
+    inline fun<reified T> quantityInputMax(quantity: Quantity<T>, domain: Domain = Domain.None,eps: Double = EPS) {
+        translateQuantityRow(T::class.java.sourceName() + "_input_max_${domain.identifier}", quantity, eps)
+    }
+
+    inline fun<reified T> quantityOutputMax(quantity: Quantity<T>, domain: Domain = Domain.None,eps: Double = EPS) {
+        translateQuantityRow(T::class.java.sourceName() + "_output_max_${domain.identifier}", quantity, eps)
+    }
+
+    inline fun<reified T> quantityDissipated(quantity: Quantity<T>, domain: Domain = Domain.None,eps: Double = EPS) {
+        translateQuantityRow(T::class.java.sourceName() + "_dissipated_${domain.identifier}", quantity, eps)
+    }
+
+    fun coldTemperature(temperature: Quantity<Temperature>, eps: Double = EPS) {
+        translateQuantityRow("cold_temperature", temperature, eps)
+    }
+
+    fun hotTemperature(temperature: Quantity<Temperature>, eps: Double = EPS) {
+        translateQuantityRow("hot_temperature", temperature, eps)
+    }
+
     fun charge(value: Double) = translatePercent("charge", value)
     fun integrity(value: Double) = translatePercent("integrity", value)
     fun progress(value: Double) = translatePercent("progress", value)
+    fun efficiency(value: Double) = translatePercent("eta", value)
 }

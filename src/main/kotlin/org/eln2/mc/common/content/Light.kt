@@ -89,6 +89,8 @@ abstract class LightCell(ci: CellCreateInfo, val lightVariantType: LightVariantT
      * */
     abstract val resistor : IResistor
 
+    abstract val resistorDisplay: SimulationDisplayer.DisplayResistor
+
     @SimObject
     val thermalWire = ThermalWireObject(self())
 
@@ -225,6 +227,8 @@ class PolarLightCell(ci: CellCreateInfo, map: PoleMap, variantType: LightVariant
     @SimObject
     override val resistor = PolarResistorObjectVirtual(self(), map)
 
+    override val resistorDisplay get() = resistor.resistorDisplay
+
     override fun cellConnectionPredicate(remote: Cell): Boolean {
         return super.cellConnectionPredicate(remote) && resistor.poleMap.evaluateOrNull(this, remote) != null
     }
@@ -236,6 +240,8 @@ class TerminalLightCell(ci: CellCreateInfo, variantType: LightVariantType, plus:
 
     @SimObject
     override val resistor = TerminalResistorObjectVirtual(self(), plus, minus)
+
+    override val resistorDisplay get() = resistor.resistorDisplay
 
     override fun cellConnectionPredicate(remote: Cell): Boolean {
         return super.cellConnectionPredicate(remote) && remote is GridConnectionCell
@@ -365,9 +371,9 @@ abstract class PoweredLightPart<T : LightCell>(
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.quantity(cell.thermalWire.thermalBody.temperature)
-        builder.current(cell.current)
-        builder.power(cell.power)
+        builder.quantity(cell.thermalWire.thermalBodyDisplay.temperature)
+        builder.quantity(cell.resistorDisplay.current)
+        builder.quantity(cell.resistorDisplay.power)
         builder.integrity(cell.life)
     }
 }
@@ -862,9 +868,9 @@ class LampPoleBlockEntity(pos: BlockPos, state: BlockState) :
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.quantity(cell.thermalWire.thermalBody.temperature)
-        builder.current(cell.current)
-        builder.power(cell.power)
+        builder.quantity(cell.thermalWire.thermalBodyDisplay.temperature)
+        builder.quantity(cell.resistorDisplay.current)
+        builder.quantity(cell.resistorDisplay.power)
         builder.integrity(cell.life)
     }
 }

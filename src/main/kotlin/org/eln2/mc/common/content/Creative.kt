@@ -1,6 +1,9 @@
 package org.eln2.mc.common.content
 
 import net.minecraft.world.InteractionResult
+import org.ageseries.libage.data.OHM
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.classify
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.BasicPartVisual
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
@@ -48,9 +51,9 @@ class VoltageSourcePart(ci: PartCreateInfo) : CellPart<VoltageSourceCell>(ci, Co
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.resistance(cell.voltageSource.resistors.crossResistance)
-        builder.power(cell.voltageSource.source.power)
-        builder.potential(cell.voltageSource.source.potential)
-        builder.current(cell.voltageSource.source.current)
+        builder.debugInIDE { "crossResistance: ${Quantity(cell.voltageSource.resistors.crossResistance, OHM).classify()}" }
+        builder.quantityOutput(cell.voltageSource.sourceDisplay.potential)
+        builder.quantityOutput(cell.voltageSource.sourceDisplay.current)
+        builder.quantityOutput(cell.voltageSource.sourceDisplay.power)
     }
 }

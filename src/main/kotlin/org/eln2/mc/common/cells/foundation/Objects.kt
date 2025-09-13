@@ -157,6 +157,8 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
             )
         }
     }
+
+    protected fun ThermalMass.display() = cell.displayer.display(this)
 }
 
 abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
@@ -288,6 +290,11 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
             map.join(localInfo, remoteInfo)
         }
     }
+
+    protected fun VoltageSource.display() = cell.displayer.display(this)
+    protected fun IResistor.display() = cell.displayer.display(this)
+    protected fun TheveninEstimatingResistor.display() = cell.displayer.display(this)
+    protected fun MyPowerVoltageSource.display() = cell.displayer.display(this)
 }
 
 /**
@@ -441,6 +448,9 @@ abstract class VRGObject<C : Cell>(cell: C) : ElectricalObject<C>(cell) {
      * */
     val source = VoltageSource()
 
+    val resistorDisplay = resistor.display()
+    val sourceDisplay = source.display()
+
     /**
      * Adds [resistor] and [source] to the circuit, regardless of their connection status with other things.
      * */
@@ -534,7 +544,9 @@ open class PolarTermObject<C: Cell, T : Term>(cell: C, val poleMap: PoleMap, val
  * */
 class VoltageSourceObject(cell: Cell) : ElectricalObject<Cell>(cell) {
     val source = VoltageSource()
-    val resistors = resistorBundle(1e-4)
+    val resistors = resistorBundle(cell, 1e-4)
+
+    val sourceDisplay = source.display()
 
     override fun offerPolar(remote: ElectricalObject<*>): TermRef {
         return resistors.getOfferedResistor(remote)
@@ -562,6 +574,8 @@ class VoltageSourceObject(cell: Cell) : ElectricalObject<Cell>(cell) {
 class TerminalResistorObjectVirtual<C : Cell>(cell: C, val resistor: VirtualResistor, val plus: Int, val minus: Int) : ElectricalObject<C>(cell), IResistor by resistor {
     constructor(cell: C, plus: Int, minus: Int) : this(cell, VirtualResistor(), plus, minus)
 
+    val resistorDisplay = resistor.display()
+
     override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo) =
         when(m0.terminal) {
             plus -> resistor.offerPositive()
@@ -576,10 +590,12 @@ class TerminalResistorObjectVirtual<C : Cell>(cell: C, val resistor: VirtualResi
 
 class PolarResistorObjectVirtual<C : Cell>(cell: C, poleMap: PoleMap, virtualResistor: VirtualResistor) : PolarTermObject<C, VirtualResistor>(cell, poleMap, virtualResistor), IResistor by virtualResistor {
     constructor(cell: C, poleMap: PoleMap) : this(cell, poleMap, VirtualResistor())
+
+    val resistorDisplay = virtualResistor.display()
 }
 
 class GroundObject(cell: Cell) : ElectricalObject<Cell>(cell) {
-    val resistors = resistorBundle(1e-5)
+    val resistors = resistorBundle(cell, 1e-5)
 
     override fun offerPolar(remote: ElectricalObject<*>) = resistors.getOfferedResistor(remote)
 
@@ -603,8 +619,11 @@ class GroundObject(cell: Cell) : ElectricalObject<Cell>(cell) {
 }
 
 class PowerVoltageSourceObject<C : Cell>(cell: C, val map: PoleMap) : ElectricalObject<C>(cell) {
-    val generator = PowerVoltageSource()
+    val generator = MyPowerVoltageSource()
     val resistor = VirtualResistor()
+
+    val generatorDisplay = generator.display()
+    val resistorDisplay = resistor.display()
 
     override fun offerPolar(remote: ElectricalObject<*>) = when(map.evaluateOrNull(cell, remote.cell)) {
         Pole.Plus -> generator.offerPositive()
@@ -625,8 +644,10 @@ class PowerVoltageSourceObject<C : Cell>(cell: C, val map: PoleMap) : Electrical
 
 
 class PowerVoltageSourceDiodeObject<C : Cell>(cell: C, val map: PoleMap) : ElectricalObject<C>(cell) {
-    val powerSource = PowerVoltageSource()
+    val powerSource = MyPowerVoltageSource()
     val diode = IdealDiode()
+
+    val powerSourceDisplay = powerSource.display()
 
     override fun offerPolar(remote: ElectricalObject<*>) = when(map.evaluateOrNull(cell, remote.cell)) {
         Pole.Plus -> powerSource.offerPositive()

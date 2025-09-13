@@ -425,13 +425,13 @@ abstract class BatteryCell(
     }
 
     fun submitDisplay(builder: ComponentDisplayList) {
+        builder.debugInIDE { "Efficiency: ${(model.efficiencyFunction.computeEfficiency(this) * 100).rounded(2)}%" }
         builder.charge(charge)
         builder.integrity(life)
         builder.quantity(thermalWire.thermalBody.temperature)
-        builder.potential(generator.source.potential)
-        builder.current(generator.source.current)
-        builder.powerOutput(generator.source.power)
-        builder.debug("Eff: ${(model.efficiencyFunction.computeEfficiency(this) * 100).rounded(2)}%")
+        builder.quantityOutput(generator.sourceDisplay.potential)
+        builder.quantityOutput(generator.sourceDisplay.current)
+        builder.quantityOutput(generator.sourceDisplay.power)
     }
 }
 

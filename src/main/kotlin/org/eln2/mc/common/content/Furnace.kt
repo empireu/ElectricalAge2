@@ -111,8 +111,7 @@ class FurnaceCell(ci: CellCreateInfo, dir1: Base6Direction3d, dir2: Base6Directi
         environmentData.loadTemperature(it)
     }
 
-    val internalTemperature
-        get() = resistorThermalMass.temperature
+    val thermalMassDisplay = displayer.display(resistorThermalMass)
 
     private val environmentSimulator = Simulator().also {
         it.add(resistorThermalMass)
@@ -120,7 +119,7 @@ class FurnaceCell(ci: CellCreateInfo, dir1: Base6Direction3d, dir2: Base6Directi
         environmentData.connect(it, resistorThermalMass)
     }
 
-    val isHot get() = internalTemperature >= options.temperatureThreshold
+    val isHot get() = thermalMassDisplay.temperature >= options.temperatureThreshold
 
     /**
      * Set this flag from the game thread to indicate if the furnace is active.
@@ -267,7 +266,7 @@ class FurnaceBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<Fur
     private var recipe: SmeltingRecipe? = null
 
     fun serverTick() {
-        data.resistorTemperature = cell.internalTemperature.value.toInt()
+        data.resistorTemperature = cell.thermalMassDisplay.temperature.value.toInt()
         data.resistorTargetTemperature = cell.options.targetTemperature.value.toInt()
 
         val isHot = cell.isHot
@@ -328,9 +327,9 @@ class FurnaceBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<Fur
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.power(cell.resistor.power)
-        builder.current(cell.resistor.current)
-        builder.quantity(cell.internalTemperature)
+        builder.quantityInput(cell.resistor.resistorDisplay.power)
+        builder.quantity(cell.thermalMassDisplay.temperature)
+        builder.quantity(cell.thermalMassDisplay.temperatureRate)
         builder.progress(operationBurnTime / BURN_TIME_TARGET.toDouble())
     }
 }

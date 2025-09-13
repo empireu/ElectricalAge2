@@ -145,6 +145,8 @@ fun getResourceBinary(location: ResourceLocation) : ByteArray {
 fun getResourceString(location: ResourceLocation, charset: Charset = Charset.defaultCharset()) : String =
     getResourceBinary(location).toString(charset)
 
+val ELN2_DEBUG get() = true
+
 fun getResourceStringHelper(resource: String) : String =
     if (!SharedConstants.IS_RUNNING_IN_IDE) getResourceString(resource(resource))
     else Files.readString(Path("./src/main/resources/assets/eln2/$resource"))

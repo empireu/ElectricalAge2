@@ -6,6 +6,10 @@ import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraftforge.registries.RegistryObject
+import org.ageseries.libage.data.AMPERE
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.WATT
+import org.ageseries.libage.data.abs
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
 import org.ageseries.libage.sim.electrical.mna.VirtualResistor
@@ -65,23 +69,23 @@ class GridPoleBlockEntity(private val representativeBlock: GridPoleBlock, pos: B
 }
 
 class GridAnchorElectricalObject(cell: Cell, val anchorResistance: Double) : ElectricalObject<Cell>(cell) {
-    private val anchorResistors = HashMap<GridConnectionCell, VirtualResistor>()
+    private val anchorResistors = HashMap<GridConnectionCell, Pair<VirtualResistor, SimulationDisplayer.DisplayResistor>>()
 
-    val totalPower get() = anchorResistors.values.sumOf { abs(it.power) }
-    val totalCurrent get() = anchorResistors.values.sumOf { abs(it.current) }
+    val totalPowerDisplay get() = anchorResistors.values.sumOf { !abs(it.second.power) }
+    val totalCurrentDisplay get() = anchorResistors.values.sumOf { !abs(it.second.current) }
 
     override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo) =
         anchorResistors.computeIfAbsent(gc) {
             val resistor = VirtualResistor()
             resistor.resistance = anchorResistance
-            resistor
-        }.offerExternal()
+            Pair(resistor, resistor.display())
+        }.first.offerExternal()
 
     override fun build(map: ElectricalConnectivityMap) {
         super.build(map)
 
-        anchorResistors.values.forEach { a ->
-            anchorResistors.values.forEach { b ->
+        anchorResistors.values.forEach { (a, _) ->
+            anchorResistors.values.forEach { (b, _) ->
                 if(a != b) {
                     map.connect(a, INTERNAL_PIN, b, INTERNAL_PIN)
                 }
@@ -90,6 +94,10 @@ class GridAnchorElectricalObject(cell: Cell, val anchorResistance: Double) : Ele
     }
 
     override fun clearComponents() {
+        anchorResistors.values.forEach {
+            cell.displayer.remove(it.second)
+        }
+
         anchorResistors.clear()
     }
 }
@@ -116,8 +124,8 @@ class GridAnchorSpec(ci: SpecCreateInfo, terminalSize: Vector3d, categories: Lis
     )
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.current(cell.electricalAnchor.totalCurrent)
-        builder.power(cell.electricalAnchor.totalPower)
+        builder.quantity(Quantity(cell.electricalAnchor.totalCurrentDisplay, AMPERE))
+        builder.quantity(Quantity(cell.electricalAnchor.totalPowerDisplay, WATT))
     }
 }
 
@@ -223,8 +231,8 @@ class GridInterfacePart(
     override fun onConnectivityChanged() = this.setSyncDirty()
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.current(cell.electricalInterface.totalCurrent)
-        builder.power(cell.electricalInterface.totalPower)
+        builder.quantity(Quantity(cell.electricalInterface.totalCurrent, AMPERE))
+        builder.quantity(Quantity(cell.electricalInterface.totalPower, WATT))
     }
 }
 
