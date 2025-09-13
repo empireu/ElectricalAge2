@@ -20,12 +20,12 @@ object FlwModels {
     )
 
     val UNINSULATED_THERMAL_WIRE_HUB = partialBlock(
-        "wire/thermal/standard/uninsulated/hub"
+        "wire/thermal/standard/uninsulated/copper/hub"
     )
 
     val UNINSULATED_THERMAL_WIRE_CONNECTION = wireConnection(
-        "wire/thermal/standard/uninsulated/connection_hub",
-        "wire/thermal/standard/uninsulated/connection_full"
+        "wire/thermal/standard/uninsulated/copper/connection_hub",
+        "wire/thermal/standard/uninsulated/copper/connection_full"
     )
 
     val LEAD_ACID_BATTERY = partialBlock("battery/lead_acid")
