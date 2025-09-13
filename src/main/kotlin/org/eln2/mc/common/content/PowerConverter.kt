@@ -4,6 +4,7 @@ import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerPlayer
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
@@ -279,6 +280,7 @@ class TerminalDcToDcConverterObject<C : Cell>(
 class TerminalDcToDcConverterCell(
     ci: CellCreateInfo,
     thermalDef: ThermalMassDefinition,
+    leakage: ConnectionParameters,
     model: DcToDcConverterModel,
     inputNegative: Int = 0,
     inputPositive: Int = 1,
@@ -286,7 +288,7 @@ class TerminalDcToDcConverterCell(
     outputPositive: Int = 3
 ) : Cell(ci) {
     @SimObject
-    val thermalWire = ThermalWireObject(this, thermalDef)
+    val thermalWire = ThermalWireObject(this, thermalDef(), leakage)
 
     @SimObject
     val converter = TerminalDcToDcConverterObject(this, model, inputNegative, inputPositive, outputNegative, outputPositive) { rejectedEnergy ->

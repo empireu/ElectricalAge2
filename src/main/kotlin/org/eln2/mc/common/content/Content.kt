@@ -267,10 +267,10 @@ object Content {
         BatteryPart(it, LEAD_ACID_BATTERY_CELL_12V_840Wh.get())
     }
 
-    val BATTERY_SPEC_12V = specImmediateBB("micro_grid_lead_acid_battery_12v", FlwModels.SPEC_LEAD_ACID_BATTERY, 1.0, 1.1, 2.0) {
+    val BATTERY_SPEC_12V = specImmediateBB("micro_grid_lead_acid_battery_12v", FlwModels.SPEC_LEAD_ACID_BATTERY, 1.5, 1.85, 3.0) {
         BatterySpec(it, GRID_LEAD_ACID_BATTERY_CELL_12V_80Wh.get(),
-            7.675, 1.125, 7.125, 0.1, 0.1, 0.15,
-            8.225,1.125,7.125, 0.1,0.1,0.15
+            7.5125, 1.6938, 6.6875, 0.15, 0.15, 0.225,
+            8.3375,1.6938,6.6875, 0.15, 0.15,0.225
         )
     }
 
@@ -616,7 +616,12 @@ object Content {
 
     val TERMINAL_DC_TO_DC_CONVERTER_CELL_800W = cellMemoize("terminal_dc_to_dc_converter_800w") {
         val thermalDef = ThermalMassDefinition(
-            ChemicalElement.Copper.asMaterial
+            ChemicalElement.Iron.asMaterial,
+            mass = Quantity(1.0, KILOGRAM)
+        )
+
+        val environmentParameters = ConnectionParameters(
+            conductance = Quantity(2.5)
         )
 
         val model = DcToDcConverterModel(
@@ -629,7 +634,7 @@ object Content {
         )
 
         CellFactory {
-            TerminalDcToDcConverterCell(it, thermalDef, model)
+            TerminalDcToDcConverterCell(it, thermalDef, environmentParameters, model)
         }
     }
 
