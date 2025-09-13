@@ -2,8 +2,8 @@
 	"credit": "Made with Blockbench",
 	"texture_size": [32, 32],
     "textures": {
-        "3": "eln2:block/wire/thermal_wire",
-        "particle": "eln2:block/wire/thermal_wire"
+        "3": "eln2:block/wire/electrical/standard/insulated/standard_insulated_copper_electrical_wire",
+        "particle": "eln2:block/wire/electrical/standard/insulated/standard_insulated_copper_electrical_wire"
     },
 	"elements": [
         {

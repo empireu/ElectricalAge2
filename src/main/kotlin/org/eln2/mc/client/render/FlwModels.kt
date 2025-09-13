@@ -10,11 +10,23 @@ import org.eln2.mc.common.content.WireConnectionModelPartial
 import org.eln2.mc.resource
 
 object FlwModels {
-    val ELECTRICAL_WIRE_HUB = partialBlock("wire/electrical/hub")
-    val ELECTRICAL_WIRE_CONNECTION = wireConnection("wire/electrical/connection_hub", "wire/electrical/connection_full")
+    val ELECTRICAL_WIRE_HUB = partialBlock(
+        "wire/electrical/standard/insulated/hub"
+    )
 
-    val THERMAL_WIRE_HUB = partialBlock("wire/thermal/hub")
-    val THERMAL_WIRE_CONNECTION = wireConnection("wire/thermal/connection_hub", "wire/thermal/connection_full")
+    val ELECTRICAL_WIRE_CONNECTION = wireConnection(
+        "wire/electrical/standard/insulated/connection_hub",
+        "wire/electrical/standard/insulated/connection_full"
+    )
+
+    val UNINSULATED_THERMAL_WIRE_HUB = partialBlock(
+        "wire/thermal/standard/uninsulated/hub"
+    )
+
+    val UNINSULATED_THERMAL_WIRE_CONNECTION = wireConnection(
+        "wire/thermal/standard/uninsulated/connection_hub",
+        "wire/thermal/standard/uninsulated/connection_full"
+    )
 
     val LEAD_ACID_BATTERY = partialBlock("battery/lead_acid")
     val SPEC_LEAD_ACID_BATTERY = partialBlock("battery/spec_lead_acid_battery")

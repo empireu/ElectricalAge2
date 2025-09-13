@@ -4,8 +4,10 @@
     "block.eln2.heat_generator": "Heat Generator",
     "block.eln2.furnace": "Electrical Furnace",
 
-    "item.eln2.thermal_wire_copper": "Thermal Conduit",
-    "item.eln2.electrical_cable_copper": "Electrical Cable",
+    // Wires
+    "item.eln2.standard_uninsulated_copper_thermal_wire": "Standard Uninsulated Copper Thermal Conduit",
+    "item.eln2.standard_insulated_copper_electrical_wire": "Standard Copper Electrical Cable",
+
     "item.eln2.voltage_source": "Voltage Source",
     "item.eln2.ground": "Ground Pin",
     "item.eln2.lead_acid_battery_12v": "12V Lead-Acid Battery",

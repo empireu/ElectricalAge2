@@ -68,10 +68,8 @@ import org.eln2.mc.common.parts.PartRegistry.partMemoizeBB
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.PartFactory
 import org.eln2.mc.common.parts.foundation.transformPartWorld
-import org.eln2.mc.common.specs.SpecRegistry.specAndItemWithProvider
 import org.eln2.mc.common.specs.SpecRegistry.specImmediateBB
 import org.eln2.mc.common.specs.SpecRegistry.specMemoizeBB
-import org.eln2.mc.common.specs.foundation.BasicSpecProvider
 import org.eln2.mc.common.specs.foundation.SpecFactory
 import org.eln2.mc.KILOGRAM_METER_SQUARED
 import org.eln2.mc.data.Locators
@@ -124,7 +122,7 @@ object Content {
 
     private val UNINSULATED_WIRE_LIGHT_FIELD = LightFieldPrimitives.sourceOnlyStart(15)
 
-    val COPPER_THERMAL_WIRE = ThermalWireBuilder("thermal_wire_copper").apply {
+    val STANDARD_UNINSULATED_COPPER_THERMAL_WIRE = ThermalWireBuilder("standard_uninsulated_copper_thermal_wire").apply {
         damageOptions = TemperatureExplosionBehaviorOptions(
             temperatureThreshold = Quantity(1000.0, CELSIUS)
         )
@@ -146,14 +144,14 @@ object Content {
 
         renderer {
             WireRenderModel(
-                FlwModels.THERMAL_WIRE_HUB,
-                FlwModels.THERMAL_WIRE_CONNECTION,
+                FlwModels.UNINSULATED_THERMAL_WIRE_HUB,
+                FlwModels.UNINSULATED_THERMAL_WIRE_CONNECTION,
                 ThermalTint.DEFAULT
             )
         }
     }.register()
 
-    val ELECTRICAL_WIRE_COPPER = ElectricalWireBuilder("electrical_cable_copper").apply {
+    val STANDARD_INSULATED_COPPER_ELECTRICAL_WIRE = ElectricalWireBuilder("standard_insulated_copper_electrical_wire").apply {
         isIncandescent = false
 
         damageOptions = TemperatureExplosionBehaviorOptions(
