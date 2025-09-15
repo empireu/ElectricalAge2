@@ -175,19 +175,33 @@ class GridInterfaceObject(cell: GridInterfaceCell, val tapResistance: Double, va
     }
 }
 
-class GridInterfaceCell(ci: CellCreateInfo, tapResistance: Double, anchorResistance: Double) : Cell(ci) {
+class GridInterfaceCell(
+    ci: CellCreateInfo,
+    tapResistance: Double,
+    anchorResistance: Double,
+    override val electricalWireSize: ElectricalWireSize?
+) : Cell(ci), SizedSingleElectricalWire {
     @Node
     val grid = GridNode(this)
 
     @SimObject
     val electricalInterface = GridInterfaceObject(this, tapResistance, anchorResistance)
+
+    override fun cellConnectionPredicate(remote: Cell): Boolean {
+        if(electricalWireSize?.rejectsCell(remote) == true) {
+            return false
+        }
+
+        return super.cellConnectionPredicate(remote)
+    }
 }
 
 class GridInterfacePart(
     ci: PartCreateInfo,
     terminalSize: Vector3d,
-    categories: List<GridMaterialCategory>
-) : GridCellPart<GridInterfaceCell>(ci, Content.MICRO_GRID_INTERFACE_CELL.get()), ComponentDisplay, ConnectedPart {
+    categories: List<GridMaterialCategory>,
+    cell: RegistryObject<CellProvider<GridInterfaceCell>>
+) : GridCellPart<GridInterfaceCell>(ci, cell.get()), ComponentDisplay, ConnectedPart {
     val terminal = defineCellBoxTerminal(
         0.0, 0.0, 0.0,
         terminalSize.x, terminalSize.y, terminalSize.z,

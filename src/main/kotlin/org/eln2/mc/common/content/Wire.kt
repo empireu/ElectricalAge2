@@ -68,11 +68,36 @@ enum class ThermalWireSize(val sizeTranslationKey: String) {
 /**
  * Size category of electrical wires.
  * Used to filter connections to wires and machines.
- * @param exclusive If true, the wire won't connect to anything that isn't a [SizedSingleElectricalWire] that reports the specified size.
+ * @param isExclusive If true, the wire won't connect to anything that isn't a [SizedSingleElectricalWire] that reports the specified size.
  * */
-enum class ElectricalWireSize(val sizeTranslationKey: String, val exclusive: Boolean) {
+enum class ElectricalWireSize(val sizeTranslationKey: String, val isExclusive: Boolean) {
     Standard("standard_electrical_wire_size", false),
-    Signal("signal_wire_size", true)
+    Signal("signal_wire_size", true);
+
+    fun rejectsCell(remote: Cell) : Boolean {
+        if(this.isExclusive) {
+            if(remote !is SizedSingleElectricalWire) {
+                return true
+            }
+
+            if(this != remote.electricalWireSize) {
+                return true
+            }
+        }
+        else {
+            if(remote is SizedSingleElectricalWire) {
+                val remoteSize = remote.electricalWireSize
+
+                if(remoteSize != null) {
+                    if(this != remoteSize) {
+                        return true
+                    }
+                }
+            }
+        }
+
+        return false
+    }
 }
 
 interface SizedThermalWire {
@@ -555,29 +580,8 @@ open class ElectrothermalWireCell(
             return false
         }
 
-        if(electricalWireSize != null) {
-            val electricalWireSize = electricalWireSize!!
-
-            if(electricalWireSize.exclusive) {
-                if(remote !is SizedSingleElectricalWire) {
-                    return false
-                }
-
-                if(electricalWireSize != remote.electricalWireSize) {
-                    return false
-                }
-            }
-            else {
-                if(remote is SizedSingleElectricalWire) {
-                    val remoteSize = remote.electricalWireSize
-
-                    if(remoteSize != null) {
-                        if(electricalWireSize != remoteSize) {
-                            return false
-                        }
-                    }
-                }
-            }
+        if(electricalWireSize?.rejectsCell(remote) == true) {
+            return false
         }
 
         return wireCellConnectionPredicate(remote)

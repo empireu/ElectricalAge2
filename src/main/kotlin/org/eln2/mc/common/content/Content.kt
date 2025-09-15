@@ -695,8 +695,14 @@ object Content {
 
     //#region Grid
 
+    val GRID_CABLE_PLIERS = item("grid_cable_pliers", ::GridCablePliersItem)
+
+    // PS. this is a supplier, it's fine on the server side.
     val GRID_COPPER_TEXTURE = GridMaterials.gridAtlasSprite("copper_cable")
     val GRID_IRON_TEXTURE = GridMaterials.gridAtlasSprite("iron_cable")
+    val GRID_INSULATED_TEXTURE = GridMaterials.gridAtlasSprite("insulated_cable")
+
+    //#region Grid Render Shapes
 
     val POWER_GRID_SHAPE = GridMaterial.Catenary(
         8, 0.05,
@@ -707,6 +713,15 @@ object Content {
         8, 0.01,
         2.0 * PI * 0.1, 1.0
     )
+
+    val SIGNAL_GRID_SHAPE = GridMaterial.Straight(
+        4, 0.01,
+        2.0 * PI * 0.1, 1.0
+    )
+
+    //#endregion
+
+    //#region Simulation Materials (physical properties of conductor material)
 
     private val GRID_COPPER_MATERIAL = ChemicalElement.Copper.asMaterial.copy(
         label = "Grid Copper Wire",
@@ -720,33 +735,13 @@ object Content {
         electricalResistivity = Quantity(9.700000000001e-9, OHM_METER) // one order of magnitude
     )
 
-    val GRID_CABLE_PLIERS = item("grid_cable_pliers") {
-        GridCablePliersItem()
-    }
-
-    val MICRO_GRID_CONNECT_COPPER = GridMaterials.gridConnect(
-        "micro_grid_copper_cable",
-        GridMaterial(
-            GRID_COPPER_TEXTURE,
-            GRID_COPPER_MATERIAL,
-            MICRO_GRID_SHAPE,
-            GridMaterialCategory.MicroGrid,
-            ChemicalElement.Copper.meltingPoint * 0.9,
-            10
-        )
+    private val GRID_SIGNAL_MATERIAL = GRID_COPPER_MATERIAL.copy(
+        label = "Signal Copper Wire"
     )
 
-    val MICRO_GRID_CONNECT_IRON = GridMaterials.gridConnect(
-        "micro_grid_iron_cable",
-        GridMaterial(
-            GRID_IRON_TEXTURE,
-            GRID_IRON_MATERIAL,
-            MICRO_GRID_SHAPE,
-            GridMaterialCategory.MicroGrid,
-            ChemicalElement.Iron.meltingPoint * 0.9,
-            35
-        )
-    )
+    //#endregion
+
+    //#region Connects (cable items and materials)
 
     val POWER_GRID_CONNECT_COPPER = GridMaterials.gridConnect(
         "power_grid_copper_cable",
@@ -772,10 +767,61 @@ object Content {
         )
     )
 
+    val MICRO_GRID_CONNECT_COPPER = GridMaterials.gridConnect(
+        "micro_grid_copper_cable",
+        GridMaterial(
+            GRID_COPPER_TEXTURE,
+            GRID_COPPER_MATERIAL,
+            MICRO_GRID_SHAPE,
+            GridMaterialCategory.MicroGrid,
+            ChemicalElement.Copper.meltingPoint * 0.9,
+            10
+        )
+    )
+
+    val MICRO_GRID_CONNECT_IRON = GridMaterials.gridConnect(
+        "micro_grid_iron_cable",
+        GridMaterial(
+            GRID_IRON_TEXTURE,
+            GRID_IRON_MATERIAL,
+            MICRO_GRID_SHAPE,
+            GridMaterialCategory.MicroGrid,
+            ChemicalElement.Iron.meltingPoint * 0.9,
+            35
+        )
+    )
+
+    val SIGNAL_GRID_CONNECT = GridMaterials.gridConnect(
+        "signal_grid_cable",
+        GridMaterial(
+            GRID_INSULATED_TEXTURE,
+            GRID_SIGNAL_MATERIAL,
+            SIGNAL_GRID_SHAPE,
+            GridMaterialCategory.SignalGrid,
+            Quantity(140.0, CELSIUS),
+            5
+        )
+    )
+
+    //#endregion
+
+    //#region Anchors (anchor cells and anchor specs)
+
     val MICRO_GRID_ANCHOR_CELL = cellImmediate("micro_grid_anchor") {
         GridAnchorCell(
             it,
             !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
+                L = Quantity(1.0, CENTIMETER),
+                A = Quantity(PI * Quantity(2.0, CENTIMETER).value.pow(2))
+            )
+        )
+    }
+
+    val SIGNAL_GRID_ANCHOR_CELL = cellImmediate("signal_grid_anchor") {
+        GridAnchorCell(
+            it,
+            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
+                // Same thickness as micro grid
                 L = Quantity(1.0, CENTIMETER),
                 A = Quantity(PI * Quantity(2.0, CENTIMETER).value.pow(2))
             )
@@ -795,31 +841,22 @@ object Content {
         }
     }
 
-    val MICRO_GRID_INTERFACE_CELL = cellImmediate("micro_grid_interface") {
-        GridInterfaceCell(
-            it,
-            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
-                L = Quantity(2.5, CENTIMETER),
-                A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
-            ),
-            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
-                L = Quantity(1.5, CENTIMETER),
-                A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
-            )
-        )
-    }
+    val SIGNAL_GRID_ANCHOR_SPEC = specMemoizeBB("signal_grid_anchor", FlwModels.SIGNAL_GRID_ANCHOR, 1.0, 1.5, 1.0) {
+        val terminalSize = Vector3d(1.0 / 16.0, 1.5 / 16.0, 1.0 / 16.0)
+        val categories = listOf(GridMaterialCategory.SignalGrid)
 
-    val MICRO_GRID_INTERFACE_PART = partMemoizeBB("micro_grid_interface", 4.0, 4.0, 4.0) {
-        val categories = listOf(GridMaterialCategory.MicroGrid)
-
-        PartFactory {
-            GridInterfacePart(
+        SpecFactory {
+            GridAnchorSpec(
                 it,
-                Vector3d(2.0 / 16.0, 4.0 / 16.0, 2.0 / 16.0),
+                terminalSize,
                 categories
             )
         }
     }
+
+    //#endregion
+
+    //#region Interfaces (interface cells and interface parts)
 
     val POWER_GRID_INTERFACE_CELL = cellImmediate("power_grid_interface") {
         GridInterfaceCell(
@@ -831,7 +868,8 @@ object Content {
             !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
                 L = Quantity(2.5, CENTIMETER),
                 A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
-            )
+            ),
+            ElectricalWireSize.Standard
         )
     }
 
@@ -843,10 +881,71 @@ object Content {
             GridInterfacePart(
                 it,
                 terminalSize,
-                categories
+                categories,
+                POWER_GRID_INTERFACE_CELL
             )
         }
     }
+
+    val MICRO_GRID_INTERFACE_CELL = cellImmediate("micro_grid_interface") {
+        GridInterfaceCell(
+            it,
+            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
+                L = Quantity(2.5, CENTIMETER),
+                A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
+            ),
+            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
+                L = Quantity(1.5, CENTIMETER),
+                A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
+            ),
+            ElectricalWireSize.Standard
+        )
+    }
+
+    val SIGNAL_GRID_INTERFACE_CELL = cellImmediate("signal_grid_interface") {
+        GridInterfaceCell(
+            it,
+            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
+                L = Quantity(2.5, CENTIMETER),
+                A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
+            ),
+            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
+                L = Quantity(1.5, CENTIMETER),
+                A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
+            ),
+            ElectricalWireSize.Signal
+        )
+    }
+
+    val MICRO_GRID_INTERFACE_PART = partMemoizeBB("micro_grid_interface", 4.0, 4.0, 4.0) {
+        val categories = listOf(GridMaterialCategory.MicroGrid)
+
+        PartFactory {
+            GridInterfacePart(
+                it,
+                Vector3d(2.0 / 16.0, 4.0 / 16.0, 2.0 / 16.0),
+                categories,
+                MICRO_GRID_INTERFACE_CELL
+            )
+        }
+    }
+
+    val SIGNAL_GRID_INTERFACE_PART = partMemoizeBB("signal_grid_interface", 2.85, 4.0, 2.85) {
+        val categories = listOf(GridMaterialCategory.SignalGrid)
+
+        PartFactory {
+            GridInterfacePart(
+                it,
+                Vector3d(2.0 / 16.0, 4.0 / 16.0, 2.0 / 16.0),
+                categories,
+                SIGNAL_GRID_INTERFACE_CELL
+            )
+        }
+    }
+
+    //#endregion
+
+    //#region Poles (delegate maps and block entities)
 
     val GRID_POLE_DELEGATE_MAP = defineDelegateMap("grid_pole") {
         val column = registerDelegateOf(
@@ -899,6 +998,8 @@ object Content {
         Vector3d(0.5, 2.5, 0.5),
         MICRO_GRID_ANCHOR_CELL
     )
+
+    //#endregion
 
     //#endregion
 }

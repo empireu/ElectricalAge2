@@ -68,7 +68,9 @@ object FlwModels {
     val SPEC_PART_FRAME = partialBlock("spec_part_frame")
 
     val MICRO_GRID_ANCHOR = partialBlock("micro_grid_anchor")
+    val SIGNAL_GRID_ANCHOR = partialBlock("signal_grid_anchor")
     val MICRO_GRID_INTERFACE = partialBlock("micro_grid_interface")
+    val SIGNAL_GRID_INTERFACE = partialBlock("signal_grid_interface")
 
     val LAMP_POLE_BODY = partialBlock("lamp_pole/body")
     val LAMP_POLE_EMITTER = partialBlock("lamp_pole/emitter")

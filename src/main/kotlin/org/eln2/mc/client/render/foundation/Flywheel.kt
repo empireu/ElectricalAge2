@@ -147,6 +147,14 @@ object FlwVisualizerRegistry {
             )
         }
 
+        setPartVisualizer<GridInterfacePart>(Content.POWER_GRID_INTERFACE_PART.part.get()) { ctx, part ->
+            ConnectedPartVisual(
+                ctx, part,
+                FlwModels.POWER_GRID_INTERFACE,
+                FlwModels.STANDARD_CONNECTION
+            )
+        }
+
         setPartVisualizer<GridInterfacePart>(Content.MICRO_GRID_INTERFACE_PART.part.get()) { ctx, part ->
             ConnectedPartVisual(
                 ctx, part,
@@ -155,11 +163,11 @@ object FlwVisualizerRegistry {
             )
         }
 
-        setPartVisualizer<GridInterfacePart>(Content.POWER_GRID_INTERFACE_PART.part.get()) { ctx, part ->
+        setPartVisualizer<GridInterfacePart>(Content.SIGNAL_GRID_INTERFACE_PART.part.get()) { ctx, part ->
             ConnectedPartVisual(
                 ctx, part,
-                FlwModels.POWER_GRID_INTERFACE,
-                FlwModels.STANDARD_CONNECTION
+                FlwModels.SIGNAL_GRID_INTERFACE,
+                FlwModels.SIGNAL_WIRE_CONNECTION.hub
             )
         }
 
@@ -191,6 +199,13 @@ object FlwVisualizerRegistry {
             BasicSpecVisual(
                 ctx, spec,
                 FlwModels.MICRO_GRID_ANCHOR
+            )
+        }
+
+        setSpecVisualizer<GridAnchorSpec>(Content.SIGNAL_GRID_ANCHOR_SPEC.spec.get()) { ctx, spec ->
+            BasicSpecVisual(
+                ctx, spec,
+                FlwModels.SIGNAL_GRID_ANCHOR
             )
         }
 
@@ -639,6 +654,8 @@ class WireConnectionModel(
             CellPartConnectionMode.Wrapped to fullConnectionWrapped
         )
     )
+
+    val hub = WireConnectionModelPartial(hubConnectionPlanar, hubConnectionInner, hubConnectionWrapped)
 }
 
 open class BasicPartVisual<P : Part>(
@@ -749,6 +766,13 @@ class ConnectedPartVisual<P>(
             Base6Direction3d.Left to connection,
             Base6Direction3d.Right to connection
         )
+    )
+
+    constructor(ctx: MultipartVisualizationContext, part: P, body: PartialModel, connection: WireConnectionModel) : this(
+        ctx,
+        part,
+        body,
+        connection.hub
     )
 
     val bodyInstance: TransformedInstance = visualizationContext.instancerProvider()
