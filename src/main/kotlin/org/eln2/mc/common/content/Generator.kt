@@ -639,8 +639,9 @@ class ElectricalHeatEngineCell(
     generatorModel: ThermalElectricGeneratorModel,
     sourceResistance: Double,
     radiantInfoB1: RadiantBodyEmissionDescription?,
-    radiantInfoB2: RadiantBodyEmissionDescription?
-) : Cell(ci) {
+    radiantInfoB2: RadiantBodyEmissionDescription?,
+    override val electricalWireSize: ElectricalWireSize
+) : Cell(ci), SizedSingleElectricalWire {
     @SimObject
     val source = PowerVoltageSourceObject(this, electricalMap).also {
         it.resistor.resistance = sourceResistance

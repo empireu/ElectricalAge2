@@ -927,7 +927,7 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     /**
      * Called when the solver is being built, in order to clear and prepare the objects.
      * */
-    fun clearObjectConnections() {
+    open fun clearObjectConnections() {
         objects.forEachObject { it.clear() }
     }
 

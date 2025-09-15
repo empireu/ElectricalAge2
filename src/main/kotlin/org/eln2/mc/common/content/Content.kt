@@ -169,6 +169,8 @@ object Content {
             conductance = Quantity(0.01, WATT_PER_KELVIN) // Insulation
         )
 
+        breakdownPotential = 400.0
+
         renderer {
             WireRenderModel(
                 FlwModels.ELECTRICAL_WIRE_HUB,
@@ -243,7 +245,7 @@ object Content {
         val minusDir = Base6Direction3d.Back
 
         CellFactory {
-            val cell = PolarBatteryCell(it, model, directionPoleMapPlanar(plusDir, minusDir))
+            val cell = PolarBatteryCell(it, model, directionPoleMapPlanar(plusDir, minusDir), ElectricalWireSize.Standard)
             cell.energy = cell.model.energyCapacity * 0.9
             cell
         }
@@ -319,7 +321,8 @@ object Content {
         PolarLightCell(
             it,
             directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right),
-            LightVariantType.Cone45Deg
+            LightVariantType.Cone45Deg,
+            ElectricalWireSize.Standard
         )
     }
 
@@ -327,7 +330,8 @@ object Content {
         PolarLightCell(
             it,
             directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right),
-            LightVariantType.Sphere
+            LightVariantType.Sphere,
+            ElectricalWireSize.Standard
         )
     }
 
@@ -602,7 +606,8 @@ object Content {
                 generatorModel,
                 0.075,
                 hemispheres[it.locator.transformPartWorld(Base6Direction3d.Front)]!!,
-                hemispheres[it.locator.transformPartWorld(Base6Direction3d.Back)]!!
+                hemispheres[it.locator.transformPartWorld(Base6Direction3d.Back)]!!,
+                ElectricalWireSize.Standard
             )
 
             cell.source.ruleSet.withDirectionRulePlanar(electricalA + electricalB)

@@ -79,7 +79,7 @@ interface SizedThermalWire {
 }
 
 interface SizedSingleElectricalWire {
-    val electricalWireSize : ElectricalWireSize
+    val electricalWireSize : ElectricalWireSize?
 }
 
 /**
@@ -146,7 +146,7 @@ class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass, val environmen
  * */
 class SingleElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
     // Optimization opportunity: make bundle create one resistor when possible. But it isn't that worthwhile because it is virtual.
-    private val resistors = resistorVirtualBundle(cell, 0.05)
+    val resistors = resistorVirtualBundle(cell, 0.05)
 
     val totalPowerSimulation get() = resistors.totalPowerSimulation
 
@@ -177,6 +177,12 @@ class SingleElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
                     map.connect(a, INTERNAL_PIN, b, INTERNAL_PIN)
                 }
             }
+        }
+    }
+
+    fun setupDielectricBreakdown(behavior: DielectricBreakdownBehavior, breakdownToEarth: Double) {
+        resistors.forEach {
+            behavior.addResistor(it, null, breakdownToEarth)
         }
     }
 }
@@ -327,10 +333,15 @@ class ThermalWireBuilder(id: String) : WireBuilder<ThermalWireCell>(id) {
 class ElectricalWireBuilder(id: String) : WireBuilder<ElectrothermalWireCell>(id) {
     var size = ElectricalWireSize.Standard
     var resistance: Double = 2.14 * 1e-5
+    var breakdownPotential: Double = 400.0
 
     fun register(): ElectricalWireRegistryObject {
         val material = createThermalProperties()
-        val electrical = WireElectricalProperties(resistance)
+
+        val electrical = WireElectricalProperties(
+            resistance,
+            breakdownPotential
+        )
 
         val cell = CellRegistry.cellImmediate(id) {
             ElectrothermalWireCell(
@@ -374,9 +385,11 @@ data class WireThermalProperties(
 /**
  * Electrical properties of a wire.
  * @param electricalResistance The electrical resistance.
+ * @param breakdownPotential The dielectric breakdown potential.
  * */
 data class WireElectricalProperties(
-    val electricalResistance: Double
+    val electricalResistance: Double,
+    val breakdownPotential: Double
 )
 
 interface DirectionBlacklist {
@@ -407,7 +420,7 @@ open class WireCell(ci: CellCreateInfo, val connectionCrossSection: Double) : Ce
 
     override fun getContactSection(cell: Cell) = connectionCrossSection
 
-    override fun cellConnectionPredicate(remote: Cell): Boolean {
+    protected fun wireCellConnectionPredicate(remote: Cell) : Boolean {
         if(!super.cellConnectionPredicate(remote)) {
             return false
         }
@@ -416,6 +429,10 @@ open class WireCell(ci: CellCreateInfo, val connectionCrossSection: Double) : Ce
             ?: return true
 
         return !blacklist.contains(solution.directionPart)
+    }
+
+    override fun cellConnectionPredicate(remote: Cell): Boolean {
+        return wireCellConnectionPredicate(remote)
     }
 }
 
@@ -491,7 +508,7 @@ open class ElectrothermalWireCell(
     ci: CellCreateInfo,
     contactCrossSection: Double,
     thermalProperties: WireThermalProperties,
-    override val electricalWireSize: ElectricalWireSize,
+    override val electricalWireSize: ElectricalWireSize?,
     val electricalProperties: WireElectricalProperties
 ) : ThermalWireCell(ci, contactCrossSection, null, thermalProperties), SizedSingleElectricalWire {
     @SimObject
@@ -505,18 +522,35 @@ open class ElectrothermalWireCell(
         thermalWire.thermalBody
     )
 
+    @Behavior
+    val breakdown = DielectricBreakdownBehavior.create(this)
+
     override fun cellConnectionPredicate(remote: Cell) : Boolean {
         if(!remote.hasObject(SimulationObjectType.Electrical)) {
             return false
         }
 
-        if(remote is SizedSingleElectricalWire) {
-            if(electricalWireSize != remote.electricalWireSize) {
-                return false
+        if(electricalWireSize != null && remote is SizedSingleElectricalWire) {
+            val remoteSize = remote.electricalWireSize
+
+            if(remoteSize != null) {
+                if(electricalWireSize != remoteSize) {
+                    return false
+                }
             }
         }
 
-        return super.cellConnectionPredicate(remote)
+        return wireCellConnectionPredicate(remote)
+    }
+
+    override fun onBuildFinished() {
+        super.onBuildFinished()
+        electricalWire.setupDielectricBreakdown(breakdown, electricalProperties.breakdownPotential)
+    }
+
+    override fun clearObjectConnections() {
+        super.clearObjectConnections()
+        breakdown.clear()
     }
 }
 

@@ -435,7 +435,8 @@ abstract class BatteryCell(
     }
 }
 
-class PolarBatteryCell(ci: CellCreateInfo, model: BatteryModel, val map: PoleMap) : BatteryCell(ci, model) {
+class PolarBatteryCell(ci: CellCreateInfo, model: BatteryModel, val map: PoleMap, override val electricalWireSize: ElectricalWireSize
+) : BatteryCell(ci, model), SizedSingleElectricalWire {
     @SimObject
     override val generator = PolarVRGObject(this, map)
 
