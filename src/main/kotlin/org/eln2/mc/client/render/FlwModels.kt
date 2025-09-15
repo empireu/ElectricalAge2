@@ -56,7 +56,7 @@ object FlwModels {
 
     val SOLAR_PANEL_ONE_BLOCK = partialBlock("solar_panel_one_block")
 
-    val POWER_GRID_INTERFACE = partialBlock("power_grid_interface")
+    val POWER_GRID_INTERFACE = partialBlock("grid/power_grid_interface")
     val STANDARD_CONNECTION = patchPartial("standard_connection")
 
     val SMALL_GARDEN_LIGHT = partialBlock("small_garden_light/full")
@@ -67,10 +67,10 @@ object FlwModels {
 
     val SPEC_PART_FRAME = partialBlock("spec_part_frame")
 
-    val MICRO_GRID_ANCHOR = partialBlock("micro_grid_anchor")
-    val SIGNAL_GRID_ANCHOR = partialBlock("signal_grid_anchor")
-    val MICRO_GRID_INTERFACE = partialBlock("micro_grid_interface")
-    val SIGNAL_GRID_INTERFACE = partialBlock("signal_grid_interface")
+    val MICRO_GRID_ANCHOR = partialBlock("grid/micro_grid_anchor")
+    val SIGNAL_GRID_ANCHOR = partialBlock("grid/signal_grid_anchor")
+    val MICRO_GRID_INTERFACE = partialBlock("grid/micro_grid_interface")
+    val SIGNAL_GRID_INTERFACE = partialBlock("grid/signal_grid_interface")
 
     val LAMP_POLE_BODY = partialBlock("lamp_pole/body")
     val LAMP_POLE_EMITTER = partialBlock("lamp_pole/emitter")
