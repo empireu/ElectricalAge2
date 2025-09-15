@@ -195,7 +195,12 @@ object Content {
         )
 
         CellFactory {
-            ThermalWireCell(it, Double.POSITIVE_INFINITY, thermalProperties)
+            ThermalWireCell(
+                it,
+                Double.POSITIVE_INFINITY,
+                null,
+                thermalProperties
+            )
         }
     }
 

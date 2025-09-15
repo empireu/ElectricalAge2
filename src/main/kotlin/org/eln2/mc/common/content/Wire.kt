@@ -55,6 +55,34 @@ import java.util.function.Supplier
 import kotlin.math.PI
 
 /**
+ * Size category of thermal wires.
+ * Used to filter connections to wires and machines.
+ * */
+enum class ThermalWireSize(val sizeTranslationKey: String) {
+    Standard("standard_thermal")
+}
+
+/**
+ * Size category of electrical wires.
+ * Used to filter connections to wires and machines.
+ * */
+enum class ElectricalWireSize(val sizeTranslationKey: String) {
+    Standard("standard_electrical")
+}
+
+interface SizedThermalWire {
+    /**
+     * Returns the wire size.
+     * Null if the filtering is disabled (e.g. the cell is owned by an electrical wire, which dictates the connections by its own size, or if the wire is a radiator or another size-independent device).
+     * */
+    val thermalWireSize : ThermalWireSize?
+}
+
+interface SizedSingleElectricalWire {
+    val electricalWireSize : ElectricalWireSize
+}
+
+/**
  * Generalized thermal conductor, in the form of a single thermal body that gets connected to all neighbor cells.
  * */
 class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass, val environmentLeakageParameters: ConnectionParameters = ConnectionParameters.DEFAULT) : ThermalObject<Cell>(cell), PersistentObject, ThermalContactInfo {
@@ -116,7 +144,7 @@ class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass, val environmen
  * Generalized electrical wire, created by joining the "internal" pins of a [ResistorBundle].
  * The "external" pins are offered to other cells.
  * */
-class ElectricalWireObjectVirtual(cell: Cell) : ElectricalObject<Cell>(cell) {
+class SingleElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
     // Optimization opportunity: make bundle create one resistor when possible. But it isn't that worthwhile because it is virtual.
     private val resistors = resistorVirtualBundle(cell, 0.05)
 
@@ -166,8 +194,9 @@ data class WireRenderModel(val hub: PartialModel, val connection: WireConnection
  * @param id The ID of the wire cell.
  * */
 data class ThermalWireRegistryObject(
+    val size: ThermalWireSize,
     val thermalProperties: WireThermalProperties,
-    val id: ResourceLocation,
+    val id: ResourceLocation
 )
 
 /**
@@ -177,9 +206,10 @@ data class ThermalWireRegistryObject(
  * @param id The ID of the wire cell.
  * */
 data class ElectricalWireRegistryObject(
+    val size: ElectricalWireSize,
     val thermalProperties: WireThermalProperties,
     val electricalProperties: WireElectricalProperties,
-    val id: ResourceLocation,
+    val id: ResourceLocation
 )
 
 abstract class WireBuilder<C : WireCell>(val id: String) {
@@ -270,36 +300,56 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
 }
 
 class ThermalWireBuilder(id: String) : WireBuilder<ThermalWireCell>(id) {
+    var size = ThermalWireSize.Standard
+
     fun register(): ThermalWireRegistryObject {
         val material = createThermalProperties()
+
         val cell = CellRegistry.cellImmediate(id) {
             ThermalWireCell(
                 it,
                 contactSurfaceArea,
+                size,
                 material,
             )
         }
+
         registerPart(material, cell)
-        return ThermalWireRegistryObject(material, cell.id)
+
+        return ThermalWireRegistryObject(
+            size,
+            material,
+            cell.id
+        )
     }
 }
 
 class ElectricalWireBuilder(id: String) : WireBuilder<ElectrothermalWireCell>(id) {
+    var size = ElectricalWireSize.Standard
     var resistance: Double = 2.14 * 1e-5
 
     fun register(): ElectricalWireRegistryObject {
         val material = createThermalProperties()
         val electrical = WireElectricalProperties(resistance)
+
         val cell = CellRegistry.cellImmediate(id) {
             ElectrothermalWireCell(
                 it,
                 contactSurfaceArea,
                 material,
+                size,
                 electrical
             )
         }
+
         registerPart(material, cell)
-        return ElectricalWireRegistryObject(material, electrical, cell.id)
+
+        return ElectricalWireRegistryObject(
+            size,
+            material,
+            electrical,
+            cell.id
+        )
     }
 }
 
@@ -369,7 +419,12 @@ open class WireCell(ci: CellCreateInfo, val connectionCrossSection: Double) : Ce
     }
 }
 
-open class ThermalWireCell(ci: CellCreateInfo, connectionCrossSection: Double, val thermalProperties: WireThermalProperties) : WireCell(ci, connectionCrossSection) {
+open class ThermalWireCell(
+    ci: CellCreateInfo,
+    connectionCrossSection: Double,
+    override val thermalWireSize: ThermalWireSize?,
+    val thermalProperties: WireThermalProperties
+) : WireCell(ci, connectionCrossSection), SizedThermalWire {
     @SimObject
     val thermalWire = ThermalWireObject(
         self(),
@@ -412,11 +467,35 @@ open class ThermalWireCell(ci: CellCreateInfo, connectionCrossSection: Double, v
         if(thermalProperties.replicatesExternalTemperature)
             ExternalTemperatureReplicatorBehavior(this, consumer)
         else null
+
+    override fun cellConnectionPredicate(remote: Cell): Boolean {
+        if(!remote.hasObject(SimulationObjectType.Thermal)) {
+            return false
+        }
+
+        if(thermalWireSize != null && remote is SizedThermalWire) {
+            val remoteSize = remote.thermalWireSize
+
+            if(remoteSize != null) {
+                if(thermalWireSize != remoteSize) {
+                    return false
+                }
+            }
+        }
+
+        return super.cellConnectionPredicate(remote)
+    }
 }
 
-open class ElectrothermalWireCell(ci: CellCreateInfo, contactCrossSection: Double, thermalProperties: WireThermalProperties, val electricalProperties: WireElectricalProperties) : ThermalWireCell(ci, contactCrossSection, thermalProperties) {
+open class ElectrothermalWireCell(
+    ci: CellCreateInfo,
+    contactCrossSection: Double,
+    thermalProperties: WireThermalProperties,
+    override val electricalWireSize: ElectricalWireSize,
+    val electricalProperties: WireElectricalProperties
+) : ThermalWireCell(ci, contactCrossSection, null, thermalProperties), SizedSingleElectricalWire {
     @SimObject
-    val electricalWire = ElectricalWireObjectVirtual(self()).also {
+    val electricalWire = SingleElectricalWireObject(self()).also {
         it.resistance = electricalProperties.electricalResistance
     }
 
@@ -426,7 +505,19 @@ open class ElectrothermalWireCell(ci: CellCreateInfo, contactCrossSection: Doubl
         thermalWire.thermalBody
     )
 
-    override fun cellConnectionPredicate(remote: Cell) = remote.hasObject(SimulationObjectType.Electrical) && super.cellConnectionPredicate(remote)
+    override fun cellConnectionPredicate(remote: Cell) : Boolean {
+        if(!remote.hasObject(SimulationObjectType.Electrical)) {
+            return false
+        }
+
+        if(remote is SizedSingleElectricalWire) {
+            if(electricalWireSize != remote.electricalWireSize) {
+                return false
+            }
+        }
+
+        return super.cellConnectionPredicate(remote)
+    }
 }
 
 class WirePart<C : WireCell>(
