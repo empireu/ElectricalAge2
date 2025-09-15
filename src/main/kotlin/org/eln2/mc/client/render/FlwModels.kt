@@ -19,6 +19,15 @@ object FlwModels {
         "wire/electrical/standard/insulated/connection_full"
     )
 
+    val SIGNAL_WIRE_HUB = partialBlock(
+        "wire/electrical/signal/hub"
+    )
+
+    val SIGNAL_WIRE_CONNECTION = wireConnection(
+        "wire/electrical/signal/connection_hub",
+        "wire/electrical/signal/connection_full"
+    )
+
     val UNINSULATED_THERMAL_WIRE_HUB = partialBlock(
         "wire/thermal/standard/uninsulated/copper/hub"
     )

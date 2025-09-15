@@ -52,6 +52,9 @@ import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.*
 import org.eln2.mc.client.render.foundation.MyColor
 import java.util.function.Supplier
+import kotlin.contracts.ExperimentalContracts
+import kotlin.contracts.InvocationKind
+import kotlin.contracts.contract
 import kotlin.math.PI
 
 /**
@@ -59,15 +62,17 @@ import kotlin.math.PI
  * Used to filter connections to wires and machines.
  * */
 enum class ThermalWireSize(val sizeTranslationKey: String) {
-    Standard("standard_thermal")
+    Standard("standard_thermal_wire_size")
 }
 
 /**
  * Size category of electrical wires.
  * Used to filter connections to wires and machines.
+ * @param exclusive If true, the wire won't connect to anything that isn't a [SizedSingleElectricalWire] that reports the specified size.
  * */
-enum class ElectricalWireSize(val sizeTranslationKey: String) {
-    Standard("standard_electrical")
+enum class ElectricalWireSize(val sizeTranslationKey: String, val exclusive: Boolean) {
+    Standard("standard_electrical_wire_size", false),
+    Signal("signal_wire_size", true)
 }
 
 interface SizedThermalWire {
@@ -308,6 +313,16 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
 class ThermalWireBuilder(id: String) : WireBuilder<ThermalWireCell>(id) {
     var size = ThermalWireSize.Standard
 
+    @OptIn(ExperimentalContracts::class)
+    inline fun applyAndRegister(block: ThermalWireBuilder.() -> Unit): ThermalWireRegistryObject {
+        contract {
+            callsInPlace(block, InvocationKind.EXACTLY_ONCE)
+        }
+        block()
+
+        return register()
+    }
+
     fun register(): ThermalWireRegistryObject {
         val material = createThermalProperties()
 
@@ -334,6 +349,16 @@ class ElectricalWireBuilder(id: String) : WireBuilder<ElectrothermalWireCell>(id
     var size = ElectricalWireSize.Standard
     var resistance: Double = 2.14 * 1e-5
     var breakdownPotential: Double = 400.0
+
+    @OptIn(ExperimentalContracts::class)
+    inline fun applyAndRegister(block: ElectricalWireBuilder.() -> Unit): ElectricalWireRegistryObject {
+        contract {
+            callsInPlace(block, InvocationKind.EXACTLY_ONCE)
+        }
+        block()
+
+        return register()
+    }
 
     fun register(): ElectricalWireRegistryObject {
         val material = createThermalProperties()
@@ -530,12 +555,27 @@ open class ElectrothermalWireCell(
             return false
         }
 
-        if(electricalWireSize != null && remote is SizedSingleElectricalWire) {
-            val remoteSize = remote.electricalWireSize
+        if(electricalWireSize != null) {
+            val electricalWireSize = electricalWireSize!!
 
-            if(remoteSize != null) {
-                if(electricalWireSize != remoteSize) {
+            if(electricalWireSize.exclusive) {
+                if(remote !is SizedSingleElectricalWire) {
                     return false
+                }
+
+                if(electricalWireSize != remote.electricalWireSize) {
+                    return false
+                }
+            }
+            else {
+                if(remote is SizedSingleElectricalWire) {
+                    val remoteSize = remote.electricalWireSize
+
+                    if(remoteSize != null) {
+                        if(electricalWireSize != remoteSize) {
+                            return false
+                        }
+                    }
                 }
             }
         }

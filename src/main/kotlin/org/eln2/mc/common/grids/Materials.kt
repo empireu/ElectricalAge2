@@ -45,7 +45,12 @@ enum class GridMaterialCategory {
     /**
      * Power grids - used by poles.
      * */
-    PowerGrid
+    PowerGrid,
+
+    /**
+     * Signals only - doesn't allow connections to any other type.
+     * */
+    SignalGrid
 }
 
 /**

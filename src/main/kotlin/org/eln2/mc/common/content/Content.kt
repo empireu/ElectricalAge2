@@ -122,7 +122,7 @@ object Content {
 
     private val UNINSULATED_WIRE_LIGHT_FIELD = LightFieldPrimitives.sourceOnlyStart(15)
 
-    val STANDARD_UNINSULATED_COPPER_THERMAL_WIRE = ThermalWireBuilder("standard_uninsulated_copper_thermal_wire").apply {
+    val STANDARD_UNINSULATED_COPPER_THERMAL_WIRE = ThermalWireBuilder("standard_uninsulated_copper_thermal_wire").applyAndRegister {
         damageOptions = TemperatureExplosionBehaviorOptions(
             temperatureThreshold = Quantity(1000.0, CELSIUS)
         )
@@ -149,9 +149,9 @@ object Content {
                 ThermalTint.DEFAULT
             )
         }
-    }.register()
+    }
 
-    val STANDARD_INSULATED_COPPER_ELECTRICAL_WIRE = ElectricalWireBuilder("standard_insulated_copper_electrical_wire").apply {
+    val STANDARD_INSULATED_COPPER_ELECTRICAL_WIRE = ElectricalWireBuilder("standard_insulated_copper_electrical_wire").applyAndRegister {
         isIncandescent = false
 
         damageOptions = TemperatureExplosionBehaviorOptions(
@@ -177,7 +177,27 @@ object Content {
                 FlwModels.ELECTRICAL_WIRE_CONNECTION
             )
         }
-    }.register()
+    }
+
+    val SIGNAL_WIRE = ElectricalWireBuilder("signal_wire").applyAndRegister {
+        isIncandescent = false
+
+        damageOptions = TemperatureExplosionBehaviorOptions(temperatureThreshold = Quantity(133.0, CELSIUS))
+        material = ThermalMassDefinition(ChemicalElement.Copper.asMaterial)
+        leakageParameters = ConnectionParameters.DEFAULT.copy(conductance = Quantity(0.001, WATT_PER_KELVIN))
+        breakdownPotential = 100.0
+
+        size = ElectricalWireSize.Signal
+        hubSize = Vector3d(1.5, 0.625, 1.5) / 16.0
+        connectionSize = Vector3d(0.6, 0.4, 7.25) / 16.0
+
+        renderer {
+            WireRenderModel(
+                FlwModels.SIGNAL_WIRE_HUB,
+                FlwModels.SIGNAL_WIRE_CONNECTION
+            )
+        }
+    }
 
     val THERMAL_RADIATOR_CELL = cellMemoize("thermal_radiator") {
         val thermalProperties = WireThermalProperties(

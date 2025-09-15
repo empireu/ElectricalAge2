@@ -1,0 +1,23 @@
+{
+	"format_version": "1.9.0",
+	"credit": "Made with Blockbench",
+	"texture_size": [32, 32],
+	"textures": {
+		"0": "eln2:block/wire/electrical/signal/signal_wire",
+		"particle": "eln2:block/wire/electrical/signal/signal_wire"
+	},
+	"elements": [
+		{
+			"name": "connection_hub",
+			"from": [7.7, 0, 0],
+			"to": [8.3, 0.4, 7.25],
+			"rotation": {"angle": 0, "axis": "y", "origin": [8, 0.2, 0.9]},
+			"faces": {
+				"east": {"uv": [0, 15.5, 2, 16], "rotation": 270, "texture": "#0"},
+				"west": {"uv": [0, 15.5, 2, 16], "rotation": 270, "texture": "#0"},
+				"up": {"uv": [0, 15.5, 2.5, 16], "texture": "#0"},
+				"down": {"uv": [0, 15.5, 2.5, 16], "texture": "#0"}
+			}
+		}
+	]
+}
