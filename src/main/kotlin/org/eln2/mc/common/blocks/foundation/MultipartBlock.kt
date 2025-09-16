@@ -1,5 +1,6 @@
 package org.eln2.mc.common.blocks.foundation
 
+import com.mojang.blaze3d.vertex.PoseStack
 import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.task.Plan
 import dev.engine_room.flywheel.api.visual.DynamicVisual
@@ -11,6 +12,9 @@ import dev.engine_room.flywheel.lib.task.RunnablePlan
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.client.renderer.MultiBufferSource
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderer
+import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
@@ -408,6 +412,46 @@ class MultipartBlock : BaseEntityBlock(Properties.copy(Blocks.STONE).noOcclusion
     }
 }
 
+class MultipartBlockEntityLevelRendererProvider : BlockEntityRendererProvider<MultipartBlockEntity> {
+    override fun create(pContext: BlockEntityRendererProvider.Context): MultipartBlockEntityLevelRender {
+        return MultipartBlockEntityLevelRender(pContext)
+    }
+}
+
+class MultipartBlockEntityLevelRender(val context: BlockEntityRendererProvider.Context) : BlockEntityRenderer<MultipartBlockEntity> {
+    override fun render(
+        pBlockEntity: MultipartBlockEntity,
+        pPartialTick: Float,
+        pPoseStack: PoseStack,
+        pBuffer: MultiBufferSource,
+        pPackedLight: Int,
+        pPackedOverlay: Int
+    ) {
+        pBlockEntity.levelRender(
+            pPartialTick,
+            pPoseStack,
+            pBuffer,
+            pPackedLight,
+            pPackedOverlay
+        )
+    }
+}
+
+/**
+ * Implemented by parts which render additional things on the [BlockEntityRenderer]'s call.
+ * See [MultipartBlockEntity.levelRender] for more information.
+ * */
+@ClientOnly
+interface AdditionalRenderingPart {
+    fun levelRender(
+        pPartialTick: Float,
+        pPoseStack: PoseStack,
+        pBuffer: MultiBufferSource,
+        pPackedLight: Int,
+        pPackedOverlay: Int
+    )
+}
+
 /**
  * Multipart entities
  *  - Are dummy entities, that do not have any special data or logic by themselves
@@ -454,6 +498,25 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
 
     var collisionShape: VoxelShape = Shapes.empty()
         private set
+
+    /**
+     * Call dispatched by the block entity renderer. It is a safe way to inject some additional rendering.
+     * Useful for e.g. the oscilloscopes, to render the in-world image.
+     */
+    @ClientOnly
+    fun levelRender(
+        pPartialTick: Float,
+        pPoseStack: PoseStack,
+        pBuffer: MultiBufferSource,
+        pPackedLight: Int,
+        pPackedOverlay: Int
+    ) {
+        parts.values.forEach {
+            if(it is AdditionalRenderingPart) {
+                it.levelRender(pPartialTick, pPoseStack, pBuffer, pPackedLight, pPackedOverlay)
+            }
+        }
+    }
 
     /**
      * Gets the part on the specified [face] or null, if a part does not exist there.

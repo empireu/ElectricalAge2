@@ -90,7 +90,7 @@ object FlwVisualizerRegistry {
     fun registerBlockEntityVisualizers() {
         VisualizerRegistry.setVisualizer(
             BlockRegistry.MULTIPART_BLOCK_ENTITY.get(),
-            SimpleBlockEntityVisualizer(::MultipartBlockEntityVisual) { true }
+            SimpleBlockEntityVisualizer(::MultipartBlockEntityVisual) { false /* ADDITIONAL RENDERER */ }
         )
 
         VisualizerRegistry.setVisualizer(
