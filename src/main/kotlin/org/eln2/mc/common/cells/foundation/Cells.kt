@@ -27,6 +27,7 @@ import org.ageseries.libage.utils.sourceName
 import org.eln2.mc.*
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.SimulationObjectType.*
+import org.eln2.mc.common.content.ElectricalWireSize
 import org.eln2.mc.data.*
 import org.eln2.mc.extensions.*
 import java.util.*
@@ -581,12 +582,31 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
         return result
     }
 
+    protected open fun electricalConnectionPredicate(remote: Cell) : Boolean {
+        if(!remote.hasObject(Electrical)) {
+            return false
+        }
+
+        if(ElectricalWireSize.rejectsBasedOnMutualSizesAndConfiguration(this, remote)) {
+            return false
+        }
+
+        return true
+    }
+
     /**
      * Checks if this cell accepts a connection from the remote cell.
+     * **For cells that have electrical objects, [electricalConnectionPredicate] is evaluated automatically, in addition to the rule set!**
      * **SPECIAL CARE MUST BE TAKEN to ensure that the results are consistent with the actual [connections]**
      * @return True if the connection is accepted. Otherwise, false.
      * */
     protected open fun cellConnectionPredicate(remote: Cell) : Boolean {
+        if(this.hasObject(Electrical)) {
+            if(!electricalConnectionPredicate(remote)) {
+                return false
+            }
+        }
+
         return ruleSet.accepts(locator, remote.locator)
     }
 

@@ -28,37 +28,58 @@ import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntArrayList
+import kotlinx.serialization.Serializable
 import net.minecraft.client.renderer.block.model.BakedQuad
 import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.nbt.ListTag
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
+import org.ageseries.libage.mathematics.geometry.BoundingBox3d
+import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
+import org.ageseries.libage.mathematics.geometry.Rotation2d
+import org.ageseries.libage.mathematics.geometry.Rotation3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
+import org.eln2.mc.ServerOnly
 import org.eln2.mc.buildDirectionTable
 import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.PartWithKnobsVisual.Companion.createKnobList
+import org.eln2.mc.client.render.foundation.PartWithKnobsVisual.Companion.transformKnobList
 import org.eln2.mc.client.render.foundation.WirePatchType.Inner
 import org.eln2.mc.client.render.foundation.WirePatchType.Wrapped
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityVisual
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.content.*
+import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.common.specs.foundation.*
+import org.eln2.mc.common.specs.foundation.SpecGeometry
 import org.eln2.mc.extensions.bind
+import org.eln2.mc.extensions.cast
+import org.eln2.mc.extensions.getListTag
+import org.eln2.mc.extensions.getViewRay
 import org.eln2.mc.extensions.rotationFast
+import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.mathematics.maskXY
+import org.eln2.mc.requireIsOnServerThread
 import org.eln2.mc.resource
 import org.lwjgl.system.MemoryUtil
 import java.nio.ByteBuffer
 import java.nio.IntBuffer
 import java.util.function.Consumer
+import kotlin.contracts.ExperimentalContracts
+import kotlin.contracts.InvocationKind
+import kotlin.contracts.contract
 import kotlin.math.PI
 
 object FlwVisualizerRegistry {
@@ -723,20 +744,13 @@ class ConnectedPartRenderStateImpl : ConnectedPartRenderState {
         this.connections = connections
         version++
     }
-}
 
-fun CellPart<*>.getConnectedPartTag() = CompoundTag().also { compoundTag ->
-    if(this.hasCell) {
-        val values = IntArrayList(2)
-
-        for (it in this.cell.connections) {
-            val solution = getPartConnectionAsContactSectionConnectionOrNull(this.cell, it)
-                ?: continue
-
-            values.add(solution.value)
+    companion object {
+        fun createIfApplicable(part: Part) = if(part.placement.level.isClientSide) {
+            ConnectedPartRenderStateImpl()
+        } else {
+            null
         }
-
-        compoundTag.putIntArray("connections", values)
     }
 }
 
@@ -754,14 +768,37 @@ fun<T> T.getConnectedPartsFromTag(tag: CompoundTag): IntArray where T : Part, T 
  * */
 interface ConnectedPart {
     @ClientOnly
-    val renderState: ConnectedPartRenderState
+    val connectedRenderState: ConnectedPartRenderState
+
+    companion object {
+        fun pack(part: CellPart<*>, tag: CompoundTag) {
+            val values = IntArrayList(2)
+
+            for (remoteCell in part.cell.connections) {
+                if(remoteCell is GridConnectionCell) {
+                    continue
+                }
+
+                val solution = getPartConnectionAsContactSectionConnectionOrNull(part.cell, remoteCell)
+                    ?: continue
+
+                values.add(solution.value)
+            }
+
+            tag.putIntArray("connections", values)
+        }
+
+        fun pack(part: CellPart<*>) = CompoundTag().also {
+            pack(part, it)
+        }
+    }
 }
 
-class ConnectedPartVisual<P>(
+open class ConnectedPartVisual<P>(
     ctx: MultipartVisualizationContext,
     part: P,
     body: PartialModel,
-    val connectionModels: Map<Base6Direction3d, WireConnectionModelPartial>,
+    val connectionModels: Map<Base6Direction3d, WireConnectionModelPartial>
 ) : AbstractPartVisual<P>(ctx, part), SimpleDynamicVisual where P : Part, P : ConnectedPart {
     constructor(ctx: MultipartVisualizationContext, part: P, body: PartialModel, connection: WireConnectionModelPartial) : this(
         ctx,
@@ -796,7 +833,7 @@ class ConnectedPartVisual<P>(
 
     override fun beginFrame(ctx: DynamicVisual.Context) {
         val partialTick = ctx.partialTick()
-        val partRenderState = part.renderState
+        val partRenderState = part.connectedRenderState
 
         val latestConnectionsVersion = partRenderState.version
         if(connectionsVersion != latestConnectionsVersion) {
@@ -890,6 +927,413 @@ fun<T : Affine<T>> T.specTransformation(parent: SpecContainerPartVisual, spec: S
         .rotateY((yRotation + parent.part.placement.facing.angle + spec.placement.orientation.ln()).toFloat())
         .scale(scale.x.toFloat(), scale.y.toFloat(), scale.z.toFloat())
         .translate(-0.5, 0.0, -0.5)
+}
+
+/**
+ * @param changedNotifier Called when the state changes and needs both saving and syncing.
+ * */
+class KnobMap(val changedNotifier: (() -> Unit)?) {
+    /**
+     * Holds the rotation state of a knob ([rotation]).
+     * @param model The partial model. Safe to exist on the server side as long as the underlying data isn't accessed.
+     * @param knobId The ID assigned by the [KnobMap] for synchronization and other operations.
+     * */
+    class Knob(
+        val model: PartialModel,
+        val rotationAxis: Vector3d,
+        val knobId: Int,
+        val map: KnobMap,
+        val descriptor: String,
+        initialRotation: Double,
+        private val boundingBoxSupplier: (Double) -> OrientedBoundingBox3d
+    ) {
+        /**
+         * The turn state of the knob. Changing the value will mark the state as changed, for synchronization.
+         * */
+        var rotation : Double = initialRotation
+            set(value) {
+                if(field != value) {
+                    field = value
+                    map.knobChanged()
+                }
+            }
+
+        fun computeOBB() = boundingBoxSupplier(rotation)
+    }
+
+    /**
+     * Synchronization packet for bulk part messages. Contains the new knob states in order.
+     * */
+    @Serializable
+    data class SyncPacket(val newStates: DoubleArray) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+
+            other as SyncPacket
+
+            return newStates.contentEquals(other.newStates)
+        }
+
+        override fun hashCode(): Int {
+            return newStates.contentHashCode()
+        }
+    }
+
+    private var mapInternal = ArrayList<Knob>()
+    private var loading = false
+
+    val knobs: List<Knob> get() = mapInternal
+
+    /**
+     * Incremented when knob states are changed.
+     * Check against this for your rendering.
+     * */
+    var version = 0
+        private set
+
+    /**
+     * Registers a knob.
+     * @param model The model used by the visual.
+     * @param defaultState The default state of the knob.
+     * Important for schema changes: if the number of knobs, or the descriptor of a knob doesn't correspond with the saved data, the data is discarded.
+     * */
+    fun addKnobBB(
+        part: Part,
+        model: PartialModel, axis: Vector3d, descriptor: String,
+        bbX: Double, bbY: Double, bbZ: Double,
+        bbSX: Double, bbSY: Double, bbSZ: Double,
+        defaultState: Double = 0.0
+    ) : Knob {
+        val size = Vector3d(bbSX / 16.0, bbSY / 16.0, bbSZ / 16.0)
+
+        val box = BoundingBox3d.fromCenterSize(((Vector3d(
+            bbX / 16.0,
+            bbY / 16.0,
+            bbZ / 16.0
+        )) - Vector3d.one * maskXY / 2.0) + size / 2.0, size)
+
+        val center = box.center
+        val supplier: (Double) -> OrientedBoundingBox3d = {
+            SpecGeometry.boundingBox(
+                part.placement.mountingPointWorld +
+                    part.placement.positiveX.vector3d * center.x +
+                    part.placement.positiveY.vector3d * center.y +
+                    part.placement.positiveZ.vector3d * center.z,
+                Rotation2d.exp(
+                    it
+                ) * part.placement.facing.rotation2d,
+                Vector3d(size.x, size.y, size.z),
+                part.placement.facing,
+                part.placement.face
+            )
+        }
+
+        val result = Knob(
+            model,
+            axis,
+            mapInternal.size,
+            this,
+            descriptor,
+            defaultState,
+            supplier
+        )
+
+        mapInternal.add(result)
+        return result
+    }
+
+    private fun knobChanged() {
+        ++version
+
+        if(!loading) {
+            changedNotifier?.invoke()
+        }
+    }
+
+    /**
+     * Call when multiple knobs need to be changed (inside the [block]).
+     * A single update to the [changedNotifier] is sent at the end.
+     * */
+    @OptIn(ExperimentalContracts::class)
+    fun loadChanges(block: () -> Unit) {
+        contract {
+            callsInPlace(block, InvocationKind.EXACTLY_ONCE)
+        }
+
+        loading = true
+        block()
+        loading = false
+        ++version
+        changedNotifier?.invoke()
+    }
+
+    /**
+     * Handles rotating a knob using the screwdriver.
+     * */
+    @ServerOnly
+    fun screwdriverInteraction(player: ServerPlayer, delta: Double) : Boolean {
+        requireIsOnServerThread {
+            "Tried to scroll knob on non-server side"
+        }
+
+        val ray = player.getViewRay()
+
+        var minDistance = Double.POSITIVE_INFINITY
+        var knob: Knob? = null
+
+        for (it in mapInternal) {
+            val obb = it.computeOBB()
+
+            val intersection = ray intersectionWith obb
+
+            if(intersection != null) {
+                val t = intersection.entry
+
+                if(t > 0.0) {
+                    if(t < minDistance) {
+                        minDistance = t
+                        knob = it
+                    }
+                }
+            }
+        }
+
+        if(knob != null) {
+            knob.rotation += delta
+            return true
+        }
+
+        return false
+    }
+
+    fun getSyncPacket() : SyncPacket {
+        val values = DoubleArray(mapInternal.size)
+
+        for (i in 0 until mapInternal.size) {
+            values[i] = mapInternal[i].rotation
+        }
+
+        return SyncPacket(values)
+    }
+
+    fun loadSyncPacket(packet: SyncPacket) {
+        require(packet.newStates.size == mapInternal.size) {
+            "Received ${packet.newStates.size} knob states, but map had ${mapInternal.size} states"
+        }
+
+        ++version
+
+        loading = true
+
+        for (i in 0 until mapInternal.size) {
+            mapInternal[i].rotation = packet.newStates[i]
+        }
+
+        loading = false
+    }
+
+    /**
+     * Saves the knobs to NBT.
+     * */
+    fun getSaveTag() = CompoundTag().also {
+        val list = ListTag()
+
+        mapInternal.forEach { knob ->
+            val knobTag = CompoundTag()
+
+            knobTag.putString(DESCRIPTOR, knob.descriptor)
+            knobTag.putDouble(STATE, knob.rotation)
+
+            list.add(knobTag)
+        }
+
+        it.put(KNOB_LIST, list)
+    }
+
+    fun loadFromTag(tag: CompoundTag) {
+        ++version // regardless of discard
+        loading = true
+        loadFromTagCore(tag)
+        loading = false
+    }
+
+    private fun loadFromTagCore(tag: CompoundTag) {
+        val expectedCount = mapInternal.size
+
+        val list = tag.getListTag(KNOB_LIST)
+
+        if(list.size != expectedCount) {
+            LOG.error("Knob schema change: " +
+                "knobs ${mapInternal.joinToString(", ") { it.descriptor }} (count $expectedCount) " +
+                "were previously ${list.size} in count. Discarding!"
+            )
+
+            return
+        }
+
+        val loadedStates = DoubleArray(expectedCount)
+
+        for (i in 0 until expectedCount) {
+            val knobTag = list[i] as CompoundTag
+
+            val descriptor = knobTag.getString(DESCRIPTOR)
+            val expectedDescriptor = mapInternal[i].descriptor
+
+            if(descriptor != expectedDescriptor) {
+                LOG.error("Knob schema change: knob $i ($expectedDescriptor) was previously $descriptor. Discarding!")
+                return
+            }
+
+            val state = knobTag.getDouble(STATE)
+
+            loadedStates[i] = state
+        }
+
+        for (i in 0 until expectedCount) {
+            mapInternal[i].rotation = loadedStates[i]
+        }
+    }
+
+    companion object {
+        private const val KNOB_LIST = "knobMap"
+        private const val DESCRIPTOR = "descriptor"
+        private const val STATE = "state"
+
+    }
+}
+
+interface PartWithKnobs {
+    /**
+     * Gets the knob map, on both the server and the client.
+     * The map must be defined exactly the same on both sides, otherwise you're fucked.
+     * */
+    val knobMap: KnobMap
+}
+
+class PartWithKnobsVisual<T>(
+    ctx: MultipartVisualizationContext,
+    part: T,
+    bodyModel: PartialModel
+) : AbstractPartVisual<T>(ctx, part), SimpleDynamicVisual where T : Part, T : PartWithKnobs {
+    companion object {
+        fun <T> createKnobList(ctx: MultipartVisualizationContext, part: T) : ArrayList<KnobData> where T : Part, T : PartWithKnobs {
+            val knobs = ArrayList<KnobData>()
+
+            part.knobMap.knobs.forEach { knob ->
+                val instance = ctx.instancerProvider()
+                    .instancer(InstanceTypes.TRANSFORMED, Models.partial(knob.model))
+                    .createInstance()
+
+                val (offsetX, offsetY, offsetZ) = FlwModels
+                    .getModelCenter(knob.model)
+                    .projectOnPlane(knob.rotationAxis)
+
+                knobs.add(
+                    KnobData(
+                        instance,
+                        knob,
+                        offsetX.toFloat(), offsetY.toFloat(), offsetZ.toFloat()
+                    )
+                )
+            }
+
+            return knobs
+        }
+
+        fun<T> transformKnobList(ctx: MultipartVisualizationContext, part: T, knobs: ArrayList<KnobData>) where T : Part, T : PartWithKnobs {
+            knobs.forEach { (instance, target, offsetX, offsetY, offsetZ) ->
+                instance.setIdentityTransform()
+                    .partTransformation(ctx.parent, part)
+                    .translate(offsetX, offsetY, offsetZ)
+                    .rotate(Rotation3d.exp(target.rotationAxis * target.rotation).cast())
+                    .translate(-offsetX, -offsetY, -offsetZ)
+                    .handle()
+                    .setChanged()
+            }
+        }
+    }
+
+    private val body = ctx.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, Models.partial(bodyModel))
+        .createInstance()
+        .also { it.partTransformation(ctx.parent, part, Vector3d.one, 0.0) }
+
+    data class KnobData(
+        val instance: TransformedInstance,
+        val target: KnobMap.Knob,
+        val offsetX: Float,
+        val offsetY: Float,
+        val offsetZ: Float
+    )
+
+    private val knobs = createKnobList(ctx, part)
+    private var version = 0
+
+    init {
+        transformKnobs()
+    }
+
+    private fun transformKnobs() {
+        transformKnobList(visualizationContext, part, knobs)
+    }
+
+    override fun beginFrame(p0: DynamicVisual.Context?) {
+        val targetVersion = part.knobMap.version
+
+        if(version != targetVersion) {
+            version = targetVersion
+            transformKnobs()
+        }
+    }
+
+    override fun updateLight(partialTick: Float) {
+        visualizationContext.parent.relightInstances(body)
+        visualizationContext.parent.relightInstances(knobs.map { it.instance })
+    }
+
+    override fun _delete() {
+        body.delete()
+        knobs.forEach { it.instance.delete() }
+    }
+}
+
+class ConnectedPartWithKnobsVisual<P>(
+    ctx: MultipartVisualizationContext,
+    part: P,
+    body: PartialModel,
+    connectionModels: Map<Base6Direction3d, WireConnectionModelPartial>
+) : ConnectedPartVisual<P>(ctx, part, body, connectionModels) where P : Part, P : ConnectedPart, P : PartWithKnobs {
+    private val knobs = createKnobList(ctx, part)
+    private var knobsVersion = 0
+
+    init {
+        transformKnobs()
+    }
+
+    private fun transformKnobs() {
+        transformKnobList(visualizationContext, part, knobs)
+    }
+
+    override fun beginFrame(ctx: DynamicVisual.Context) {
+        super.beginFrame(ctx)
+
+        val targetVersion = part.knobMap.version
+        if(knobsVersion != targetVersion) {
+            knobsVersion = targetVersion
+            transformKnobs()
+        }
+    }
+
+    override fun updateLight(partialTick: Float) {
+        super.updateLight(partialTick)
+        visualizationContext.parent.relightInstances(knobs.map { it.instance })
+    }
+
+    override fun _delete() {
+        super._delete()
+        knobs.forEach { it.instance.delete() }
+    }
 }
 
 class TestBlockEntityVisual<T : BlockEntity>(

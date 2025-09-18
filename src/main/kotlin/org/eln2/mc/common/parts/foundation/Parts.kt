@@ -27,6 +27,7 @@ import net.minecraft.world.phys.shapes.VoxelShape
 import org.ageseries.libage.data.Locator
 import org.ageseries.libage.data.put
 import org.ageseries.libage.data.requireLocator
+import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Vector3d
@@ -66,6 +67,7 @@ import org.eln2.mc.mathematics.FacingDirection
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.CellLayer
+import org.eln2.mc.mathematics.maskXY
 import org.eln2.mc.requireIsOnServerThread
 import org.joml.Vector3f
 import java.util.UUID
@@ -1116,6 +1118,12 @@ abstract class GridCellPart<C : Cell>(
         placement.face
     )
 
+    fun boundingBox(box: BoundingBox3d, orientation: Rotation2d = Rotation2d.identity) : OrientedBoundingBox3d {
+        val center = box.center
+        val size = box.size
+        return boundingBox(center.x, center.y, center.z, size.x, size.y, size.z, orientation)
+    }
+
     protected fun defineCellBoxTerminal(box3d: OrientedBoundingBox3d, attachment: Vector3d? = null, highlightColor : MyColor? = MyColor(
         0.8f,
         1f,
@@ -1140,6 +1148,21 @@ abstract class GridCellPart<C : Cell>(
         highlightColor: MyColor? = MyColor(0.8f, 1f, 0.58f, 0.44f),
         categories: List<GridMaterialCategory> = listOf(GridMaterialCategory.MicroGrid),
     ) = defineCellBoxTerminal(boundingBox(x, y, z, sizeX, sizeY, sizeZ, orientation), attachment, highlightColor, categories)
+
+    // BB = BlockBench
+    protected fun defineCellBoxTerminalBB(
+        x: Double, y: Double, z: Double,
+        sizeX: Double, sizeY: Double, sizeZ: Double,
+        orientation: Rotation2d = Rotation2d.identity,
+        attachment: Vector3d? = null,
+        highlightColor: MyColor? = MyColor(0.8f, 1f, 0.58f, 0.44f),
+        categories: List<GridMaterialCategory> = listOf(GridMaterialCategory.MicroGrid),
+        modelScale: Double = 1.0
+    ) : Supplier<GridTerminal> {
+        val size = Vector3d(sizeX / 16.0, sizeY / 16.0, sizeZ / 16.0) * modelScale
+        val box = BoundingBox3d.fromCenterSize(((Vector3d(x / 16.0, y / 16.0, z / 16.0)) - Vector3d.one * maskXY / 2.0) * modelScale + size / 2.0, size)
+        return defineCellBoxTerminal(boundingBox(box, orientation), attachment, highlightColor, categories)
+    }
 
     override fun pickTerminal(player: LivingEntity) = gridTerminalSystem.pick(player)
 

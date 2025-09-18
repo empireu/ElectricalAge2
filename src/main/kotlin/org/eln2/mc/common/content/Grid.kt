@@ -180,20 +180,12 @@ class GridInterfaceCell(
     tapResistance: Double,
     anchorResistance: Double,
     override val electricalWireSize: ElectricalWireSize?
-) : Cell(ci), SizedSingleElectricalWire {
+) : Cell(ci), SidedWireSizeInfoULDR {
     @Node
     val grid = GridNode(this)
 
     @SimObject
     val electricalInterface = GridInterfaceObject(this, tapResistance, anchorResistance)
-
-    override fun cellConnectionPredicate(remote: Cell): Boolean {
-        if(electricalWireSize?.rejectsCell(remote) == true) {
-            return false
-        }
-
-        return super.cellConnectionPredicate(remote)
-    }
 }
 
 class GridInterfacePart(
@@ -210,35 +202,12 @@ class GridInterfacePart(
     )
 
     @ClientOnly
-    private var renderStateImpl: ConnectedPartRenderStateImpl? = if(ci.placement.level.isClientSide) {
-        ConnectedPartRenderStateImpl()
-    } else {
-        null
-    }
+    private var renderStateImpl = ConnectedPartRenderStateImpl.createIfApplicable(this)
 
     @ClientOnly
-    override val renderState: ConnectedPartRenderState get() = renderStateImpl!!
+    override val connectedRenderState: ConnectedPartRenderState get() = renderStateImpl!!
 
-    override fun getSyncTag() : CompoundTag {
-        val tag = CompoundTag()
-
-        val values = IntArrayList(2)
-
-        for (remoteCell in this.cell.connections) {
-            if(remoteCell is GridConnectionCell) {
-                continue
-            }
-
-            val solution = getPartConnectionAsContactSectionConnectionOrNull(this.cell, remoteCell)
-                ?: continue
-
-            values.add(solution.value)
-        }
-
-        tag.putIntArray("connections", values)
-
-        return tag
-    }
+    override fun getSyncTag() = ConnectedPart.pack(this)
 
     override fun handleSyncTag(tag: CompoundTag) = renderStateImpl!!.set(getConnectedPartsFromTag(tag))
 

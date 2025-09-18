@@ -228,7 +228,7 @@ class PolarLightCell(
     map: PoleMap,
     variantType: LightVariantType,
     override val electricalWireSize: ElectricalWireSize?
-) : LightCell(ci, variantType), SizedSingleElectricalWire {
+) : LightCell(ci, variantType), SidedWireSizeInfoULDR {
     @SimObject
     override val resistor = PolarResistorObjectVirtual(self(), map)
 

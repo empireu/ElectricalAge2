@@ -2,6 +2,8 @@ package org.eln2.mc.common.cells.foundation
 
 import net.minecraft.nbt.CompoundTag
 import org.ageseries.libage.data.Locator
+import org.ageseries.libage.data.MEGA
+import org.ageseries.libage.data.OHM
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.approxEq
@@ -664,4 +666,39 @@ class PowerVoltageSourceDiodeObject<C : Cell>(cell: C, val map: PoleMap) : Elect
         super.build(map)
         map.join(powerSource.offerNegative(), diode.offerNegative())
     }
+}
+
+const val SIGNAL_SERIES_RESISTANCE = 1e6
+
+fun ElectricalComponentSet.add(signalSource: SignalSource) {
+    this.add(signalSource.voltageSource)
+    this.add(signalSource.resistor)
+}
+
+/**
+ * Signal generator. Consists of a voltage source and a virtual resistor with high resistance.
+ * This is an infinite energy source, but with a low power. The resistance is high; see [SIGNAL_SERIES_RESISTANCE].
+ * Signals are always referenced to ground. As such, the [voltageSource]'s negative is grounded on [build].
+ * The only valid offer is [offerOutput]. No other connections should be created with the components.
+ */
+class SignalSource {
+    val voltageSource = VoltageSource()
+    val resistor = VirtualResistor().also { it.resistance = SIGNAL_SERIES_RESISTANCE }
+
+    /**
+     * Offers the signal output of this source. It is always the external pin of the [resistor].
+     * */
+    fun offerOutput() = resistor.offerExternal()
+
+    fun build(map: ElectricalConnectivityMap) {
+        map.join(voltageSource.offerPositive(), resistor.offerInternal())
+        voltageSource.ground(NEGATIVE)
+    }
+
+    /**
+     * Sets the potential of the source.
+     * */
+    var signal: Double
+        get() = voltageSource.potential
+        set(value) { voltageSource.potential = value }
 }

@@ -1,0 +1,58 @@
+{
+	"format_version": "1.9.0",
+	"credit": "Made with Blockbench",
+	"texture_size": [64, 64],
+	"textures": {
+		"0": "eln2:block/probes/potential/potential_probe_part",
+		"particle": "eln2:block/probes/potential/potential_probe_part"
+	},
+	"elements": [
+		{
+			"name": "knob_output_range_min",
+			"from": [6.35, 2.025, 6.125],
+			"to": [6.675, 2.475, 6.45],
+			"rotation": {"angle": 0, "axis": "y", "origin": [6.5125, 2.25, 6.2875]},
+			"faces": {
+				"north": {"uv": [9.25, 14, 9.5, 15], "rotation": 180, "texture": "#0"},
+				"east": {"uv": [9.25, 14, 9.5, 15], "rotation": 180, "texture": "#0"},
+				"south": {"uv": [9.25, 14, 9.5, 15], "rotation": 180, "texture": "#0"},
+				"west": {"uv": [9.25, 14, 9.5, 15], "rotation": 180, "texture": "#0"},
+				"up": {"uv": [8.25, 12.75, 10.5, 15], "texture": "#0"}
+			}
+		}
+	],
+	"display": {
+		"thirdperson_righthand": {
+			"translation": [0, 8, 0]
+		},
+		"thirdperson_lefthand": {
+			"translation": [0, 8, 0]
+		},
+		"firstperson_righthand": {
+			"translation": [0, 8, 0]
+		},
+		"firstperson_lefthand": {
+			"translation": [0, 8, 0]
+		},
+		"ground": {
+			"translation": [0, 4.75, 0]
+		},
+		"gui": {
+			"rotation": [16.69, 35.86, 4.74],
+			"translation": [-0.5, 9.5, 0],
+			"scale": [1.5, 1.5, 1.5]
+		},
+		"fixed": {
+			"rotation": [-90, 0, 0],
+			"translation": [0, 0, -7.25]
+		}
+	},
+	"groups": [
+		{
+			"name": "knobs",
+			"origin": [6.4375, 2.225, 6.1875],
+			"color": 0,
+			"children": [0]
+		}
+	]
+}

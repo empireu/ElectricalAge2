@@ -175,8 +175,7 @@ object OscilloscopeShader {
     }
 }
 
-class
-OscilloscopePart(ci: PartCreateInfo) : Part(ci), AdditionalRenderingPart {
+class OscilloscopePart(ci: PartCreateInfo) : Part(ci), AdditionalRenderingPart {
     @ClientOnly
     private class RenderState(horizonColumns: Int, channels: Int) {
         init {

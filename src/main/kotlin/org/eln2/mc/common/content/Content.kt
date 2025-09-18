@@ -80,6 +80,7 @@ import org.eln2.mc.REVOLUTION_PER_SECOND
 import org.eln2.mc.cylinderResistance
 import org.eln2.mc.data.directionMonopolarMapPlanar
 import org.eln2.mc.data.directionPoleMapPlanar
+import org.eln2.mc.data.monopolarMapPlanar
 import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.mathematics.Base6Direction3d
@@ -1003,11 +1004,46 @@ object Content {
 
     //#endregion
 
+    //#region Signal (devices only; wires are in the Wires section).
+
+    //#region Probes
+
+    // All probe models should be made like this, and all cells use these directions.
+    val STANDARD_PROBE_PLUS_DIRECTION = Base6Direction3d.Front
+    val STANDARD_PROBE_MINUS_DIRECTION = Base6Direction3d.Back
+    val STANDARD_PROBE_OUTPUT_DIRECTION = Base6Direction3d.Right
+
+    val STANDARD_PROBE_COMPARER_MAP = directionPoleMapPlanar(STANDARD_PROBE_PLUS_DIRECTION, STANDARD_PROBE_MINUS_DIRECTION)
+    val STANDARD_PROBE_OUTPUT_MAP = monopolarMapPlanar(STANDARD_PROBE_OUTPUT_DIRECTION)
+
+    val STANDARD_PROBE_MODELS = mapOf(
+        STANDARD_PROBE_PLUS_DIRECTION to FlwModels.STANDARD_CONNECTION,
+        STANDARD_PROBE_MINUS_DIRECTION to FlwModels.STANDARD_CONNECTION,
+        STANDARD_PROBE_OUTPUT_DIRECTION to FlwModels.SIGNAL_WIRE_CONNECTION.hub
+    )
+
+    val POTENTIAL_PROBE_CELL = cellImmediate("potential_probe") {
+        PotentialProbeCell(
+            it,
+            STANDARD_PROBE_COMPARER_MAP,
+            ElectricalWireSize.Standard,
+            STANDARD_PROBE_OUTPUT_MAP
+        )
+    }
+
+    val POTENTIAL_PROBE_PART = partImmediateBB("potential_probe", 6.0, 2.025, 9.5) {
+        PotentialProbePart(it, STANDARD_PROBE_MODELS)
+    }
+
+    //#endregion
+
     //#region Oscilloscopes
 
     val TEST = partImmediateBB("test", 14.0, 0.75, 10.0) {
         OscilloscopePart(it)
     }
+
+    //#endregion
 
     //#endregion
 }

@@ -238,6 +238,10 @@ fun interface PoleMap {
     fun evaluateOrNull(sourceCell: Cell, targetCell: Cell): Pole?
 }
 
+fun interface MonopoleMap {
+    fun evaluates(sourceCell: Cell, targetCell: Cell): Boolean
+}
+
 fun PoleMap.evaluate(sourceCell: Cell, targetCell: Cell): Pole =
     checkNotNull(evaluateOrNull(sourceCell, targetCell)) {
         "Unhandled pole map direction $sourceCell $targetCell $this"
@@ -264,6 +268,13 @@ fun directionMonopolarMapPlanar(dir: Base6Direction3d, pole: Pole) = PoleMap { c
     when (c1.locator.findDirActualPlanarOrNull(c2.locator)) {
         dir -> pole
         else -> null
+    }
+}
+
+fun  monopolarMapPlanar(dir: Base6Direction3d) = MonopoleMap { c1, c2 ->
+    when(c1.locator.findDirActualPlanarOrNull(c2.locator)) {
+        dir -> true
+        else -> false
     }
 }
 

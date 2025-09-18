@@ -43,7 +43,6 @@ import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.nz
-import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
 import org.ageseries.libage.sim.ThermalMass
@@ -52,11 +51,7 @@ import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwModels
-import org.eln2.mc.client.render.foundation.FlwInstanceTypes
-import org.eln2.mc.client.render.foundation.SpecialModels
-import org.eln2.mc.client.render.foundation.ThermalTint
-import org.eln2.mc.client.render.foundation.TransformedLightOverrideInstance
-import org.eln2.mc.client.render.foundation.partTransformation
+import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.CellBlock
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
@@ -64,28 +59,21 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.containers.ContainerHelper
 import org.eln2.mc.common.containers.MyAbstractContainerScreen
 import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
+import org.eln2.mc.common.content.FuelBurnState.Companion.canBurn
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.AbstractPartVisual
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.control.PIDController
-import org.eln2.mc.AngularVelocity
-import org.eln2.mc.data.Average3d
-import org.eln2.mc.Inertia
-import org.eln2.mc.NEWTON_METER
 import org.eln2.mc.data.PoleMap
-import org.eln2.mc.RADIAN_PER_SECOND
-import org.eln2.mc.REVOLUTION_PER_SECOND
-import org.eln2.mc.Torque
-import org.eln2.mc.ViscousFriction
 import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3dMask
-import java.nio.ByteBuffer
-import kotlin.math.*
+import kotlin.math.abs
+import kotlin.math.min
 
 /**
  * Represents a mass of fuel which is mutable (the amount of fuel can be changed).
@@ -641,7 +629,7 @@ class ElectricalHeatEngineCell(
     radiantInfoB1: RadiantBodyEmissionDescription?,
     radiantInfoB2: RadiantBodyEmissionDescription?,
     override val electricalWireSize: ElectricalWireSize
-) : Cell(ci), SizedSingleElectricalWire {
+) : Cell(ci), SidedWireSizeInfoULDR {
     @SimObject
     val source = PowerVoltageSourceObject(this, electricalMap).also {
         it.resistor.resistance = sourceResistance
@@ -903,35 +891,7 @@ class ElectricalHeatEnginePartVisual(
 ) : AbstractPartVisual<ElectricalHeatEnginePart>(visualizationContext, part), SimpleDynamicVisual {
     companion object {
         private val tint = ThermalTint.DEFAULT_LIGHT_OVERRIDE
-
-        private val flywheelsCenter = run {
-            val accumulator = Average3d()
-
-            val model = FlwModels.SMALL_THERMAL_ELECTRIC_GENERATOR_FLYWHEELS.get() ?: error(
-                "ElectricalHeatEnginePartVisual static fields initialized before baked models were available"
-            )
-
-            @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")
-            model.getQuads(null, null, null).forEach { quad ->
-                require(quad.vertices.size == 32)
-
-                val buffer = ByteBuffer.allocate(32)
-                val intView = buffer.asIntBuffer()
-
-                for (i in 0 until 4) {
-                    intView.clear()
-                    intView.put(quad.vertices, i * 8, 8)
-
-                    accumulator.add(
-                        buffer.getFloat(0).toDouble(),
-                        buffer.getFloat(4).toDouble(),
-                        buffer.getFloat(8).toDouble(),
-                    )
-                }
-            }
-
-            accumulator.average
-        }
+        private val flywheelsCenter = FlwModels.getModelCenter(FlwModels.SMALL_THERMAL_ELECTRIC_GENERATOR_FLYWHEELS)
     }
 
     val body: TransformedInstance = visualizationContext.instancerProvider()

@@ -1,13 +1,18 @@
 package org.eln2.mc.client.render
 
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
+import net.minecraft.client.resources.model.BakedModel
 import net.minecraftforge.server.ServerLifecycleHooks
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.client.render.foundation.PolarModel
 import org.eln2.mc.client.render.foundation.WireConnectionModel
 import org.eln2.mc.client.render.foundation.WirePatchPolarModel
 import org.eln2.mc.client.render.foundation.WirePatchType
 import org.eln2.mc.common.content.WireConnectionModelPartial
+import org.eln2.mc.data.Average3d
 import org.eln2.mc.resource
+import java.nio.ByteBuffer
+import java.util.concurrent.ConcurrentHashMap
 
 object FlwModels {
     val ELECTRICAL_WIRE_HUB = partialBlock(
@@ -84,6 +89,12 @@ object FlwModels {
 
     val FLAT_OSCILLOSCOPE_PART = partialBlock("oscilloscopes/flat_oscilloscope_part")
 
+    val POTENTIAL_PROBE_BODY = partialBlock("probes/potential/body")
+    val POTENTIAL_PROBE_KNOB_INPUT_RANGE_MIN = partialBlock("probes/potential/knob_input_range_min")
+    val POTENTIAL_PROBE_KNOB_INPUT_RANGE_MAX = partialBlock("probes/potential/knob_input_range_max")
+    val POTENTIAL_PROBE_KNOB_OUTPUT_RANGE_MIN = partialBlock("probes/potential/knob_output_range_min")
+    val POTENTIAL_PROBE_KNOB_OUTPUT_RANGE_MAX = partialBlock("probes/potential/knob_output_range_max")
+
     private fun partial(path: String): PartialModel = PartialModel.of(resource(path))
     fun partialBlock(path: String): PartialModel = PartialModel.of(resource("block/$path"))
     fun polarBlock(path: String): PolarModel = PolarModel(resource("block/$path"))
@@ -119,4 +130,37 @@ object FlwModels {
             }
         }
     }
+
+    private val modelCentersCache = ConcurrentHashMap<BakedModel, Vector3d>()
+
+    fun getModelCenter(model: BakedModel) : Vector3d = modelCentersCache.computeIfAbsent(model) {
+        val accumulator = Average3d()
+
+        @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")
+        model.getQuads(null, null, null).forEach { quad ->
+            require(quad.vertices.size == 32)
+
+            val buffer = ByteBuffer.allocate(32)
+            val intView = buffer.asIntBuffer()
+
+            for (i in 0 until 4) {
+                intView.clear()
+                intView.put(quad.vertices, i * 8, 8)
+
+                accumulator.add(
+                    buffer.getFloat(0).toDouble(),
+                    buffer.getFloat(4).toDouble(),
+                    buffer.getFloat(8).toDouble(),
+                )
+            }
+        }
+
+        accumulator.average
+    }
+
+    fun getModelCenter(model: PartialModel) : Vector3d = getModelCenter(
+        model.get() ?: error(
+            "Tried to get partial model $model center before baked models were available"
+        )
+    )
 }
