@@ -1002,4 +1002,12 @@ object Content {
     //#endregion
 
     //#endregion
+
+    //#region Oscilloscopes
+
+    val TEST = partImmediateBB("test", 14.0, 0.75, 10.0) {
+        OscilloscopePart(it)
+    }
+
+    //#endregion
 }

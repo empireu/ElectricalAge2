@@ -82,6 +82,8 @@ object FlwModels {
 
     val SMALL_DC_TO_DC_CONVERTER = partialBlock("small_dc_to_dc_converter/full")
 
+    val FLAT_OSCILLOSCOPE_PART = partialBlock("oscilloscopes/flat_oscilloscope_part")
+
     private fun partial(path: String): PartialModel = PartialModel.of(resource(path))
     fun partialBlock(path: String): PartialModel = PartialModel.of(resource("block/$path"))
     fun polarBlock(path: String): PolarModel = PolarModel(resource("block/$path"))

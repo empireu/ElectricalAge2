@@ -2,6 +2,8 @@
 
 package org.eln2.mc.client.render.foundation
 
+import com.mojang.blaze3d.platform.NativeImage
+import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
 import it.unimi.dsi.fastutil.doubles.Double2ObjectOpenHashMap
@@ -17,6 +19,7 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider
 import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.network.chat.Component
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.util.FastColor
 import net.minecraft.util.RandomSource
 import net.minecraft.world.level.block.entity.BlockEntity
@@ -31,10 +34,12 @@ import org.ageseries.libage.mathematics.*
 import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
 import org.eln2.mc.client.render.foundation.ThermalTint.Companion.DEFAULT
-import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.extensions.bind
 import org.eln2.mc.extensions.cast
 import org.eln2.mc.requireIsOnRenderThread
+import org.lwjgl.opengl.GL11
+import org.lwjgl.opengl.GL44
+import org.lwjgl.system.MemoryStack
 import org.lwjgl.system.MemoryUtil
 import java.io.File
 import java.io.FileWriter
@@ -58,7 +63,12 @@ class ThermalTintBuilder {
     }
 }
 
-class ThermalTint(val coldTint: MyColor, val hotTint: MyColor, val coldTemperature: Quantity<Temperature>, val hotTemperature: Quantity<Temperature>, ) {
+class ThermalTint(
+    val coldTint: MyColor,
+    val hotTint: MyColor,
+    val coldTemperature: Quantity<Temperature>,
+    val hotTemperature: Quantity<Temperature>,
+) {
     companion object {
         val DEFAULT = ThermalTintBuilder().build()
 
@@ -234,6 +244,44 @@ fun VertexConsumer.eln2SubmitOBBAtLevelStage(stack: PoseStack, obb: OrientedBoun
     stack, obb, rgba,
     camera.position.x, camera.position.y, camera.position.z
 )
+
+fun eln2UploadSubImage2DRGBA(image: NativeImage, textureId: ResourceLocation, x: Int, y: Int, w: Int, h: Int) {
+    RenderSystem.assertOnRenderThread()
+
+    MemoryStack.stackPush().use { stack ->
+        val buf = stack.malloc(w * h * 4)
+
+        var row = 0
+        while (row < h) {
+            var column = 0
+            while (column < w) {
+                buf.putInt(image.getPixelRGBA(x + column, y + row))
+                column++
+            }
+
+            row++
+        }
+
+        buf.flip()
+
+        GL11.glPixelStorei(
+            GL11.GL_UNPACK_ALIGNMENT,
+            1
+        )
+
+        GL11.glTexSubImage2D(
+            GL11.GL_TEXTURE_2D,
+            0,
+            x,
+            y,
+            w,
+            h,
+            GL11.GL_RGBA,
+            GL11.GL_UNSIGNED_BYTE,
+            buf
+        )
+    }
+}
 
 class ObjWriter {
     val file = FileWriter(File("test.obj"), false)
@@ -474,7 +522,7 @@ data class SketchExtrusion(
     val f0: Pose3d,
     val f1: Pose3d,
     val rmfProgression: ArrayList<Pose3dParametric>,
-    val rmfLookup: Double2ObjectOpenHashMap<Pose3d>
+    val rmfLookup: Double2ObjectOpenHashMap<Pose3d>,
 )
 
 /**

@@ -25,6 +25,7 @@ import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.containers.ContainerRegistry
 import org.eln2.mc.common.content.Content
+import org.eln2.mc.common.content.OscilloscopeShader
 import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.entities.EntityRegistry
 import org.eln2.mc.common.grids.TerminalHighlightRenderer
@@ -93,6 +94,7 @@ class Eln2 {
 
         modEventBus.addListener(OverlayRegistry::register)
         modEventBus.addListener(KeyMappingRegistry::register)
+        modEventBus.addListener(OscilloscopeShader::register)
 
         forgeEventBus.addListener(Eln2Config::registerClientCommands);
 

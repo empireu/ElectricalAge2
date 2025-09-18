@@ -185,6 +185,13 @@ object FlwVisualizerRegistry {
                 rotation = PI
             )
         }
+
+        setPartVisualizer<OscilloscopePart>(Content.TEST.part.get()) { ctx, part ->
+            BasicPartVisual(
+                ctx, part,
+                FlwModels.FLAT_OSCILLOSCOPE_PART
+            )
+        }
     }
 
     fun registerSpecVisualizers() {

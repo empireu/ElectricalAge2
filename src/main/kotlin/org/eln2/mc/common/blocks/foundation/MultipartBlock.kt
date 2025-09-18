@@ -74,7 +74,12 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.function.Consumer
 
-class MultipartBlock : BaseEntityBlock(Properties.copy(Blocks.STONE).noOcclusion().destroyTime(0.2f)), SimpleWaterloggedBlock {
+class MultipartBlock : BaseEntityBlock(
+    Properties.copy(Blocks.STONE)
+        .noOcclusion()
+        .destroyTime(0.2f)
+        .dynamicShape()
+), SimpleWaterloggedBlock {
     companion object {
         val WATERLOGGED: BooleanProperty = BlockStateProperties.WATERLOGGED
     }
@@ -427,7 +432,7 @@ class MultipartBlockEntityLevelRender(val context: BlockEntityRendererProvider.C
         pPackedLight: Int,
         pPackedOverlay: Int
     ) {
-        pBlockEntity.levelRender(
+        pBlockEntity.additionalRender(
             pPartialTick,
             pPoseStack,
             pBuffer,
@@ -435,20 +440,28 @@ class MultipartBlockEntityLevelRender(val context: BlockEntityRendererProvider.C
             pPackedOverlay
         )
     }
+
+    override fun shouldRenderOffScreen(pBlockEntity: MultipartBlockEntity): Boolean {
+        return pBlockEntity.additionalRenderShouldRenderOffScreen()
+    }
 }
 
 /**
  * Implemented by parts which render additional things on the [BlockEntityRenderer]'s call.
- * See [MultipartBlockEntity.levelRender] for more information.
+ * See [MultipartBlockEntity.additionalRender] for more information.
  * */
 @ClientOnly
 interface AdditionalRenderingPart {
-    fun levelRender(
-        pPartialTick: Float,
-        pPoseStack: PoseStack,
-        pBuffer: MultiBufferSource,
-        pPackedLight: Int,
-        pPackedOverlay: Int
+    fun levelRender(context: Context)
+
+    fun shouldRenderOffScreen() : Boolean = true
+
+    data class Context(
+        val partialTick: Float,
+        val poseStack: PoseStack,
+        val buffer: MultiBufferSource,
+        val packedLight: Int,
+        val packedOverlay: Int
     )
 }
 
@@ -504,18 +517,35 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
      * Useful for e.g. the oscilloscopes, to render the in-world image.
      */
     @ClientOnly
-    fun levelRender(
+    fun additionalRender(
         pPartialTick: Float,
         pPoseStack: PoseStack,
         pBuffer: MultiBufferSource,
         pPackedLight: Int,
         pPackedOverlay: Int
     ) {
+        val context = AdditionalRenderingPart.Context(pPartialTick, pPoseStack, pBuffer, pPackedLight, pPackedOverlay)
+
         parts.values.forEach {
             if(it is AdditionalRenderingPart) {
-                it.levelRender(pPartialTick, pPoseStack, pBuffer, pPackedLight, pPackedOverlay)
+                it.levelRender(context)
             }
         }
+    }
+
+    fun additionalRenderShouldRenderOffScreen() : Boolean {
+        var result = false
+
+        parts.values.forEach {
+            if(it is AdditionalRenderingPart) {
+                if(it.shouldRenderOffScreen()) {
+                    result = true
+                    return@forEach
+                }
+            }
+        }
+
+        return result
     }
 
     /**

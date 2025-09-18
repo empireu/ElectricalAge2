@@ -66,7 +66,6 @@ import org.eln2.mc.mathematics.FacingDirection
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.CellLayer
-import org.eln2.mc.common.specs.foundation.Spec
 import org.eln2.mc.requireIsOnServerThread
 import org.joml.Vector3f
 import java.util.UUID
@@ -422,17 +421,6 @@ abstract class Part(ci: PartCreateInfo) {
         }
 
         placement.multipart.enqueuePartSync(placement.face)
-    }
-
-    /**
-     * This method invalidates the saved data and synchronizes to clients.
-     * @see setSaveDirty
-     * @see setSyncDirty
-     * */
-    @ServerOnly
-    fun setSyncAndSaveDirty() {
-        setSyncDirty()
-        setSaveDirty()
     }
 
     /**
