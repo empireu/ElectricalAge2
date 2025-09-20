@@ -583,9 +583,9 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     }
 
     protected open fun electricalConnectionPredicate(remote: Cell) : Boolean {
-        if(!remote.hasObject(Electrical)) {
-            return false
-        }
+        //if(!remote.hasObject(Electrical)) {
+        //    return false
+        //}
 
         if(ElectricalWireSize.rejectsBasedOnMutualSizesAndConfiguration(this, remote)) {
             return false

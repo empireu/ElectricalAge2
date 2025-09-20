@@ -207,7 +207,7 @@ object FlwVisualizerRegistry {
             )
         }
 
-        setPartVisualizer<OscilloscopePart>(Content.TEST.part.get()) { ctx, part ->
+        setPartVisualizer<OscilloscopePart>(Content.FLAT_OSCILLOSCOPE_PART.part.get()) { ctx, part ->
             BasicPartVisual(
                 ctx, part,
                 FlwModels.FLAT_OSCILLOSCOPE_PART

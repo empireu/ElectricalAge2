@@ -51,6 +51,7 @@ import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.*
 import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.data.PoleMap
 import org.eln2.mc.data.findDirActualPartOrNull
 import java.util.function.Supplier
 import kotlin.contracts.ExperimentalContracts
@@ -126,6 +127,9 @@ interface SidedWireSizeInfo {
     fun getElectricalSizeOnSide(side: Base6Direction3d, targetCell: Cell) : ElectricalWireSize?
 }
 
+/**
+ * Electrical wire size provider, that supplies one size for all horizontal directions.
+ * */
 interface SidedWireSizeInfoULDR : SidedWireSizeInfo {
     val electricalWireSize: ElectricalWireSize?
 
@@ -136,6 +140,21 @@ interface SidedWireSizeInfoULDR : SidedWireSizeInfo {
         Base6Direction3d.Right -> electricalWireSize
         Base6Direction3d.Up -> null
         Base6Direction3d.Down -> null
+    }
+}
+
+/**
+ * Electrical wire size provider, based on a pole map.
+ * */
+interface SidedWireSizeInfoMapped<C> : SidedWireSizeInfo where C : Cell, C : SidedWireSizeInfoMapped<C> {
+    val electricalMap : PoleMap
+    val electricalSize: ElectricalWireSize?
+
+    /**
+     * Returns the [electricalSize] is the [electricalMap] covers this connection.
+     * */
+    override fun getElectricalSizeOnSide(side: Base6Direction3d, targetCell: Cell): ElectricalWireSize? {
+        return if(electricalMap.evaluateOrNull(this as Cell, targetCell) != null) electricalSize else null
     }
 }
 

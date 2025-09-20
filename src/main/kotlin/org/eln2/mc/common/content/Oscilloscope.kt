@@ -2,38 +2,62 @@ package org.eln2.mc.common.content
 
 import com.mojang.blaze3d.platform.GlStateManager
 import com.mojang.blaze3d.platform.NativeImage
+import com.mojang.blaze3d.shaders.AbstractUniform
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.DefaultVertexFormat
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.Tesselator
 import com.mojang.blaze3d.vertex.VertexFormat
+import kotlinx.serialization.Serializable
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.GameRenderer
 import net.minecraft.client.renderer.ShaderInstance
 import net.minecraft.client.renderer.texture.DynamicTexture
+import net.minecraft.nbt.CompoundTag
 import net.minecraft.resources.ResourceLocation
 import net.minecraftforge.client.event.RegisterShadersEvent
-import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Rotation3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.mathematics.rounded
+import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
+import org.ageseries.libage.sim.electrical.mna.NEGATIVE
+import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
+import org.eln2.mc.ServerOnly
+import org.eln2.mc.TermRef
+import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.client.render.foundation.partOffsetTable
-import org.eln2.mc.clientOnlyHolder
 import org.eln2.mc.common.blocks.foundation.AdditionalRenderingPart
-import org.eln2.mc.common.parts.foundation.Part
+import org.eln2.mc.common.cells.foundation.Cell
+import org.eln2.mc.common.cells.foundation.CellCreateInfo
+import org.eln2.mc.common.cells.foundation.CellGraph
+import org.eln2.mc.common.cells.foundation.ElectricalObject
+import org.eln2.mc.common.cells.foundation.Node
+import org.eln2.mc.common.cells.foundation.SimObject
+import org.eln2.mc.common.cells.foundation.SubscriberCollection
+import org.eln2.mc.common.cells.foundation.SubscriberPhase
+import org.eln2.mc.common.cells.foundation.addPost
+import org.eln2.mc.common.grids.GridConnectionCell
+import org.eln2.mc.common.grids.GridMaterialCategory
+import org.eln2.mc.common.grids.GridNode
+import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
+import org.eln2.mc.common.parts.foundation.GridCellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.extensions.mulPose
 import org.eln2.mc.extensions.rotationFast
+import org.eln2.mc.integration.ComponentDisplay
+import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.offerPositive
+import org.eln2.mc.requireIsOnRenderThread
 import org.eln2.mc.resource
 import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.floor
-import kotlin.math.sin
 
 @ClientOnly
-private class OscilloscopeTexture(val resourceId: ResourceLocation, val columnCount: Int, val channelCount: Int) {
+class OscilloscopeTexture(val resourceId: ResourceLocation, val columnCount: Int, val channelCount: Int) {
     // No FP format, we hack away...
     private val image = NativeImage(
         NativeImage.Format.RGBA,
@@ -129,7 +153,63 @@ private class OscilloscopeTexture(val resourceId: ResourceLocation, val columnCo
     }
 }
 
-@ClientOnly
+/**
+ * Defines an oscilloscope's colors per channel.
+ * @param colors The colors for each channel, in order.
+ * */
+data class OscilloscopePalette(val colors: List<Vector3d>) {
+    val colorsInt = colors.map { MyColor(it.x.toFloat(), it.y.toFloat(), it.z.toFloat()) }
+
+    /**
+     * Raw buffer holding the data to upload to the shader.
+     * */
+    private val rawData = FloatArray(colors.size * 3)
+
+    fun setUniform(unform: AbstractUniform) {
+        unform.set(rawData)
+    }
+
+    init {
+        colors.indices.forEach { i ->
+            val color = colors[i]
+            val j = i * 3
+
+            rawData[j + 0] = color.x.toFloat()
+            rawData[j + 1] = color.y.toFloat()
+            rawData[j + 2] = color.z.toFloat()
+        }
+    }
+
+    companion object {
+        fun define(vararg components: Float) : OscilloscopePalette {
+            require(components.size % 3 == 0 && components.isNotEmpty()) {
+                "Invalid palette component count ${components.size}"
+            }
+
+            val vectors = ArrayList<Vector3d>(components.size / 3)
+
+            for (i in 0 until components.size step 3) {
+                vectors.add(
+                    Vector3d(
+                        components[i + 0].toDouble(),
+                        components[i + 1].toDouble(),
+                        components[i + 2].toDouble()
+                    )
+                )
+            }
+
+            return OscilloscopePalette(vectors)
+        }
+
+        val DEFAULT = define(
+            0.0f, 0.0f, 1.0f,
+            0.0f, 1.0f, 0.0f,
+            1.0f, 0.0f, 0.0f,
+            1.0f, 1.0f, 0.0f
+        )
+    }
+}
+
 object OscilloscopeShader {
     private var shader: ShaderInstance? = null
 
@@ -146,28 +226,25 @@ object OscilloscopeShader {
         }
     }
 
-    // Bind shader and set uniforms. Assumes texture bound to texture unit 0 before drawing.
-    fun bindAndSetUniforms(
-        thickness: Float,
-        writeX: Int,
-        sampleCount: Int,
-        alpha: Float,
-        palette: FloatArray,
-        texture: Int
-    ) {
+    /**
+     * Sets up the shader for rendering.
+     * @param thickness The approximate thickness of the line in UV-space.
+     * @param alpha Factor for the output alpha.
+     * @param palette The colors to use for each channel.
+     * @param texture The raw data buffer.
+     * */
+    fun bindAndSetup(thickness: Float, alpha: Float, palette: OscilloscopePalette, texture: OscilloscopeTexture) {
         RenderSystem.assertOnRenderThread()
-
-        // FUCK YOU MOJANG. FUCK YOU, FUCK YOU, FUCK YOU!
 
         val shader = shader ?: error("Oscilloscope shader didn't load")
 
         RenderSystem.setShader { shader }
-        shader.safeGetUniform("Sampler0").set(texture)
-        shader.safeGetUniform("u_writeX").set(writeX.toFloat())
-        shader.safeGetUniform("u_count").set(sampleCount.toFloat())
+        shader.safeGetUniform("Sampler0").set(texture.glTex.id)
+        shader.safeGetUniform("u_writeX").set(texture.writeX.toFloat())
+        shader.safeGetUniform("u_count").set(texture.count.toFloat())
         shader.safeGetUniform("u_thickness").set(thickness)
         shader.safeGetUniform("u_alpha").set(alpha)
-        shader.safeGetUniform("u_channelColors").set(palette)
+        palette.setUniform(shader.safeGetUniform("u_channelColors"))
     }
 
     fun unbind() {
@@ -175,11 +252,202 @@ object OscilloscopeShader {
     }
 }
 
-class OscilloscopePart(ci: PartCreateInfo) : Part(ci), AdditionalRenderingPart {
+/**
+ * Oscilloscope settings that don't change at runtime.
+ * @param channelCount The number of channels. For each channel, a resistor will be created, that is grounded at the negative terminal and connected to the external circuit at the positive terminal.
+ * @param minWindow The minimum number of samples on screen.
+ * @param maxWindow The maximum number of samples on screen. This defines the time horizon based on the sampling rate (in optimal conditions, 100 samples/s).
+ * */
+data class OscilloscopeSpecification(val channelCount: Int, val minWindow: Int, val maxWindow: Int, val palette: OscilloscopePalette)
+
+/**
+ * The electrical part of the oscilloscope. Handles creating resistors with a very high resistance to ground.
+ * */
+class OscilloscopeObject(cell: OscilloscopeCell, val specification: OscilloscopeSpecification) : ElectricalObject<OscilloscopeCell>(cell) {
+    val channelRange = 0 until specification.channelCount
+    val resistors = Array<Resistor?>(specification.channelCount) { null }
+
+    override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo): TermRef? {
+        val terminal = m0.terminal
+
+        if(!channelRange.contains(terminal)) {
+            return null
+        }
+
+        val storedResistor = resistors[terminal]
+        if(storedResistor != null) {
+            return storedResistor.offerPositive()
+        }
+
+        val resistor = Resistor()
+        resistor.resistance = 1e8
+        resistors[terminal] = resistor
+
+        return resistor.offerPositive()
+    }
+
+    override fun build(map: ElectricalConnectivityMap) {
+        super.build(map)
+
+        resistors.forEach {
+            it?.ground(NEGATIVE)
+        }
+    }
+
+    override fun clearComponents() {
+        resistors.fill(null)
+    }
+
+    fun getPotential(channel: Int) : Double {
+        check(channelRange.contains(channel)) {
+            "Cannot read channel $channel of an oscilloscope with $channelRange"
+        }
+
+        return -(resistors[channel]?.potential ?: 0.0)
+    }
+}
+
+fun interface OscilloscopeSampleConsumer {
+    fun consume(samples: FloatArray, timestamp: Double)
+}
+
+class OscilloscopeCell(ci: CellCreateInfo, specification: OscilloscopeSpecification) : Cell(ci) {
+    @SimObject
+    val oscilloscope = OscilloscopeObject(this, specification)
+
+    @Node
+    val grid = GridNode(this)
+
+    // For attaching real-time timestamps onto the columns.
+    val timer = Stopwatch()
+
+    private var listener: OscilloscopeSampleConsumer? = null
+
+    override fun subscribe(subscribers: SubscriberCollection) {
+        super.subscribe(subscribers)
+        subscribers.addPost(this::sampleAndRaiseEvent)
+    }
+
+    private fun sampleAndRaiseEvent(dt: Double, phase: SubscriberPhase) {
+        val consumer = listener
+            ?: return
+
+        val buffer = FloatArray(oscilloscope.specification.channelCount)
+
+        for (i in 0 until oscilloscope.specification.channelCount) {
+            buffer[i] = oscilloscope.getPotential(i).toFloat()
+        }
+
+        consumer.consume(buffer, !timer.total)
+    }
+
+    fun bind(consumer: OscilloscopeSampleConsumer) {
+        listener = consumer
+    }
+
+    fun unbind() {
+        listener = null
+    }
+}
+
+/**
+ * @param desiredSize The desired size of the buffer, in samples.
+ * @param maxSize Hard cap on the size. If samples aren't consumed in time, the buffer will discard the oldest samples so this threshold isn't broken.
+ * @param dtControl The time interval of the control loop. The time interval at which [extractOrNull] is called should ideally be much larger than this.
+ * */
+class OscilloscopeJitterBuffer(
+    val desiredSize: Int,
+    val maxSize: Int,
+    val kP: Double,
+    val kI: Double,
+    val dtControl: Double = 1 / 30.0
+) {
+    private val obj = Any()
+    private val queue = ArrayDeque<FloatArray>()
+
+    val size get() = queue.size
+
+    private val extractionWatch = Stopwatch()
+    private val controlWatch = Stopwatch()
+
+    private var nextPlayTime = desiredSize * CellGraph.DT
+
+    var playRate = 1.0 / CellGraph.DT
+        private set
+
+    private var int = 0.0
+
+    fun insertMessage(samples: FloatArray, serverTimeStamp: Double) {
+        synchronized(obj) {
+            while(queue.size >= maxSize) {
+                queue.removeFirst()
+            }
+
+            queue.add(samples)
+        }
+    }
+
+    fun extractOrNull() : FloatArray? {
+        val extractionTime = !extractionWatch.total
+
+        if(extractionTime < nextPlayTime) {
+            control()
+            return null
+        }
+
+        var samples: FloatArray? = null
+        synchronized(obj) {
+            if(queue.isNotEmpty()) {
+                samples = queue.removeFirst()
+            }
+        }
+
+        nextPlayTime += 1.0 / playRate
+        control()
+
+        return samples
+    }
+
+    private fun control() {
+        if(controlWatch.total >= dtControl) {
+            controlWatch.resetTotal()
+
+            val error = (desiredSize - size).toDouble()
+
+            int += error * dtControl
+            val deltaRate = kP * error + kI * int
+
+            playRate -= deltaRate
+            playRate = playRate.coerceIn(1.0, 1.0 / CellGraph.DT)
+        }
+    }
+}
+
+class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecification) :
+    GridCellPart<OscilloscopeCell>(ci, Content.BASIC_TWO_CHANNEL_OSCILLOSCOPE_CELL.get()),
+    AdditionalRenderingPart,
+    ComponentDisplay
+{
+    val channel0 = defineCellBoxTerminalBB(
+        0.375, 0.1, 6.0,
+        0.625, 0.5, 0.5,
+        highlightColor = specification.palette.colorsInt[0],
+        categories = listOf(GridMaterialCategory.SignalGrid)
+    )
+
+    val channel1 = defineCellBoxTerminalBB(
+        0.375, 0.1, 9.475,
+        0.625, 0.5, 0.5,
+        highlightColor = specification.palette.colorsInt[1],
+        categories = listOf(GridMaterialCategory.SignalGrid)
+    )
+
     @ClientOnly
     private class RenderState(horizonColumns: Int, channels: Int) {
         init {
-            RenderSystem.assertOnRenderThread()
+            requireIsOnRenderThread {
+                "Tried to create oscilloscope render state on non-render thread"
+            }
         }
 
         val texture = OscilloscopeTexture(
@@ -188,37 +456,52 @@ class OscilloscopePart(ci: PartCreateInfo) : Part(ci), AdditionalRenderingPart {
             channels
         )
 
+        val buffer = OscilloscopeJitterBuffer(
+            100,
+            200,
+            0.035,
+            0.0085
+        )
+
         fun close() {
             texture.close()
         }
     }
 
+    @ServerOnly // Saved in NBT
+    private var timeWindow = specification.maxWindow / 2
+
     // Initialize on render thread (first call to [levelRender]
-    private var renderStateImpl = clientOnlyHolder {
-        RenderState(1000, 2)
+    @ClientOnly
+    private var renderStateImpl : RenderState? = null
+
+    //#region Rendering Only
+
+    @ClientOnly
+    private fun destroyRenderState() {
+        if(placement.level.isClientSide) {
+            renderStateImpl?.close()
+        }
     }
 
     override fun onUnloaded() {
-        if(placement.level.isClientSide) {
-            renderStateImpl.get().close()
-        }
-
         super.onUnloaded()
+        destroyRenderState()
     }
 
-    val sww = Stopwatch()
-    var t = 0.0
+    override fun onBroken() {
+        super.onBroken()
+        destroyRenderState()
+    }
 
     override fun levelRender(context: AdditionalRenderingPart.Context) {
-        val renderState = renderStateImpl.get()
+        val renderState = this.renderStateImpl
+            ?: return
 
-        if(sww.total > 0.01) {
-            sww.resetTotal()
-            renderState.texture.writeColumnAndUpload(FloatArray(2) {
-                0.9f * sin(Rotation2d.exp(t * 2.0f).ln() + it * PI / 2.0).toFloat()
-            })
+        val newSamples = renderState.buffer.extractOrNull()
 
-            t += 0.01
+        if(newSamples != null) {
+            renderState.texture.writeColumnAndUpload(newSamples)
         }
 
         val poseStack = context.poseStack
@@ -242,34 +525,19 @@ class OscilloscopePart(ci: PartCreateInfo) : Part(ci), AdditionalRenderingPart {
         // z = height, x = width
         poseStack.scale(0.5f, 1.0f, 0.4f);
         poseStack.mulPose(Rotation3d.exp(Vector3d.unitX * PI / 2.0))
-        //pPoseStack.translate(-0.5, 0.0, -0.5)
 
-        // Bind texture to texture unit 0 (sampler 0 in shader)
         val texLoc = renderState.texture.resourceId
-        // Define your palette here
-        val bluePalette = floatArrayOf(
-            // Channel 0: Blue
-            0.0f, 0.0f, 1.0f,
-            // Channel 1: (Unused, e.g., Green)
-            0.0f, 1.0f, 0.0f,
-            // Channel 2: (Unused, e.g., Red)
-            1.0f, 0.0f, 0.0f,
-            // Channel 3: (Unused, e.g., Yellow)
-            1.0f, 1.0f, 0.0f
-        )
 
         RenderSystem.setShaderTexture(0, texLoc)
 
-        OscilloscopeShader.bindAndSetUniforms(
+        OscilloscopeShader.bindAndSetup(
             0.04f,
-            renderState.texture.writeX,
-            renderState.texture.count,
             1.0f,
-            bluePalette,
-            renderState.texture.glTex.id
+            specification.palette,
+            renderState.texture
         )
 
-        texturedQuad(poseStack);
+        dispatchQuad(poseStack);
         OscilloscopeShader.unbind();
 
         poseStack.popPose()
@@ -280,7 +548,7 @@ class OscilloscopePart(ci: PartCreateInfo) : Part(ci), AdditionalRenderingPart {
     }
 
     // One draw call per oscilloscope, it's fine
-    private fun texturedQuad(poseStack: PoseStack) {
+    private fun dispatchQuad(poseStack: PoseStack) {
         RenderSystem.enableBlend()
 
         RenderSystem.blendFunc(
@@ -305,5 +573,70 @@ class OscilloscopePart(ci: PartCreateInfo) : Part(ci), AdditionalRenderingPart {
         builder.vertex(pose, quadRight, quadTop, 0f).uv(1f, 0f).endVertex()
         builder.vertex(pose, quadLeft, quadTop, 0f).uv(0f, 0f).endVertex()
         tesselator.end()
+    }
+
+    //#endregion
+
+    @ServerOnly
+    override fun getServerSaveTag(): CompoundTag {
+        val tag = super.getServerSaveTag()
+        tag.putInt(TIME_WINDOW, timeWindow)
+        return tag
+    }
+
+    @ServerOnly
+    override fun loadServerSaveTag(tag: CompoundTag) {
+        super.loadServerSaveTag(tag)
+        timeWindow = tag.getInt(TIME_WINDOW).coerceIn(specification.minWindow, specification.maxWindow)
+    }
+
+    @ServerOnly
+    override fun onCellAcquired() {
+        super.onCellAcquired()
+        cell.bind { samples, timestamp ->
+            sendBulkPacket(UpdateMessage(samples, timestamp, timeWindow))
+        }
+    }
+
+    @ServerOnly
+    override fun onCellReleased() {
+        super.onCellReleased()
+        cell.unbind()
+    }
+
+    override fun registerPackets(builder: PacketHandlerBuilder) {
+        super.registerPackets(builder)
+        builder.withHandler<UpdateMessage>(this::handleMessage)
+    }
+
+    private fun handleMessage(message: UpdateMessage) {
+        var currentState = renderStateImpl
+
+        if(currentState == null) {
+            currentState = RenderState(message.window, specification.channelCount)
+            renderStateImpl = currentState
+        }
+        else {
+            if(currentState.texture.columnCount != message.window) {
+                currentState.close()
+                currentState = RenderState(message.window, specification.channelCount)
+                renderStateImpl = currentState
+            }
+        }
+
+        currentState.buffer.insertMessage(message.samples, message.timestamp)
+    }
+
+    @Serializable
+    private class UpdateMessage(val samples: FloatArray, val timestamp: Double, val window: Int)
+
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        for(i in 0 until specification.channelCount) {
+            builder.debugInIDE { "Ch$i: ${cell.oscilloscope.getPotential(i).rounded()}" }
+        }
+    }
+
+    companion object {
+        private const val TIME_WINDOW = "timeWindow"
     }
 }

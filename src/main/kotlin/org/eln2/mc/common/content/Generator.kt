@@ -71,6 +71,7 @@ import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import kotlin.math.abs
 import kotlin.math.min
@@ -618,7 +619,7 @@ class ThermalElectricGenerator(val coldSide: ThermalMass, val hotSide: ThermalMa
 
 class ElectricalHeatEngineCell(
     ci: CellCreateInfo,
-    electricalMap: PoleMap,
+    override val electricalMap: PoleMap,
     thermalMap: PoleMap,
     coldDef: ThermalMassDefinition,
     hotDef: ThermalMassDefinition,
@@ -628,8 +629,8 @@ class ElectricalHeatEngineCell(
     sourceResistance: Double,
     radiantInfoB1: RadiantBodyEmissionDescription?,
     radiantInfoB2: RadiantBodyEmissionDescription?,
-    override val electricalWireSize: ElectricalWireSize
-) : Cell(ci), SidedWireSizeInfoULDR {
+    override val electricalSize: ElectricalWireSize
+) : Cell(ci), SidedWireSizeInfoMapped<ElectricalHeatEngineCell> {
     @SimObject
     val source = PowerVoltageSourceObject(this, electricalMap).also {
         it.resistor.resistance = sourceResistance

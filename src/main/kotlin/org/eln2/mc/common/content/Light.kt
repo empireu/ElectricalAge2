@@ -225,12 +225,12 @@ abstract class LightCell(ci: CellCreateInfo, val lightVariantType: LightVariantT
 
 class PolarLightCell(
     ci: CellCreateInfo,
-    map: PoleMap,
+    override val electricalMap: PoleMap,
     variantType: LightVariantType,
-    override val electricalWireSize: ElectricalWireSize?
-) : LightCell(ci, variantType), SidedWireSizeInfoULDR {
+    override val electricalSize: ElectricalWireSize?
+) : LightCell(ci, variantType), SidedWireSizeInfoMapped<PolarLightCell> {
     @SimObject
-    override val resistor = PolarResistorObjectVirtual(self(), map)
+    override val resistor = PolarResistorObjectVirtual(self(), electricalMap)
 
     override val resistorDisplay get() = resistor.resistorDisplay
 

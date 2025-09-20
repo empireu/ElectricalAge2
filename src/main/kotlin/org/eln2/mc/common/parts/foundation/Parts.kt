@@ -1057,7 +1057,7 @@ abstract class GridCellPart<C : Cell>(
         }
     }
 
-    override fun getServerSaveTag(): CompoundTag? {
+    override fun getServerSaveTag(): CompoundTag {
         val tag = super.getServerSaveTag() ?: CompoundTag()
 
         tag.put(GRID_TERMINAL_SYSTEM, gridTerminalSystem.save(GridTerminalSystem.SaveType.Server))
@@ -1160,7 +1160,7 @@ abstract class GridCellPart<C : Cell>(
         modelScale: Double = 1.0
     ) : Supplier<GridTerminal> {
         val size = Vector3d(sizeX / 16.0, sizeY / 16.0, sizeZ / 16.0) * modelScale
-        val box = BoundingBox3d.fromCenterSize(((Vector3d(x / 16.0, y / 16.0, z / 16.0)) - Vector3d.one * maskXY / 2.0) * modelScale + size / 2.0, size)
+        val box = BoundingBox3d.fromCenterSize(-Vector3d.unitY * size.y / 2.0 + ((Vector3d(x / 16.0, y / 16.0, z / 16.0)) - Vector3d.one * maskXY / 2.0) * modelScale + size / 2.0, size)
         return defineCellBoxTerminal(boundingBox(box, orientation), attachment, highlightColor, categories)
     }
 

@@ -1039,8 +1039,19 @@ object Content {
 
     //#region Oscilloscopes
 
-    val TEST = partImmediateBB("test", 14.0, 0.75, 10.0) {
-        OscilloscopePart(it)
+    val BASIC_TWO_CHANNEL_OSCILLOSCOPE_SPECIFICATION = OscilloscopeSpecification(
+        2,
+        10,
+        1000,
+        OscilloscopePalette.DEFAULT
+    )
+
+    val BASIC_TWO_CHANNEL_OSCILLOSCOPE_CELL = cellImmediate("basic_two_channel_oscilloscope") {
+        OscilloscopeCell(it, BASIC_TWO_CHANNEL_OSCILLOSCOPE_SPECIFICATION)
+    }
+
+    val FLAT_OSCILLOSCOPE_PART = partImmediateBB("basic_two_channel_oscilloscope", 14.0, 0.75, 10.0) {
+        OscilloscopePart(it, BASIC_TWO_CHANNEL_OSCILLOSCOPE_SPECIFICATION)
     }
 
     //#endregion

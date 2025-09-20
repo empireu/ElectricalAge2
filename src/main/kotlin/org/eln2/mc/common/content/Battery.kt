@@ -435,12 +435,17 @@ abstract class BatteryCell(
     }
 }
 
-class PolarBatteryCell(ci: CellCreateInfo, model: BatteryModel, val map: PoleMap, override val electricalWireSize: ElectricalWireSize) : BatteryCell(ci, model), SidedWireSizeInfoULDR {
+class PolarBatteryCell(
+    ci: CellCreateInfo,
+    model: BatteryModel,
+    override val electricalMap: PoleMap,
+    override val electricalSize: ElectricalWireSize
+) : BatteryCell(ci, model), SidedWireSizeInfoMapped<PolarBatteryCell> {
     @SimObject
-    override val generator = PolarVRGObject(this, map)
+    override val generator = PolarVRGObject(this, electricalMap)
 
     override fun cellConnectionPredicate(remote: Cell): Boolean {
-        return super.cellConnectionPredicate(remote) && map.evaluateOrNull(this, remote) != null
+        return super.cellConnectionPredicate(remote) && electricalMap.evaluateOrNull(this, remote) != null
     }
 }
 
