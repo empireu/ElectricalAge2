@@ -1,6 +1,5 @@
 package org.eln2.mc.common.content
 
-import it.unimi.dsi.fastutil.ints.IntArrayList
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
@@ -103,15 +102,14 @@ class GridAnchorElectricalObject(cell: Cell, val anchorResistance: Double) : Ele
 }
 
 class GridAnchorCell(ci: CellCreateInfo, crossResistance: Double) : Cell(ci) {
+    override val isExclusivelyGridConnected: Boolean
+        get() = true
+
     @Node
     val grid = GridNode(this)
 
     @SimObject
     val electricalAnchor = GridAnchorElectricalObject(this, crossResistance)
-
-    override fun cellConnectionPredicate(remote: Cell): Boolean {
-        return remote is GridConnectionCell && super.cellConnectionPredicate(remote)
-    }
 }
 
 class GridAnchorSpec(ci: SpecCreateInfo, terminalSize: Vector3d, categories: List<GridMaterialCategory>) : CellSpec<GridAnchorCell>(ci, Content.MICRO_GRID_ANCHOR_CELL.get()),
@@ -179,8 +177,8 @@ class GridInterfaceCell(
     ci: CellCreateInfo,
     tapResistance: Double,
     anchorResistance: Double,
-    override val electricalWireSize: ElectricalWireSize?
-) : Cell(ci), SidedWireSizeInfoULDR {
+    override val electricalWireSize: ElectricalSize
+) : Cell(ci), SidedElectricalULDR<GridInterfaceCell> {
     @Node
     val grid = GridNode(this)
 

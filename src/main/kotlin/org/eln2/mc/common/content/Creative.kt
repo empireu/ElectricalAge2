@@ -7,26 +7,22 @@ import org.ageseries.libage.data.classify
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.BasicPartVisual
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
-import org.eln2.mc.common.cells.foundation.Cell
-import org.eln2.mc.common.cells.foundation.CellCreateInfo
-import org.eln2.mc.common.cells.foundation.SimObject
-import org.eln2.mc.common.cells.foundation.VoltageSourceObject
+import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.common.parts.foundation.PartUseInfo
-import org.eln2.mc.data.withDirectionRulePlanar
+import org.eln2.mc.data.MonopoleMap
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.mathematics.Base6Direction3dMask
 
-class VoltageSourceCell(ci: CellCreateInfo) : Cell(ci) {
+class VoltageSourceCell(
+    ci: CellCreateInfo,
+    override val electricalMap: MonopoleMap,
+    override val electricalSize: ElectricalSize
+) : Cell(ci), SidedElectricalMonoMapped<VoltageSourceCell> {
     @SimObject
     val voltageSource = VoltageSourceObject(this).also {
         it.source.potential = 1200.0
-    }
-
-    init {
-        ruleSet.withDirectionRulePlanar(Base6Direction3dMask.FRONT)
     }
 }
 

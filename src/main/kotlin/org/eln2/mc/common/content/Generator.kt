@@ -67,12 +67,9 @@ import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.control.PIDController
 import org.eln2.mc.data.PoleMap
-import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.mathematics.Base6Direction3d
-import org.eln2.mc.mathematics.Base6Direction3dMask
 import kotlin.math.abs
 import kotlin.math.min
 
@@ -200,20 +197,19 @@ class FuelBurnerBehavior(val cell: Cell, val body: ThermalMass) : CellBehavior {
         .useSubTagIfPreset(PID) { pid.stateFromNbt(it) }
 }
 
-class HeatGeneratorCell(ci: CellCreateInfo, thermalDef: ThermalMassDefinition, leakageParameters: ConnectionParameters) : Cell(ci), ThermalContactInfo {
+class HeatGeneratorCell(ci: CellCreateInfo, thermalDef: ThermalMassDefinition, leakageParameters: ConnectionParameters) : Cell(ci), ThermalContactInfo, SidedThermalULDR<HeatGeneratorCell> {
     companion object {
         private const val BURNER_BEHAVIOR = "burner"
     }
+
+    override val thermalWireSize: ThermalSize
+        get() = ThermalSize.Any
 
     @SimObject
     val thermalWire = ThermalWireObject(this, thermalDef(), leakageParameters)
 
     @Behavior
     val burner = FuelBurnerBehavior(this, thermalWire.thermalBody)
-
-    init {
-        ruleSet.withDirectionRulePlanar(Base6Direction3dMask.HORIZONTALS)
-    }
 
     val needsFuel get() = burner.availableEnergy.value approxEq 0.0
 
@@ -620,7 +616,7 @@ class ThermalElectricGenerator(val coldSide: ThermalMass, val hotSide: ThermalMa
 class ElectricalHeatEngineCell(
     ci: CellCreateInfo,
     override val electricalMap: PoleMap,
-    thermalMap: PoleMap,
+    override val thermalMap: PoleMap,
     coldDef: ThermalMassDefinition,
     hotDef: ThermalMassDefinition,
     coldLeakage: ConnectionParameters,
@@ -629,8 +625,9 @@ class ElectricalHeatEngineCell(
     sourceResistance: Double,
     radiantInfoB1: RadiantBodyEmissionDescription?,
     radiantInfoB2: RadiantBodyEmissionDescription?,
-    override val electricalSize: ElectricalWireSize
-) : Cell(ci), SidedWireSizeInfoMapped<ElectricalHeatEngineCell> {
+    override val electricalSize: ElectricalSize,
+    override val thermalSize: ThermalSize
+) : Cell(ci), SidedElectricalMapped<ElectricalHeatEngineCell>, SidedThermalMapped<ElectricalHeatEngineCell> {
     @SimObject
     val source = PowerVoltageSourceObject(this, electricalMap).also {
         it.resistor.resistance = sourceResistance

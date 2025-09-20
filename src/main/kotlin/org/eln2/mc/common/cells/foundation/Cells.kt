@@ -27,9 +27,11 @@ import org.ageseries.libage.utils.sourceName
 import org.eln2.mc.*
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.SimulationObjectType.*
-import org.eln2.mc.common.content.ElectricalWireSize
+import org.eln2.mc.common.grids.GridConnectionCell
+import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.data.*
 import org.eln2.mc.extensions.*
+import org.eln2.mc.mathematics.Base6Direction3d
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -435,10 +437,6 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     lateinit var graph: CellGraph
     var connections: ArrayList<Cell> = ArrayList(0)
 
-    val ruleSet by lazy {
-        LocatorRelationRuleSet()
-    }
-
     /**
      * Event bus where all calls from [CellLifetime] are also directed.
      * */
@@ -582,32 +580,92 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
         return result
     }
 
-    protected open fun electricalConnectionPredicate(remote: Cell) : Boolean {
-        //if(!remote.hasObject(Electrical)) {
-        //    return false
-        //}
+    /*
+     * Implicit filtering behavior for all cells.
+     * With the growing complexity (multiple electrical sizes per cell, multiple wire sizes), each cell started needing connection predicates.
+     * I have distilled that logic into these default filtering rules, based on "sizes".
+    */
 
-        if(ElectricalWireSize.rejectsBasedOnMutualSizesAndConfiguration(this, remote)) {
-            return false
-        }
-
-        return true
+    /**
+     * Checks if the remote cell is a [GridConnectionCell].
+     * */
+    protected open fun defaultExclusivelyGridConnectionPredicate(remote: Cell) : Boolean {
+        return remote is GridConnectionCell
     }
 
     /**
+     * Checks if the thermal connection sizes on the sides of this and [remote] that are in contact are compatible.
+     * */
+    protected open fun defaultThermalConnectionPredicate(remote: Cell) : Boolean {
+        return !connectionSizeRejection<SidedThermal<*>, ThermalSize>(this, remote, ThermalSize.compatibility) {
+            int, dir, b -> int.getThermalSizeOnSide(dir, b)
+        }
+    }
+
+    /**
+     * Checks if the electrical connection sizes on the sides of this and [remote] that are in contact are compatible.
+     * */
+    protected open fun defaultElectricalConnectionPredicate(remote: Cell) : Boolean {
+        return !connectionSizeRejection<SidedElectrical<*>, ElectricalSize>(this, remote, ElectricalSize.compatibility) {
+            int, dir, b -> int.getElectricalSizeOnSide(dir, b)
+        }
+    }
+
+    // Default to just the cell predicates:
+
+    open fun thermalObjectPredicate(remote: ThermalObject<*>) = defaultThermalConnectionPredicate(remote.cell)
+
+    open fun electricalObjectPredicate(remote: ElectricalObject<*>) = defaultElectricalConnectionPredicate(remote.cell)
+
+    /**
+     * If true, the default connection predicate will check only if the remote cell is a [GridConnectionCell].
+     * P.S.
+     * */
+    open val isExclusivelyGridConnected get() = false
+
+    /**
+     * If true, the default connection predicate will, instead of allowing connection if a **thermal OR an electrical connection** is possible, allow the cell connection only if **the default thermal predicate reports true**.
+     * Use it for transport devices only. *P.S. I haven't found a legitimate use for it yet.*
+     * */
+    open val isExclusivelyThermalConnected get() = false
+
+    /**
+     * If true, the default connection predicate will, instead of allowing connection if a **thermal OR an electrical connection** is possible, allow the cell connection only if **the default electrical predicate reports true**.
+     * Use it for transport devices only. For example, set it to true for an electrical wire that exports both thermal and electrical connections to the same sides, so it's not allowed to connect to a thermal conduit.
+     * */
+    open val isExclusivelyElectricalConnected get() = false
+
+    /**
      * Checks if this cell accepts a connection from the remote cell.
-     * **For cells that have electrical objects, [electricalConnectionPredicate] is evaluated automatically, in addition to the rule set!**
-     * **SPECIAL CARE MUST BE TAKEN to ensure that the results are consistent with the actual [connections]**
+     * By default, the connection is allowed if any of the default predicates ([defaultThermalConnectionPredicate], [defaultElectricalConnectionPredicate]) return true.
+     * That behavior can be changed with the toggles:
+     * - [isExclusivelyGridConnected] - only for pure grid devices (e.g. anchors)
+     * - [isExclusivelyElectricalConnected] - e.g. for electrical wires, that, because they export electrical and thermal connections on all sides, would be allowed to connect to thermal wires by the default predicate
      * @return True if the connection is accepted. Otherwise, false.
      * */
     protected open fun cellConnectionPredicate(remote: Cell) : Boolean {
-        if(this.hasObject(Electrical)) {
-            if(!electricalConnectionPredicate(remote)) {
-                return false
-            }
+        if(isExclusivelyGridConnected) {
+            return defaultExclusivelyGridConnectionPredicate(remote)
         }
 
-        return ruleSet.accepts(locator, remote.locator)
+        if(isExclusivelyThermalConnected) {
+            return defaultThermalConnectionPredicate(remote)
+        }
+
+        if(isExclusivelyElectricalConnected) {
+            return defaultElectricalConnectionPredicate(remote)
+        }
+
+        // By default, allow *Cell-Cell* connection if any of the exported simulation domain connection sizes coincide:
+        if(this.hasObject(Thermal) && defaultThermalConnectionPredicate(remote)) {
+            return true
+        }
+
+        if(this.hasObject(Electrical) && defaultElectricalConnectionPredicate(remote)) {
+            return true
+        }
+
+        return false // Disallow because no connection sizes coincide.
     }
 
     /**
@@ -629,23 +687,21 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
             if(remote.hasObject(localObj.type)) {
                 val remoteObj = remote.objects[localObj.type]
 
-                if(localObj.acceptsRemoteLocation(remote.locator) && remoteObj.acceptsRemoteLocation(this.locator)) {
-                    when(localObj.type) {
-                        Electrical -> {
-                            localObj as ElectricalObject
-                            remoteObj as ElectricalObject
+                when(localObj.type) {
+                    Electrical -> {
+                        localObj as ElectricalObject
+                        remoteObj as ElectricalObject
 
-                            if(localObj.acceptsRemoteObject(remoteObj) && remoteObj.acceptsRemoteObject(localObj)) {
-                                count++
-                            }
+                        if(localObj.acceptsRemoteObject(remoteObj) && remoteObj.acceptsRemoteObject(localObj)) {
+                            count++
                         }
-                        Thermal -> {
-                            localObj as ThermalObject
-                            remoteObj as ThermalObject
+                    }
+                    Thermal -> {
+                        localObj as ThermalObject
+                        remoteObj as ThermalObject
 
-                            if(localObj.acceptsRemoteObject(remoteObj) && remoteObj.acceptsRemoteObject(localObj)) {
-                                count++
-                            }
+                        if(localObj.acceptsRemoteObject(remoteObj) && remoteObj.acceptsRemoteObject(localObj)) {
+                            count++
                         }
                     }
                 }
@@ -966,10 +1022,6 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
                 }
 
                 val remoteObj = remoteCell.objects[localObj.type]
-
-                if (!localObj.acceptsRemoteLocation(remoteCell.locator) || !remoteObj.acceptsRemoteLocation(this.locator)) {
-                    continue
-                }
 
                 when (localObj.type) {
                     Electrical -> {
@@ -2379,3 +2431,250 @@ class BasicCellProvider<T : Cell>(val factory: CellFactory<T>) : CellProvider<T>
     }
 }
 
+/**
+ * Connection filtering based on "connection sizes".
+ * If none of the two cells is [Interface], the connection isn't rejected (no filtering).
+ * Otherwise, if any of the two cells can't evaluate a direction in the local frame towards the remote cell, the connection is rejected.
+ * Otherwise, if one of the cells isn't [Interface], the connection is rejected.
+ * Finally, both cells are [Interface]. [accessor] is called to get the [SizeEnum] on the connection sides of both cells. The connection is rejected if the sizes aren't compatible.
+ *
+ * This works for all general part and block devices.
+ * It allows multiple wire types (signal, electrical) and multiple sizes of said type.
+ * */
+private inline fun<reified Interface, SizeEnum : Indexed> connectionSizeRejection(sourceCell: Cell, targetCell: Cell, map: SizeCompatibilityMap<SizeEnum>, crossinline accessor: (Interface, Base6Direction3d, Cell) -> SizeEnum?) : Boolean {
+    val sourceIsInterface = sourceCell is Interface
+    val targetIsInterface = targetCell is Interface
+
+    if(!sourceIsInterface && !targetIsInterface) {
+        return false // No filtering to be done
+    }
+
+    val directionInSourceFrame = sourceCell.locator.findDirActualPartOrNull(targetCell.locator)
+    val directionInTargetFrame = targetCell.locator.findDirActualPartOrNull(sourceCell.locator)
+
+    // We reject implicitly if we can't get the local directions for both cells.
+    if(directionInSourceFrame == null || directionInTargetFrame == null) {
+        return true
+    }
+
+    if(sourceIsInterface && !targetIsInterface) {
+        return true
+    }
+
+    @Suppress("KotlinConstantConditions") // Suggestion is wrong. Jetbrains pls fix
+    if(!sourceIsInterface && targetIsInterface) {
+        return true
+    }
+
+    sourceCell as Interface
+    targetCell as Interface
+
+    // Now we just check if:
+    // a. They both have sizes defined (not null)
+    // b. The sizes are compatible.
+    val sourceSize = accessor(sourceCell, directionInSourceFrame, targetCell)
+    val remoteSize = accessor(targetCell, directionInTargetFrame, sourceCell)
+
+    return (sourceSize == null || remoteSize == null) || !map.areCompatible(sourceSize, remoteSize)
+}
+
+private interface Indexed {
+    val index: Int
+}
+
+fun interface SizeCompatibilityMap<SizeEnum> {
+    fun areCompatible(a: SizeEnum, b: SizeEnum) : Boolean
+}
+
+private class SizeCompatibilityMatrixBuilder<SizeEnum>(last: SizeEnum) where SizeEnum : Indexed {
+    private val stride = last.index + 1
+    private val matrix = BooleanArray(stride * stride)
+
+    fun compatible(a: SizeEnum, b: SizeEnum) : SizeCompatibilityMatrixBuilder<SizeEnum> {
+        matrix[a.index * stride + b.index] = true
+        matrix[b.index * stride + a.index] = true
+        return this
+    }
+
+    fun selfCompatible(iterable: Iterable<SizeEnum>) : SizeCompatibilityMatrixBuilder<SizeEnum> {
+        iterable.forEach {
+            compatible(it, it)
+        }
+
+        return this
+    }
+
+    fun build() : SizeCompatibilityMap<SizeEnum>  {
+        val map = matrix.clone()
+
+        return SizeCompatibilityMap { a, b ->
+            map[a.index * stride + b.index]
+        }
+    }
+}
+
+enum class ThermalSize(val sizeTranslationKey: String, override val index: Int) : Indexed {
+    Standard("standard_thermal_size", 0),
+    Any("any_thermal_size", 1);
+
+    companion object {
+        val compatibility = SizeCompatibilityMatrixBuilder<ThermalSize>(Any)
+            .selfCompatible(entries)
+            .compatible(Standard, Any)
+            .build()
+    }
+}
+
+enum class ElectricalSize(val sizeTranslationKey: String, override val index: Int) : Indexed {
+    Standard("standard_electrical_size", 0),
+    Signal("signal_size", 1),
+    Any("any_electrical_size", 2); // Except for signal!
+
+    companion object {
+        val compatibility = SizeCompatibilityMatrixBuilder<ElectricalSize>(Any)
+            .selfCompatible(entries)
+            .compatible(Standard, Any)
+            .build()
+    }
+}
+
+/**
+ * Supplies the [ElectricalSize] for a side of the cell, in the local frame.
+ * If the returned size is null, the connection is rejected immediately. If the returned size is not equal to the other cell's size on its respective side, the connection is also rejected.
+ * The connection is accepted if both cells report the same size on their respective sides.
+ * */
+interface SidedElectrical<C> where C : Cell, C : SidedElectrical<C> {
+    /**
+     * Gets the size of the electrical wire on that side.
+     * @param side The side, pre-calculated, in the cell's local frame.
+     * @param targetCell The remote cell, useful if a locator map is used instead of raw directions in the connection code.
+     * */
+    fun getElectricalSizeOnSide(side: Base6Direction3d, targetCell: Cell) : ElectricalSize?
+}
+
+/**
+ * Cell with a constant electrical wire size on all 4 horizontal sides.
+ * To be used only for devices such as wires, anchors, connection hubs and such.
+ * */
+interface SidedElectricalULDR<C> : SidedElectrical<C> where C : Cell, C : SidedElectricalULDR<C> {
+    /**
+     * The electrical wire size. It will be supplied to all 4 sides.
+     * */
+    val electricalWireSize: ElectricalSize?
+
+    override fun getElectricalSizeOnSide(side: Base6Direction3d, targetCell: Cell) = when(side) {
+        Base6Direction3d.Front -> electricalWireSize
+        Base6Direction3d.Back -> electricalWireSize
+        Base6Direction3d.Left -> electricalWireSize
+        Base6Direction3d.Right -> electricalWireSize
+        Base6Direction3d.Up -> null
+        Base6Direction3d.Down -> null
+    }
+}
+
+/**
+ * Cell with a constant electrical wire size on 2 specific sides.
+ * */
+interface SidedElectricalBipole<C> : SidedElectrical<C> where C : Cell, C : SidedElectricalBipole<C> {
+    val side1: Base6Direction3d
+    val side2: Base6Direction3d
+    val electricalSize: ElectricalSize
+
+    override fun getElectricalSizeOnSide(side: Base6Direction3d, targetCell: Cell) = when(side) {
+        side1 -> electricalSize
+        side2 -> electricalSize
+        else -> null
+    }
+}
+
+/**
+ * Electrical size provider, based on a pole map.
+ * */
+interface SidedElectricalMapped<C> : SidedElectrical<C> where C : Cell, C : SidedElectricalMapped<C> {
+    val electricalMap : PoleMap
+
+    /**
+     * The electrical size. It will be supplied to all sides the [electricalMap] covers.
+     * */
+    val electricalSize: ElectricalSize?
+
+    /**
+     * Returns the [electricalSize] is the [electricalMap] covers this connection.
+     * */
+    override fun getElectricalSizeOnSide(side: Base6Direction3d, targetCell: Cell): ElectricalSize? {
+        return if(electricalMap.evaluateOrNull(this as Cell, targetCell) != null) electricalSize else null
+    }
+}
+
+/**
+ * Electrical size provider, based on a monopolar map.
+ * */
+interface SidedElectricalMonoMapped<C> : SidedElectrical<C> where C : Cell, C : SidedElectricalMonoMapped<C> {
+    val electricalMap: MonopoleMap
+
+    /**
+     * The electrical size. It will be supplied to all sides the [electricalMap] covers.
+     * */
+    val electricalSize: ElectricalSize?
+
+    override fun getElectricalSizeOnSide(side: Base6Direction3d, targetCell: Cell): ElectricalSize? {
+        if(electricalMap.evaluates(this as Cell, targetCell)) {
+            return electricalSize
+        }
+
+        return null
+    }
+}
+
+/**
+ * Supplies the [ThermalSize] for a side of the cell, in the local frame.
+ * If the returned size is null, the connection is rejected immediately. If the returned size is not equal to the other cell's size on its respective side, the connection is also rejected.
+ * The connection is accepted if both cells report the same size on their respective sides.
+ * */
+interface SidedThermal<C> where C : Cell, C : SidedThermal<C> {
+    /**
+     * Gets the size of the thermal wire on that side.
+     * @param side The side, pre-calculated, in the cell's local frame.
+     * @param targetCell The remote cell, useful if a locator map is used instead of raw directions in the connection code.
+     * */
+    fun getThermalSizeOnSide(side: Base6Direction3d, targetCell: Cell) : ThermalSize?
+}
+
+/**
+ * Cell with a constant thermal wire size on all 4 horizontal sides.
+ * To be used only for devices such as wires, anchors, connection hubs and such.
+ * */
+interface SidedThermalULDR<C> : SidedThermal<C> where C : Cell, C : SidedThermalULDR<C> {
+    /**
+     * The electrical wire size. It will be supplied to all 4 sides.
+     * */
+    val thermalWireSize: ThermalSize?
+
+    override fun getThermalSizeOnSide(side: Base6Direction3d, targetCell: Cell) = when(side) {
+        Base6Direction3d.Front -> thermalWireSize
+        Base6Direction3d.Back -> thermalWireSize
+        Base6Direction3d.Left -> thermalWireSize
+        Base6Direction3d.Right -> thermalWireSize
+        Base6Direction3d.Up -> null
+        Base6Direction3d.Down -> null
+    }
+}
+
+/**
+ * Thermal wire size provider, based on a pole map.
+ * */
+interface SidedThermalMapped<C> : SidedThermal<C> where C : Cell, C : SidedThermalMapped<C> {
+    val thermalMap : PoleMap
+
+    /**
+     * The thermal size. It will be supplied to all sides the [thermalMap] covers.
+     * */
+    val thermalSize: ThermalSize?
+
+    /**
+     * Returns the [thermalSize] is the [thermalMap] covers this connection.
+     * */
+    override fun getThermalSizeOnSide(side: Base6Direction3d, targetCell: Cell): ThermalSize? {
+        return if(thermalMap.evaluateOrNull(this as Cell, targetCell) != null) thermalSize else null
+    }
+}

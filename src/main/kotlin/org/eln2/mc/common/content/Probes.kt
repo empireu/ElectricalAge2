@@ -1,7 +1,5 @@
 package org.eln2.mc.common.content
 
-import dev.engine_room.flywheel.lib.model.baked.PartialModel
-import it.unimi.dsi.fastutil.ints.IntArrayList
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerPlayer
 import org.ageseries.libage.data.classify
@@ -19,12 +17,10 @@ import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.ConnectedPart
 import org.eln2.mc.client.render.foundation.ConnectedPartRenderState
 import org.eln2.mc.client.render.foundation.ConnectedPartRenderStateImpl
-import org.eln2.mc.client.render.foundation.ConnectedPartVisual
 import org.eln2.mc.client.render.foundation.ConnectedPartWithKnobsVisual
 import org.eln2.mc.client.render.foundation.KnobMap
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.client.render.foundation.PartWithKnobs
-import org.eln2.mc.client.render.foundation.PartWithKnobsVisual
 import org.eln2.mc.client.render.foundation.getConnectedPartsFromTag
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.*
@@ -32,9 +28,7 @@ import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridMaterialCategory
 import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
-import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.GridCellPart
-import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.data.MonopoleMap
 import org.eln2.mc.data.Pole
@@ -197,9 +191,9 @@ class PotentialProbeObject(
 class PotentialProbeCell(
     ci: CellCreateInfo,
     comparerMap: PoleMap,
-    val comparerWireSize: ElectricalWireSize,
+    val comparerWireSize: ElectricalSize,
     outputMap: MonopoleMap
-) : Cell(ci), SidedWireSizeInfo {
+) : Cell(ci), SidedElectrical<PotentialProbeCell> {
     val signalMap = ProbeRangeToRangeMap()
 
     @SimObject
@@ -216,13 +210,13 @@ class PotentialProbeCell(
         signalMap.loadFromTag(tag)
     }
 
-    override fun getElectricalSizeOnSide(side: Base6Direction3d, targetCell: Cell): ElectricalWireSize? {
+    override fun getElectricalSizeOnSide(side: Base6Direction3d, targetCell: Cell): ElectricalSize? {
         if(probe.comparerMap.evaluateOrNull(this, targetCell) != null) {
             return comparerWireSize
         }
 
         if(probe.outputMap.evaluates(this, targetCell)) {
-            return ElectricalWireSize.Signal
+            return ElectricalSize.Signal
         }
 
         return null

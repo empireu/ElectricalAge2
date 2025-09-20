@@ -287,6 +287,9 @@ class TerminalDcToDcConverterCell(
     outputNegative: Int = 2,
     outputPositive: Int = 3
 ) : Cell(ci) {
+    override val isExclusivelyGridConnected: Boolean
+        get() = true
+
     @SimObject
     val thermalWire = ThermalWireObject(this, thermalDef(), leakage)
 
@@ -297,11 +300,6 @@ class TerminalDcToDcConverterCell(
 
     @Node
     val grid = GridNode(this)
-
-    override fun cellConnectionPredicate(remote: Cell): Boolean {
-        return super.cellConnectionPredicate(remote) && remote.hasNode<GridNode>()
-    }
-
 }
 
 class DcToDcConverterSpec(ci: SpecCreateInfo) :

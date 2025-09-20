@@ -77,11 +77,12 @@ import org.eln2.mc.NEWTON_METER
 import org.eln2.mc.NEWTON_METER_SECOND
 import org.eln2.mc.data.Pole
 import org.eln2.mc.REVOLUTION_PER_SECOND
+import org.eln2.mc.common.cells.foundation.ElectricalSize
+import org.eln2.mc.common.cells.foundation.ThermalSize
 import org.eln2.mc.cylinderResistance
 import org.eln2.mc.data.directionMonopolarMapPlanar
 import org.eln2.mc.data.directionPoleMapPlanar
 import org.eln2.mc.data.monopolarMapPlanar
-import org.eln2.mc.data.withDirectionRulePlanar
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.maskXY
@@ -188,7 +189,7 @@ object Content {
         leakageParameters = ConnectionParameters.DEFAULT.copy(conductance = Quantity(0.001, WATT_PER_KELVIN))
         breakdownPotential = 100.0
 
-        size = ElectricalWireSize.Signal
+        size = ElectricalSize.Signal
         hubSize = Vector3d(1.5, 0.625, 1.5) / 16.0
         connectionSize = Vector3d(0.6, 0.4, 7.25) / 16.0
 
@@ -221,7 +222,7 @@ object Content {
             ThermalWireCell(
                 it,
                 Double.POSITIVE_INFINITY,
-                null,
+                ThermalSize.Any,
                 thermalProperties
             )
         }
@@ -233,7 +234,14 @@ object Content {
 
     //#region Creative Components
 
-    val VOLTAGE_SOURCE_CELL = cellImmediate("voltage_source", ::VoltageSourceCell)
+    val VOLTAGE_SOURCE_CELL = cellMemoize("voltage_source") {
+        val map = monopolarMapPlanar(Base6Direction3d.Front)
+        val size = ElectricalSize.Standard
+
+        CellFactory {
+            VoltageSourceCell(it, map, size)
+        }
+    }
 
     val VOLTAGE_SOURCE_PART = partImmediateBB("voltage_source", 6.0, 2.5, 6.0, ::VoltageSourcePart)
 
@@ -266,7 +274,7 @@ object Content {
         val minusDir = Base6Direction3d.Back
 
         CellFactory {
-            val cell = PolarBatteryCell(it, model, directionPoleMapPlanar(plusDir, minusDir), ElectricalWireSize.Standard)
+            val cell = PolarBatteryCell(it, model, directionPoleMapPlanar(plusDir, minusDir), ElectricalSize.Standard)
             cell.energy = cell.model.energyCapacity * 0.9
             cell
         }
@@ -313,6 +321,8 @@ object Content {
     //#region Photovoltaics
 
     val PHOTOVOLTAIC_GENERATOR_CELL = cellMemoize("photovoltaic_generator") {
+        val map = directionPoleMapPlanar()
+
         val model = PhotovoltaicModel(
             Quantity(32.0, VOLT),
             7000.0,
@@ -324,7 +334,7 @@ object Content {
         val surface = Quantity(1.0, METER2)
 
         CellFactory {
-            PhotovoltaicGeneratorCell(it, surface, model) { cell ->
+            PhotovoltaicGeneratorCell(it, map, surface, model) { cell ->
                 cell.locator.requireLocator(Locators.FACE).vector3d
             }
         }
@@ -343,7 +353,7 @@ object Content {
             it,
             directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right),
             LightVariantType.Cone45Deg,
-            ElectricalWireSize.Standard
+            ElectricalSize.Standard
         )
     }
 
@@ -352,7 +362,7 @@ object Content {
             it,
             directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right),
             LightVariantType.Sphere,
-            ElectricalWireSize.Standard
+            ElectricalSize.Standard
         )
     }
 
@@ -618,7 +628,7 @@ object Content {
         }
 
         CellFactory {
-            val cell = ElectricalHeatEngineCell(
+            ElectricalHeatEngineCell(
                 it,
                 electricalMap,
                 thermalMap,
@@ -628,12 +638,9 @@ object Content {
                 0.075,
                 hemispheres[it.locator.transformPartWorld(Base6Direction3d.Front)]!!,
                 hemispheres[it.locator.transformPartWorld(Base6Direction3d.Back)]!!,
-                ElectricalWireSize.Standard
+                ElectricalSize.Standard,
+                ThermalSize.Standard
             )
-
-            cell.source.ruleSet.withDirectionRulePlanar(electricalA + electricalB)
-            cell.thermalBipole.ruleSet.withDirectionRulePlanar(thermalA)
-            cell
         }
     }
 
@@ -678,8 +685,12 @@ object Content {
 
     //#region Furnaces
 
-    val FURNACE_CELL = cellImmediate("furnace_cell") {
-        FurnaceCell(it, Base6Direction3d.Left, Base6Direction3d.Right)
+    val FURNACE_CELL = cellMemoize("furnace_cell") {
+        val map = directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)
+
+        CellFactory {
+            FurnaceCell(it, map)
+        }
     }
 
     val FURNACE_BLOCK = blockAndItem("furnace") { FurnaceBlock() }
@@ -870,7 +881,7 @@ object Content {
                 L = Quantity(2.5, CENTIMETER),
                 A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
             ),
-            ElectricalWireSize.Standard
+            ElectricalSize.Standard
         )
     }
 
@@ -899,7 +910,7 @@ object Content {
                 L = Quantity(1.5, CENTIMETER),
                 A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
             ),
-            ElectricalWireSize.Standard
+            ElectricalSize.Standard
         )
     }
 
@@ -914,7 +925,7 @@ object Content {
                 L = Quantity(1.5, CENTIMETER),
                 A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
             ),
-            ElectricalWireSize.Signal
+            ElectricalSize.Signal
         )
     }
 
@@ -1026,7 +1037,7 @@ object Content {
         PotentialProbeCell(
             it,
             STANDARD_PROBE_COMPARER_MAP,
-            ElectricalWireSize.Standard,
+            ElectricalSize.Standard,
             STANDARD_PROBE_OUTPUT_MAP
         )
     }

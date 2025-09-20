@@ -51,112 +51,11 @@ import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.*
 import org.eln2.mc.client.render.foundation.MyColor
-import org.eln2.mc.data.PoleMap
-import org.eln2.mc.data.findDirActualPartOrNull
 import java.util.function.Supplier
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
 import kotlin.math.PI
-
-/**
- * Size category of thermal wires.
- * Used to filter connections to wires and machines.
- * */
-enum class ThermalWireSize(val sizeTranslationKey: String) {
-    Standard("standard_thermal_wire_size")
-}
-
-/**
- * Size category of electrical wires.
- * Used to filter connections to wires and machines.
- * @param isExclusive If true, the wire won't connect to anything that isn't a sided wire that reports the specified size.
- * */
-enum class ElectricalWireSize(val sizeTranslationKey: String, val isExclusive: Boolean) {
-    Standard("standard_electrical_wire_size", false),
-    Signal("signal_wire_size", true);
-
-    companion object {
-        fun rejectsBasedOnMutualSizesAndConfiguration(sourceCell: Cell, targetCell: Cell) : Boolean {
-            // No filtering to be done:
-            if(sourceCell !is SidedWireSizeInfo && targetCell !is SidedWireSizeInfo) {
-                return false
-            }
-
-            val directionInSourceFrame = sourceCell.locator.findDirActualPartOrNull(targetCell.locator)
-            val directionInTargetFrame = targetCell.locator.findDirActualPartOrNull(sourceCell.locator)
-
-            // We reject implicitly if we can't get the local directions for both cells.
-            if(directionInSourceFrame == null || directionInTargetFrame == null) {
-                return true
-            }
-
-            // C1 is sized, C2 isn't. We reject if C1's size is exclusive.
-            if(sourceCell is SidedWireSizeInfo && targetCell !is SidedWireSizeInfo) {
-                return sourceCell.getElectricalSizeOnSide(directionInSourceFrame, targetCell)?.isExclusive == true
-            }
-
-            // C1 is not sized, C2 is. We reject if C2's size is exclusive.
-            if(sourceCell !is SidedWireSizeInfo && targetCell is SidedWireSizeInfo) {
-                return targetCell.getElectricalSizeOnSide(directionInTargetFrame, sourceCell)?.isExclusive == true
-            }
-
-            sourceCell as SidedWireSizeInfo
-            targetCell as SidedWireSizeInfo
-
-            // Now we just check if:
-            // a. They both have sizes defined (not null)
-            // b. The sizes are equal.
-            val sourceSize = sourceCell.getElectricalSizeOnSide(directionInSourceFrame, targetCell)
-            val remoteSize = targetCell.getElectricalSizeOnSide(directionInTargetFrame, sourceCell)
-
-            return sourceSize != remoteSize || sourceSize == null
-        }
-    }
-}
-
-interface SizedThermalWire {
-    /**
-     * Returns the wire size.
-     * Null if the filtering is disabled (e.g. the cell is owned by an electrical wire, which dictates the connections by its own size, or if the wire is a radiator or another size-independent device).
-     * */
-    val thermalWireSize : ThermalWireSize?
-}
-
-interface SidedWireSizeInfo {
-    fun getElectricalSizeOnSide(side: Base6Direction3d, targetCell: Cell) : ElectricalWireSize?
-}
-
-/**
- * Electrical wire size provider, that supplies one size for all horizontal directions.
- * */
-interface SidedWireSizeInfoULDR : SidedWireSizeInfo {
-    val electricalWireSize: ElectricalWireSize?
-
-    override fun getElectricalSizeOnSide(side: Base6Direction3d, targetCell: Cell) = when(side) {
-        Base6Direction3d.Front -> electricalWireSize
-        Base6Direction3d.Back -> electricalWireSize
-        Base6Direction3d.Left -> electricalWireSize
-        Base6Direction3d.Right -> electricalWireSize
-        Base6Direction3d.Up -> null
-        Base6Direction3d.Down -> null
-    }
-}
-
-/**
- * Electrical wire size provider, based on a pole map.
- * */
-interface SidedWireSizeInfoMapped<C> : SidedWireSizeInfo where C : Cell, C : SidedWireSizeInfoMapped<C> {
-    val electricalMap : PoleMap
-    val electricalSize: ElectricalWireSize?
-
-    /**
-     * Returns the [electricalSize] is the [electricalMap] covers this connection.
-     * */
-    override fun getElectricalSizeOnSide(side: Base6Direction3d, targetCell: Cell): ElectricalWireSize? {
-        return if(electricalMap.evaluateOrNull(this as Cell, targetCell) != null) electricalSize else null
-    }
-}
 
 /**
  * Generalized thermal conductor, in the form of a single thermal body that gets connected to all neighbor cells.
@@ -276,7 +175,7 @@ data class WireRenderModel(val hub: PartialModel, val connection: WireConnection
  * @param id The ID of the wire cell.
  * */
 data class ThermalWireRegistryObject(
-    val size: ThermalWireSize,
+    val size: ThermalSize,
     val thermalProperties: WireThermalProperties,
     val id: ResourceLocation
 )
@@ -288,7 +187,7 @@ data class ThermalWireRegistryObject(
  * @param id The ID of the wire cell.
  * */
 data class ElectricalWireRegistryObject(
-    val size: ElectricalWireSize,
+    val size: ElectricalSize,
     val thermalProperties: WireThermalProperties,
     val electricalProperties: WireElectricalProperties,
     val id: ResourceLocation
@@ -382,7 +281,7 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
 }
 
 class ThermalWireBuilder(id: String) : WireBuilder<ThermalWireCell>(id) {
-    var size = ThermalWireSize.Standard
+    var size = ThermalSize.Standard
 
     @OptIn(ExperimentalContracts::class)
     inline fun applyAndRegister(block: ThermalWireBuilder.() -> Unit): ThermalWireRegistryObject {
@@ -417,7 +316,7 @@ class ThermalWireBuilder(id: String) : WireBuilder<ThermalWireCell>(id) {
 }
 
 class ElectricalWireBuilder(id: String) : WireBuilder<ElectrothermalWireCell>(id) {
-    var size = ElectricalWireSize.Standard
+    var size = ElectricalSize.Standard
     var resistance: Double = 2.14 * 1e-5
     var breakdownPotential: Double = 400.0
 
@@ -516,7 +415,10 @@ open class WireCell(ci: CellCreateInfo, val connectionCrossSection: Double) : Ce
 
     override fun getContactSection(cell: Cell) = connectionCrossSection
 
-    protected fun wireCellConnectionPredicate(remote: Cell) : Boolean {
+    /**
+     * Adds the connection [blacklist] on top of the default predicate (and also checks if the physical solution exists).
+     * */
+    override fun cellConnectionPredicate(remote: Cell): Boolean {
         if(!super.cellConnectionPredicate(remote)) {
             return false
         }
@@ -526,18 +428,13 @@ open class WireCell(ci: CellCreateInfo, val connectionCrossSection: Double) : Ce
 
         return !blacklist.contains(solution.directionPart)
     }
-
-    override fun cellConnectionPredicate(remote: Cell): Boolean {
-        return wireCellConnectionPredicate(remote) // Bypass thermal wire rejecting any non-thermal objects
-    }
 }
 
 open class ThermalWireCell(
-    ci: CellCreateInfo,
-    connectionCrossSection: Double,
-    override val thermalWireSize: ThermalWireSize?,
+    ci: CellCreateInfo, connectionCrossSection: Double,
+    override val thermalWireSize: ThermalSize?,
     val thermalProperties: WireThermalProperties
-) : WireCell(ci, connectionCrossSection), SizedThermalWire {
+) : WireCell(ci, connectionCrossSection), SidedThermalULDR<ThermalWireCell> {
     @SimObject
     val thermalWire = ThermalWireObject(
         self(),
@@ -580,33 +477,21 @@ open class ThermalWireCell(
         if(thermalProperties.replicatesExternalTemperature)
             ExternalTemperatureReplicatorBehavior(this, consumer)
         else null
-
-    override fun cellConnectionPredicate(remote: Cell): Boolean {
-        if(!remote.hasObject(SimulationObjectType.Thermal)) {
-            return false
-        }
-
-        if(thermalWireSize != null && remote is SizedThermalWire) {
-            val remoteSize = remote.thermalWireSize
-
-            if(remoteSize != null) {
-                if(thermalWireSize != remoteSize) {
-                    return false
-                }
-            }
-        }
-
-        return super.cellConnectionPredicate(remote)
-    }
 }
 
 open class ElectrothermalWireCell(
     ci: CellCreateInfo,
     contactCrossSection: Double,
     thermalProperties: WireThermalProperties,
-    override val electricalWireSize: ElectricalWireSize?,
+    override val electricalWireSize: ElectricalSize?,
     val electricalProperties: WireElectricalProperties
-) : ThermalWireCell(ci, contactCrossSection, null, thermalProperties), SidedWireSizeInfoULDR {
+) : ThermalWireCell(ci, contactCrossSection, null, thermalProperties), SidedElectricalULDR<ElectrothermalWireCell> {
+    /**
+     * Disallow connections with thermal-only devices:
+     * */
+    override val isExclusivelyElectricalConnected: Boolean
+        get() = true
+
     @SimObject
     val electricalWire = SingleElectricalWireObject(self()).also {
         it.resistance = electricalProperties.electricalResistance
@@ -620,10 +505,6 @@ open class ElectrothermalWireCell(
 
     @Behavior
     val breakdown = DielectricBreakdownBehavior.create(this)
-
-    override fun cellConnectionPredicate(remote: Cell): Boolean {
-        return electricalConnectionPredicate(remote)
-    }
 
     override fun onBuildFinished() {
         super.onBuildFinished()

@@ -227,19 +227,18 @@ class PolarLightCell(
     ci: CellCreateInfo,
     override val electricalMap: PoleMap,
     variantType: LightVariantType,
-    override val electricalSize: ElectricalWireSize?
-) : LightCell(ci, variantType), SidedWireSizeInfoMapped<PolarLightCell> {
+    override val electricalSize: ElectricalSize?
+) : LightCell(ci, variantType), SidedElectricalMapped<PolarLightCell> {
     @SimObject
     override val resistor = PolarResistorObjectVirtual(self(), electricalMap)
 
     override val resistorDisplay get() = resistor.resistorDisplay
-
-    override fun cellConnectionPredicate(remote: Cell): Boolean {
-        return super.cellConnectionPredicate(remote) && resistor.poleMap.evaluateOrNull(this, remote) != null
-    }
 }
 
 class TerminalLightCell(ci: CellCreateInfo, variantType: LightVariantType, plus: Int = POSITIVE, minus: Int = NEGATIVE) : LightCell(ci, variantType) {
+    override val isExclusivelyGridConnected: Boolean
+        get() = true
+    
     @Node
     val grid = GridNode(self())
 
@@ -247,10 +246,6 @@ class TerminalLightCell(ci: CellCreateInfo, variantType: LightVariantType, plus:
     override val resistor = TerminalResistorObjectVirtual(self(), plus, minus)
 
     override val resistorDisplay get() = resistor.resistorDisplay
-
-    override fun cellConnectionPredicate(remote: Cell): Boolean {
-        return super.cellConnectionPredicate(remote) && remote is GridConnectionCell
-    }
 }
 
 abstract class PoweredLightPart<T : LightCell>(

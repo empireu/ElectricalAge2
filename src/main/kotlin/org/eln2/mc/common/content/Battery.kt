@@ -439,26 +439,21 @@ class PolarBatteryCell(
     ci: CellCreateInfo,
     model: BatteryModel,
     override val electricalMap: PoleMap,
-    override val electricalSize: ElectricalWireSize
-) : BatteryCell(ci, model), SidedWireSizeInfoMapped<PolarBatteryCell> {
+    override val electricalSize: ElectricalSize
+) : BatteryCell(ci, model), SidedElectricalMapped<PolarBatteryCell> {
     @SimObject
     override val generator = PolarVRGObject(this, electricalMap)
-
-    override fun cellConnectionPredicate(remote: Cell): Boolean {
-        return super.cellConnectionPredicate(remote) && electricalMap.evaluateOrNull(this, remote) != null
-    }
 }
 
 class TerminalBatteryCell(ci: CellCreateInfo, model: BatteryModel) : BatteryCell(ci, model) {
+    override val isExclusivelyElectricalConnected: Boolean
+        get() = true
+
     @SimObject
     override val generator = TerminalVRGObject(this)
 
     @Node
     val grid = GridNode(this)
-
-    override fun cellConnectionPredicate(remote: Cell): Boolean {
-        return super.cellConnectionPredicate(remote) && remote.hasNode<GridNode>()
-    }
 }
 
 private const val BATTERY = "battery"

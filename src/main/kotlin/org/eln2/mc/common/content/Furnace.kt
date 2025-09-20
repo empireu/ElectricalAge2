@@ -48,21 +48,19 @@ import org.ageseries.libage.sim.electrical.mna.component.updateResistance
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
+import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.blocks.foundation.CellBlock
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.containers.ContainerHelper
 import org.eln2.mc.common.containers.MyAbstractContainerScreen
 import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
-import org.eln2.mc.data.directionPoleMapPlanar
-import org.eln2.mc.data.withDirectionRulePlanar
+import org.eln2.mc.data.PoleMap
 import org.eln2.mc.extensions.constructMenuHelper2
 import org.eln2.mc.extensions.getQuantity
 import org.eln2.mc.extensions.putQuantity
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.mathematics.Base6Direction3d
-import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.resource
 import kotlin.math.abs
 
@@ -74,17 +72,16 @@ data class FurnaceOptions(
     var leakageParameters: ConnectionParameters,
 )
 
-class FurnaceCell(ci: CellCreateInfo, dir1: Base6Direction3d, dir2: Base6Direction3d) : Cell(ci) {
+class FurnaceCell(ci: CellCreateInfo, override val electricalMap: PoleMap) : Cell(ci), SidedElectricalMapped<FurnaceCell> {
     companion object {
         private const val TEMPERATURE = "temperature"
     }
 
-    @SimObject
-    val resistor = PolarResistorObjectVirtual(this, directionPoleMapPlanar(dir1, dir2))
+    override val electricalSize: ElectricalSize
+        get() = ElectricalSize.Any
 
-    init {
-        ruleSet.withDirectionRulePlanar(dir1 + dir2)
-    }
+    @SimObject
+    val resistor = PolarResistorObjectVirtual(this, electricalMap)
 
     override fun saveCellData() = CompoundTag().also {
         it.putQuantity(TEMPERATURE, resistorThermalMass.temperature)

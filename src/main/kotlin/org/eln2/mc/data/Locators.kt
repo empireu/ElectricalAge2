@@ -173,40 +173,6 @@ object Locators : LocatorDispatcher<Locators>() {
     )
 }
 
-fun interface LocationRelationshipRule {
-    fun acceptsRelationship(descriptor: Locator, target: Locator): Boolean
-}
-
-class LocatorRelationRuleSet {
-    private val rules = ArrayList<LocationRelationshipRule>()
-
-    fun with(rule: LocationRelationshipRule): LocatorRelationRuleSet {
-        rules.add(rule)
-        return this
-    }
-
-    fun accepts(descriptor: Locator, target: Locator): Boolean {
-        return rules.all { r -> r.acceptsRelationship(descriptor, target) }
-    }
-}
-
-fun LocatorRelationRuleSet.withDirectionRulePlanar(mask: Base6Direction3dMask): LocatorRelationRuleSet {
-    return this.with { a, b ->
-        mask.has(a.findDirActualPlanarOrNull(b) ?: return@with false)
-    }
-}
-
-
-fun LocatorRelationRuleSet.withDirectionRulePlanar(dir: Base6Direction3d) = this.withDirectionRulePlanar(
-    Base6Direction3dMask.ofRelative(dir)
-)
-
-fun LocatorRelationRuleSet.withDirectionRulePart(mask: Base6Direction3dMask): LocatorRelationRuleSet {
-    return this.with { a, b ->
-        mask.has(a.findDirActualPartOrNull(b) ?: return@with false)
-    }
-}
-
 fun Locator.findDirActualPlanarOrNull(other: Locator): Base6Direction3d? {
     val a = this.get(Locators.BLOCK) ?: return null
     val b = this.get(Locators.FACING) ?: return null

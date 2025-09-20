@@ -6,6 +6,7 @@ import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.BasicPartVisual
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.parts.foundation.GridCellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
@@ -16,7 +17,10 @@ import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d
 
-class GroundCell(ci: CellCreateInfo) : Cell(ci) {
+class GroundCell(ci: CellCreateInfo) : Cell(ci), SidedElectricalULDR<GroundCell> {
+    override val electricalWireSize: ElectricalSize
+        get() = ElectricalSize.Standard
+
     @SimObject
     val ground = GroundObject(self())
 
@@ -24,7 +28,7 @@ class GroundCell(ci: CellCreateInfo) : Cell(ci) {
     val grid = GridNode(self())
 
     override fun cellConnectionPredicate(remote: Cell): Boolean {
-        return super.cellConnectionPredicate(remote) && (remote.hasNode<GridNode>() || locator.findDirActualPlanarOrNull(remote.locator) == Base6Direction3d.Front)
+        return super.cellConnectionPredicate(remote) && (remote is GridConnectionCell || locator.findDirActualPlanarOrNull(remote.locator) == Base6Direction3d.Front)
     }
 
     fun submitDisplay(builder: ComponentDisplayList) {

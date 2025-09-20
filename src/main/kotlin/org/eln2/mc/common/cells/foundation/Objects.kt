@@ -25,10 +25,6 @@ import org.eln2.mc.extensions.putQuantity
 abstract class SimulationObject<C : Cell>(val cell: C) {
     abstract val type: SimulationObjectType
 
-    private val rsLazy = lazy { LocatorRelationRuleSet() }
-
-    val ruleSet get() = rsLazy.value
-
     /**
      * Called when the connections and/or graph changes.
      * */
@@ -55,15 +51,6 @@ abstract class SimulationObject<C : Cell>(val cell: C) {
      * Connections should be removed here.
      * */
     abstract fun destroy()
-
-    /**
-     * Implements locator-based rules. These rules are general to all objects.
-     * @param remoteLocator The locator of the remote object's cell.
-     * @return True, if the connection is allowed. Otherwise, false. *This does not imply that the connection will be created; other filters might reject it down the line.*
-     * */
-    open fun acceptsRemoteLocation(remoteLocator: Locator): Boolean {
-        return ruleSet.accepts(cell.locator, remoteLocator)
-    }
 }
 
 data class ThermalComponentInfo(val body: ThermalMass)
@@ -136,11 +123,13 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     protected abstract fun addComponents(simulator: Simulator)
 
     /**
-     * Implements object-based rules.
+     * Implements object-based rules. Defaults to calling predicates of the cell.
      * @param remote The remote thermal object.
      * @return True, if the connection is allowed. Otherwise, false.
      * */
-    open fun acceptsRemoteObject(remote: ThermalObject<*>) = true
+    open fun acceptsRemoteObject(remote: ThermalObject<*>) : Boolean {
+        return cell.thermalObjectPredicate(remote)
+    }
 
     protected open fun getParameters(remote: ThermalObject<*>) = ConnectionParameters.DEFAULT
 
@@ -272,11 +261,13 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     }
 
     /**
-     * Implements object-based rules.
+     * Implements object-based rules. Defaults to calling the cell's predicate.
      * @param remote The remote electrical object.
      * @return True, if the connection is allowed. Otherwise, false.
      * */
-    open fun acceptsRemoteObject(remote: ElectricalObject<*>) = true
+    open fun acceptsRemoteObject(remote: ElectricalObject<*>) : Boolean {
+        return cell.electricalObjectPredicate(remote)
+    }
 
     /**
      * Builds the connections, after the circuit was acquired in [setNewCircuit] and the components were added in [addComponents].

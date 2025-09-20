@@ -7,13 +7,11 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.data.Locators
-import org.eln2.mc.data.directionPoleMapPlanar
-import org.eln2.mc.data.withDirectionRulePlanar
+import org.eln2.mc.data.PoleMap
 import org.eln2.mc.extensions.celestialPass
 import org.eln2.mc.extensions.evaluateDiffuseIrradianceFactor
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.mathematics.Base6Direction3d
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.pow
@@ -30,22 +28,24 @@ data class PhotovoltaicModel(
 
 class PhotovoltaicGeneratorCell(
     ci: CellCreateInfo,
+    override val electricalMap: PoleMap,
     val surfaceArea: Quantity<Area>,
     val model: PhotovoltaicModel,
     val normalSupplier: (PhotovoltaicGeneratorCell) -> Vector3d
-) : Cell(ci) {
+) : Cell(ci), SidedElectricalMapped<PhotovoltaicGeneratorCell> {
     @SimObject
-    val generator = PowerVoltageSourceDiodeObject<PhotovoltaicGeneratorCell>(this, directionPoleMapPlanar())
+    val generator = PowerVoltageSourceDiodeObject<PhotovoltaicGeneratorCell>(this, electricalMap)
+
+    override val electricalSize: ElectricalSize
+        get() = ElectricalSize.Standard
 
     init {
         locator.requireLocator(Locators.BLOCK)
-        ruleSet.withDirectionRulePlanar(Base6Direction3d.Front + Base6Direction3d.Back)
     }
 
     override fun subscribe(subscribers: SubscriberCollection) {
         super.subscribe(subscribers)
         subscribers.addPre(::update)
-
     }
 
     fun irradianceFactor() = graph.level.evaluateDiffuseIrradianceFactor(
