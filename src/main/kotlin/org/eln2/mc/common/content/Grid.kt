@@ -177,7 +177,7 @@ class GridInterfaceCell(
     ci: CellCreateInfo,
     tapResistance: Double,
     anchorResistance: Double,
-    override val electricalWireSize: ElectricalSize
+    override val electricalSize: ElectricalSize
 ) : Cell(ci), SidedElectricalULDR<GridInterfaceCell> {
     @Node
     val grid = GridNode(this)

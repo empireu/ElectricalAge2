@@ -432,7 +432,7 @@ open class WireCell(ci: CellCreateInfo, val connectionCrossSection: Double) : Ce
 
 open class ThermalWireCell(
     ci: CellCreateInfo, connectionCrossSection: Double,
-    override val thermalWireSize: ThermalSize?,
+    override val thermalSize: ThermalSize?,
     val thermalProperties: WireThermalProperties
 ) : WireCell(ci, connectionCrossSection), SidedThermalULDR<ThermalWireCell> {
     @SimObject
@@ -483,7 +483,7 @@ open class ElectrothermalWireCell(
     ci: CellCreateInfo,
     contactCrossSection: Double,
     thermalProperties: WireThermalProperties,
-    override val electricalWireSize: ElectricalSize?,
+    override val electricalSize: ElectricalSize?,
     val electricalProperties: WireElectricalProperties
 ) : ThermalWireCell(ci, contactCrossSection, null, thermalProperties), SidedElectricalULDR<ElectrothermalWireCell> {
     /**

@@ -498,10 +498,15 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
         val renderState = this.renderStateImpl
             ?: return
 
-        val newSamples = renderState.buffer.extractOrNull()
+        while (true) {
+            val newSamples = renderState.buffer.extractOrNull()
 
-        if(newSamples != null) {
-            renderState.texture.writeColumnAndUpload(newSamples)
+            if(newSamples != null) {
+                renderState.texture.writeColumnAndUpload(newSamples)
+            }
+            else {
+                break
+            }
         }
 
         val poseStack = context.poseStack

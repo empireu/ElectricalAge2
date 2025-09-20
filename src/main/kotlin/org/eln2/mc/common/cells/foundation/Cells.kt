@@ -28,7 +28,6 @@ import org.eln2.mc.*
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.SimulationObjectType.*
 import org.eln2.mc.common.grids.GridConnectionCell
-import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.data.*
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3d
@@ -603,10 +602,11 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     }
 
     /**
-     * Checks if the electrical connection sizes on the sides of this and [remote] that are in contact are compatible.
+     * Checks if the electrical connection sizes on the sides of this and [remote] that are in contact are compatible, or if the remote cell is a [GridConnectionCell].
+     * It's correct to allow the connection if it's a [GridConnectionCell] because this evaluation can only happen after the grid's own filtering and rules.
      * */
     protected open fun defaultElectricalConnectionPredicate(remote: Cell) : Boolean {
-        return !connectionSizeRejection<SidedElectrical<*>, ElectricalSize>(this, remote, ElectricalSize.compatibility) {
+        return remote is GridConnectionCell || !connectionSizeRejection<SidedElectrical<*>, ElectricalSize>(this, remote, ElectricalSize.compatibility) {
             int, dir, b -> int.getElectricalSizeOnSide(dir, b)
         }
     }
@@ -2560,13 +2560,13 @@ interface SidedElectricalULDR<C> : SidedElectrical<C> where C : Cell, C : SidedE
     /**
      * The electrical wire size. It will be supplied to all 4 sides.
      * */
-    val electricalWireSize: ElectricalSize?
+    val electricalSize: ElectricalSize?
 
     override fun getElectricalSizeOnSide(side: Base6Direction3d, targetCell: Cell) = when(side) {
-        Base6Direction3d.Front -> electricalWireSize
-        Base6Direction3d.Back -> electricalWireSize
-        Base6Direction3d.Left -> electricalWireSize
-        Base6Direction3d.Right -> electricalWireSize
+        Base6Direction3d.Front -> electricalSize
+        Base6Direction3d.Back -> electricalSize
+        Base6Direction3d.Left -> electricalSize
+        Base6Direction3d.Right -> electricalSize
         Base6Direction3d.Up -> null
         Base6Direction3d.Down -> null
     }
@@ -2648,13 +2648,13 @@ interface SidedThermalULDR<C> : SidedThermal<C> where C : Cell, C : SidedThermal
     /**
      * The electrical wire size. It will be supplied to all 4 sides.
      * */
-    val thermalWireSize: ThermalSize?
+    val thermalSize: ThermalSize?
 
     override fun getThermalSizeOnSide(side: Base6Direction3d, targetCell: Cell) = when(side) {
-        Base6Direction3d.Front -> thermalWireSize
-        Base6Direction3d.Back -> thermalWireSize
-        Base6Direction3d.Left -> thermalWireSize
-        Base6Direction3d.Right -> thermalWireSize
+        Base6Direction3d.Front -> thermalSize
+        Base6Direction3d.Back -> thermalSize
+        Base6Direction3d.Left -> thermalSize
+        Base6Direction3d.Right -> thermalSize
         Base6Direction3d.Up -> null
         Base6Direction3d.Down -> null
     }

@@ -604,6 +604,16 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci), GridConnectionOwner {
         val endpointInfo: GridEndpointInfo
     )
 
+    // Skip the sided checks:
+
+    override fun electricalObjectPredicate(remote: ElectricalObject<*>): Boolean {
+        return true
+    }
+
+    override fun cellConnectionPredicate(remote: Cell): Boolean {
+        return true
+    }
+
     /**
      * Fake container used when staging the connections.
      * */

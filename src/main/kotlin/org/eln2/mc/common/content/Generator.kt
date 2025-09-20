@@ -202,7 +202,7 @@ class HeatGeneratorCell(ci: CellCreateInfo, thermalDef: ThermalMassDefinition, l
         private const val BURNER_BEHAVIOR = "burner"
     }
 
-    override val thermalWireSize: ThermalSize
+    override val thermalSize: ThermalSize
         get() = ThermalSize.Any
 
     @SimObject

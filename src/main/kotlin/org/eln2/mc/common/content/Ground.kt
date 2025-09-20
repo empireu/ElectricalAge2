@@ -18,7 +18,7 @@ import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d
 
 class GroundCell(ci: CellCreateInfo) : Cell(ci), SidedElectricalULDR<GroundCell> {
-    override val electricalWireSize: ElectricalSize
+    override val electricalSize: ElectricalSize
         get() = ElectricalSize.Standard
 
     @SimObject
