@@ -1061,7 +1061,7 @@ object Content {
         OscilloscopeCell(it, BASIC_TWO_CHANNEL_OSCILLOSCOPE_SPECIFICATION)
     }
 
-    val FLAT_OSCILLOSCOPE_PART = partImmediateBB("basic_two_channel_oscilloscope", 14.0, 0.75, 10.0) {
+    val FLAT_OSCILLOSCOPE_PART = partImmediateBB("basic_two_channel_oscilloscope", 15.2, 0.75, 10.0) {
         OscilloscopePart(it, BASIC_TWO_CHANNEL_OSCILLOSCOPE_SPECIFICATION)
     }
 

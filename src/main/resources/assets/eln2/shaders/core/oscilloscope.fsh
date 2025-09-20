@@ -7,7 +7,7 @@ uniform float u_writeX;
 uniform float u_count;
 uniform float u_thickness;
 uniform float u_alpha;
-uniform float u_channelColors[12];
+uniform float u_channelColors[16];
 
 out vec4 fragColor;
 
@@ -100,15 +100,18 @@ void main() {
         // Then we can calculate a smooth contribution of the channel to the fragment, based on the thickness:
         float weight = 1.0 - smoothstep(0.0, u_thickness, minDistance);
 
-        int j = channelIndex * 3;
-        vec3 channelColor = vec3(u_channelColors[j + 0], u_channelColors[j + 1], u_channelColors[j + 2]);
+        int j = channelIndex * 4;
+        vec4 channelColorRGBA = vec4(u_channelColors[j + 0], u_channelColors[j + 1], u_channelColors[j + 2], u_channelColors[j + 3]);
+
+        // Include per-channel alpha. Also used to discard channels that are not connected.
+        weight *= channelColorRGBA.w;
 
         // Cutoff per-channel.
         // If we do cutoff at the final stage, the fuzz from one channel will over-inflate the result.
         int shouldInclude = int(weight > 0.75);
 
         // Blending:
-        colorSum += shouldInclude * channelColor * weight;
+        colorSum += shouldInclude * channelColorRGBA.xyz * weight;
         weightSum += shouldInclude * weight;
         contributingChannels += shouldInclude;
     }

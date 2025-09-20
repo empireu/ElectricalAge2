@@ -18,6 +18,7 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraftforge.client.event.RegisterShadersEvent
 import org.ageseries.libage.mathematics.geometry.Rotation3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.mathematics.geometry.Vector4d
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
 import org.ageseries.libage.sim.electrical.mna.NEGATIVE
@@ -55,6 +56,7 @@ import org.eln2.mc.resource
 import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.floor
+import kotlin.math.min
 
 @ClientOnly
 class OscilloscopeTexture(val resourceId: ResourceLocation, val columnCount: Int, val channelCount: Int) {
@@ -105,7 +107,11 @@ class OscilloscopeTexture(val resourceId: ResourceLocation, val columnCount: Int
         var y = 0
 
         while (y < height) {
-            val sample = column[y]
+            var sample = column[y]
+
+            if(sample.isNaN()) {
+                sample = 0.0f // channel mask
+            }
 
             val v = (sample + 1.0f) * 0.5f
 
@@ -157,43 +163,63 @@ class OscilloscopeTexture(val resourceId: ResourceLocation, val columnCount: Int
  * Defines an oscilloscope's colors per channel.
  * @param colors The colors for each channel, in order.
  * */
-data class OscilloscopePalette(val colors: List<Vector3d>) {
-    val colorsInt = colors.map { MyColor(it.x.toFloat(), it.y.toFloat(), it.z.toFloat()) }
+data class OscilloscopePalette(val colors: List<Vector4d>) {
+    val colorsInt = colors.map { MyColor(it.w.toFloat(), it.x.toFloat(), it.y.toFloat(), it.z.toFloat()) }
 
     /**
-     * Raw buffer holding the data to upload to the shader.
+     * Raw buffer holding the data to upload to the shader, that needs to be masked by the channel mask.
      * */
-    private val rawData = FloatArray(colors.size * 3)
-
-    fun setUniform(unform: AbstractUniform) {
-        unform.set(rawData)
-    }
+    private val rawData = FloatArray(colors.size * 4)
 
     init {
         colors.indices.forEach { i ->
             val color = colors[i]
-            val j = i * 3
+            val j = i * 4
 
             rawData[j + 0] = color.x.toFloat()
             rawData[j + 1] = color.y.toFloat()
             rawData[j + 2] = color.z.toFloat()
+            rawData[j + 3] = color.w.toFloat()
         }
     }
 
+    /**
+     * Sets the color palette.
+     * @param mask The latest samples. The channels which have NaN will be set to alpha = 0.
+     * */
+    fun setUniform(unform: AbstractUniform, mask: FloatArray) {
+        val data = FloatArray(rawData.size)
+
+        val valuesToCopy = min(rawData.size, mask.size * 4)
+        for (i in 0 until valuesToCopy step 4) {
+            val sample = mask[i / 4]
+
+            if(!sample.isNaN()) {
+                data[i + 0] = rawData[i + 0]
+                data[i + 1] = rawData[i + 1]
+                data[i + 2] = rawData[i + 2]
+                data[i + 3] = rawData[i + 3]
+            }
+        }
+
+        unform.set(data)
+    }
+
     companion object {
-        fun define(vararg components: Float) : OscilloscopePalette {
-            require(components.size % 3 == 0 && components.isNotEmpty()) {
+        fun defineRGBA(vararg components: Float) : OscilloscopePalette {
+            require(components.size % 4 == 0 && components.isNotEmpty()) {
                 "Invalid palette component count ${components.size}"
             }
 
-            val vectors = ArrayList<Vector3d>(components.size / 3)
+            val vectors = ArrayList<Vector4d>(components.size / 4)
 
-            for (i in 0 until components.size step 3) {
+            for (i in 0 until components.size step 4) {
                 vectors.add(
-                    Vector3d(
+                    Vector4d(
                         components[i + 0].toDouble(),
                         components[i + 1].toDouble(),
-                        components[i + 2].toDouble()
+                        components[i + 2].toDouble(),
+                        components[i + 3].toDouble()
                     )
                 )
             }
@@ -201,11 +227,11 @@ data class OscilloscopePalette(val colors: List<Vector3d>) {
             return OscilloscopePalette(vectors)
         }
 
-        val DEFAULT = define(
-            0.0f, 0.0f, 1.0f,
-            0.0f, 1.0f, 0.0f,
-            1.0f, 0.0f, 0.0f,
-            1.0f, 1.0f, 0.0f
+        val DEFAULT = defineRGBA(
+            0.0f, 0.0f, 1.0f, 1.0f,
+            0.0f, 1.0f, 0.0f, 1.0f,
+            1.0f, 0.0f, 0.0f, 1.0f,
+            1.0f, 1.0f, 0.0f, 1.0f
         )
     }
 }
@@ -233,7 +259,7 @@ object OscilloscopeShader {
      * @param palette The colors to use for each channel.
      * @param texture The raw data buffer.
      * */
-    fun bindAndSetup(thickness: Float, alpha: Float, palette: OscilloscopePalette, texture: OscilloscopeTexture) {
+    fun bindAndSetup(thickness: Float, alpha: Float, palette: OscilloscopePalette, texture: OscilloscopeTexture, mask: FloatArray) {
         RenderSystem.assertOnRenderThread()
 
         val shader = shader ?: error("Oscilloscope shader didn't load")
@@ -244,7 +270,7 @@ object OscilloscopeShader {
         shader.safeGetUniform("u_count").set(texture.count.toFloat())
         shader.safeGetUniform("u_thickness").set(thickness)
         shader.safeGetUniform("u_alpha").set(alpha)
-        palette.setUniform(shader.safeGetUniform("u_channelColors"))
+        palette.setUniform(shader.safeGetUniform("u_channelColors"), mask)
     }
 
     fun unbind() {
@@ -298,12 +324,19 @@ class OscilloscopeObject(cell: OscilloscopeCell, val specification: Oscilloscope
         resistors.fill(null)
     }
 
+    /**
+     * Gets the read potential for [channel].
+     * If the channel is not connected, [Double.NaN] is returned. This will make the channel invisible later down the line.
+     * */
     fun getPotential(channel: Int) : Double {
         check(channelRange.contains(channel)) {
             "Cannot read channel $channel of an oscilloscope with $channelRange"
         }
 
-        return -(resistors[channel]?.potential ?: 0.0)
+        val resistor = resistors[channel]
+            ?: return Double.NaN
+
+        return -resistor.potential
     }
 }
 
@@ -377,9 +410,13 @@ class OscilloscopeJitterBuffer(
 
     private var int = 0.0
 
+    var latestSet : FloatArray? = null
+        private set
+
     fun insertMessage(samples: FloatArray, serverTimeStamp: Double) {
         synchronized(obj) {
             while(queue.size >= maxSize) {
+                LOG.warn("Dropping unrendered oscilloscope sample $serverTimeStamp")
                 queue.removeFirst()
             }
 
@@ -400,6 +437,10 @@ class OscilloscopeJitterBuffer(
             if(queue.isNotEmpty()) {
                 samples = queue.removeFirst()
             }
+        }
+
+        if(samples != null) {
+            latestSet = samples
         }
 
         nextPlayTime += 1.0 / playRate
@@ -457,8 +498,8 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
         )
 
         val buffer = OscilloscopeJitterBuffer(
-            100,
-            200,
+            25,
+            1000,
             0.035,
             0.0085
         )
@@ -513,12 +554,12 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
 
         poseStack.pushPose()
 
-        val tY = placement.provider.placementCollisionSize.y.toFloat() * 0.9f
+        val transVert = 0.075 / 16.0 + 0.001
 
         poseStack.translate(
-            placement.face.stepX.toFloat() * tY,
-            placement.face.stepY.toFloat() * tY,
-            placement.face.stepZ.toFloat() * tY
+            placement.face.stepX.toFloat() * transVert,
+            placement.face.stepY.toFloat() * transVert,
+            placement.face.stepZ.toFloat() * transVert
         )
 
         val (dx, dy, dz) = partOffsetTable[placement.face.get3DDataValue()]
@@ -526,9 +567,9 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
         poseStack.mulPose(placement.face.rotationFast)
         poseStack.mulPose(Rotation3d.exp(Vector3d.unitY * placement.facing.angle))
         // x = left-right, z = up-down (neg = up)
-        poseStack.translate(-0.075f, 0.0f, 0.01f)
+        poseStack.translate(-0.063f, 0.0f, 0.01f)
         // z = height, x = width
-        poseStack.scale(0.5f, 1.0f, 0.4f);
+        poseStack.scale(0.6f, 1.0f, 0.4f);
         poseStack.mulPose(Rotation3d.exp(Vector3d.unitX * PI / 2.0))
 
         val texLoc = renderState.texture.resourceId
@@ -536,14 +577,15 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
         RenderSystem.setShaderTexture(0, texLoc)
 
         OscilloscopeShader.bindAndSetup(
-            0.04f,
+            0.02f,
             1.0f,
             specification.palette,
-            renderState.texture
+            renderState.texture,
+            renderState.buffer.latestSet ?: FloatArray(renderState.texture.channelCount)
         )
 
-        dispatchQuad(poseStack);
-        OscilloscopeShader.unbind();
+        dispatchOscilloscopeQuad(poseStack)
+        OscilloscopeShader.unbind()
 
         poseStack.popPose()
     }
@@ -553,7 +595,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
     }
 
     // One draw call per oscilloscope, it's fine
-    private fun dispatchQuad(poseStack: PoseStack) {
+    private fun dispatchOscilloscopeQuad(poseStack: PoseStack) {
         RenderSystem.enableBlend()
 
         RenderSystem.blendFunc(
