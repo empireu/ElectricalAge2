@@ -10,16 +10,21 @@ import com.mojang.blaze3d.vertex.Tesselator
 import com.mojang.blaze3d.vertex.VertexFormat
 import kotlinx.serialization.Serializable
 import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.Font
 import net.minecraft.client.renderer.GameRenderer
+import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.ShaderInstance
 import net.minecraft.client.renderer.texture.DynamicTexture
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.resources.ResourceLocation
 import net.minecraftforge.client.event.RegisterShadersEvent
+import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Rotation3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.geometry.Vector4d
 import org.ageseries.libage.mathematics.rounded
+import org.ageseries.libage.mathematics.snz
+import org.ageseries.libage.mathematics.snzi
 import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
 import org.ageseries.libage.sim.electrical.mna.NEGATIVE
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
@@ -57,6 +62,7 @@ import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.floor
 import kotlin.math.min
+import kotlin.math.sign
 
 @ClientOnly
 class OscilloscopeTexture(val resourceId: ResourceLocation, val columnCount: Int, val channelCount: Int) {
@@ -107,7 +113,7 @@ class OscilloscopeTexture(val resourceId: ResourceLocation, val columnCount: Int
         var y = 0
 
         while (y < height) {
-            var sample = column[y]
+            var sample = -column[y]
 
             if(sample.isNaN()) {
                 sample = 0.0f // channel mask
@@ -336,7 +342,7 @@ class OscilloscopeObject(cell: OscilloscopeCell, val specification: Oscilloscope
         val resistor = resistors[channel]
             ?: return Double.NaN
 
-        return -resistor.potential
+        return resistor.potential
     }
 }
 
@@ -576,16 +582,19 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
 
         RenderSystem.setShaderTexture(0, texLoc)
 
+        val latestSamples = renderState.buffer.latestSet ?: FloatArray(renderState.texture.channelCount)
         OscilloscopeShader.bindAndSetup(
             0.02f,
             1.0f,
             specification.palette,
             renderState.texture,
-            renderState.buffer.latestSet ?: FloatArray(renderState.texture.channelCount)
+            latestSamples
         )
 
         dispatchOscilloscopeQuad(poseStack)
         OscilloscopeShader.unbind()
+
+        submitOscilloscopeText(poseStack, context.buffer, latestSamples, specification.palette)
 
         poseStack.popPose()
     }
@@ -620,6 +629,57 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
         builder.vertex(pose, quadRight, quadTop, 0f).uv(1f, 0f).endVertex()
         builder.vertex(pose, quadLeft, quadTop, 0f).uv(0f, 0f).endVertex()
         tesselator.end()
+    }
+
+    private fun submitOscilloscopeText(poseStack: PoseStack, bufferSource: MultiBufferSource, samples: FloatArray, palette: OscilloscopePalette) {
+        val font = Minecraft.getInstance().font
+
+        val scale = 0.007f
+        val verticalSpacing = 0.1f
+
+        samples.indices.forEach { i ->
+            poseStack.pushPose()
+
+            var sample = samples[i].toDouble()
+
+            if(sample.approxEq(0.0, 1e-8)){
+                sample = 0.0
+            }
+
+            poseStack.translate(-0.5f, -0.5f + i * verticalSpacing, 0.0f)
+            poseStack.scale(scale, scale, scale)
+
+            val text = if(sample.isNaN()) {
+                "N/A"
+            } else {
+                var text = "${sample.rounded(3)}V"
+
+                if(snzi(sample) == 1) {
+                    text = "+$text"
+                }
+
+                text
+            }
+
+            val channelColor = palette.colorsInt[i]
+
+            val textColor = MyColor((channelColor.a * 0.8).toInt(), channelColor.r, channelColor.g, channelColor.b)
+
+            font.drawInBatch(
+                text,
+                0.0f,
+                0.0f,
+                textColor.data,
+                false,
+                poseStack.last().pose(),
+                bufferSource,
+                Font.DisplayMode.SEE_THROUGH,
+                0,
+                15728880
+            )
+
+            poseStack.popPose()
+        }
     }
 
     //#endregion
