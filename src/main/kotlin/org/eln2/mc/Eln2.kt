@@ -25,6 +25,7 @@ import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.containers.ContainerRegistry
 import org.eln2.mc.common.content.Content
+import org.eln2.mc.common.content.OscilloscopeCopyManager
 import org.eln2.mc.common.content.OscilloscopeShader
 import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.entities.EntityRegistry
@@ -104,6 +105,7 @@ class Eln2 {
         forgeEventBus.addListener(EventPriority.HIGHEST, ScrewdriverItem::onScroll)
         forgeEventBus.addListener(SpecPlacementOverlayClient::onKey)
         forgeEventBus.addListener(SpecPreviewRenderer::render)
+        forgeEventBus.addListener(OscilloscopeCopyManager::execute)
 
         if(SodiumPlugin.shouldApply()) {
             forgeEventBus.addListener(EmbeddiumCompat::`eln2GridRenderer$handleEvent`)

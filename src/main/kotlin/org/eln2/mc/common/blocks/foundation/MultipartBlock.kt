@@ -441,9 +441,8 @@ class MultipartBlockEntityLevelRender(val context: BlockEntityRendererProvider.C
         )
     }
 
-    override fun shouldRenderOffScreen(pBlockEntity: MultipartBlockEntity): Boolean {
-        return pBlockEntity.additionalRenderShouldRenderOffScreen()
-    }
+    // It is called once at the start, we can't really query the parts for this
+    override fun shouldRenderOffScreen(pBlockEntity: MultipartBlockEntity) = true
 }
 
 /**
@@ -453,8 +452,6 @@ class MultipartBlockEntityLevelRender(val context: BlockEntityRendererProvider.C
 @ClientOnly
 interface AdditionalRenderingPart {
     fun levelRender(context: Context)
-
-    fun shouldRenderOffScreen() : Boolean = true
 
     data class Context(
         val partialTick: Float,
@@ -531,21 +528,6 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
                 it.levelRender(context)
             }
         }
-    }
-
-    fun additionalRenderShouldRenderOffScreen() : Boolean {
-        var result = false
-
-        parts.values.forEach {
-            if(it is AdditionalRenderingPart) {
-                if(it.shouldRenderOffScreen()) {
-                    result = true
-                    return@forEach
-                }
-            }
-        }
-
-        return result
     }
 
     /**

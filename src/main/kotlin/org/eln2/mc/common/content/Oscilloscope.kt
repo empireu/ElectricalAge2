@@ -18,6 +18,7 @@ import net.minecraft.client.renderer.texture.DynamicTexture
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.resources.ResourceLocation
 import net.minecraftforge.client.event.RegisterShadersEvent
+import net.minecraftforge.client.event.RenderLevelStageEvent
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Rotation3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
@@ -31,6 +32,7 @@ import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
+import org.eln2.mc.OnClientThread
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.TermRef
 import org.eln2.mc.client.render.foundation.MyColor
@@ -426,7 +428,7 @@ class OscilloscopeBuffer(
     val desiredRenderingSize: Int,
     val maxBufferSizeAbsolute: Int,
     val kE: Double = 30.0,
-    val maxDebufferQueueSize: Int = 20,
+    val maxDebufferQueueSize: Int = 15,
     val samplingRateAlpha: Double = 0.1
 ) {
     private val obj = Any()
@@ -446,7 +448,8 @@ class OscilloscopeBuffer(
     private var debufferingTimeAccumulator = 0.0
 
     private val extractionWatch = Stopwatch()
-    private var extractionTimeAccumulator = 0.0
+    var extractionTimeAccumulator = 0.0
+        private set
 
     private var lastServerTime = -1.0
     private var samplingRateEma = 1.0 / CellGraph.DT
@@ -555,15 +558,17 @@ class OscilloscopeBuffer(
 
         extractionTimeAccumulator -= nextPlayTime
 
+        var hasResult = false
         synchronized(obj) {
             if(renderQueue.isNotEmpty()) {
                 latestRemovedSet = renderQueue.removeFirst()
+                hasResult = true
             }
         }
 
         nextPlayTime = 1.0 / playRate
 
-        return latestRemovedSet
+        return if(hasResult) latestRemovedSet else null
     }
 
     /**
@@ -577,6 +582,110 @@ class OscilloscopeBuffer(
         val result = removeSet()
         control()
         return result
+    }
+}
+
+/**
+ * Client-side data for the oscilloscope. Must be constructed on the render thread.
+ * Creates the data texture for the specified [horizonColumns] and [channels], and also registers the GPU copy task.
+ * */
+@ClientOnly
+class OscilloscopeClientSide(horizonColumns: Int, channels: Int) {
+    init {
+        requireIsOnRenderThread {
+            "OscilloscopeClientSide#init"
+        }
+
+        OscilloscopeCopyManager.add(this)
+    }
+
+    private var closed = false
+
+    val texture = OscilloscopeTexture(
+        resource("oscilloscope_${UUID.randomUUID()}"),
+        horizonColumns,
+        channels
+    )
+
+    val buffer = OscilloscopeBuffer(25, 200)
+
+    /**
+     * Uploads the columns into GPU memory. Called by [OscilloscopeCopyManager].
+     * */
+    fun copyIntoGPUMemory() {
+        requireIsOnRenderThread {
+            "OscilloscopeClientSide#copyIntoGPUMemory"
+        }
+
+        if(closed) {
+            return
+        }
+
+        while (true) {
+            val newSamples = buffer.consume()
+
+            if(newSamples != null) {
+                texture.writeColumnAndUpload(newSamples)
+            }
+            else {
+                break
+            }
+        }
+    }
+
+    fun close() {
+        requireIsOnRenderThread {
+            "OscilloscopeClientSide#close"
+        }
+
+        if(closed) {
+            return
+        }
+
+        closed = true
+        OscilloscopeCopyManager.remove(this)
+        texture.close()
+    }
+}
+
+/**
+ * Because the block entity renderer is frustum culled, we can't rely on it to handle the de-queueing of samples.
+ * So we subscribe to the render event instead.
+ * */
+object OscilloscopeCopyManager {
+    private val tasks = HashSet<OscilloscopeClientSide>()
+
+    @OnClientThread
+    fun add(task: OscilloscopeClientSide) {
+        requireIsOnRenderThread {
+            "OscilloscopeCopyManager#add"
+        }
+
+        require(tasks.add(task)) {
+            "Duplicate add oscilloscope task $task"
+        }
+    }
+
+    @OnClientThread
+    fun remove(task: OscilloscopeClientSide) {
+        requireIsOnRenderThread {
+            "OscilloscopeCopyManager#remove"
+        }
+
+        require(tasks.remove(task)) {
+            "Invalid remove oscilloscope task $task"
+        }
+    }
+
+    @OnClientThread
+    fun execute(event: RenderLevelStageEvent) {
+        if(event.stage != RenderLevelStageEvent.Stage.AFTER_SOLID_BLOCKS) {
+            return
+        }
+
+        tasks.forEach {
+            it.copyIntoGPUMemory()
+        }
     }
 }
 
@@ -599,67 +708,28 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
         categories = listOf(GridMaterialCategory.SignalGrid)
     )
 
-    @ClientOnly
-    private class RenderState(horizonColumns: Int, channels: Int) {
-        init {
-            requireIsOnRenderThread {
-                "Tried to create oscilloscope render state on non-render thread"
-            }
-        }
-
-        val texture = OscilloscopeTexture(
-            resource("oscilloscope_${UUID.randomUUID()}"),
-            horizonColumns,
-            channels
-        )
-
-        val buffer = OscilloscopeBuffer(25, 1000)
-
-        fun close() {
-            texture.close()
-        }
-    }
-
     @ServerOnly // Saved in NBT
     private var timeWindow = specification.maxWindow / 2
 
     // Initialize on render thread (first call to [levelRender]
     @ClientOnly
-    private var renderStateImpl : RenderState? = null
+    private var renderStateImpl : OscilloscopeClientSide? = null
 
     //#region Rendering Only
 
-    @ClientOnly
-    private fun destroyRenderState() {
-        if(placement.level.isClientSide) {
-            renderStateImpl?.close()
-        }
-    }
-
     override fun onUnloaded() {
         super.onUnloaded()
-        destroyRenderState()
+        renderStateImpl?.close()
     }
 
     override fun onBroken() {
         super.onBroken()
-        destroyRenderState()
+        renderStateImpl?.close()
     }
 
     override fun levelRender(context: AdditionalRenderingPart.Context) {
         val renderState = this.renderStateImpl
             ?: return
-
-        while (true) {
-            val newSamples = renderState.buffer.consume()
-
-            if(newSamples != null) {
-                renderState.texture.writeColumnAndUpload(newSamples)
-            }
-            else {
-                break
-            }
-        }
 
         val poseStack = context.poseStack
 
@@ -691,6 +761,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
         RenderSystem.setShaderTexture(0, texLoc)
 
         val latestSamples = renderState.buffer.latestRemovedSet ?: FloatArray(renderState.texture.channelCount)
+
         OscilloscopeShader.bindAndSetup(
             1.0f,
             renderState.texture,
@@ -705,10 +776,6 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
         submitOscilloscopeText(poseStack, context.buffer, latestSamples, specification.palette)
 
         poseStack.popPose()
-    }
-
-    override fun shouldRenderOffScreen(): Boolean {
-        return true
     }
 
     // One draw call per oscilloscope, it's fine
@@ -824,17 +891,19 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
         builder.withHandler<UpdateMessage>(this::handleMessage)
     }
 
+    @OnClientThread
     private fun handleMessage(message: UpdateMessage) {
         var currentState = renderStateImpl
 
         if(currentState == null) {
-            currentState = RenderState(message.window, specification.channelCount)
+            currentState = OscilloscopeClientSide(message.window, specification.channelCount)
             renderStateImpl = currentState
         }
         else {
             if(currentState.texture.columnCount != message.window) {
+                // Re-create the buffers with the new settings:
                 currentState.close()
-                currentState = RenderState(message.window, specification.channelCount)
+                currentState = OscilloscopeClientSide(message.window, specification.channelCount)
                 renderStateImpl = currentState
             }
         }
