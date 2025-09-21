@@ -22,8 +22,8 @@ import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Rotation3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.geometry.Vector4d
+import org.ageseries.libage.mathematics.nz
 import org.ageseries.libage.mathematics.rounded
-import org.ageseries.libage.mathematics.snz
 import org.ageseries.libage.mathematics.snzi
 import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
 import org.ageseries.libage.sim.electrical.mna.NEGATIVE
@@ -62,7 +62,6 @@ import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.floor
 import kotlin.math.min
-import kotlin.math.sign
 
 @ClientOnly
 class OscilloscopeTexture(val resourceId: ResourceLocation, val columnCount: Int, val channelCount: Int) {
@@ -390,83 +389,168 @@ class OscilloscopeCell(ci: CellCreateInfo, specification: OscilloscopeSpecificat
 }
 
 /**
- * @param desiredSize The desired size of the buffer, in samples.
- * @param maxSize Hard cap on the size. If samples aren't consumed in time, the buffer will discard the oldest samples so this threshold isn't broken.
- * @param dtControl The time interval of the control loop. The time interval at which [extractOrNull] is called should ideally be much larger than this.
+ * Double-buffer for oscilloscope samples. It handles de-jitter and de-batching the samples coming over the network.
+ * @param desiredRenderingSize The desired size of the render buffer, in samples.
+ * @param maxBufferSizeAbsolute Hard cap on the size. If samples aren't consumed in time, the buffer will discard the oldest samples so this threshold isn't broken (should never be reached).
+ * @param kE Control parameter.
+ * @param maxDebufferQueueSize The max size of the network smoothing loop. Ideally, the queue is never filled above say ~10 packets.
+ * @param samplingRateAlpha Smoothing parameter for calculating the sampling rate.
  * */
-class OscilloscopeJitterBuffer(
-    val desiredSize: Int,
-    val maxSize: Int,
-    val kP: Double,
-    val kI: Double,
-    val dtControl: Double = 1 / 30.0
+class OscilloscopeBuffer(
+    val desiredRenderingSize: Int,
+    val maxBufferSizeAbsolute: Int,
+    val kE: Double = 30.0,
+    val maxDebufferQueueSize: Int = 20,
+    val samplingRateAlpha: Double = 0.1
 ) {
     private val obj = Any()
-    private val queue = ArrayDeque<FloatArray>()
 
-    val size get() = queue.size
+    /**
+     * The server packets are moved here. We get batches of ~5 arrays because the bulk packets are flushed per game tick.
+     * */
+    private val debufferingQueue = ArrayDeque<FloatArray>()
+
+    /**
+     * The actual queue for rendering is this. Samples get copied from [debufferingQueue] to [renderQueue] at ~the sampling rate.
+     * The control loop then uses the size of this queue to calculate the error.
+     * */
+    private val renderQueue = ArrayDeque<FloatArray>()
+
+    private val debufferWatch = Stopwatch()
+    private var debufferingTimeAccumulator = 0.0
 
     private val extractionWatch = Stopwatch()
-    private val controlWatch = Stopwatch()
+    private var extractionTimeAccumulator = 0.0
 
-    private var nextPlayTime = desiredSize * CellGraph.DT
+    private var lastServerTime = -1.0
+    private var samplingRateEma = 1.0 / CellGraph.DT
+    private var nextPlayTime = desiredRenderingSize * CellGraph.DT
 
     var playRate = 1.0 / CellGraph.DT
         private set
 
-    private var int = 0.0
-
-    var latestSet : FloatArray? = null
+    /**
+     * The latest samples removed by [consume].
+     * */
+    var latestRemovedSet : FloatArray? = null
         private set
 
+    /**
+     * Inserts samples into the buffer. This should ideally be called every game tick with the batch of ~5 samples from the simulation.
+     * */
     fun insertMessage(samples: FloatArray, serverTimeStamp: Double) {
         synchronized(obj) {
-            while(queue.size >= maxSize) {
-                LOG.warn("Dropping unrendered oscilloscope sample $serverTimeStamp")
-                queue.removeFirst()
+            while (renderQueue.size >= maxBufferSizeAbsolute) {
+                LOG.warn("Dropping unrendered oscilloscope samples from render queue $serverTimeStamp")
+                renderQueue.removeFirst()
             }
 
-            queue.add(samples)
+            while(debufferingQueue.size >= maxBufferSizeAbsolute) {
+                LOG.warn("Dropping unrendered oscilloscope samples from debuffer queue $serverTimeStamp")
+                debufferingQueue.removeFirst()
+            }
+
+            debufferingQueue.addLast(samples)
+        }
+
+        if(lastServerTime != -1.0) {
+            val dt = (serverTimeStamp - lastServerTime)
+
+            if(dt > CellGraph.DT * 0.8 && dt < 10.0) {
+                samplingRateEma = samplingRateAlpha * (1.0 / dt) + (1.0 - samplingRateAlpha) * samplingRateEma
+            }
+        }
+
+        lastServerTime = serverTimeStamp
+    }
+
+    /**
+     * Copies samples from the debuffering queue to the rendering queue at approx. 1.0 / samplingRateEma.
+     * Copies samples forcefully if the buffer is at max capacity.
+     * */
+    private fun debuffer() {
+        /**
+         * Copies a sample from the debuffering queue to the rendering queue.
+         * */
+        fun copySample() {
+            synchronized(obj) {
+                if(debufferingQueue.isNotEmpty()) {
+                    renderQueue.add(debufferingQueue.removeFirst())
+                }
+            }
+        }
+
+        debufferingTimeAccumulator += !debufferWatch.sample()
+
+        val samplingInterval = 1.0 / samplingRateEma
+
+        // Copy samples nominally:
+        while (debufferingTimeAccumulator >= samplingInterval) {
+            debufferingTimeAccumulator -= samplingInterval
+            copySample()
+        }
+
+        var forcedSamples = 0
+        // Safeguard against weird stuff:
+        while(debufferingQueue.size > maxDebufferQueueSize) {
+            copySample()
+            ++forcedSamples
+        }
+
+        if(forcedSamples > 0) {
+            LOG.debug("Debuffer queue desaturated $forcedSamples samples")
         }
     }
 
-    fun extractOrNull() : FloatArray? {
-        val extractionTime = !extractionWatch.total
+    /**
+     * Time-invariant [playRate] control. It is very stable and doesn't need real tuning.
+     * It works by setting the play rate to the sampling rate plus an offset proportional to the difference in desired delay and actual delay.
+     * */
+    private fun control() {
+        val samplingPeriod = (1.0.nz() / samplingRateEma.nz())
+        val desiredDepthSeconds = desiredRenderingSize * samplingPeriod
+        val depthSeconds = renderQueue.size * samplingPeriod
 
-        if(extractionTime < nextPlayTime) {
-            control()
+        val nominalRate = 1.0 / CellGraph.DT
+        val maxRateDelta = 10.0
+
+        val errorSeconds = desiredDepthSeconds - depthSeconds
+
+        playRate = (1.0 / samplingPeriod) -kE * errorSeconds
+        playRate = playRate.coerceIn(nominalRate - maxRateDelta, nominalRate + maxRateDelta).coerceAtLeast(0.1)
+    }
+
+    private fun removeSet() : FloatArray? {
+        extractionTimeAccumulator += !extractionWatch.sample()
+
+        if(extractionTimeAccumulator < nextPlayTime) {
             return null
         }
 
-        var samples: FloatArray? = null
+        extractionTimeAccumulator -= nextPlayTime
+
         synchronized(obj) {
-            if(queue.isNotEmpty()) {
-                samples = queue.removeFirst()
+            if(renderQueue.isNotEmpty()) {
+                latestRemovedSet = renderQueue.removeFirst()
             }
         }
 
-        if(samples != null) {
-            latestSet = samples
-        }
+        nextPlayTime = 1.0 / playRate
 
-        nextPlayTime += 1.0 / playRate
-        control()
-
-        return samples
+        return latestRemovedSet
     }
 
-    private fun control() {
-        if(controlWatch.total >= dtControl) {
-            controlWatch.resetTotal()
-
-            val error = (desiredSize - size).toDouble()
-
-            int += error * dtControl
-            val deltaRate = kP * error + kI * int
-
-            playRate -= deltaRate
-            playRate = playRate.coerceIn(1.0, 1.0 / CellGraph.DT)
-        }
+    /**
+     * Gets the next column to insert into the rendering data. Called per-frame. Ideally, the frame rate should be very high.
+     * Returns null if it's not time for that yet, or samples are simply not available.
+     *
+     * **P.S. Call this in a loop, exiting only when it returns null!**
+     * */
+    fun consume() : FloatArray? {
+        debuffer()
+        val result = removeSet()
+        control()
+        return result
     }
 }
 
@@ -503,12 +587,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
             channels
         )
 
-        val buffer = OscilloscopeJitterBuffer(
-            25,
-            1000,
-            0.035,
-            0.0085
-        )
+        val buffer = OscilloscopeBuffer(25, 1000)
 
         fun close() {
             texture.close()
@@ -546,7 +625,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
             ?: return
 
         while (true) {
-            val newSamples = renderState.buffer.extractOrNull()
+            val newSamples = renderState.buffer.consume()
 
             if(newSamples != null) {
                 renderState.texture.writeColumnAndUpload(newSamples)
@@ -582,7 +661,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
 
         RenderSystem.setShaderTexture(0, texLoc)
 
-        val latestSamples = renderState.buffer.latestSet ?: FloatArray(renderState.texture.channelCount)
+        val latestSamples = renderState.buffer.latestRemovedSet ?: FloatArray(renderState.texture.channelCount)
         OscilloscopeShader.bindAndSetup(
             0.02f,
             1.0f,
