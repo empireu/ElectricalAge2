@@ -14,6 +14,7 @@ import org.eln2.mc.common.parts.foundation.PartUseInfo
 import org.eln2.mc.data.MonopoleMap
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import kotlin.math.sin
 
 class VoltageSourceCell(
     ci: CellCreateInfo,
@@ -22,7 +23,17 @@ class VoltageSourceCell(
 ) : Cell(ci), SidedElectricalMonoMapped<VoltageSourceCell> {
     @SimObject
     val voltageSource = VoltageSourceObject(this).also {
-        it.source.potential = 1200.0
+        it.source.potential = 100.0
+    }
+
+    var t = 0.0
+
+    override fun subscribe(subscribers: SubscriberCollection) {
+        subscribers.addPre { dt, _ ->
+            voltageSource.source.potential = sin(t) * 100.0
+
+            t += dt
+        }
     }
 }
 

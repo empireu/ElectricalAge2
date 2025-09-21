@@ -34,9 +34,10 @@
             ]
         },
         { "name": "u_writeX", "type": "float", "count": 1, "values": [ 1.0 ] },
-        { "name":  "u_count", "type":  "float", "count": 1, "values": [ 1.0 ] },
+        { "name": "u_count", "type":  "float", "count": 1, "values": [ 1.0 ] },
         { "name": "u_thickness", "type": "float", "count": 1, "values": [ 1.0 ] },
         { "name": "u_alpha", "type": "float", "count": 1, "values": [ 1.0 ] },
-        { "name": "u_channelColors", "type": "float", "count": 16, "values": [ 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 ] }
+        { "name": "u_channelColors", "type": "float", "count": 16, "values": [ 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 ] },
+        { "name": "u_axisInfo", "type": "float", "count": 7, "values": [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 ] }
     ]
 }

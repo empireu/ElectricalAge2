@@ -31,6 +31,7 @@ import org.ageseries.libage.data.WATT_PER_METER_KELVIN
 import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.mathematics.geometry.Vector4d
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Material
@@ -1054,7 +1055,11 @@ object Content {
         2,
         10,
         1000,
-        OscilloscopePalette.DEFAULT
+        OscilloscopePalette.DEFAULT,
+        0.02f,
+        0.0075f,
+        Vector4d(0.8, 0.8, 1.0, 0.2),
+        11
     )
 
     val BASIC_TWO_CHANNEL_OSCILLOSCOPE_CELL = cellImmediate("basic_two_channel_oscilloscope") {

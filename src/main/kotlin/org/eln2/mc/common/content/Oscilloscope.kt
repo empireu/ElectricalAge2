@@ -259,12 +259,11 @@ object OscilloscopeShader {
 
     /**
      * Sets up the shader for rendering.
-     * @param thickness The approximate thickness of the line in UV-space.
      * @param alpha Factor for the output alpha.
-     * @param palette The colors to use for each channel.
      * @param texture The raw data buffer.
+     * @param mask The latest samples. Channels with NaN will be hidden.
      * */
-    fun bindAndSetup(thickness: Float, alpha: Float, palette: OscilloscopePalette, texture: OscilloscopeTexture, mask: FloatArray) {
+    fun bindAndSetup(alpha: Float, texture: OscilloscopeTexture, mask: FloatArray, specification: OscilloscopeSpecification, aspect: Float) {
         RenderSystem.assertOnRenderThread()
 
         val shader = shader ?: error("Oscilloscope shader didn't load")
@@ -273,9 +272,23 @@ object OscilloscopeShader {
         shader.safeGetUniform("Sampler0").set(texture.glTex.id)
         shader.safeGetUniform("u_writeX").set(texture.writeX.toFloat())
         shader.safeGetUniform("u_count").set(texture.count.toFloat())
-        shader.safeGetUniform("u_thickness").set(thickness)
+        shader.safeGetUniform("u_thickness").set(specification.channelThickness)
         shader.safeGetUniform("u_alpha").set(alpha)
-        palette.setUniform(shader.safeGetUniform("u_channelColors"), mask)
+        specification.palette.setUniform(shader.safeGetUniform("u_channelColors"), mask)
+
+        shader.safeGetUniform("u_axisInfo").set(
+            FloatArray(7).also {
+                val (x, y, z, w) = specification.axisColor
+
+                it[0] = specification.horizontalCuts.toFloat()
+                it[1] = aspect
+                it[2] = specification.axisThickness
+                it[3] = x.toFloat()
+                it[4] = y.toFloat()
+                it[5] = z.toFloat()
+                it[6] = w.toFloat()
+            }
+        )
     }
 
     fun unbind() {
@@ -288,8 +301,21 @@ object OscilloscopeShader {
  * @param channelCount The number of channels. For each channel, a resistor will be created, that is grounded at the negative terminal and connected to the external circuit at the positive terminal.
  * @param minWindow The minimum number of samples on screen.
  * @param maxWindow The maximum number of samples on screen. This defines the time horizon based on the sampling rate (in optimal conditions, 100 samples/s).
+ * @param channelThickness The line thickness of the waveform.
+ * @param axisThickness The line thickness of the vertical and horizontal axis.
+ * @param axisColor The color of the divisions.
+ * @param horizontalCuts The number of horizontal lines to draw. Vertical cuts are adjusted based on aspect ratio.
  * */
-data class OscilloscopeSpecification(val channelCount: Int, val minWindow: Int, val maxWindow: Int, val palette: OscilloscopePalette)
+data class OscilloscopeSpecification(
+    val channelCount: Int,
+    val minWindow: Int,
+    val maxWindow: Int,
+    val palette: OscilloscopePalette,
+    val channelThickness: Float,
+    val axisThickness: Float,
+    val axisColor: Vector4d,
+    val horizontalCuts: Int
+)
 
 /**
  * The electrical part of the oscilloscope. Handles creating resistors with a very high resistance to ground.
@@ -647,6 +673,9 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
             placement.face.stepZ.toFloat() * transVert
         )
 
+        val sizeX = 0.6f
+        val sizeZ = 0.4f
+
         val (dx, dy, dz) = partOffsetTable[placement.face.get3DDataValue()]
         poseStack.translate(dx, dy, dz)
         poseStack.mulPose(placement.face.rotationFast)
@@ -654,7 +683,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
         // x = left-right, z = up-down (neg = up)
         poseStack.translate(-0.063f, 0.0f, 0.01f)
         // z = height, x = width
-        poseStack.scale(0.6f, 1.0f, 0.4f);
+        poseStack.scale(sizeX, 1.0f, sizeZ);
         poseStack.mulPose(Rotation3d.exp(Vector3d.unitX * PI / 2.0))
 
         val texLoc = renderState.texture.resourceId
@@ -663,11 +692,11 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
 
         val latestSamples = renderState.buffer.latestRemovedSet ?: FloatArray(renderState.texture.channelCount)
         OscilloscopeShader.bindAndSetup(
-            0.02f,
             1.0f,
-            specification.palette,
             renderState.texture,
-            latestSamples
+            latestSamples,
+            specification,
+            sizeX / sizeZ
         )
 
         dispatchOscilloscopeQuad(poseStack)
@@ -725,7 +754,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
                 sample = 0.0
             }
 
-            poseStack.translate(-0.5f, -0.5f + i * verticalSpacing, 0.0f)
+            poseStack.translate(-0.5f, -0.5f + i * verticalSpacing, -0.01f) // Z is above the quad
             poseStack.scale(scale, scale, scale)
 
             val text = if(sample.isNaN()) {
@@ -752,8 +781,8 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
                 false,
                 poseStack.last().pose(),
                 bufferSource,
-                Font.DisplayMode.SEE_THROUGH,
-                0,
+                Font.DisplayMode.POLYGON_OFFSET,
+                MyColor(50, 255, 255, 255).data,
                 15728880
             )
 

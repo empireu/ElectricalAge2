@@ -2,12 +2,15 @@
 
 in vec2 v_UV;
 
+// FUCK YOU MOJANG YOU DIDN'T PACK THE BUFFER CORRECTLY FUCK YOU!
+
 uniform sampler2D Sampler0;
 uniform float u_writeX;
 uniform float u_count;
 uniform float u_thickness;
 uniform float u_alpha;
 uniform float u_channelColors[16];
+uniform float u_axisInfo[7];
 
 out vec4 fragColor;
 
@@ -29,6 +32,32 @@ float catmullRomDerivative(float p0, float p1, float p2, float p3, float t) {
     float c = -p0 + 3.0 * p1 - 3.0 * p2 + p3;
 
     return 0.5 * (a + 2.0 * b * t + 3.0 * c * t * t);
+}
+
+vec4 gridColor() {
+    float horizontalCuts = u_axisInfo[0];
+    float aspectRatio = u_axisInfo[1];
+    float axisThickness = u_axisInfo[2];
+
+    float verticalCuts = ceil(aspectRatio * horizontalCuts);
+
+    float cellsX = (1.0 + verticalCuts);
+    float cellsY = (1.0 + horizontalCuts);
+
+    vec2 uvCell = v_UV * vec2(cellsX, cellsY);
+
+    float fracX = fract(uvCell.x);
+    float fracY = fract(uvCell.y);
+
+    float distanceX = min(fracX, 1.0 - fracX) / cellsX;
+    float distanceY = min(fracY, 1.0 - fracY) / cellsY;
+
+    float distance = min(distanceX, distanceY);
+
+    float weight = 1.0 - smoothstep(0.0, axisThickness, distance);
+    int include = int(weight > 0.85);
+
+    return include * vec4(u_axisInfo[3], u_axisInfo[4], u_axisInfo[5], u_axisInfo[6] * weight);
 }
 
 void main() {
@@ -53,8 +82,12 @@ void main() {
     // If no midB is present, discard.
     bool hasMidB = ((midAIdx - oldestIdx + columns) % columns) < sampleCount - 1;
 
+    vec4 grid = gridColor();
+
     if(!hasMidB) {
-        discard;
+        // Just the axis color now:
+        fragColor = grid;
+        return;
     }
 
     int midBOffset = min(midAOffset + 1, sampleCount - 1);
@@ -72,6 +105,8 @@ void main() {
     // Partial column is [0, 1], so we use it directly as an interpolating parameter.
     float partialColumn = uvColumns - midAOffset;
 
+    // Then calculate the waveform contributions:
+
     // We need to calculate the distance from the fragment to each wave.
     // The intensity of each texel corresponds to the wave's Y in a [-1, 1] range.
     // Our UV landed between two columns, so, for each channel, we can construct the line that represents the local approximation of the waveform.
@@ -79,7 +114,12 @@ void main() {
 
     vec3 colorSum = vec3(0.0);
     float weightSum = 0.0;
-    int contributingChannels = 0;
+    int contributedColors = 0;
+
+    int gridContributed = int(grid.w > 0.0);
+    colorSum += gridContributed * grid.xyz;
+    weightSum += gridContributed * grid.w;
+    contributedColors += gridContributed;
 
     for(int channelIndex = 0; channelIndex < channelCount; channelIndex++) {
         // Fetches the Y of the waveform in the texels.
@@ -113,16 +153,12 @@ void main() {
         // Blending:
         colorSum += shouldInclude * channelColorRGBA.xyz * weight;
         weightSum += shouldInclude * weight;
-        contributingChannels += shouldInclude;
+        contributedColors += shouldInclude;
     }
 
-    if(contributingChannels == 0) {
+    if(contributedColors == 0) {
         discard;
     }
 
-    // Max so we don't get an explosion when the weight sum is small.
-    vec3 resultRGB = colorSum / weightSum;
-    float resultA = weightSum / contributingChannels * u_alpha;
-
-    fragColor = vec4(resultRGB, resultA);
+    fragColor = vec4(colorSum / weightSum, weightSum / contributedColors * u_alpha);
 }
