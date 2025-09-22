@@ -17,6 +17,7 @@ import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.ShaderInstance
 import net.minecraft.client.renderer.texture.DynamicTexture
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.nbt.ListTag
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerPlayer
@@ -76,6 +77,7 @@ import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.common.parts.foundation.PartUseInfo
 import org.eln2.mc.common.parts.foundation.stillValid
 import org.eln2.mc.common.parts.foundation.writeGuiData
+import org.eln2.mc.extensions.getListTag
 import org.eln2.mc.extensions.mulPose
 import org.eln2.mc.extensions.preserve
 import org.eln2.mc.extensions.rotationFast
@@ -622,10 +624,10 @@ class OscilloscopeTransferBuffer(
 
 /**
  * Client-side data for the oscilloscope. Must be constructed on the render thread.
- * Creates the data texture for the specified [horizonColumns] and [channels], and also registers the GPU copy task.
+ * Must be re-constructed when the column count changes. When other settings change, the [serverOptions] reference is simply replaced.
  * */
 @ClientOnly
-class OscilloscopeClientSide(horizonColumns: Int, channels: Int) {
+class OscilloscopeClientSide(var serverOptions: OscilloscopeParameters, channels: Int) {
     init {
         requireIsOnRenderThread {
             "OscilloscopeClientSide#init"
@@ -638,7 +640,7 @@ class OscilloscopeClientSide(horizonColumns: Int, channels: Int) {
 
     val texture = OscilloscopeTexture(
         resource("oscilloscope_${UUID.randomUUID()}"),
-        horizonColumns,
+        serverOptions.timeWindow,
         channels
     )
 
@@ -705,6 +707,83 @@ class OscilloscopeClientSide(horizonColumns: Int, channels: Int) {
 }
 
 /**
+ * Persistent settings for the oscilloscope **game object**. They are saved in the part's NBT.
+ * Clients receive them as well, and they also send new settings to the server from the GUI.
+ * */
+@Serializable
+class OscilloscopeParameters(var timeWindow: Int, val channelParameters: Array<ChannelParameters>) {
+    constructor(specification: OscilloscopeSpecification) : this(
+        specification.maxWindow / 2,
+        Array<ChannelParameters>(specification.channelCount) {
+            ChannelParameters(
+                -1.0f, +1.0f,
+                -1.0f, +1.0f,
+                ""
+            )
+        }
+    )
+
+    /**
+     * Settings for individual channels.
+     * A linear map is used like all signal devices.
+     * @param unit The optional unit displayed in the GUIs. Empty if no unit is specified.
+     * */
+    @Serializable
+    data class ChannelParameters(
+        var signalMin: Float,
+        var signalMax: Float,
+        var displayMin: Float,
+        var displayMax: Float,
+        var unit: String
+    )
+
+    fun saveToTag(tag: CompoundTag) {
+        tag.putInt(WINDOW, timeWindow)
+
+        val channelParametersList = ListTag()
+        channelParameters.forEach { channel ->
+            val channelTag = CompoundTag()
+            channelTag.putFloat(SIGNAL_MIN, channel.signalMin)
+            channelTag.putFloat(SIGNAL_MAX, channel.signalMax)
+            channelTag.putFloat(DISPLAY_MIN, channel.displayMin)
+            channelTag.putFloat(DISPLAY_MAX, channel.displayMax)
+            channelTag.putString(UNIT, channel.unit)
+            channelParametersList.add(channelTag)
+        }
+
+        tag.put(CHANNEL_PARAMETERS, channelParametersList)
+    }
+
+    fun loadFromTag(tag: CompoundTag) {
+        timeWindow = tag.getInt(WINDOW)
+
+        val channelParametersList = tag.getListTag(CHANNEL_PARAMETERS)
+        if(channelParametersList.size == channelParameters.size) {
+            // Accept only if the channel count didn't change
+            channelParameters.indices.forEach { i ->
+                val channel = channelParameters[i]
+                val channelTag = channelParametersList[i] as CompoundTag
+                channel.signalMin = channelTag.getFloat(SIGNAL_MIN)
+                channel.signalMax = channelTag.getFloat(SIGNAL_MAX)
+                channel.displayMin = channelTag.getFloat(DISPLAY_MIN)
+                channel.displayMax = channelTag.getFloat(DISPLAY_MAX)
+                channel.unit = channelTag.getString(UNIT)
+            }
+        }
+    }
+
+    companion object {
+        private const val WINDOW = "timeWindow"
+        private const val CHANNEL_PARAMETERS = "channelParameters"
+        private const val SIGNAL_MIN = "signalMin"
+        private const val SIGNAL_MAX = "signalMax"
+        private const val DISPLAY_MIN = "displayMin"
+        private const val DISPLAY_MAX = "displayMax"
+        private const val UNIT = "unit"
+    }
+}
+
+/**
  * Because the block entity renderer is frustum culled, we can't rely on it to handle the de-queueing of samples.
  * So we subscribe to the render event instead.
  * */
@@ -765,27 +844,27 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
         categories = listOf(GridMaterialCategory.SignalGrid)
     )
 
-    @ServerOnly // Saved in NBT
-    private var timeWindow = specification.maxWindow / 2
+    @ServerOnly // Saved in disk NBT, sent over the bulk packet. Changes received from the GUI container and applied.
+    private var serverParameters = if(!placement.level.isClientSide) OscilloscopeParameters(specification) else null
 
-    // Initialize on render thread (first call to [levelRender]
+    // Initialized on render thread. Will be re-created if the time window changes.
     @ClientOnly
-    private var renderStateImpl : OscilloscopeClientSide? = null
+    private var clientSide : OscilloscopeClientSide? = null
 
     //#region Rendering Only
 
     override fun onUnloaded() {
         super.onUnloaded()
-        renderStateImpl?.close()
+        clientSide?.close()
     }
 
     override fun onBroken() {
         super.onBroken()
-        renderStateImpl?.close()
+        clientSide?.close()
     }
 
     override fun levelRender(context: AdditionalRenderingPart.Context) {
-        val renderState = this.renderStateImpl
+        val renderState = this.clientSide
             ?: return
 
         val poseStack = context.poseStack
@@ -828,16 +907,16 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
             false
         )
 
-        dispatchOscilloscopeQuad(poseStack)
+        dispatchInWorldQuadImmediate(poseStack)
         OscilloscopeShader.unbind()
 
-        submitOscilloscopeText(poseStack, context.buffer, latestSamples, specification.palette)
+        submitInWorldText(poseStack, context.buffer, latestSamples, specification.palette)
 
         poseStack.popPose()
     }
 
     // One draw call per oscilloscope, it's fine
-    private fun dispatchOscilloscopeQuad(poseStack: PoseStack) {
+    private fun dispatchInWorldQuadImmediate(poseStack: PoseStack) {
         RenderSystem.enableBlend()
 
         RenderSystem.blendFunc(
@@ -864,20 +943,18 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
         tesselator.end()
     }
 
-    private fun submitOscilloscopeText(poseStack: PoseStack, bufferSource: MultiBufferSource, samples: FloatArray, palette: OscilloscopePalette) {
+    private fun submitInWorldText(poseStack: PoseStack, bufferSource: MultiBufferSource, samples: FloatArray, palette: OscilloscopePalette) {
         val font = Minecraft.getInstance().font
 
         val scale = 0.007f
         val verticalSpacing = 0.1f
 
+        val params = clientSide!!.serverOptions.channelParameters
+
         samples.indices.forEach { i ->
             poseStack.pushPose()
 
-            var sample = samples[i].toDouble()
-
-            if(sample.approxEq(0.0, 1e-8)){
-                sample = 0.0
-            }
+            val sample = samples[i].toDouble()
 
             poseStack.translate(-0.5f, -0.5f + i * verticalSpacing, -0.01f) // Z is above the quad
             poseStack.scale(scale, scale, scale)
@@ -885,13 +962,21 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
             val text = if(sample.isNaN()) {
                 "N/A"
             } else {
-                var text = "${sample.rounded(3)}"
+                val channelParams = params[i]
 
-                if(snzi(sample) == 1) {
+                val mapped = map(
+                    sample,
+                    -1.0, +1.0,
+                    channelParams.displayMin.toDouble(), channelParams.displayMax.toDouble()
+                )
+
+                var text = "${mapped.rounded(3)}"
+
+                if(snzi(mapped) == 1) {
                     text = "+$text"
                 }
 
-                text
+                text + channelParams.unit
             }
 
             val channelColor = palette.colorsInt[i]
@@ -948,7 +1033,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
         override fun renderBg(pGuiGraphics: GuiGraphics, pPartialTick: Float, mouseX: Int, mouseY: Int) {
             val part = menu.part
 
-            val renderState = menu.part.renderStateImpl
+            val renderState = menu.part.clientSide
                 ?: return
 
             mousePosSmoother.update(mouseX.toDouble(), mouseY.toDouble())
@@ -988,22 +1073,18 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
             var textY = padTop + corner
 
             fun sampleText(sampleSrc: Float, i: Int) : String {
-                var sample = sampleSrc.toDouble()
-
-                if(sample.approxEq(0.0, 1e-8)){
-                    sample = 0.0
-                }
-
-                return "Channel ${(i + 1)}: " + if(sample.isNaN()) {
+                return "Ch ${(i + 1)}: " + if(sampleSrc.isNaN()) {
                     "N/A"
                 } else {
-                    var text = "${sample.rounded(3)}"
+                    val params = renderState.serverOptions.channelParameters[i]
 
-                    if(snzi(sample) == 1) {
-                        text = "+$text"
-                    }
+                    val mapped = map(
+                        sampleSrc,
+                        -1.0f, 1.0f,
+                        params.displayMin, params.displayMax
+                    )
 
-                    text
+                     "${mapped.toDouble().rounded(3)}${params.unit}"
                 }
             }
 
@@ -1016,7 +1097,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
                         poseStack.preserve {
                             poseStack.translate(
                                 padLeft + corner + sizeX,
-                                padTop + corner + verticalSpacing * i,
+                                textY,
                                 0.0f
                             )
 
@@ -1122,152 +1203,171 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
                     var channel = 0
 
                     while (channel < renderState.texture.channelCount) {
-                        val dx = pMouseX - sampleXScreen(column)
-                        val dy = pMouseY - sampleYScreen(channel, samples)
+                        // Only consider channels that are connected:
+                        if(!samples[channel].isNaN()) {
+                            val dx = pMouseX - sampleXScreen(column)
+                            val dy = pMouseY - sampleYScreen(channel, samples)
 
-                        val distance = dx * dx + dy * dy
+                            val distance = dx * dx + dy * dy
 
-                        if(distance < hoverDistanceSqr) {
-                            hoverDistanceSqr = distance
-                            hoveredColumn = column
-                            hoveredChannel = channel
+                            if(distance < hoverDistanceSqr) {
+                                hoverDistanceSqr = distance
+                                hoveredColumn = column
+                                hoveredChannel = channel
+                            }
                         }
 
                         channel++
                     }
                 }
 
-                // Interpolates the sample, time, and positions, if possible.
-                // If it is possible, we will construct a spline with the closest point we found above in the center, and a left and right point.
-                // Then, we will find the point on the spline closest to the mouse.
-                val sample: Float
-                val time: Double
-                val hoveredX: Float
-                val hoveredY: Float
+                // It is -1 if all samples are NaN (no channel is connected).
+                if(hoveredColumn != -1) {
+                    var sample = 0.0f
+                    var time = 0.0
+                    var hoveredX = 0.0f
+                    var hoveredY = 0.0f
 
-                if(hoveredColumn != 0 && hoveredColumn < guiBuffer.size - 1) {
-                    val (samplesLeft, t0) = guiBuffer[hoveredColumn - 1]
-                    val (samplesMid, t1) = guiBuffer[hoveredColumn]
-                    val (samplesRight, t2) = guiBuffer[hoveredColumn + 1]
-
-                    val x0 = sampleXScreen(hoveredColumn - 1).toDouble()
-                    val x1 = sampleXScreen(hoveredColumn).toDouble()
-                    val x2 = sampleXScreen(hoveredColumn + 1).toDouble()
-
-                    val y0 = sampleYScreen(hoveredChannel, samplesLeft).toDouble()
-                    val y1 = sampleYScreen(hoveredChannel, samplesMid).toDouble()
-                    val y2 = sampleYScreen(hoveredChannel, samplesRight).toDouble()
-
-                    fun spline(t0: Double, t1: Double, t2: Double, f0: Double, f1: Double, f2: Double) : Spline1d {
-                        val ml = (f1 - f0).nz() / (t1 - t0).nz()
-                        val mr = (f2 - f1).nz() / (t2 - t1).nz()
-                        val mm = 0.5 * (ml + mr)
-
-                        return Spline1d(ListSplineSegmentMap(
-                            listOf(
-                                CubicHermiteSplineSegment1d(t0, t1, f0, f1, ml, mm),
-                                CubicHermiteSplineSegment1d(t1, t2, f1, f2, mm, mr)
-                            )
-                        ))
+                    // Called when there is not enough data to interpolate (including when the left and right are NaN):
+                    fun discreteSampler() {
+                        val pair = guiBuffer[hoveredColumn]
+                        sample = pair.first[hoveredChannel]
+                        time = pair.second
+                        hoveredX = sampleXScreen(hoveredColumn)
+                        hoveredY = sampleYScreen(hoveredChannel, pair.first)
                     }
 
-                    val positionSpline = spline(
-                        x0, x1, x2,
-                        y0, y1, y2
-                    )
+                    if(hoveredColumn != 0 && hoveredColumn < guiBuffer.size - 1) {
+                        // Interpolates the sample, time, and positions.
+                        // If it is possible, we will construct a spline with the closest discrete point we found in the center, and a left and right point.
+                        // Then, we will find the point on the spline closest to the mouse.
+                        // P.S. We need to check if the left and right samples are NaN! If so, we go to the fallback sampler instead.
 
-                    val timeSpline = spline(
-                        x0, x1, x2,
-                        t0, t1, t2
-                    )
+                        val (samplesLeft, t0) = guiBuffer[hoveredColumn - 1]
+                        val (samplesMid, t1) = guiBuffer[hoveredColumn]
+                        val (samplesRight, t2) = guiBuffer[hoveredColumn + 1]
 
-                    val valueSpline = spline(
-                        x0, x1, x2,
-                        samplesLeft[hoveredChannel].toDouble(),
-                        samplesMid[hoveredChannel].toDouble(),
-                        samplesRight[hoveredChannel].toDouble()
-                    )
+                        if(samplesLeft[hoveredChannel].isNaN() || samplesRight[hoveredChannel].isNaN()) {
+                            // The channels just became connected, so there is no data yet.
+                            discreteSampler()
+                        }
+                        else {
+                            val x0 = sampleXScreen(hoveredColumn - 1).toDouble()
+                            val x1 = sampleXScreen(hoveredColumn).toDouble()
+                            val x2 = sampleXScreen(hoveredColumn + 1).toDouble()
 
-                    val tests = 100
-                    val dx = (x2 - x0) / tests
+                            val y0 = sampleYScreen(hoveredChannel, samplesLeft).toDouble()
+                            val y1 = sampleYScreen(hoveredChannel, samplesMid).toDouble()
+                            val y2 = sampleYScreen(hoveredChannel, samplesRight).toDouble()
 
-                    var bestDistance = Double.MAX_VALUE
-                    var resultX = Double.NaN
-                    var resultY = Double.NaN
+                            fun spline(t0: Double, t1: Double, t2: Double, f0: Double, f1: Double, f2: Double) : Spline1d {
+                                val ml = (f1 - f0).nz() / (t1 - t0).nz()
+                                val mr = (f2 - f1).nz() / (t2 - t1).nz()
+                                val mm = 0.5 * (ml + mr)
 
-                    (0..tests).forEach { i ->
-                        val x = x0 + dx * i
-                        val y = positionSpline.evaluate(x)
+                                return Spline1d(ListSplineSegmentMap(
+                                    listOf(
+                                        CubicHermiteSplineSegment1d(t0, t1, f0, f1, ml, mm),
+                                        CubicHermiteSplineSegment1d(t1, t2, f1, f2, mm, mr)
+                                    )
+                                ))
+                            }
 
-                        val dx = pMouseX - x
-                        val dy = pMouseY - y
+                            val positionSpline = spline(
+                                x0, x1, x2,
+                                y0, y1, y2
+                            )
 
-                        val distance = dx * dx + dy * dy
-                        if(distance < bestDistance) {
-                            bestDistance = distance
-                            resultX = x
-                            resultY = y
+                            val timeSpline = spline(
+                                x0, x1, x2,
+                                t0, t1, t2
+                            )
+
+                            val valueSpline = spline(
+                                x0, x1, x2,
+                                samplesLeft[hoveredChannel].toDouble(),
+                                samplesMid[hoveredChannel].toDouble(),
+                                samplesRight[hoveredChannel].toDouble()
+                            )
+
+                            val tests = 100
+                            val dx = (x2 - x0) / tests
+
+                            var bestDistance = Double.MAX_VALUE
+                            var resultX = Double.NaN
+                            var resultY = Double.NaN
+
+                            (0..tests).forEach { i ->
+                                val x = x0 + dx * i
+                                val y = positionSpline.evaluate(x)
+
+                                val dx = pMouseX - x
+                                val dy = pMouseY - y
+
+                                val distance = dx * dx + dy * dy
+                                if(distance < bestDistance) {
+                                    bestDistance = distance
+                                    resultX = x
+                                    resultY = y
+                                }
+                            }
+
+                            sample = valueSpline.evaluate(resultX).toFloat()
+                            time = timeSpline.evaluate(resultX)
+                            hoveredX = resultX.toFloat()
+                            hoveredY = resultY.toFloat()
                         }
                     }
+                    else {
+                        // Not enough to interpolate
+                        discreteSampler()
+                    }
 
-                    sample = valueSpline.evaluate(resultX).toFloat()
-                    time = timeSpline.evaluate(resultX)
-                    hoveredX = resultX.toFloat()
-                    hoveredY = resultY.toFloat()
-                }
-                else {
-                    // Not enough to interpolate
-                    val pair = guiBuffer[hoveredColumn]
-                    sample = pair.first[hoveredChannel]
-                    time = pair.second
-                    hoveredX = sampleXScreen(hoveredColumn)
-                    hoveredY = sampleYScreen(hoveredChannel, pair.first)
-                }
+                    // Draws horizontal line on wave:
+                    poseStack.preserve {
+                        poseStack.translate(
+                            0.0f,
+                            hoveredY,
+                            0.0f)
 
-                // Draws horizontal line on wave:
-                poseStack.preserve {
-                    poseStack.translate(
-                        0.0f,
-                        hoveredY,
-                        0.0f)
+                        pGuiGraphics.hLine(
+                            corner, corner + sizeX,
+                            0,
+                            MyColor.WHITE.data
+                        )
+                    }
 
-                    pGuiGraphics.hLine(
-                        corner, corner + sizeX,
-                        0,
-                        MyColor.WHITE.data
-                    )
-                }
+                    // Draws vertical line on wave:
+                    poseStack.preserve {
+                        poseStack.translate(
+                            hoveredX,
+                            0.0f,
+                            0.0f
+                        )
 
-                // Draws vertical line on wave:
-                poseStack.preserve {
-                    poseStack.translate(
-                        hoveredX,
-                        0.0f,
-                        0.0f
-                    )
+                        pGuiGraphics.vLine(
+                            0,
+                            corner, corner + sizeY,
+                            MyColor.WHITE.data
+                        )
+                    }
 
-                    pGuiGraphics.vLine(
-                        0,
-                        corner, corner + sizeY,
-                        MyColor.WHITE.data
-                    )
-                }
+                    // Draws tooltip on mouse:
+                    poseStack.preserve {
+                        poseStack.translate(pMouseX, pMouseY, 0f)
 
-                // Draws tooltip on mouse:
-                poseStack.preserve {
-                    poseStack.translate(pMouseX, pMouseY, 0f)
+                        val tooltip = listOf(
+                            Component.literal("T+${time.rounded(2)}"),
+                            Component.literal(sampleText(sample, hoveredChannel))
+                        )
 
-                    val tooltip = listOf(
-                        Component.literal("T+${time.rounded(2)}"),
-                        Component.literal(sampleText(sample, hoveredChannel))
-                    )
-
-                    pGuiGraphics.renderComponentTooltip(
-                        font,
-                        tooltip,
-                        0,
-                        0
-                    )
+                        pGuiGraphics.renderComponentTooltip(
+                            font,
+                            tooltip,
+                            0,
+                            0
+                        )
+                    }
                 }
             }
 
@@ -1362,22 +1462,77 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
     @ServerOnly
     override fun getServerSaveTag(): CompoundTag {
         val tag = super.getServerSaveTag()
-        tag.putInt(TIME_WINDOW, timeWindow)
+        serverParameters!!.saveToTag(tag)
         return tag
     }
 
     @ServerOnly
     override fun loadServerSaveTag(tag: CompoundTag) {
         super.loadServerSaveTag(tag)
-        timeWindow = tag.getInt(TIME_WINDOW).coerceIn(specification.minWindow, specification.maxWindow)
+        serverParameters!!.loadFromTag(tag)
     }
+
+    //#region Simulation Setup and Data Export
 
     @ServerOnly
     override fun onCellAcquired() {
         super.onCellAcquired()
-        cell.bind { samples, timestamp ->
-            sendBulkPacket(UpdateMessage(samples, timestamp, timeWindow))
+        cell.bind(this::exportFromSimulation)
+    }
+
+    /**
+     * Exports the samples from the simulation, to the clients.
+     * @param samples The **raw** samples directly read from the resistors, not mapped.
+     * @param timestamp A consistent and strictly increasing timestamp taken from the simulation thread (for calculating deltas).
+     * The samples are mapped **and clipped** to [-1, +1] with the linear maps in [serverParameters] here (and also sanitized), before being sent to the clients.
+     * */
+    @ServerOnly
+    private fun exportFromSimulation(samples: FloatArray, timestamp: Double) {
+        val options = serverParameters!!
+
+        val mappedSamples = FloatArray(samples.size)
+
+        samples.indices.forEach { channel ->
+            val rawSample = samples[channel]
+
+            if(rawSample.isNaN()) {
+                mappedSamples[channel] = rawSample
+            }
+            else {
+                val params = options.channelParameters[channel]
+
+                // Here, we map to -1, 1 using the [signalMin, signalMax].
+                // This is for the raw GPU encoding. The [displayMin, displayMax] are for labels and the sidebar.
+
+                var result = map(
+                    rawSample,
+                    params.signalMin, params.signalMax,
+                    -1.0f, 1.0f
+                )
+
+                // Clipping:
+                result = result.coerceIn(-1.0f, 1.0f)
+
+                // Sanitize:
+                if(result.isNaN() || result.isInfinite()) {
+                    result = 0.0f
+                }
+
+                if(result.approxEq(0.0f, 1e-6f)){
+                    result = 0.0f
+                }
+
+                mappedSamples[channel] = result
+            }
         }
+
+        sendBulkPacket(
+            OscilloscopeSyncMessage(
+                mappedSamples,
+                timestamp,
+                options
+            )
+        )
     }
 
     @ServerOnly
@@ -1386,33 +1541,59 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
         cell.unbind()
     }
 
+    //#endregion
+
+    //#region Client Data Import
+
+    @ClientOnly
     override fun registerPackets(builder: PacketHandlerBuilder) {
         super.registerPackets(builder)
-        builder.withHandler<UpdateMessage>(this::handleMessage)
+        builder.withHandler<OscilloscopeSyncMessage>(this::importFromSimulation)
     }
 
     @OnClientThread
-    private fun handleMessage(message: UpdateMessage) {
-        var currentState = renderStateImpl
+    private fun importFromSimulation(message: OscilloscopeSyncMessage) {
+        requireIsOnRenderThread {
+            "OscilloscopePart#handleMessage"
+        }
+
+        var currentState = clientSide
 
         if(currentState == null) {
-            currentState = OscilloscopeClientSide(message.window, specification.channelCount)
-            renderStateImpl = currentState
+            // Create for the first time:
+            currentState = OscilloscopeClientSide(message.options, specification.channelCount)
+            clientSide = currentState
         }
         else {
-            if(currentState.texture.columnCount != message.window) {
-                // Re-create the buffers with the new settings:
+            if(currentState.serverOptions.timeWindow != message.options.timeWindow) {
+                // Re-create the buffers with the new depth:
                 currentState.close()
-                currentState = OscilloscopeClientSide(message.window, specification.channelCount)
-                renderStateImpl = currentState
+                currentState = OscilloscopeClientSide(message.options, specification.channelCount)
+                clientSide = currentState
+            }
+            else {
+                // Just replace the other settings and keep the current buffer:
+                currentState.serverOptions = message.options
             }
         }
 
-        currentState.enqueueForTransfer(message.samples, message.timestamp)
+        currentState.enqueueForTransfer(message.normalizedSamples, message.timestamp)
     }
 
+    //#endregion
+
+    /**
+     * Uber update message. We don't mind a little excess data.
+     * @param normalizedSamples Samples mapped and clipped to [-1, 1] using the linear map in [options].
+     * @param timestamp The strictly-increasing simulation time.
+     * @param options The latest parameters.
+     * */
     @Serializable
-    private class UpdateMessage(val samples: FloatArray, val timestamp: Double, val window: Int)
+    private class OscilloscopeSyncMessage(
+        val normalizedSamples: FloatArray,
+        val timestamp: Double,
+        val options: OscilloscopeParameters
+    )
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         for(i in 0 until specification.channelCount) {
@@ -1421,7 +1602,6 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
     }
 
     companion object {
-        private const val TIME_WINDOW = "timeWindow"
         private val TITLE = Component.translatable("screen.$MODID.oscilloscope")
     }
 }
