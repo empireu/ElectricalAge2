@@ -51,8 +51,23 @@ import org.joml.Quaternionf
 import org.joml.Quaternionfc
 import org.joml.Vector3f
 import java.util.*
+import kotlin.contracts.ExperimentalContracts
+import kotlin.contracts.InvocationKind
+import kotlin.contracts.contract
 import kotlin.math.PI
 import kotlin.math.cos
+
+
+@OptIn(ExperimentalContracts::class)
+inline fun PoseStack.preserve(block: () -> Unit) {
+    contract {
+        callsInPlace(block, InvocationKind.EXACTLY_ONCE)
+    }
+
+    this.pushPose()
+    block()
+    this.popPose()
+}
 
 fun Entity.getClipStartEnd() : Pair<Vec3, Vec3> {
     val viewDirection = this.lookAngle

@@ -29,10 +29,17 @@ import net.minecraft.world.item.ItemStack
 import net.minecraftforge.client.event.RegisterShadersEvent
 import net.minecraftforge.client.event.RenderLevelStageEvent
 import net.minecraftforge.network.NetworkHooks
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.SECOND
+import org.ageseries.libage.data.classify
+import org.ageseries.libage.mathematics.CubicHermiteSplineSegment1d
+import org.ageseries.libage.mathematics.ListSplineSegmentMap
+import org.ageseries.libage.mathematics.Spline1d
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Rotation3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.geometry.Vector4d
+import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.mathematics.nz
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.mathematics.snzi
@@ -41,6 +48,7 @@ import org.ageseries.libage.sim.electrical.mna.NEGATIVE
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.ClientOnly
+import org.eln2.mc.GuiSmoother
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.OnClientThread
@@ -69,6 +77,7 @@ import org.eln2.mc.common.parts.foundation.PartUseInfo
 import org.eln2.mc.common.parts.foundation.stillValid
 import org.eln2.mc.common.parts.foundation.writeGuiData
 import org.eln2.mc.extensions.mulPose
+import org.eln2.mc.extensions.preserve
 import org.eln2.mc.extensions.rotationFast
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
@@ -450,11 +459,11 @@ class OscilloscopeCell(ci: CellCreateInfo, specification: OscilloscopeSpecificat
  * @param maxDebufferQueueSize The max size of the network smoothing loop. Ideally, the queue is never filled above say ~10 packets.
  * @param samplingRateAlpha Smoothing parameter for calculating the sampling rate.
  * */
-class OscilloscopeBuffer(
+class OscilloscopeTransferBuffer(
     val desiredRenderingSize: Int,
     val maxBufferSizeAbsolute: Int,
     val kE: Double = 30.0,
-    val maxDebufferQueueSize: Int = 15,
+    val maxDebufferQueueSize: Int = 20,
     val samplingRateAlpha: Double = 0.1
 ) {
     private val obj = Any()
@@ -462,13 +471,13 @@ class OscilloscopeBuffer(
     /**
      * The server packets are moved here. We get batches of ~5 arrays because the bulk packets are flushed per game tick.
      * */
-    private val debufferingQueue = ArrayDeque<FloatArray>()
+    private val debufferingQueue = ArrayDeque<Pair<FloatArray, Double>>()
 
     /**
      * The actual queue for rendering is this. Samples get copied from [debufferingQueue] to [renderQueue] at ~the sampling rate.
      * The control loop then uses the size of this queue to calculate the error.
      * */
-    private val renderQueue = ArrayDeque<FloatArray>()
+    private val renderQueue = ArrayDeque<Pair<FloatArray, Double>>()
 
     private val debufferWatch = Stopwatch()
     private var debufferingTimeAccumulator = 0.0
@@ -487,7 +496,7 @@ class OscilloscopeBuffer(
     /**
      * The latest samples removed by [consume].
      * */
-    var latestRemovedSet : FloatArray? = null
+    var latestRemovedSet : Pair<FloatArray, Double>? = null
         private set
 
     /**
@@ -505,7 +514,7 @@ class OscilloscopeBuffer(
                 debufferingQueue.removeFirst()
             }
 
-            debufferingQueue.addLast(samples)
+            debufferingQueue.addLast(Pair(samples, serverTimeStamp))
         }
 
         if(lastServerTime != -1.0) {
@@ -552,7 +561,7 @@ class OscilloscopeBuffer(
             ++forcedSamples
         }
 
-        if(forcedSamples > 0) {
+        if(forcedSamples > 10) {
             LOG.debug("Debuffer queue desaturated $forcedSamples samples")
         }
     }
@@ -573,7 +582,7 @@ class OscilloscopeBuffer(
         playRate = playRate.coerceIn(samplingRate - maxRateDelta, samplingRate + maxRateDelta).coerceAtLeast(0.1)
     }
 
-    private fun removeSet() : FloatArray? {
+    private fun removeSet() : Pair<FloatArray, Double>? {
         extractionTimeAccumulator += !extractionWatch.sample()
 
         if(extractionTimeAccumulator < nextPlayTime) {
@@ -601,7 +610,7 @@ class OscilloscopeBuffer(
      *
      * **P.S. Call this in a loop, exiting only when it returns null!**
      * */
-    fun consume() : FloatArray? {
+    fun consume() : Pair<FloatArray, Double>? {
         debuffer()
         val result = removeSet()
         control()
@@ -631,12 +640,20 @@ class OscilloscopeClientSide(horizonColumns: Int, channels: Int) {
         channels
     )
 
-    val buffer = OscilloscopeBuffer(25, 200)
+    /**
+     * Buffer for mouse picking the waveform in the GUI:
+     * */
+    val guiBuffer = ArrayDeque<Pair<FloatArray, Double>>()
 
     /**
-     * Uploads the columns into GPU memory. Called by [OscilloscopeCopyManager].
+     * Buffer for scheduling the data upload:
      * */
-    fun copyIntoGPUMemory() {
+    val transferBuffer = OscilloscopeTransferBuffer(25, 200)
+
+    /**
+     * Uploads the columns into GPU memory and updates the [guiBuffer]. Called by [OscilloscopeCopyManager].
+     * */
+    fun transferSamples() {
         requireIsOnRenderThread {
             "OscilloscopeClientSide#copyIntoGPUMemory"
         }
@@ -646,15 +663,28 @@ class OscilloscopeClientSide(horizonColumns: Int, channels: Int) {
         }
 
         while (true) {
-            val newSamples = buffer.consume()
+            val pair = transferBuffer.consume()
 
-            if(newSamples != null) {
-                texture.writeColumnAndUpload(newSamples)
+            if(pair != null) {
+                texture.writeColumnAndUpload(pair.first)
+
+                while(guiBuffer.size >= texture.columnCount) {
+                    guiBuffer.removeFirst()
+                }
+
+                guiBuffer.addLast(pair)
             }
             else {
                 break
             }
         }
+    }
+
+    /**
+     * Inserts a sample into the transfer buffer.
+     * */
+    fun enqueueForTransfer(samples: FloatArray, timestamp: Double) {
+        transferBuffer.insertMessage(samples, timestamp)
     }
 
     fun close() {
@@ -708,7 +738,7 @@ object OscilloscopeCopyManager {
         }
 
         tasks.forEach {
-            it.copyIntoGPUMemory()
+            it.transferSamples()
         }
     }
 }
@@ -785,7 +815,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
 
         RenderSystem.setShaderTexture(0, texLoc)
 
-        val latestSamples = renderState.buffer.latestRemovedSet ?: FloatArray(renderState.texture.channelCount)
+        val latestSamples = renderState.transferBuffer.latestRemovedSet?.first ?: FloatArray(renderState.texture.channelCount)
 
         OscilloscopeShader.bindAndSetup(
             1.0f,
@@ -907,15 +937,21 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
     }
 
     class OscilloscopeScreen(menu: OscilloscopeMenu, playerInventory: Inventory, title: Component) : MyAbstractContainerScreen<OscilloscopeMenu>(menu, playerInventory, title) {
+        private val mousePosSmoother = GuiSmoother(0.025)
+
         override fun renderLabels(pGuiGraphics: GuiGraphics, pMouseX: Int, pMouseY: Int) {
             // No-op
         }
 
-        override fun renderBg(pGuiGraphics: GuiGraphics, pPartialTick: Float, pMouseX: Int, pMouseY: Int) {
+        override fun renderBg(pGuiGraphics: GuiGraphics, pPartialTick: Float, mouseX: Int, mouseY: Int) {
             val part = menu.part
 
             val renderState = menu.part.renderStateImpl
                 ?: return
+
+            mousePosSmoother.update(mouseX.toDouble(), mouseY.toDouble())
+            val pMouseX = mousePosSmoother.x.toFloat()
+            val pMouseY = mousePosSmoother.y.toFloat()
 
             val poseStack = pGuiGraphics.pose()
 
@@ -933,11 +969,10 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
 
             val font = Minecraft.getInstance().font
 
-
             val padLeft = pGuiGraphics.guiWidth() * 0.01f
             val padTop = pGuiGraphics.guiHeight() * 0.01f
             val verticalSpacing = pGuiGraphics.guiHeight() * 0.04f
-            val textScale = min(pGuiGraphics.guiWidth(), pGuiGraphics.guiHeight()) / 514.0f * 2.0f
+            val textScale = min(pGuiGraphics.guiWidth(), pGuiGraphics.guiHeight()) / 514.0f * 1.5f
 
             // Renders sidebar background:
             pGuiGraphics.fill(
@@ -948,57 +983,95 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
                 MyColor(100, 0, 0,0).data
             )
 
-            renderState.buffer.latestRemovedSet?.also { samples ->
-                samples.indices.forEach { i ->
-                    poseStack.pushPose()
+            var textY = padTop + corner
 
-                    poseStack.translate(
-                        padLeft + corner + sizeX,
-                        padTop + corner + verticalSpacing * i,
-                        0.0f
-                    )
+            fun sampleText(sampleSrc: Float, i: Int) : String {
+                var sample = sampleSrc.toDouble()
 
-                    poseStack.scale(textScale, textScale, 1.0f)
+                if(sample.approxEq(0.0, 1e-8)){
+                    sample = 0.0
+                }
 
-                    var sample = samples[i].toDouble()
+                return "Channel ${(i + 1)}: " + if(sample.isNaN()) {
+                    "N/A"
+                } else {
+                    var text = "${sample.rounded(3)}"
 
-                    if(sample.approxEq(0.0, 1e-8)){
-                        sample = 0.0
+                    if(snzi(sample) == 1) {
+                        text = "+$text"
                     }
 
-                    val text = "Channel ${(i + 1)}: " + if(sample.isNaN()) {
-                        "N/A"
-                    } else {
-                        var text = "${sample.rounded(3)}"
-
-                        if(snzi(sample) == 1) {
-                            text = "+$text"
-                        }
-
-                        text
-                    }
-
-                    val channelColor = part.specification.palette.colorsInt[i]
-
-                    val textColor = MyColor((channelColor.a * 0.8).toInt(), channelColor.r, channelColor.g, channelColor.b)
-
-                    pGuiGraphics.drawString(
-                        font,
-                        text,
-                        0,
-                        0,
-                        textColor.data
-                    )
-
-                    poseStack.popPose()
+                    text
                 }
             }
 
-            //#region Oscilloscope
+            // Renders the latest value for each channel on the sidebar:
+            renderState.transferBuffer.latestRemovedSet?.first?.also { samples ->
+                samples.indices.forEach { i ->
+                    val sample = samples[i]
+
+                    if(!sample.isNaN()) {
+                        poseStack.preserve {
+                            poseStack.translate(
+                                padLeft + corner + sizeX,
+                                padTop + corner + verticalSpacing * i,
+                                0.0f
+                            )
+
+                            textY += verticalSpacing
+
+                            poseStack.scale(textScale, textScale, 1.0f)
+
+                            val channelColor = part.specification.palette.colorsInt[i]
+
+                            val textColor = MyColor(
+                                (channelColor.a * 0.8).toInt(),
+                                channelColor.r,
+                                channelColor.g,
+                                channelColor.b
+                            )
+
+                            pGuiGraphics.drawString(
+                                font,
+                                sampleText(sample, i),
+                                0,
+                                0,
+                                textColor.data
+                            )
+                        }
+                    }
+                }
+            }
+
+            fun textRow() {
+                poseStack.translate(
+                    padLeft + corner + sizeX,
+                    textY,
+                    0.0f
+                )
+
+                textY += verticalSpacing
+
+                poseStack.scale(textScale, textScale, 1.0f)
+            }
+
+            // Shows the time horizon in seconds on the sidebar:
+            poseStack.preserve {
+                textRow()
+
+                pGuiGraphics.drawString(
+                    font,
+                    "Window: ${Quantity(renderState.texture.columnCount * CellGraph.DT, SECOND).classify()}",
+                    0, 0,
+                    MyColor(200, 100, 100, 100).data
+                )
+            }
+
+            //#region Interactive Oscilloscope
 
             RenderSystem.setShaderTexture(0, renderState.texture.resourceId)
 
-            val latestSamples = renderState.buffer.latestRemovedSet ?: FloatArray(renderState.texture.channelCount)
+            val latestSamples = renderState.transferBuffer.latestRemovedSet?.first ?: FloatArray(renderState.texture.channelCount)
 
             OscilloscopeShader.bindAndSetup(
                 1.0f,
@@ -1018,6 +1091,183 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
             )
 
             OscilloscopeShader.unbind()
+
+            val guiBuffer = renderState.guiBuffer
+
+            if(guiBuffer.isNotEmpty() && pMouseX > corner && pMouseY > corner && pMouseX < corner + sizeX && pMouseY < corner + sizeY) {
+                // We need to map the mouse to the column *on-screen*. This includes the transfer buffer's delay.
+                // This is trivial because we insert the data that was last uploaded into the guiBuffer.
+
+                var hoverDistanceSqr = Float.MAX_VALUE
+                var hoveredColumn = -1
+                var hoveredChannel = -1
+
+                // Gets coordinates of discrete sample:
+                fun sampleXScreen(column: Int) = map(
+                    column.toFloat(),
+                    0.0f, renderState.texture.columnCount.toFloat() - 1.0f,
+                    corner.toFloat(), corner + sizeX.toFloat()
+                )
+
+                fun sampleYScreen(channel: Int, samples: FloatArray) = map(
+                    samples[channel],
+                    -1.0f, 1.0f,
+                    corner + sizeY.toFloat(), corner.toFloat()
+                )
+
+                // Finds the discrete data point which is closest to the mouse:
+                guiBuffer.forEachIndexed { column, (samples, _) ->
+                    var channel = 0
+
+                    while (channel < renderState.texture.channelCount) {
+                        val dx = pMouseX - sampleXScreen(column)
+                        val dy = pMouseY - sampleYScreen(channel, samples)
+
+                        val distance = dx * dx + dy * dy
+
+                        if(distance < hoverDistanceSqr) {
+                            hoverDistanceSqr = distance
+                            hoveredColumn = column
+                            hoveredChannel = channel
+                        }
+
+                        channel++
+                    }
+                }
+
+                // Interpolates the sample, time, and positions, if possible.
+                // If it is possible, we will construct a spline with the closest point we found above in the center, and a left and right point.
+                // Then, we will find the point on the spline closest to the mouse.
+                val sample: Float
+                val time: Double
+                val hoveredX: Float
+                val hoveredY: Float
+
+                if(hoveredColumn != 0 && hoveredColumn < guiBuffer.size - 1) {
+                    val (samplesLeft, t0) = guiBuffer[hoveredColumn - 1]
+                    val (samplesMid, t1) = guiBuffer[hoveredColumn]
+                    val (samplesRight, t2) = guiBuffer[hoveredColumn + 1]
+
+                    val x0 = sampleXScreen(hoveredColumn - 1).toDouble()
+                    val x1 = sampleXScreen(hoveredColumn).toDouble()
+                    val x2 = sampleXScreen(hoveredColumn + 1).toDouble()
+
+                    val y0 = sampleYScreen(hoveredChannel, samplesLeft).toDouble()
+                    val y1 = sampleYScreen(hoveredChannel, samplesMid).toDouble()
+                    val y2 = sampleYScreen(hoveredChannel, samplesRight).toDouble()
+
+                    fun spline(t0: Double, t1: Double, t2: Double, f0: Double, f1: Double, f2: Double) : Spline1d {
+                        val ml = (f1 - f0).nz() / (t1 - t0).nz()
+                        val mr = (f2 - f1).nz() / (t2 - t1).nz()
+                        val mm = 0.5 * (ml + mr)
+
+                        return Spline1d(ListSplineSegmentMap(
+                            listOf(
+                                CubicHermiteSplineSegment1d(t0, t1, f0, f1, ml, mm),
+                                CubicHermiteSplineSegment1d(t1, t2, f1, f2, mm, mr)
+                            )
+                        ))
+                    }
+
+                    val positionSpline = spline(
+                        x0, x1, x2,
+                        y0, y1, y2
+                    )
+
+                    val timeSpline = spline(
+                        x0, x1, x2,
+                        t0, t1, t2
+                    )
+
+                    val valueSpline = spline(
+                        x0, x1, x2,
+                        samplesLeft[hoveredChannel].toDouble(),
+                        samplesMid[hoveredChannel].toDouble(),
+                        samplesRight[hoveredChannel].toDouble()
+                    )
+
+                    val tests = 100
+                    val dx = (x2 - x0) / tests
+
+                    var bestDistance = Double.MAX_VALUE
+                    var resultX = Double.NaN
+                    var resultY = Double.NaN
+
+                    (0..tests).forEach { i ->
+                        val x = x0 + dx * i
+                        val y = positionSpline.evaluate(x)
+
+                        val dx = pMouseX - x
+                        val dy = pMouseY - y
+
+                        val distance = dx * dx + dy * dy
+                        if(distance < bestDistance) {
+                            bestDistance = distance
+                            resultX = x
+                            resultY = y
+                        }
+                    }
+
+                    sample = valueSpline.evaluate(resultX).toFloat()
+                    time = timeSpline.evaluate(resultX)
+                    hoveredX = resultX.toFloat()
+                    hoveredY = resultY.toFloat()
+                }
+                else {
+                    // Not enough to interpolate
+                    val pair = guiBuffer[hoveredColumn]
+                    sample = pair.first[hoveredChannel]
+                    time = pair.second
+                    hoveredX = sampleXScreen(hoveredColumn)
+                    hoveredY = sampleYScreen(hoveredChannel, pair.first)
+                }
+
+                // Draws horizontal line on wave:
+                poseStack.preserve {
+                    poseStack.translate(
+                        0.0f,
+                        hoveredY,
+                        0.0f)
+
+                    pGuiGraphics.hLine(
+                        corner, corner + sizeX,
+                        0,
+                        MyColor.WHITE.data
+                    )
+                }
+
+                // Draws vertical line on wave:
+                poseStack.preserve {
+                    poseStack.translate(
+                        hoveredX,
+                        0.0f,
+                        0.0f
+                    )
+
+                    pGuiGraphics.vLine(
+                        0,
+                        corner, corner + sizeY,
+                        MyColor.WHITE.data
+                    )
+                }
+
+                // Draws tooltip on mouse:
+                poseStack.preserve {
+                    poseStack.translate(pMouseX, pMouseY, 0f)
+
+                    val tooltip = listOf(
+                        Component.literal("T+${time.rounded(2)}"),
+                        Component.literal(sampleText(sample, hoveredChannel))
+                    )
+
+                    pGuiGraphics.renderComponentTooltip(
+                        font,
+                        tooltip,
+                        0,
+                        0
+                    )
+                }
+            }
 
             //#endregion
         }
@@ -1095,7 +1345,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
             }
         }
 
-        currentState.buffer.insertMessage(message.samples, message.timestamp)
+        currentState.enqueueForTransfer(message.samples, message.timestamp)
     }
 
     @Serializable

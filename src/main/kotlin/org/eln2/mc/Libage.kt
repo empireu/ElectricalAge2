@@ -1,30 +1,6 @@
 package org.eln2.mc
 
-import org.ageseries.libage.data.AMPERE
-import org.ageseries.libage.data.Area
-import org.ageseries.libage.data.BiMap
-import org.ageseries.libage.data.Current
-import org.ageseries.libage.data.DIMENSION_TYPES
-import org.ageseries.libage.data.DimensionClassifier
-import org.ageseries.libage.data.Distance
-import org.ageseries.libage.data.ElectricalResistivity
-import org.ageseries.libage.data.Energy
-import org.ageseries.libage.data.OHM
-import org.ageseries.libage.data.Potential
-import org.ageseries.libage.data.Power
-import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.QuantityScale
-import org.ageseries.libage.data.Resistance
-import org.ageseries.libage.data.Scale
-import org.ageseries.libage.data.ScaleClassifier
-import org.ageseries.libage.data.SourceQuantityScale
-import org.ageseries.libage.data.Temperature
-import org.ageseries.libage.data.VOLT
-import org.ageseries.libage.data.WATT
-import org.ageseries.libage.data.associateWithBi
-import org.ageseries.libage.data.classify
-import org.ageseries.libage.data.mutableBiMapOf
-import org.ageseries.libage.data.standardScale
+import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.lerp
 import org.ageseries.libage.sim.ThermalMass
@@ -32,12 +8,38 @@ import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
 import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
 import org.ageseries.libage.sim.electrical.mna.NEGATIVE
 import org.ageseries.libage.sim.electrical.mna.POSITIVE
-import org.ageseries.libage.sim.electrical.mna.component.*
+import org.ageseries.libage.sim.electrical.mna.component.IResistor
+import org.ageseries.libage.sim.electrical.mna.component.Resistor
+import org.ageseries.libage.sim.electrical.mna.component.Term
+import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
+import org.ageseries.libage.utils.Stopwatch
 import org.ageseries.libage.utils.sourceName
-import java.util.HashSet
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.sqrt
 import kotlin.reflect.jvm.kotlinProperty
+
+class GuiSmoother(val tau: Double) {
+    var x = 0.0
+    var y = 0.0
+
+    private var initialized = false
+    private val watch = Stopwatch()
+
+    fun update(targetX: Double, targetY: Double) {
+        if(!initialized) {
+            x = targetX
+            y = targetY
+            initialized = true
+            return
+        }
+
+        val dt = !watch.sample()
+        val alpha = 1.0 - exp(-dt / tau)
+        x += (targetX - x) * alpha
+        y += (targetY - y) * alpha
+    }
+}
 
 /**
  * Libage extensions class. Ideally, most things here (but most necessarily, quantities) would be moved to libage.
@@ -133,7 +135,7 @@ class TheveninEstimatingResistor(
     val maxResistanceEstimate: Double = LARGE_RESISTANCE,
     val minEffectiveSamples: Double = 5.0,
     val minDeltaICutoff: Double = 1e-6,
-    val maxChangeFactorPerStep: Double = 1.2
+    val maxChangeFactorPerStep: Double = 1.2,
 ) : Resistor() {
     private var SI = 0.0 // Sum I
     private var SV = 0.0 // Sum V

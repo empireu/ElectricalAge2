@@ -1062,7 +1062,8 @@ object Content {
         0.02f,
         0.0075f,
         Vector4d(0.8, 0.8, 1.0, 0.2),
-        11
+        11,
+        0.5f
     )
 
     val BASIC_TWO_CHANNEL_OSCILLOSCOPE_CELL = cellImmediate("basic_two_channel_oscilloscope") {
