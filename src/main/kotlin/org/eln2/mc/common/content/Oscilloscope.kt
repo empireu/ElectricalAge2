@@ -12,6 +12,9 @@ import kotlinx.serialization.Serializable
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.components.EditBox
+import net.minecraft.client.gui.components.Renderable
+import net.minecraft.client.gui.components.StringWidget
 import net.minecraft.client.renderer.GameRenderer
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.ShaderInstance
@@ -133,7 +136,7 @@ class OscilloscopeTexture(val resourceId: ResourceLocation, val columnCount: Int
         glTex.upload()
     }
 
-    fun writeColumnAndUpload(column: FloatArray) {
+    fun writeColumn(column: FloatArray) {
         require(!closed) {
             error("Tried to upload column after texture closed!")
         }
@@ -176,14 +179,16 @@ class OscilloscopeTexture(val resourceId: ResourceLocation, val columnCount: Int
             y++
         }
 
-        glTex.bind()
-        glTex.upload() // TODO we can upload just the slice
-
         writeX = (writeX + 1) % columnCount
 
         if(count < columnCount) {
             count++
         }
+    }
+
+    fun upload() {
+        glTex.bind()
+        glTex.upload() // TODO we can upload just the slice
     }
 
     fun close() {
@@ -303,7 +308,7 @@ object OscilloscopeShader {
         mask: FloatArray,
         specification: OscilloscopeSpecification,
         aspect: Float,
-        isGui: Boolean
+        isGui: Boolean,
     ) {
         RenderSystem.assertOnRenderThread()
 
@@ -359,7 +364,7 @@ data class OscilloscopeSpecification(
     val axisThickness: Float,
     val axisColor: Vector4d,
     val horizontalCuts: Int,
-    val thicknessFactorGui : Float
+    val thicknessFactorGui: Float,
 )
 
 /**
@@ -472,20 +477,20 @@ class OscilloscopeTransferBuffer(
     val maxBufferSizeAbsolute: Int,
     val kE: Double = 30.0,
     val maxDebufferQueueSize: Int = 20,
-    val samplingRateAlpha: Double = 0.1
+    val samplingRateAlpha: Double = 0.1,
 ) {
     private val obj = Any()
 
     /**
      * The server packets are moved here. We get batches of ~5 arrays because the bulk packets are flushed per game tick.
      * */
-    private val debufferingQueue = ArrayDeque<Pair<FloatArray, Double>>()
+    val debufferingQueue = ArrayDeque<Pair<FloatArray, Double>>()
 
     /**
      * The actual queue for rendering is this. Samples get copied from [debufferingQueue] to [renderQueue] at ~the sampling rate.
      * The control loop then uses the size of this queue to calculate the error.
      * */
-    private val renderQueue = ArrayDeque<Pair<FloatArray, Double>>()
+    val renderQueue = ArrayDeque<Pair<FloatArray, Double>>()
 
     private val debufferWatch = Stopwatch()
     private var debufferingTimeAccumulator = 0.0
@@ -537,20 +542,26 @@ class OscilloscopeTransferBuffer(
     }
 
     /**
+     * Copies a sample from the debuffering queue to the rendering queue.
+     * */
+    fun copySample() : Boolean {
+        var result = false
+        synchronized(obj) {
+            if(debufferingQueue.isNotEmpty()) {
+                renderQueue.add(debufferingQueue.removeFirst())
+                result = true
+            }
+        }
+
+        return result
+    }
+
+    /**
      * Copies samples from the debuffering queue to the rendering queue at approx. 1.0 / samplingRateEma.
      * Copies samples forcefully if the buffer is at max capacity.
      * */
     private fun debuffer() {
-        /**
-         * Copies a sample from the debuffering queue to the rendering queue.
-         * */
-        fun copySample() {
-            synchronized(obj) {
-                if(debufferingQueue.isNotEmpty()) {
-                    renderQueue.add(debufferingQueue.removeFirst())
-                }
-            }
-        }
+
 
         debufferingTimeAccumulator += !debufferWatch.sample()
 
@@ -632,14 +643,6 @@ class OscilloscopeTransferBuffer(
  * */
 @ClientOnly
 class OscilloscopeClientSide(var serverOptions: OscilloscopeParameters, channels: Int) {
-    init {
-        requireIsOnRenderThread {
-            "OscilloscopeClientSide#init"
-        }
-
-        OscilloscopeCopyManager.add(this)
-    }
-
     private var closed = false
 
     val texture = OscilloscopeTexture(
@@ -659,6 +662,48 @@ class OscilloscopeClientSide(var serverOptions: OscilloscopeParameters, channels
     val transferBuffer = OscilloscopeTransferBuffer(25, 200)
 
     /**
+     * Copies the data from the previous buffer after resize.
+     * */
+    constructor(serverOptions: OscilloscopeParameters, channels: Int, previousState: OscilloscopeClientSide) : this(serverOptions, channels) {
+        fun addToGuiBuffer(it: Pair<FloatArray, Double>) {
+            while(guiBuffer.size >= texture.columnCount) {
+                guiBuffer.removeFirst()
+            }
+
+            guiBuffer.add(it)
+        }
+
+        // Write the data that was on screen:
+        previousState.guiBuffer.forEach {
+            texture.writeColumn(it.first)
+            addToGuiBuffer(it)
+        }
+
+        // Move all network data to the render queue:
+        while (true) {
+            if(!previousState.transferBuffer.copySample()) {
+                break
+            }
+        }
+
+        // Finally, write the data that was in queue for rendering:
+        previousState.transferBuffer.renderQueue.forEach {
+            texture.writeColumn(it.first)
+            addToGuiBuffer(it)
+        }
+
+        texture.upload()
+    }
+
+    init {
+        requireIsOnRenderThread {
+            "OscilloscopeClientSide#init"
+        }
+
+        OscilloscopeCopyManager.add(this)
+    }
+
+    /**
      * Uploads the columns into GPU memory and updates the [guiBuffer]. Called by [OscilloscopeCopyManager].
      * */
     fun transferSamples() {
@@ -674,7 +719,8 @@ class OscilloscopeClientSide(var serverOptions: OscilloscopeParameters, channels
             val pair = transferBuffer.consume()
 
             if(pair != null) {
-                texture.writeColumnAndUpload(pair.first)
+                texture.writeColumn(pair.first)
+                texture.upload()
 
                 while(guiBuffer.size >= texture.columnCount) {
                     guiBuffer.removeFirst()
@@ -807,6 +853,24 @@ class OscilloscopeParameters(var timeWindow: Int, val channelParameters: Array<C
         }
     }
 
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as OscilloscopeParameters
+
+        if (timeWindow != other.timeWindow) return false
+        if (!channelParameters.contentEquals(other.channelParameters)) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = timeWindow
+        result = 31 * result + channelParameters.contentHashCode()
+        return result
+    }
+
     companion object {
         private const val WINDOW = "timeWindow"
         private const val CHANNEL_PARAMETERS = "channelParameters"
@@ -819,7 +883,7 @@ class OscilloscopeParameters(var timeWindow: Int, val channelParameters: Array<C
 }
 
 /**
- * Because the block entity renderer is frustum culled, we can't rely on it to handle the de-queueing of samples.
+ * Because the block entity renderer is frustum culled (the render chunks are frustum culled actually, unrelated to `shouldRenderOffscreen`), we can't rely on it to handle the de-queueing of samples.
  * So we subscribe to the render event instead.
  * */
 object OscilloscopeCopyManager {
@@ -885,7 +949,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
     @ClientOnly // Initialized on render thread. Will be re-created if the time window changes.
     private var clientSide : OscilloscopeClientSide? = null
 
-    //#region Rendering State and In-World Rendering
+    //#region Rendering State Management and In-World Rendering
 
     override fun onUnloaded() {
         super.onUnloaded()
@@ -1057,12 +1121,57 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
     override fun getDisplayName(): Component = TITLE
 
     class OscilloscopeMenu(pContainerId: Int, val part: OscilloscopePart) : AbstractContainerMenu(Content.FLAT_OSCILLOSCOPE_MENU.get(), pContainerId) {
-        override fun quickMoveStack(pPlayer: Player, pIndex: Int, ): ItemStack = ItemStack.EMPTY
+        override fun quickMoveStack(pPlayer: Player, pIndex: Int): ItemStack = ItemStack.EMPTY
         override fun stillValid(pPlayer: Player) = part.stillValid(pPlayer)
     }
 
     class OscilloscopeScreen(menu: OscilloscopeMenu, playerInventory: Inventory, title: Component) : MyAbstractContainerScreen<OscilloscopeMenu>(menu, playerInventory, title) {
         private val mousePosSmoother = GuiSmoother(0.025)
+
+        private class Widgets(val perChannel: Array<PerChannelWidgets>) {
+            class PerChannelWidgets(
+                val titleWidget: StringWidget,
+                val unit: EditBox,
+                val signalMin: EditBox,
+                val signalMax: EditBox,
+                val displayMin: EditBox,
+                val displayMax: EditBox,
+                val background: PanelWidget
+            )
+
+            class PanelWidget(
+                val x: Int,
+                val y: Int,
+                val width: Int,
+                val height: Int,
+                val color1: MyColor,
+                val color2: MyColor
+            ) : Renderable {
+                override fun render(pGuiGraphics: GuiGraphics, pMouseX: Int, pMouseY: Int, pPartialTick: Float) {
+                    pGuiGraphics.fillGradient(
+                        x,
+                        y,
+                        x + width,
+                        y + height,
+                        color1.data,
+                        color2.data
+                    )
+                }
+            }
+        }
+
+        private var widgets: Widgets? = null
+        private var scroll = 0.0
+
+        override fun init() {
+            super.init()
+            widgets = null
+        }
+
+        override fun mouseScrolled(pMouseX: Double, pMouseY: Double, pDelta: Double): Boolean {
+            scroll += pDelta * 10.0f
+            return true
+        }
 
         override fun renderLabels(pGuiGraphics: GuiGraphics, pMouseX: Int, pMouseY: Int) {
             // No-op
@@ -1092,8 +1201,6 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
                 MyColor(150, 50, 50, 100).data
             )
 
-            val font = Minecraft.getInstance().font
-
             val padLeft = pGuiGraphics.guiWidth() * 0.01f
             val padTop = pGuiGraphics.guiHeight() * 0.01f
             val verticalSpacing = pGuiGraphics.guiHeight() * 0.04f
@@ -1108,7 +1215,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
                 MyColor(100, 0, 0,0).data
             )
 
-            var textY = padTop + corner
+            var sidebarY = padTop + corner
 
             fun sampleText(sampleSrc: Float, i: Int) : String {
                 return "Ch ${(i + 1)}: " + if(sampleSrc.isNaN()) {
@@ -1135,11 +1242,11 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
                         poseStack.preserve {
                             poseStack.translate(
                                 padLeft + corner + sizeX,
-                                textY,
+                                sidebarY,
                                 0.0f
                             )
 
-                            textY += verticalSpacing
+                            sidebarY += verticalSpacing
 
                             poseStack.scale(textScale, textScale, 1.0f)
 
@@ -1167,11 +1274,11 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
             fun textRow() {
                 poseStack.translate(
                     padLeft + corner + sizeX,
-                    textY,
+                    sidebarY,
                     0.0f
                 )
 
-                textY += verticalSpacing
+                sidebarY += verticalSpacing
 
                 poseStack.scale(textScale, textScale, 1.0f)
             }
@@ -1187,6 +1294,167 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
                     MyColor(200, 200, 200, 200).data
                 )
             }
+
+            // Now, sidebarY may not be used to add more elements because of the code below.
+
+            //#region Input
+
+            if(widgets == null) {
+                // (Re)creates the widgets:
+                val offsetBetweenBoxes = 4
+
+                val perChannelRangeBoxes = Array(renderState.texture.channelCount) { iCh ->
+                    val data = renderState.serverOptions.channelParameters[iCh]
+
+                    val boxLeft = ceil(padLeft + corner + sizeX).toInt()
+                    val boxHeight = min(12, ceil(pGuiGraphics.guiHeight() * 0.035f).toInt())
+                    val boxWidth = ceil(pGuiGraphics.guiWidth() * 0.05f).toInt()
+
+                    val minY = sidebarY
+
+                    val title = StringWidget(
+                        boxLeft,
+                        ceil(sidebarY).toInt(),
+                        boxWidth,
+                        boxHeight,
+                        Component.literal("Ch${(iCh + 1)}:"),
+                        font
+                    )
+
+                    val unit = EditBox(
+                        font,
+                        boxLeft + title.width + 1,
+                        ceil(sidebarY).toInt(),
+                        boxWidth,
+                        boxHeight,
+                        Component.literal("Unit")
+                    )
+
+                    sidebarY += boxHeight + offsetBetweenBoxes
+
+                    val signalMin = EditBox(
+                        font,
+                        boxLeft, ceil(sidebarY).toInt(),
+                        boxWidth, boxHeight,
+                        Component.literal("Signal Min")
+                    )
+
+                    val signalMax = EditBox(
+                        font,
+                        boxLeft + boxWidth + offsetBetweenBoxes, ceil(sidebarY).toInt(),
+                        boxWidth, boxHeight,
+                        Component.literal("Signal Max")
+                    )
+
+                    sidebarY += boxHeight + offsetBetweenBoxes
+
+                    val displayMin = EditBox(
+                        font,
+                        boxLeft, ceil(sidebarY).toInt(),
+                        boxWidth, boxHeight,
+                        Component.literal("Display Max")
+                    )
+
+                    val displayMax = EditBox(
+                        font,
+                        boxLeft + boxWidth + offsetBetweenBoxes, ceil(sidebarY).toInt(),
+                        boxWidth, boxHeight,
+                        Component.literal("Display Max")
+                    )
+
+                    sidebarY += boxHeight + offsetBetweenBoxes
+
+                    unit.setFilter { s -> s.isEmpty() || s == sanitizeUnit(s) }
+
+                    signalMin.setFilter { s ->
+                        s.isEmpty() || s == "-" || (s.toFloatOrNull() != null && sanitizeSignalRange(s.toFloat()) == s.toFloat())
+                    }
+
+                    signalMax.setFilter { s ->
+                        s.isEmpty() || s == "-" || (s.toFloatOrNull() != null && sanitizeSignalRange(s.toFloat()) == s.toFloat())
+                    }
+
+                    displayMin.setFilter { s ->
+                        s.isEmpty() || s == "-" || (s.toFloatOrNull() != null && sanitizeOutputRange(s.toFloat()) == s.toFloat())
+                    }
+
+                    displayMax.setFilter { s ->
+                        s.isEmpty() || s == "-" || (s.toFloatOrNull() != null && sanitizeOutputRange(s.toFloat()) == s.toFloat())
+                    }
+
+                    unit.value = data.unit
+                    signalMin.value = data.signalMin.toString()
+                    signalMax.value = data.signalMax.toString()
+                    displayMin.value = data.displayMin.toString()
+                    displayMax.value = data.displayMax.toString()
+
+                    val channelColor = part.specification.palette.colorsInt[iCh]
+
+                    val panel = Widgets.PanelWidget(
+                        boxLeft - padLeft.toInt() / 2, floor(minY).toInt(),
+                        2 * boxWidth + offsetBetweenBoxes + padLeft.toInt(),
+                        ceil(sidebarY - minY).toInt() + padLeft.toInt(),
+                        MyColor((0.5f * channelColor.a).toInt(), channelColor.r, channelColor.g, channelColor.b),
+                        MyColor(50, 50, 50, 50)
+                    )
+
+                    // Separator
+                    sidebarY += boxHeight + offsetBetweenBoxes
+
+                    Widgets.PerChannelWidgets(
+                        title,
+                        unit,
+                        signalMin, signalMax,
+                        displayMin, displayMax,
+                        panel
+                    )
+                }
+
+                perChannelRangeBoxes.forEach {
+                    addRenderableOnly(it.background)
+                    addRenderableWidget(it.unit)
+                    addRenderableWidget(it.titleWidget)
+                    addRenderableWidget(it.signalMin)
+                    addRenderableWidget(it.signalMax)
+                    addRenderableWidget(it.displayMin)
+                    addRenderableWidget(it.displayMax)
+                }
+
+                widgets = Widgets(perChannelRangeBoxes)
+            }
+            else {
+                // Create the full desired state, and compare with the current state.
+                // If it is different, send to server.
+                // Don't update the render state's options immediately, let the server send the update to us once it's validated:
+                val desiredParameters = OscilloscopeParameters(
+                    if(pMouseX > corner && pMouseY > corner && pMouseX < corner + sizeX && pMouseY < corner + sizeY) {
+                        (renderState.serverOptions.timeWindow + scroll)
+                            .roundToInt()
+                            .coerceIn(part.specification.minWindow, part.specification.maxWindow)
+                    }
+                    else {
+                        renderState.serverOptions.timeWindow
+                    },
+                    Array(renderState.serverOptions.channelParameters.size) { i ->
+                        val currentChannelParameters = renderState.serverOptions.channelParameters[i]
+                        val w = widgets!!.perChannel[i]
+
+                        OscilloscopeParameters.ChannelParameters(
+                            sanitizeSignalRange(w.signalMin.value.toFloatOrNull() ?: currentChannelParameters.signalMin),
+                            sanitizeSignalRange(w.signalMax.value.toFloatOrNull() ?: currentChannelParameters.signalMax),
+                            sanitizeOutputRange(w.displayMin.value.toFloatOrNull() ?: currentChannelParameters.displayMin),
+                            sanitizeOutputRange(w.displayMax.value.toFloatOrNull() ?: currentChannelParameters.displayMax),
+                            sanitizeUnit(w.unit.value)
+                        )
+                    }
+                )
+
+                if(desiredParameters != renderState.serverOptions) {
+                    part.sendPacketToServer(GuiMessage(desiredParameters))
+                }
+            }
+
+            //#endregion
 
             //#region Interactive Oscilloscope
 
@@ -1411,66 +1679,65 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
 
             //#endregion
 
-            //#region Time Increments
+            //#region Timeline
 
-            run {
-                val timePoints = 31
-                val detailedLineInterval = 5
+            // Renders some time points on the bottom of the graph:
+            val timePoints = 31
+            val detailedLineInterval = 5
+            repeat(timePoints) { timePoint ->
+                val x = map(
+                    timePoint.toFloat(),
+                    0.0f, timePoints.toFloat() - 1.0f,
+                    corner.toFloat(), corner.toFloat() + sizeX
+                ).roundToInt()
 
-                // Renders some time points on the bottom of the graph:
-                repeat(timePoints) { timePoint ->
-                    val x = map(
-                        timePoint.toFloat(),
-                        0.0f, timePoints.toFloat() - 1.0f,
-                        corner.toFloat(), corner.toFloat() + sizeX
-                    ).roundToInt()
+                val isDetailedLine = timePoint % detailedLineInterval == 0
 
-                    val isDetailedLine = timePoint % detailedLineInterval == 0
+                val height = ceil(pGuiGraphics.guiHeight() * if(isDetailedLine) 0.02f else 0.01f).toInt()
 
-                    val height = ceil(pGuiGraphics.guiHeight() * if(isDetailedLine) 0.02f else 0.01f).toInt()
+                val offsetIntoGraph = 2
 
-                    val offsetIntoGraph = 2
+                pGuiGraphics.vLine(
+                    x,
+                    corner + sizeY - offsetIntoGraph,
+                    corner + sizeY - offsetIntoGraph + height,
+                    MyColor(255, 255, 0, 0).data
+                )
 
-                    pGuiGraphics.vLine(
-                        x,
-                        corner + sizeY - offsetIntoGraph,
-                        corner + sizeY - offsetIntoGraph + height,
-                        MyColor(255, 255, 0, 0).data
-                    )
+                if(isDetailedLine) {
+                    val labelScale = 0.5f
+                    val offsetY = 0.5f
 
-                    if(isDetailedLine) {
-                        val labelScale = 0.5f
-                        val offsetY = 0.5f
+                    poseStack.preserve {
+                        poseStack.translate(
+                            x.toFloat(),
+                            corner + sizeY - offsetIntoGraph + height.toFloat() + offsetY,
+                            0.0f
+                        )
 
-                        poseStack.preserve {
-                            poseStack.translate(
-                                x.toFloat(),
-                                corner + sizeY - offsetIntoGraph + height.toFloat() + offsetY,
-                                0.0f
-                            )
+                        poseStack.scale(textScale * labelScale, textScale * labelScale, 1.0f)
 
-                            poseStack.scale(textScale * labelScale, textScale * labelScale, 1.0f)
+                        val window = renderState.texture.columnCount * CellGraph.DT
 
-                            val window = renderState.texture.columnCount * CellGraph.DT
+                        val offset = map(
+                            x.toDouble(),
+                            corner.toDouble(), corner.toDouble() + sizeX,
+                            -window, 0.0
+                        )
 
-                            val offset = map(
-                                x.toDouble(),
-                                corner.toDouble(), corner.toDouble() + sizeX,
-                                -window, 0.0
-                            )
-
-                            pGuiGraphics.drawCenteredString(
-                                font,
-                                offset.rounded(2).toString() + "s",
-                                0, 0,
-                                MyColor.WHITE.data
-                            )
-                        }
+                        pGuiGraphics.drawCenteredString(
+                            font,
+                            offset.rounded(2).toString() + "s",
+                            0, 0,
+                            MyColor.WHITE.data
+                        )
                     }
                 }
             }
 
             //#endregion
+
+            scroll = 0.0
         }
 
         private fun dispatchScope(poseStack: PoseStack, x: Float, y: Float, width: Float, height: Float) {
@@ -1491,7 +1758,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
         }
     }
 
-    override fun createMenu(pContainerId: Int, pPlayerInventory: Inventory, pPlayer: Player, ): AbstractContainerMenu {
+    override fun createMenu(pContainerId: Int, pPlayerInventory: Inventory, pPlayer: Player): AbstractContainerMenu {
         return OscilloscopeMenu(pContainerId, this)
     }
 
@@ -1606,7 +1873,13 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
             if(currentState.serverOptions.timeWindow != message.options.timeWindow) {
                 // Re-create the buffers with the new depth:
                 currentState.close()
-                currentState = OscilloscopeClientSide(message.options, specification.channelCount)
+                val previousState = currentState
+                // Copies the samples from the old buffer to the new buffer:
+                currentState = OscilloscopeClientSide(
+                    message.options,
+                    specification.channelCount,
+                    previousState
+                )
                 clientSide = currentState
             }
             else {
@@ -1670,7 +1943,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
     private class OscilloscopeSyncMessage(
         val normalizedSamples: FloatArray,
         val timestamp: Double,
-        val options: OscilloscopeParameters
+        val options: OscilloscopeParameters,
     )
 
     /**

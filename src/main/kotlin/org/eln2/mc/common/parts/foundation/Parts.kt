@@ -320,13 +320,22 @@ abstract class Part(ci: PartCreateInfo) {
 
     /**
      * Enqueues a bulk packet to be sent to the client.
-     * This makes sense to call if and only if [P] is registered on the client
-     * in [setupPacketsOnClient], and the default behavior of [handleBulkMessage] gets executed.
+     * This makes sense to call if and only if [P] is registered on the client in [setupPacketsOnClient], and the default behavior of [handleBulkMessage] gets executed.
      * */
     @ServerOnly
     protected inline fun <reified P> sendBulkPacket(packet: P) {
         enqueueBulkMessage(
             ClientSidePacketHandler.encode(packet)
+        )
+    }
+
+    /**
+     * Sends the packet to the server.
+     * This makes sense to call if and only if [P] is registered on the server in [setupPacketsOnServer], and the default behavior of [handleMessageFromClient] gets executed.
+     * */
+    protected inline fun <reified P> sendPacketToServer(packet: P) {
+        sendMessageToServer(
+            ServerSidePacketHandler.encode(packet)
         )
     }
 
