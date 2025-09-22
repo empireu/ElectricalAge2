@@ -52,6 +52,15 @@ object Networking {
 
         channel.registerMessage(
             id(),
+            DimensionMessageToServerPart::class.java,
+            DimensionMessageToServerPart::encode,
+            DimensionMessageToServerPart::decode,
+            DimensionMessageToServerPart::handle,
+            Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        )
+
+        channel.registerMessage(
+            id(),
             GhostLightCommandMessage::class.java,
             GhostLightCommandMessage::encode,
             GhostLightCommandMessage::decode,

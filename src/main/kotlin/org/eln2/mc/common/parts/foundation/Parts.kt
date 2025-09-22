@@ -11,6 +11,7 @@ import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.server.level.ServerPlayer
 import net.minecraft.util.RandomSource
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
@@ -55,8 +56,8 @@ import org.eln2.mc.common.grids.GridTerminalContainer
 import org.eln2.mc.common.grids.GridTerminalSystem
 import org.eln2.mc.common.grids.TerminalFactories
 import org.eln2.mc.common.network.serverToClient.BulkMessages
-import org.eln2.mc.common.network.serverToClient.PacketHandler
-import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
+import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandler
+import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.PartMessage
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.foundation.SpecGeometry
@@ -69,6 +70,11 @@ import org.eln2.mc.mathematics.FacingDirection
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.CellLayer
+import org.eln2.mc.common.network.Networking
+import org.eln2.mc.common.network.serverToClient.DimensionMessageToServerPart
+import org.eln2.mc.common.network.serverToClient.ServerSidePacketHandler
+import org.eln2.mc.common.network.serverToClient.ServerSidePacketHandlerBuilder
+import org.eln2.mc.common.network.serverToClient.id
 import org.eln2.mc.mathematics.maskXY
 import org.eln2.mc.requireIsOnRenderThread
 import org.eln2.mc.requireIsOnServerThread
@@ -204,14 +210,16 @@ fun Part?.stillValid(player: Player) : Boolean {
     return (Vector3d(player.x, player.y, player.z) distanceTo this.placement.mountingPointWorld) < 10.0
 }
 
-fun Part.writeGuiData(buf: FriendlyByteBuf) {
+@ServerOnly
+fun Part.eln2WritePartGuiData(buf: FriendlyByteBuf) {
     buf.writeBlockPos(this.placement.position)
     buf.writeInt(this.placement.face.get3DDataValue())
 }
 
-inline fun<reified T : Part> FriendlyByteBuf.getPartGuiData(inventory: Inventory) : T {
+@ClientOnly
+inline fun<reified T : Part> FriendlyByteBuf.eln2ReadPartGuiData(inventory: Inventory) : T {
     requireIsOnRenderThread {
-        "getPartGuiData"
+        "eln2ReadPartGuiData"
     }
 
     val blockPos = this.readBlockPos()
@@ -262,41 +270,104 @@ abstract class Part(ci: PartCreateInfo) {
     open fun onCreated() { }
 
     /**
-     * [PacketHandler] for server -> client packets.
+     * [ClientSidePacketHandler] for server -> client packets.
      * It will receive messages if and only if the base [handleBulkMessage] gets called when a bulk message is received.
+     * If you override that, make sure you keep this in mind.
      * */
     @ClientOnly
-    private val packetHandlerLazy = lazy {
-        val builder = PacketHandlerBuilder()
-        registerPackets(builder)
+    private val clientSidePacketHandlerLazy: Lazy<ClientSidePacketHandler> = lazy {
+        val builder = ClientSidePacketHandlerBuilder()
+        setupPacketsOnClient(builder)
         builder.build()
     }
 
+    /**
+     * [ServerSidePacketHandler] for client -> server packets.
+     * It will receive messages if and only if the base [handleMessageFromClient] gets called when a message is received.
+     * If you override that, make sure you keep this in mind.
+     * */
+    @ServerOnly
+    private val serverSidePacketHandlerLazy: Lazy<ServerSidePacketHandler> = lazy {
+        val builder = ServerSidePacketHandlerBuilder()
+        setupPacketsOnServer(builder)
+        builder.build()
+    }
+
+    /**
+     * Called on the client to register handlers for bulk packets sent from the server.
+     * */
     @ClientOnly
-    protected open fun registerPackets(builder: PacketHandlerBuilder) { }
+    protected open fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) { }
+
+    /**
+     * Called on the server to register handlers for packets sent from the client.
+     * **WARNING! Make sure the data is sanitized and the client is allowed to send it!**
+     * */
+    @ServerOnly
+    protected open fun setupPacketsOnServer(builder: ServerSidePacketHandlerBuilder) { }
+
+    /**
+     * Helper for determining if [sender] is reasonably close to the part to send changes.
+     * Meant to be used for GUI packets.
+     * */
+    @ServerOnly
+    protected open fun isAllowedToSendGUIChanges(sender: ServerPlayer) : Boolean {
+        val playerPosition = Vector3d(sender.x, sender.y, sender.z)
+        val partPosition = placement.mountingPointWorld
+
+        return (playerPosition distanceTo partPosition) < 10.0
+    }
 
     /**
      * Enqueues a bulk packet to be sent to the client.
      * This makes sense to call if and only if [P] is registered on the client
-     * in [registerPackets], and the default behavior of [handleBulkMessage] gets executed.
+     * in [setupPacketsOnClient], and the default behavior of [handleBulkMessage] gets executed.
      * */
     @ServerOnly
     protected inline fun <reified P> sendBulkPacket(packet: P) {
         enqueueBulkMessage(
-            PacketHandler.encode(packet)
+            ClientSidePacketHandler.encode(packet)
         )
     }
 
     @ClientOnly
     open fun handleBulkMessage(msg: ByteArray) {
-        packetHandlerLazy.value.handle(msg)
+        clientSidePacketHandlerLazy.value.handle(msg)
     }
 
+    @ServerOnly
+    open fun handleMessageFromClient(msg: ByteArray, sender: ServerPlayer) {
+        serverSidePacketHandlerLazy.value.handle(msg, sender)
+    }
+
+    /**
+     * Enqueues a message to be sent to the clients in bulk at the end of the tick.
+     * */
+    @ServerOnly
     fun enqueueBulkMessage(payload: ByteArray) {
-        require(!placement.level.isClientSide) { "Tried to send bulk message from client" }
+        require(!placement.level.isClientSide) {
+            "Tried to send bulk message from client"
+        }
+
         BulkMessages.enqueuePartMessage(
             placement.level as ServerLevel,
             PartMessage(placement.position, placement.face, payload)
+        )
+    }
+
+    /**
+     * Sends a message to the server.
+     * */
+    fun sendMessageToServer(payload: ByteArray) {
+        require(placement.level.isClientSide) {
+            "Tried to send a message to the server from the server"
+        }
+
+        Networking.sendToServer(
+            DimensionMessageToServerPart(
+                placement.level.dimension().registry().id(),
+                PartMessage(placement.position, placement.face, payload)
+            )
         )
     }
 

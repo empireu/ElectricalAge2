@@ -43,7 +43,7 @@ import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
+import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.extensions.*
@@ -789,7 +789,7 @@ class WirePart<C : WireCell>(
     }
 
     @ClientOnly
-    override fun registerPackets(builder: PacketHandlerBuilder) {
+    override fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) {
         builder.withHandler<InternalTemperaturePacket> {
             renderStateImpl!!.setInternalTemperature(it.temperature)
 

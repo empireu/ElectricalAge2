@@ -27,7 +27,7 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridMaterialCategory
 import org.eln2.mc.common.grids.GridNode
-import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
+import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.GridCellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.data.MonopoleMap
@@ -335,7 +335,7 @@ class PotentialProbePart(ci: PartCreateInfo, val models: Map<Base6Direction3d, W
     }
 
     @ClientOnly
-    override fun registerPackets(builder: PacketHandlerBuilder) {
+    override fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) {
         builder.withHandler<KnobMap.SyncPacket> {
             knobMap.loadSyncPacket(it)
         }

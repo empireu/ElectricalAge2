@@ -16,7 +16,7 @@ import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.InternalTemperatureConsumer
-import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
+import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
@@ -46,7 +46,7 @@ class RadiatorPart(
     override fun createVisual(ctx: MultipartVisualizationContext) =
         RadiantBodyPartVisual(ctx, this, FlwModels.RADIATOR, radiantColor)
 
-    override fun registerPackets(builder: PacketHandlerBuilder) {
+    override fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) {
         builder.withHandler<Sync> {
             renderTemperature = (Quantity(it.temperature, KELVIN))
         }

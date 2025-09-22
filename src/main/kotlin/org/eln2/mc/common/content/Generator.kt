@@ -61,7 +61,7 @@ import org.eln2.mc.common.containers.MyAbstractContainerScreen
 import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
 import org.eln2.mc.common.content.FuelBurnState.Companion.canBurn
 import org.eln2.mc.common.events.AtomicUpdate
-import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
+import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.AbstractPartVisual
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
@@ -756,7 +756,7 @@ class ElectricalHeatEnginePart(ci: PartCreateInfo) :
     val renderState: RenderState get() = renderStateImpl!!
 
     @ClientOnly
-    override fun registerPackets(builder: PacketHandlerBuilder) {
+    override fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) {
         val renderState = renderStateImpl!!
 
         builder.withHandler<TemperatureSyncPacket> {

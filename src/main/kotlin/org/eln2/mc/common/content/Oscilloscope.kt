@@ -21,6 +21,7 @@ import net.minecraft.nbt.ListTag
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.MenuProvider
 import net.minecraft.world.entity.player.Inventory
@@ -71,18 +72,21 @@ import org.eln2.mc.common.containers.MyAbstractContainerScreen
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridMaterialCategory
 import org.eln2.mc.common.grids.GridNode
-import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
+import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
+import org.eln2.mc.common.network.serverToClient.ServerSidePacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.GridCellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.common.parts.foundation.PartUseInfo
 import org.eln2.mc.common.parts.foundation.stillValid
-import org.eln2.mc.common.parts.foundation.writeGuiData
+import org.eln2.mc.common.parts.foundation.eln2WritePartGuiData
 import org.eln2.mc.extensions.getListTag
 import org.eln2.mc.extensions.mulPose
 import org.eln2.mc.extensions.preserve
 import org.eln2.mc.extensions.rotationFast
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.isDigit
+import org.eln2.mc.isLetter
 import org.eln2.mc.offerPositive
 import org.eln2.mc.requireIsOnRenderThread
 import org.eln2.mc.resource
@@ -706,6 +710,37 @@ class OscilloscopeClientSide(var serverOptions: OscilloscopeParameters, channels
     }
 }
 
+private fun sanitizeSignalRange(v: Float) : Float {
+    var result = v.coerceIn((-MAX_SIGNAL).toFloat(), (+MAX_SIGNAL).toFloat())
+
+    if(result.isNaN() || result.isInfinite()) {
+        result = 0.0f
+    }
+
+    return result
+}
+
+private fun sanitizeOutputRange(v: Float) : Float {
+    var result = v
+
+    if(result.isNaN() || result.isInfinite()) {
+        result = 0.0f
+    }
+
+    return result
+}
+
+private fun sanitizeUnit(unit: String) =
+    unit.filter {
+        it.isLetter ||
+        it.isDigit ||
+        it == '^' ||
+        it == '/' ||
+        it == '-' ||
+        it == '×' ||
+        it == '²'
+    }.take(5)
+
 /**
  * Persistent settings for the oscilloscope **game object**. They are saved in the part's NBT.
  * Clients receive them as well, and they also send new settings to the server from the GUI.
@@ -847,11 +882,10 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
     @ServerOnly // Saved in disk NBT, sent over the bulk packet. Changes received from the GUI container and applied.
     private var serverParameters = if(!placement.level.isClientSide) OscilloscopeParameters(specification) else null
 
-    // Initialized on render thread. Will be re-created if the time window changes.
-    @ClientOnly
+    @ClientOnly // Initialized on render thread. Will be re-created if the time window changes.
     private var clientSide : OscilloscopeClientSide? = null
 
-    //#region Rendering Only
+    //#region Rendering State and In-World Rendering
 
     override fun onUnloaded() {
         super.onUnloaded()
@@ -1005,12 +1039,16 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
     //#region GUI
 
     override fun onUsedBy(context: PartUseInfo): InteractionResult {
+        if(context.hand != InteractionHand.MAIN_HAND || !context.player.getItemInHand(InteractionHand.MAIN_HAND).isEmpty) {
+            return InteractionResult.FAIL
+        }
+
         if(placement.level.isClientSide) {
             return InteractionResult.PASS
         }
 
         NetworkHooks.openScreen(context.player as ServerPlayer, this) { buf ->
-            this.writeGuiData(buf)
+            this.eln2WritePartGuiData(buf)
         }
 
        return InteractionResult.SUCCESS
@@ -1546,8 +1584,8 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
     //#region Client Data Import
 
     @ClientOnly
-    override fun registerPackets(builder: PacketHandlerBuilder) {
-        super.registerPackets(builder)
+    override fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) {
+        super.setupPacketsOnClient(builder)
         builder.withHandler<OscilloscopeSyncMessage>(this::importFromSimulation)
     }
 
@@ -1582,6 +1620,46 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
 
     //#endregion
 
+    //#region Server GUI Handling
+
+    @ServerOnly
+    override fun setupPacketsOnServer(builder: ServerSidePacketHandlerBuilder) {
+        builder.withHandler(this::applyGUIChanges)
+    }
+
+    @ServerOnly
+    private fun applyGUIChanges(packet: GuiMessage, sender: ServerPlayer) {
+        if (!isAllowedToSendGUIChanges(sender)) {
+            LOG.error("Client $sender tried to apply oscilloscope changes without being allowed")
+            return
+        }
+
+        val currentSettings = serverParameters!!
+        val targetSettings = packet.parameters
+
+        if (currentSettings.channelParameters.size != targetSettings.channelParameters.size) {
+            LOG.error("Client $sender tried to send ${targetSettings.channelParameters.size} channels to oscilloscope with ${currentSettings.channelParameters.size}")
+            return
+        }
+
+        currentSettings.timeWindow = targetSettings.timeWindow.coerceIn(specification.minWindow, specification.maxWindow)
+
+        currentSettings.channelParameters.indices.forEach { i ->
+            val a = currentSettings.channelParameters[i]
+            val b = targetSettings.channelParameters[i]
+
+            a.signalMin = sanitizeSignalRange(b.signalMin)
+            a.signalMax = sanitizeSignalRange(b.signalMax)
+            a.displayMin = sanitizeOutputRange(b.displayMin)
+            a.displayMax = sanitizeOutputRange(b.displayMax)
+            a.unit = sanitizeUnit(b.unit)
+        }
+
+        setSaveDirty()
+    }
+
+    //#endregion
+
     /**
      * Uber update message. We don't mind a little excess data.
      * @param normalizedSamples Samples mapped and clipped to [-1, 1] using the linear map in [options].
@@ -1594,6 +1672,12 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
         val timestamp: Double,
         val options: OscilloscopeParameters
     )
+
+    /**
+     * Message with settings set by a client.
+     * */
+    @Serializable
+    private class GuiMessage(val parameters: OscilloscopeParameters)
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         for(i in 0 until specification.channelCount) {
