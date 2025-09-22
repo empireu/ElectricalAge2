@@ -11,14 +11,24 @@ import com.mojang.blaze3d.vertex.VertexFormat
 import kotlinx.serialization.Serializable
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Font
+import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.renderer.GameRenderer
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.ShaderInstance
 import net.minecraft.client.renderer.texture.DynamicTexture
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.level.ServerPlayer
+import net.minecraft.world.InteractionResult
+import net.minecraft.world.MenuProvider
+import net.minecraft.world.entity.player.Inventory
+import net.minecraft.world.entity.player.Player
+import net.minecraft.world.inventory.AbstractContainerMenu
+import net.minecraft.world.item.ItemStack
 import net.minecraftforge.client.event.RegisterShadersEvent
 import net.minecraftforge.client.event.RenderLevelStageEvent
+import net.minecraftforge.network.NetworkHooks
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Rotation3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
@@ -32,6 +42,7 @@ import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
+import org.eln2.mc.MODID
 import org.eln2.mc.OnClientThread
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.TermRef
@@ -47,12 +58,16 @@ import org.eln2.mc.common.cells.foundation.SimObject
 import org.eln2.mc.common.cells.foundation.SubscriberCollection
 import org.eln2.mc.common.cells.foundation.SubscriberPhase
 import org.eln2.mc.common.cells.foundation.addPost
+import org.eln2.mc.common.containers.MyAbstractContainerScreen
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridMaterialCategory
 import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.network.serverToClient.PacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.GridCellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
+import org.eln2.mc.common.parts.foundation.PartUseInfo
+import org.eln2.mc.common.parts.foundation.stillValid
+import org.eln2.mc.common.parts.foundation.writeGuiData
 import org.eln2.mc.extensions.mulPose
 import org.eln2.mc.extensions.rotationFast
 import org.eln2.mc.integration.ComponentDisplay
@@ -265,16 +280,25 @@ object OscilloscopeShader {
      * @param texture The raw data buffer.
      * @param mask The latest samples. Channels with NaN will be hidden.
      * */
-    fun bindAndSetup(alpha: Float, texture: OscilloscopeTexture, mask: FloatArray, specification: OscilloscopeSpecification, aspect: Float) {
+    fun bindAndSetup(
+        alpha: Float,
+        texture: OscilloscopeTexture,
+        mask: FloatArray,
+        specification: OscilloscopeSpecification,
+        aspect: Float,
+        isGui: Boolean
+    ) {
         RenderSystem.assertOnRenderThread()
 
         val shader = shader ?: error("Oscilloscope shader didn't load")
+
+        val thicknessFactor = if(isGui) specification.thicknessFactorGui else 1.0f
 
         RenderSystem.setShader { shader }
         shader.safeGetUniform("Sampler0").set(texture.glTex.id)
         shader.safeGetUniform("u_writeX").set(texture.writeX.toFloat())
         shader.safeGetUniform("u_count").set(texture.count.toFloat())
-        shader.safeGetUniform("u_thickness").set(specification.channelThickness)
+        shader.safeGetUniform("u_thickness").set(specification.channelThickness * thicknessFactor)
         shader.safeGetUniform("u_alpha").set(alpha)
         specification.palette.setUniform(shader.safeGetUniform("u_channelColors"), mask)
 
@@ -284,7 +308,7 @@ object OscilloscopeShader {
 
                 it[0] = specification.horizontalCuts.toFloat()
                 it[1] = aspect
-                it[2] = specification.axisThickness
+                it[2] = specification.axisThickness * thicknessFactor
                 it[3] = x.toFloat()
                 it[4] = y.toFloat()
                 it[5] = z.toFloat()
@@ -307,6 +331,7 @@ object OscilloscopeShader {
  * @param axisThickness The line thickness of the vertical and horizontal axis.
  * @param axisColor The color of the divisions.
  * @param horizontalCuts The number of horizontal lines to draw. Vertical cuts are adjusted based on aspect ratio.
+ * @param thicknessFactorGui Factor for the thickness when the GUI screen is rendered. The in-world thicknesses may look excessive in GUI.
  * */
 data class OscilloscopeSpecification(
     val channelCount: Int,
@@ -316,7 +341,8 @@ data class OscilloscopeSpecification(
     val channelThickness: Float,
     val axisThickness: Float,
     val axisColor: Vector4d,
-    val horizontalCuts: Int
+    val horizontalCuts: Int,
+    val thicknessFactorGui : Float
 )
 
 /**
@@ -536,17 +562,15 @@ class OscilloscopeBuffer(
      * It works by setting the play rate to the sampling rate plus an offset proportional to the difference in desired delay and actual delay.
      * */
     private fun control() {
-        val samplingPeriod = (1.0.nz() / samplingRateEma.nz())
+        val samplingRate = samplingRateEma
+        val samplingPeriod = (1.0.nz() / samplingRate.nz())
         val desiredDepthSeconds = desiredRenderingSize * samplingPeriod
         val depthSeconds = renderQueue.size * samplingPeriod
 
-        val nominalRate = 1.0 / CellGraph.DT
         val maxRateDelta = 10.0
 
-        val errorSeconds = desiredDepthSeconds - depthSeconds
-
-        playRate = (1.0 / samplingPeriod) -kE * errorSeconds
-        playRate = playRate.coerceIn(nominalRate - maxRateDelta, nominalRate + maxRateDelta).coerceAtLeast(0.1)
+        playRate = (1.0 / samplingPeriod) -kE * (desiredDepthSeconds - depthSeconds)
+        playRate = playRate.coerceIn(samplingRate - maxRateDelta, samplingRate + maxRateDelta).coerceAtLeast(0.1)
     }
 
     private fun removeSet() : FloatArray? {
@@ -692,7 +716,8 @@ object OscilloscopeCopyManager {
 class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecification) :
     GridCellPart<OscilloscopeCell>(ci, Content.BASIC_TWO_CHANNEL_OSCILLOSCOPE_CELL.get()),
     AdditionalRenderingPart,
-    ComponentDisplay
+    ComponentDisplay,
+    MenuProvider
 {
     val channel0 = defineCellBoxTerminalBB(
         0.375, 0.1, 6.0,
@@ -767,7 +792,8 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
             renderState.texture,
             latestSamples,
             specification,
-            sizeX / sizeZ
+            sizeX / sizeZ,
+            false
         )
 
         dispatchOscilloscopeQuad(poseStack)
@@ -827,7 +853,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
             val text = if(sample.isNaN()) {
                 "N/A"
             } else {
-                var text = "${sample.rounded(3)}V"
+                var text = "${sample.rounded(3)}"
 
                 if(snzi(sample) == 1) {
                     text = "+$text"
@@ -855,6 +881,167 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
 
             poseStack.popPose()
         }
+    }
+
+    //#endregion
+
+    //#region GUI
+
+    override fun onUsedBy(context: PartUseInfo): InteractionResult {
+        if(placement.level.isClientSide) {
+            return InteractionResult.PASS
+        }
+
+        NetworkHooks.openScreen(context.player as ServerPlayer, this) { buf ->
+            this.writeGuiData(buf)
+        }
+
+       return InteractionResult.SUCCESS
+    }
+
+    override fun getDisplayName(): Component = TITLE
+
+    class OscilloscopeMenu(pContainerId: Int, val part: OscilloscopePart) : AbstractContainerMenu(Content.FLAT_OSCILLOSCOPE_MENU.get(), pContainerId) {
+        override fun quickMoveStack(pPlayer: Player, pIndex: Int, ): ItemStack = ItemStack.EMPTY
+        override fun stillValid(pPlayer: Player) = part.stillValid(pPlayer)
+    }
+
+    class OscilloscopeScreen(menu: OscilloscopeMenu, playerInventory: Inventory, title: Component) : MyAbstractContainerScreen<OscilloscopeMenu>(menu, playerInventory, title) {
+        override fun renderLabels(pGuiGraphics: GuiGraphics, pMouseX: Int, pMouseY: Int) {
+            // No-op
+        }
+
+        override fun renderBg(pGuiGraphics: GuiGraphics, pPartialTick: Float, pMouseX: Int, pMouseY: Int) {
+            val part = menu.part
+
+            val renderState = menu.part.renderStateImpl
+                ?: return
+
+            val poseStack = pGuiGraphics.pose()
+
+            val corner = (min(pGuiGraphics.guiWidth(), pGuiGraphics.guiHeight()) * 0.05f).toInt()
+            val sizeX = (pGuiGraphics.guiWidth() * 0.75f).toInt()
+            val sizeY = (pGuiGraphics.guiHeight() - 2.0f * corner).toInt()
+
+            // Renders oscilloscope screen background:
+            pGuiGraphics.fillGradient(
+                corner, corner,
+                corner + sizeX, corner + sizeY,
+                MyColor(50, 100, 100, 200).data,
+                MyColor(25, 50, 50, 150).data
+            )
+
+            val font = Minecraft.getInstance().font
+
+
+            val padLeft = pGuiGraphics.guiWidth() * 0.01f
+            val padTop = pGuiGraphics.guiHeight() * 0.01f
+            val verticalSpacing = pGuiGraphics.guiHeight() * 0.04f
+            val textScale = min(pGuiGraphics.guiWidth(), pGuiGraphics.guiHeight()) / 514.0f * 2.0f
+
+            // Renders sidebar background:
+            pGuiGraphics.fill(
+                (padLeft / 2.0f + corner + sizeX).toInt(),
+                corner,
+                (pGuiGraphics.guiWidth() - padLeft).toInt(),
+                corner + sizeY,
+                MyColor(100, 0, 0,0).data
+            )
+
+            renderState.buffer.latestRemovedSet?.also { samples ->
+                samples.indices.forEach { i ->
+                    poseStack.pushPose()
+
+                    poseStack.translate(
+                        padLeft + corner + sizeX,
+                        padTop + corner + verticalSpacing * i,
+                        0.0f
+                    )
+
+                    poseStack.scale(textScale, textScale, 1.0f)
+
+                    var sample = samples[i].toDouble()
+
+                    if(sample.approxEq(0.0, 1e-8)){
+                        sample = 0.0
+                    }
+
+                    val text = "Channel ${(i + 1)}: " + if(sample.isNaN()) {
+                        "N/A"
+                    } else {
+                        var text = "${sample.rounded(3)}"
+
+                        if(snzi(sample) == 1) {
+                            text = "+$text"
+                        }
+
+                        text
+                    }
+
+                    val channelColor = part.specification.palette.colorsInt[i]
+
+                    val textColor = MyColor((channelColor.a * 0.8).toInt(), channelColor.r, channelColor.g, channelColor.b)
+
+                    pGuiGraphics.drawString(
+                        font,
+                        text,
+                        0,
+                        0,
+                        textColor.data
+                    )
+
+                    poseStack.popPose()
+                }
+            }
+
+            //#region Oscilloscope
+
+            RenderSystem.setShaderTexture(0, renderState.texture.resourceId)
+
+            val latestSamples = renderState.buffer.latestRemovedSet ?: FloatArray(renderState.texture.channelCount)
+
+            OscilloscopeShader.bindAndSetup(
+                1.0f,
+                renderState.texture,
+                latestSamples,
+                part.specification,
+                sizeX.toFloat() / sizeY.toFloat(),
+                true
+            )
+
+            dispatchScope(
+                poseStack,
+                corner.toFloat(),
+                corner.toFloat(),
+                sizeX.toFloat(),
+                sizeY.toFloat()
+            )
+
+            OscilloscopeShader.unbind()
+
+            //#endregion
+        }
+
+        private fun dispatchScope(poseStack: PoseStack, x: Float, y: Float, width: Float, height: Float) {
+            RenderSystem.enableBlend()
+
+            RenderSystem.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA)
+
+            val pose = poseStack.last().pose()
+            val tesselator = Tesselator.getInstance()
+            val builder = tesselator.builder
+
+            builder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX)
+            builder.vertex(pose, x, y + height, 0f).uv(0f, 1f).endVertex()
+            builder.vertex(pose, x + width, y + height, 0f).uv(1f, 1f).endVertex()
+            builder.vertex(pose, x + width, y, 0f).uv(1f, 0f).endVertex()
+            builder.vertex(pose, x, y, 0f).uv(0f, 0f).endVertex()
+            tesselator.end()
+        }
+    }
+
+    override fun createMenu(pContainerId: Int, pPlayerInventory: Inventory, pPlayer: Player, ): AbstractContainerMenu {
+        return OscilloscopeMenu(pContainerId, this)
     }
 
     //#endregion
@@ -922,5 +1109,6 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
 
     companion object {
         private const val TIME_WINDOW = "timeWindow"
+        private val TITLE = Component.translatable("screen.$MODID.oscilloscope")
     }
 }

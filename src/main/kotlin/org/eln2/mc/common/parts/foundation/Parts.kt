@@ -8,12 +8,14 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.Vec3i
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.util.RandomSource
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.ItemStack
@@ -68,6 +70,7 @@ import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.CellLayer
 import org.eln2.mc.mathematics.maskXY
+import org.eln2.mc.requireIsOnRenderThread
 import org.eln2.mc.requireIsOnServerThread
 import org.joml.Vector3f
 import java.util.UUID
@@ -187,6 +190,43 @@ data class PartUpdate(val part: Part, val type: PartUpdateType)
 data class PartUseInfo(val player: Player, val hand: InteractionHand)
 
 data class PartCreateInfo(val id: ResourceLocation, val placement: PartPlacementInfo)
+
+// For menu use
+fun Part?.stillValid(player: Player) : Boolean {
+    if(this == null) {
+        return false
+    }
+
+    if(this.isRemoved) { // Is this right?
+        return false
+    }
+
+    return (Vector3d(player.x, player.y, player.z) distanceTo this.placement.mountingPointWorld) < 10.0
+}
+
+fun Part.writeGuiData(buf: FriendlyByteBuf) {
+    buf.writeBlockPos(this.placement.position)
+    buf.writeInt(this.placement.face.get3DDataValue())
+}
+
+inline fun<reified T : Part> FriendlyByteBuf.getPartGuiData(inventory: Inventory) : T {
+    requireIsOnRenderThread {
+        "getPartGuiData"
+    }
+
+    val blockPos = this.readBlockPos()
+    val face = Direction.from3DDataValue(this.readInt())
+
+    val level = inventory.player.level()
+
+    val multipart = level.getBlockEntity(blockPos) as? MultipartBlockEntity
+        ?: error("Got part open GUI but multipart doesn't exist $blockPos $face $inventory")
+
+    val part = multipart.getPart(face)
+        ?: error("Got part open GUI but part doesn't exist $blockPos $face $inventory")
+
+    return (part as? T) ?: error("Got part open GUI but part $part wasn't the required type ${T::class}")
+}
 
 /**
  * Parts are entity-like units that exist in a multipart entity. They are similar to normal block entities,

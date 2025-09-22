@@ -80,6 +80,8 @@ import org.eln2.mc.data.Pole
 import org.eln2.mc.REVOLUTION_PER_SECOND
 import org.eln2.mc.common.cells.foundation.ElectricalSize
 import org.eln2.mc.common.cells.foundation.ThermalSize
+import org.eln2.mc.common.content.OscilloscopePart.OscilloscopeScreen
+import org.eln2.mc.common.parts.foundation.getPartGuiData
 import org.eln2.mc.cylinderResistance
 import org.eln2.mc.data.directionMonopolarMapPlanar
 import org.eln2.mc.data.directionPoleMapPlanar
@@ -109,6 +111,7 @@ object Content {
     private fun setupScreens() {
         MenuScreens.register(FURNACE_MENU.get(), ::FurnaceScreen)
         MenuScreens.register(HEAT_GENERATOR_MENU.get(), ::HeatGeneratorScreen)
+        MenuScreens.register(FLAT_OSCILLOSCOPE_MENU.get(), ::OscilloscopeScreen)
 
         LOG.info("Client screens completed.")
     }
@@ -1064,6 +1067,10 @@ object Content {
 
     val BASIC_TWO_CHANNEL_OSCILLOSCOPE_CELL = cellImmediate("basic_two_channel_oscilloscope") {
         OscilloscopeCell(it, BASIC_TWO_CHANNEL_OSCILLOSCOPE_SPECIFICATION)
+    }
+
+    val FLAT_OSCILLOSCOPE_MENU = menu("basic_two_channel_oscilloscope_menu") { i, inv, buf ->
+        OscilloscopePart.OscilloscopeMenu(i, buf.getPartGuiData<OscilloscopePart>(inv))
     }
 
     val FLAT_OSCILLOSCOPE_PART = partImmediateBB("basic_two_channel_oscilloscope", 15.2, 0.75, 10.0) {
