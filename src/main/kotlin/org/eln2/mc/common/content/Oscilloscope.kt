@@ -86,8 +86,10 @@ import org.eln2.mc.requireIsOnRenderThread
 import org.eln2.mc.resource
 import java.util.UUID
 import kotlin.math.PI
+import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 @ClientOnly
 class OscilloscopeTexture(val resourceId: ResourceLocation, val columnCount: Int, val channelCount: Int) {
@@ -963,8 +965,8 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
             pGuiGraphics.fillGradient(
                 corner, corner,
                 corner + sizeX, corner + sizeY,
-                MyColor(50, 100, 100, 200).data,
-                MyColor(25, 50, 50, 150).data
+                MyColor(200, 50, 50, 75).data,
+                MyColor(150, 50, 50, 100).data
             )
 
             val font = Minecraft.getInstance().font
@@ -1063,7 +1065,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
                     font,
                     "Window: ${Quantity(renderState.texture.columnCount * CellGraph.DT, SECOND).classify()}",
                     0, 0,
-                    MyColor(200, 100, 100, 100).data
+                    MyColor(200, 200, 200, 200).data
                 )
             }
 
@@ -1266,6 +1268,67 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
                         0,
                         0
                     )
+                }
+            }
+
+            //#endregion
+
+            //#region Time Increments
+
+            run {
+                val timePoints = 31
+                val detailedLineInterval = 5
+
+                // Renders some time points on the bottom of the graph:
+                repeat(timePoints) { timePoint ->
+                    val x = map(
+                        timePoint.toFloat(),
+                        0.0f, timePoints.toFloat() - 1.0f,
+                        corner.toFloat(), corner.toFloat() + sizeX
+                    ).roundToInt()
+
+                    val isDetailedLine = timePoint % detailedLineInterval == 0
+
+                    val height = ceil(pGuiGraphics.guiHeight() * if(isDetailedLine) 0.02f else 0.01f).toInt()
+
+                    val offsetIntoGraph = 2
+
+                    pGuiGraphics.vLine(
+                        x,
+                        corner + sizeY - offsetIntoGraph,
+                        corner + sizeY - offsetIntoGraph + height,
+                        MyColor(255, 255, 0, 0).data
+                    )
+
+                    if(isDetailedLine) {
+                        val labelScale = 0.5f
+                        val offsetY = 0.5f
+
+                        poseStack.preserve {
+                            poseStack.translate(
+                                x.toFloat(),
+                                corner + sizeY - offsetIntoGraph + height.toFloat() + offsetY,
+                                0.0f
+                            )
+
+                            poseStack.scale(textScale * labelScale, textScale * labelScale, 1.0f)
+
+                            val window = renderState.texture.columnCount * CellGraph.DT
+
+                            val offset = map(
+                                x.toDouble(),
+                                corner.toDouble(), corner.toDouble() + sizeX,
+                                -window, 0.0
+                            )
+
+                            pGuiGraphics.drawCenteredString(
+                                font,
+                                offset.rounded(2).toString() + "s",
+                                0, 0,
+                                MyColor.WHITE.data
+                            )
+                        }
+                    }
                 }
             }
 
