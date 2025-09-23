@@ -561,8 +561,6 @@ class OscilloscopeTransferBuffer(
      * Copies samples forcefully if the buffer is at max capacity.
      * */
     private fun debuffer() {
-
-
         debufferingTimeAccumulator += !debufferWatch.sample()
 
         val samplingInterval = 1.0 / samplingRateEma
@@ -1234,7 +1232,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
             }
 
             // Renders the latest value for each channel on the sidebar:
-            renderState.transferBuffer.latestRemovedSet?.first?.also { samples ->
+            (renderState.transferBuffer.latestRemovedSet?.first ?: FloatArray(renderState.texture.channelCount) { Float.NaN }).also { samples ->
                 samples.indices.forEach { i ->
                     val sample = samples[i]
 
