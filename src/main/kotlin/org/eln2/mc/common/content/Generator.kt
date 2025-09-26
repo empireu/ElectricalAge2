@@ -893,7 +893,7 @@ class ElectricalHeatEnginePartVisual(
     }
 
     val body: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, SpecialModels.partial(FlwModels.SMALL_THERMAL_ELECTRIC_GENERATOR_BODY, Materials.CUTOUT_BLOCK))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.SMALL_THERMAL_ELECTRIC_GENERATOR_BODY, Materials.CUTOUT_BLOCK))
         .createInstance()
         .also {
             it.partTransformation(visualizationContext.parent, part)

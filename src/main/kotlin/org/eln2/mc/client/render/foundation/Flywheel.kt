@@ -258,12 +258,6 @@ object FlwVisualizerRegistry {
     }
 }
 
-object FlwMaterials {
-    fun init() {
-        LOG.info("Created ELN2 Flw materials.")
-    }
-}
-
 object FlwInstanceTypes {
     val TRANSFORMED_POLAR: SimpleInstanceType<TransformedPolarInstance> = SimpleInstanceType.builder(::TransformedPolarInstance)
         .cullShader(resource("instance/cull/default.glsl"))
@@ -381,7 +375,7 @@ class SpecialVisualStorage<V : Visual> {
     }
 }
 
-object SpecialModels {
+object PartialModelHelper {
     private val PARTIAL_WITH_MATERIAL = RendererReloadCache<PartialWithMaterial, Model> { (partial, material) ->
         BakedModelBuilder.create(partial.get())
             .materialFunc { _, _ -> material }
@@ -390,7 +384,7 @@ object SpecialModels {
 
     private data class PartialWithMaterial(val partialModel: PartialModel, val material: Material)
 
-    fun partial(model: PartialModel, material: Material) = PARTIAL_WITH_MATERIAL.get(
+    fun applyMaterial(model: PartialModel, material: Material): Model = PARTIAL_WITH_MATERIAL.get(
         PartialWithMaterial(model, material)
     )
 }
@@ -401,9 +395,19 @@ object SpecialModels {
  * */
 abstract class ProcessedModel(modelLocation: ResourceLocation) {
     companion object {
-        val CACHE: RendererReloadCache<ProcessedModel, Model> =
+        private val CACHE: RendererReloadCache<ProcessedModel, Model> =
             RendererReloadCache<ProcessedModel, Model> { it: ProcessedModel ->
                 BakedModelBuilder.create(it.model ?: error("Partial model was null ${it.partialModel.modelLocation()}")).build()
+            }
+
+        private data class Key(val p: ProcessedModel, val material: Material)
+
+        private val CACHE_WITH_MATERIAL: RendererReloadCache<Key, Model> =
+            RendererReloadCache<Key, Model> { key: Key ->
+                BakedModelBuilder
+                    .create(key.p.model ?: error("Processed model was null ${key.p.partialModel.modelLocation()}"))
+                    .materialFunc { _, _ -> key.material }
+                    .build()
             }
     }
 
@@ -438,7 +442,15 @@ abstract class ProcessedModel(modelLocation: ResourceLocation) {
      * */
     protected abstract fun applyChanges(bakedModel: BakedModel): BakedModel
 
+    /**
+     * Gets the model with the default material applied to it.
+     * */
     fun get(): Model = CACHE.get(this)
+
+    /**
+     * Gets the model with the specified material applied to it.
+     * */
+    fun get(material: Material): Model = CACHE_WITH_MATERIAL.get(Key(this, material))
 }
 
 /**
@@ -832,7 +844,7 @@ open class ConnectedPartVisual<P>(
     private val connectionInstances = Int2ObjectOpenHashMap<TransformedInstance>()
 
     /**
-     * Tracks the last acknowledged version of the connections from [org.eln2.mc.common.content.WirePart.RenderState].
+     * Tracks the last acknowledged version of the connections from [WirePart.RenderState].
      * */
     private var connectionsVersion = -1
 
@@ -1349,7 +1361,7 @@ class TestBlockEntityVisual<T : BlockEntity>(
     transformer: (instance: TransformedInstance, visual: TestBlockEntityVisual<T>) -> Unit,
 ) : AbstractBlockEntityVisual<T>(ctx, blockEntity, partialTick) {
     var instance: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, SpecialModels.partial(model, FlwMaterials.TRANSLUCENT_SMOOTH_LIT))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(model, FlwMaterials.TRANSLUCENT_SMOOTH_LIT))
         .createInstance()
         .also { transformer(it, this) }
 

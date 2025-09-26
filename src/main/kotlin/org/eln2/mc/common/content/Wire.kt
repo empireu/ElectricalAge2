@@ -3,7 +3,6 @@
 package org.eln2.mc.common.content
 
 import dev.engine_room.flywheel.api.visual.DynamicVisual
-import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
@@ -35,10 +34,12 @@ import org.ageseries.libage.data.OHM
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.*
 import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
 import org.eln2.mc.*
+import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.CellRegistry
@@ -599,7 +600,7 @@ class WirePart<C : WireCell>(
         return if(isIncandescent) {
             IncandescentWirePartVisual(ctx, this, model)
         } else {
-            FlatWirePartVisual(ctx, this, model)
+            InsulatedWirePartVisual(ctx, this, model)
         }
     }
 
@@ -1064,24 +1065,45 @@ abstract class WirePartVisual<H : TransformedInstance, C : TransformedInstance>(
 /**
  * Wire renderer without any temperature visualization.
  * To be used for insulated wires or non-thermal wires.
- * P.S. apparently the per-(vertex or fragment) lighting is gone from flywheel (?).
- * I will try to talk to the devs and see if it's something I need to enable for it.
- * If that's not the case, I will do what the [IncandescentWirePartVisual] does with [TransformedPolarInstance] to interpolate the light across the cable.
+ * We need to apply [PolarModel]'s light override in order to get a smooth transition across the wire.
+ * Flywheel's GPU lights won't help us with these discrete instances.
+ * The methods are pretty much copied over from [IncandescentWirePartVisual], but with the temperature bits stripped.
  * */
-class FlatWirePartVisual(
+class InsulatedWirePartVisual(
     ctx: MultipartVisualizationContext,
     part: WirePart<*>,
     renderModel: WireRenderModel,
-) : WirePartVisual<TransformedInstance, TransformedInstance>(ctx, part, renderModel) {
+) : WirePartVisual<TransformedLightOverrideInstance, TransformedPolarInstance>(ctx, part, renderModel) {
     private fun createHubInstance() = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(model.hub))
+        .instancer(
+            FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE,
+            PartialModelHelper.applyMaterial(model.hub, FlwMaterials.SMOOTH_LIT)
+        )
         .createInstance()
-        .poseHub()
+        .also { it.poseHub() }
 
     private fun createConnectionInstance(info: PartConnectionDirection, model: PolarModel) = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, model.get())
+        .instancer(FlwInstanceTypes.TRANSFORMED_POLAR, model.get())
         .createInstance()
-        .poseConnection(info)
+        .also { it.poseConnection(info) }
+
+    private fun convertToLightOverride(block: Int) = MyColor(
+        map(
+            block.toFloat(),
+            0.0f, 15.0f,
+            0.0f, 255.0f
+        ).toInt(),
+        255, 255, 255
+    )
+
+    private fun evaluateCoreColor() = convertToLightOverride(
+        LightTexture.block(
+            LevelRenderer.getLightColor(
+                part.placement.level,
+                part.placement.position
+            )
+        )
+    )
 
     override fun applyConnectionData(partConnections: IntArray, partialTick: Float) {
         deleteHubInstance()
@@ -1101,7 +1123,64 @@ class FlatWirePartVisual(
             putUniqueConnection(info.value, createConnectionInstance(info, variants[info.mode]!!))
         }
 
+        uploadCoreData()
+        uploadRemoteData()
         updateLight(partialTick)
+    }
+
+    private fun uploadCoreData() {
+        val coreColor = evaluateCoreColor()
+
+        hubInstance?.also {
+            it.color(coreColor.r, coreColor.g, coreColor.b)
+            it.lightOverride = coreColor.a / 255f
+            it.setChanged()
+        }
+
+        connectionInstances.values.forEach { instance ->
+            instance.color2 = coreColor
+            instance.setChanged()
+        }
+    }
+
+    private fun uploadRemoteData() {
+        val coreColor = evaluateCoreColor()
+
+        connectionInstances.forEach { (remoteInfo, instance) ->
+            setExteriorPoleColor(instance, coreColor, remoteInfo)
+            instance.setChanged()
+        }
+    }
+
+    private fun setExteriorPoleColor(instance: TransformedPolarInstance, coreColor: MyColor, remoteInfo: Int) {
+        val remotePositionWorld = part.placement.position + PartConnectionDirection(remoteInfo).getIncrement(
+            part.placement.facing,
+            part.placement.face
+        )
+
+        val remoteLightLevel = part.placement.level.getBrightness(
+            LightLayer.BLOCK,
+            remotePositionWorld
+        )
+
+        instance.color1 = MyColor.lerp(
+            coreColor,
+            convertToLightOverride(remoteLightLevel),
+            0.5f
+        )
+    }
+
+    override fun relightConnection(instance: TransformedPolarInstance, partialTick: Float) {
+        val sky = LightTexture.sky(
+            LevelRenderer.getLightColor(
+                part.placement.level,
+                part.placement.position
+            )
+        )
+
+        instance.light(0, sky)
+        uploadCoreData()
+        uploadRemoteData()
     }
 }
 

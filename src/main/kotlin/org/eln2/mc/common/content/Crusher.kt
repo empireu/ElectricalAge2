@@ -48,7 +48,7 @@ import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.mna.component.updateResistance
 import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwModels
-import org.eln2.mc.client.render.foundation.SpecialModels
+import org.eln2.mc.client.render.foundation.PartialModelHelper
 import org.eln2.mc.common.blocks.foundation.CellBlock
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.cells.foundation.*
@@ -78,7 +78,6 @@ import org.joml.Vector3f
 import java.util.function.Consumer
 import kotlin.math.absoluteValue
 import kotlin.math.ceil
-import kotlin.math.pow
 
 /**
  * Crusher model. If active (needs to crush):
@@ -638,7 +637,7 @@ class CrusherBlockEntityVisual(
     }
 
     val body: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, SpecialModels.partial(FlwModels.CRUSHER_BODY, Materials.CUTOUT_BLOCK))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.CRUSHER_BODY, Materials.CUTOUT_BLOCK))
         .createInstance()
         .also {
             it.translate(visualPos)

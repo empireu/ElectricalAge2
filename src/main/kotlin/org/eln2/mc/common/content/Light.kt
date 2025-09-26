@@ -41,7 +41,7 @@ import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.FlwInstanceTypes
 import org.eln2.mc.client.render.foundation.MyColor
-import org.eln2.mc.client.render.foundation.SpecialModels
+import org.eln2.mc.client.render.foundation.PartialModelHelper
 import org.eln2.mc.client.render.foundation.TransformedLightOverrideInstance
 import org.eln2.mc.client.render.foundation.partTransformation
 import org.eln2.mc.common.*
@@ -51,7 +51,6 @@ import org.eln2.mc.common.events.EventListener
 import org.eln2.mc.common.events.EventQueue
 import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.grids.GridCableItem
-import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.network.serverToClient.BulkMessageHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.with
@@ -664,7 +663,7 @@ class LampPoleBlockEntityVisual(
     }
 
     val body: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, SpecialModels.partial(FlwModels.LAMP_POLE_BODY, FlwMaterials.TRANSLUCENT_SMOOTH_LIT))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.LAMP_POLE_BODY, FlwMaterials.TRANSLUCENT_SMOOTH_LIT))
         .createInstance()
         .also {
             it.translate(visualPosition)
@@ -674,7 +673,7 @@ class LampPoleBlockEntityVisual(
         }
 
     val emitter: TransformedLightOverrideInstance = visualizationContext.instancerProvider()
-        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, SpecialModels.partial(FlwModels.LAMP_POLE_EMITTER, FlwMaterials.SMOOTH_LIT))
+        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, PartialModelHelper.applyMaterial(FlwModels.LAMP_POLE_EMITTER, FlwMaterials.SMOOTH_LIT))
         .createInstance()
         .also {
             it.translate(

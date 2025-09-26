@@ -19,7 +19,6 @@ import org.eln2.mc.client.input.KeyMappingRegistry
 import org.eln2.mc.client.overlays.OverlayRegistry
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.FlwInstanceTypes
-import org.eln2.mc.client.render.foundation.FlwMaterials
 import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.CellRegistry
@@ -88,7 +87,6 @@ class Eln2 {
     private fun clientSetup(forgeEventBus: IEventBus, modEventBus: IEventBus) {
         modEventBus.addListener { event: FMLClientSetupEvent ->
             event.enqueueWork {
-                FlwMaterials.init()
                 FlwInstanceTypes.init()
                 FlwVisualizerRegistry.registerBlockEntityVisualizers()
                 FlwVisualizerRegistry.registerPartVisualizers()
