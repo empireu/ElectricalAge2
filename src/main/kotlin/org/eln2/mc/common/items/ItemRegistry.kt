@@ -21,4 +21,8 @@ object ItemRegistry {
     }
 
     fun <T : Item> item(name: String, supplier: () -> T): RegistryObject<T> = ITEMS.register(name) { supplier() }
+
+    fun itemDefault(name: String) = item(name) {
+        Item(Item.Properties())
+    }
 }

@@ -11,8 +11,24 @@ import org.ageseries.libage.data.EventBus
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.requireIsOnRenderThread
+import kotlin.math.pow
 
-data class SoundInfo(val pitch: Double, val volume: Double)
+data class SoundInfo(val pitch: Double, val volume: Double) {
+    companion object {
+        val QUIET = SoundInfo(1.0, 0.0)
+
+        fun standardWithProcessingSpeed(speed: Double) : SoundInfo {
+            if(speed < 0.01) {
+                return QUIET
+            }
+
+            return SoundInfo(
+                0.6 + speed * 0.4,
+                speed.pow(3) + 0.5
+            )
+        }
+    }
+}
 
 /**
  * Sent when the sound instance is about to tick.

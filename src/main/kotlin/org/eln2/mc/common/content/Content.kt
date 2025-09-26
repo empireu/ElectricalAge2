@@ -7,6 +7,7 @@ package org.eln2.mc.common.content
 import net.minecraft.client.gui.screens.MenuScreens
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.world.item.Item
 import net.minecraft.world.item.crafting.RecipeType
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.phys.AABB
@@ -84,6 +85,7 @@ import org.eln2.mc.REVOLUTION_PER_SECOND
 import org.eln2.mc.common.cells.foundation.ElectricalSize
 import org.eln2.mc.common.cells.foundation.ThermalSize
 import org.eln2.mc.common.content.OscilloscopePart.OscilloscopeScreen
+import org.eln2.mc.common.items.ItemRegistry.itemDefault
 import org.eln2.mc.common.parts.foundation.eln2ReadPartGuiData
 import org.eln2.mc.common.recipes.RecipeRegistry.registerProcessingRecipe
 import org.eln2.mc.common.recipes.foundation.SimpleProcessingRecipe
@@ -128,6 +130,17 @@ object Content {
     val WRENCH = item("wrench") { WrenchItem() }
 
     val SCREWDRIVER = item("screwdriver") { ScrewdriverItem() }
+
+    //#endregion
+
+    //#region Intermediary Items
+
+    //#region Crushed Ores
+
+    val CRUSHED_IRON_ORE = itemDefault("crushed_iron_ore")
+    val CRUSHED_COPPER_ORE = itemDefault("crushed_copper_ore")
+
+    //#endregion
 
     //#endregion
 

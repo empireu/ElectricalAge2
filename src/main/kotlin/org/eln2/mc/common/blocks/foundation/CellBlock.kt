@@ -71,17 +71,29 @@ abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirection
 
     override fun onDestroyedByPlayer(blockState: BlockState?, level: Level?, blockPos: BlockPos?, player: Player?, willHarvest: Boolean, fluidState: FluidState?): Boolean {
         markCellDestroyed(
-            level
-            ?: error("Level was null"),
-            blockPos ?: error("Position was null")
+            level ?: error(DEBUGGER_BREAK("Level was null")),
+            blockPos ?: error(DEBUGGER_BREAK("Position was null"))
         )
         return super.onDestroyedByPlayer(blockState, level, blockPos, player, willHarvest, fluidState)
     }
 
+    // New logic [!]
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun onRemove(
+        pState: BlockState,
+        pLevel: Level,
+        pPos: BlockPos,
+        pNewState: BlockState,
+        pMovedByPiston: Boolean
+    ) {
+        markCellDestroyed(pLevel, pPos)
+        super.onRemove(pState, pLevel, pPos, pNewState, pMovedByPiston)
+    }
+
     fun markCellDestroyed(level: Level, blockPos: BlockPos) {
         if (!level.isClientSide) {
-            val cellEntity = level.getBlockEntity(blockPos)!! as CellBlockEntity<*>
-            cellEntity.setDestroyed()
+            val cellEntity = level.getBlockEntity(blockPos)!! as? CellBlockEntity<*>
+            cellEntity?.setDestroyed()
         }
     }
 
@@ -151,15 +163,15 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
     protected open fun createObjectList() = listOf(this)
 
     open fun setDestroyed() {
-        val level = this.level ?: error("Level is null in setDestroyed")
+        val level = this.level
         val cell = this.cell
 
         if (cellField == null) {
             // This means we are on the client.
             // Otherwise, something is going on here.
 
-            require(level.isClientSide) {
-                "Cell is null in setDestroyed"
+            require(level?.isClientSide == false) {
+                DEBUGGER_BREAK("Cell is null in setDestroyed")
             }
 
             return

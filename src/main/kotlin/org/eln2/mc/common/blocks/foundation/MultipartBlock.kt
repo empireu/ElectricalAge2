@@ -214,6 +214,32 @@ class MultipartBlock : BaseEntityBlock(
         return multipartIsDestroyed
     }
 
+    // New logic [!]
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun onRemove(
+        pState: BlockState,
+        pLevel: Level,
+        pPos: BlockPos,
+        pNewState: BlockState,
+        pMovedByPiston: Boolean
+    ) {
+        if(pLevel.isClientSide) {
+            return
+        }
+
+        pLevel as ServerLevel
+
+        val multipart = pLevel.getBlockEntity(pPos) as? MultipartBlockEntity
+
+        multipart?.parts?.values?.forEach { part ->
+            val saveTag = CompoundTag()
+            multipart.breakPart(part, saveTag)
+            spawnDrop(pLevel, part, saveTag)
+        }
+
+        super.onRemove(pState, pLevel, pPos, pNewState, pMovedByPiston)
+    }
+
     private fun destroyMultipart(level: ServerLevel, pos: BlockPos) {
         // There is an edge case here!
         // Because we destroyed it, the update packet never got sent, unfortunately.

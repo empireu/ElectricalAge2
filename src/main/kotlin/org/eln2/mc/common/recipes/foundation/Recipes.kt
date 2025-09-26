@@ -94,7 +94,7 @@ class SimpleProcessingRecipeInventoryHandler<B : BlockEntity>(val blockEntity: B
             return true
         }
 
-        return currentRecipe.get() == previousRecipe
+        return currentRecipe.get().recipeId != previousRecipe.recipeId
     }
 
     /**

@@ -429,13 +429,16 @@ class CrusherBlockEntity(pos: BlockPos, state: BlockState) :
 
     @ServerOnly
     fun serverTick() {
+        // We need to make sure to keep the speed up between operations so we don't cause jumps in the client's audio.
+
         if(operation == null) {
-            cell.isActive = false
             data.progress = 0.0f
 
-           val recipe = inventoryHandler.searchForRecipe()
+            val recipe = inventoryHandler.searchForRecipe() // Should be fast
 
             if(recipe.isPresent) {
+                cell.isActive = true
+
                 // Create new operation:
                 operation = CrushingOperation(recipe.get())
 
@@ -445,6 +448,9 @@ class CrusherBlockEntity(pos: BlockPos, state: BlockState) :
                 }
 
                 setChanged()
+            }
+            else {
+                cell.isActive = false
             }
         }
         else {
@@ -459,6 +465,7 @@ class CrusherBlockEntity(pos: BlockPos, state: BlockState) :
                 // Progress if we have space for the output.
                 // If we don't, we just wait with the current recipe.
                 if(inventoryHandler.hasSpaceForExport(op.recipe)) {
+                    cell.isActive = true
                     op.timeProgress += cell.crusher.grindingSpeed * (1.0 / 20.0)
                     op.timeProgress = op.timeProgress.coerceIn(0.0, op.recipe.duration)
                     data.progress = (op.timeProgress / op.recipe.duration).toFloat()
@@ -467,14 +474,12 @@ class CrusherBlockEntity(pos: BlockPos, state: BlockState) :
                         // Finish processing:
                         inventoryHandler.exportProcessingResult()
                         operation = null
-                        cell.isActive = false
-                    }
-                    else {
-                        // Turn on cell:
-                        cell.isActive = true
                     }
 
                     setChanged()
+                }
+                else {
+                    cell.isActive = false
                 }
             }
         }
@@ -503,10 +508,7 @@ class CrusherBlockEntity(pos: BlockPos, state: BlockState) :
         if(soundInstance == null) {
             soundInstance = SimpleLoopingBlockEntitySoundInstance(this, Content.CRUSHER_SOUND_ROCK.get()).also {
                 it.events.registerHandler<SoundInstanceTickEvent> { e ->
-                    it.soundInfo = SoundInfo(
-                        0.6f + clientTickSpeedSmoother.value * 0.4f,
-                        clientTickSpeedSmoother.value.pow(3) + 0.5
-                    )
+                    it.soundInfo = SoundInfo.standardWithProcessingSpeed(clientTickSpeedSmoother.value)
                 }
 
                 it.registerOnAudioManager()

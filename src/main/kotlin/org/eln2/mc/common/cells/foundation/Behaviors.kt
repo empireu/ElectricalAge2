@@ -3,6 +3,7 @@ package org.eln2.mc.common.cells.foundation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
+import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.ThermalMass
@@ -11,6 +12,7 @@ import org.ageseries.libage.sim.electrical.mna.component.Port
 import org.eln2.mc.*
 import org.eln2.mc.common.LightVolume
 import org.eln2.mc.common.LightVolumeInstance
+import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.events.schedulePre
@@ -118,6 +120,17 @@ data class TemperatureExplosionBehaviorOptions(
 private fun defaultNotifier(cell: Cell) : Boolean {
     val container = cell.container ?: return false
 
+    fun sound(level: net.minecraft.world.level.Level, x: Double, y: Double, z: Double) {
+        level.playSound(
+            null,
+            x, y, z,
+            SoundEvents.GENERIC_EXPLODE,
+            SoundSource.BLOCKS,
+            randomFloat(0.9f, 1.1f),
+            randomFloat(0.9f, 1.1f)
+        )
+    }
+
     if (container is MultipartBlockEntity) {
         if (container.isRemoved) {
             return true
@@ -126,25 +139,43 @@ private fun defaultNotifier(cell: Cell) : Boolean {
         val part = container.getPart(cell.locator.requireLocator(Locators.FACE))
             ?: return true // Already removed
 
-        val level = (part.placement.level as ServerLevel)
+        val level = part.placement.level as ServerLevel
 
         level.destroyPart(part, true)
 
-        level.playSound(
-            null,
+        sound(
+            level,
             part.placement.position.x + 0.5,
             part.placement.position.y + 0.5,
-            part.placement.position.z + 0.5,
-            SoundEvents.GENERIC_EXPLODE,
-            SoundSource.BLOCKS,
-            randomFloat(0.9f, 1.1f),
-            randomFloat(0.9f, 1.1f)
+            part.placement.position.z + 0.5
+        )
+
+        return true
+    }
+    else if(container is CellBlockEntity<*>) {
+        if(container.isRemoved) {
+            return true
+        }
+
+        val level = container.level as? ServerLevel
+            ?: return false
+
+        val blockPos = container.blockPos
+            ?: return false
+
+        level.destroyBlock(blockPos, true)
+
+        sound(
+            container.level!!,
+            blockPos.x + 0.5,
+            blockPos.y + 0.5,
+            blockPos.z + 0.5
         )
 
         return true
     }
     else {
-        error("Cannot explode $container")
+        error(DEBUGGER_BREAK("Cannot explode $container"))
     }
 }
 
@@ -199,7 +230,7 @@ abstract class ExplosionBehavior(private val consumer: ExplosionConsumer) : Cell
 
     private fun updateTriggeredState() {
         if(isGameObjectExploded) {
-            LOG.error("Getting $this explosion ticks while finalized")
+            LOG.error(DEBUGGER_BREAK("Getting $this explosion ticks while finalized"))
             return // weird that we're still getting ticks
         }
 
