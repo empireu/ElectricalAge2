@@ -1,0 +1,11 @@
+{
+    "type": "eln2:crushing",
+    "ingredient": {
+        "item": "minecraft:gold_ore"
+    },
+    "result": {
+        "item": "eln2:crushed_gold_ore",
+        "count": 2
+    },
+    "duration": 10
+}

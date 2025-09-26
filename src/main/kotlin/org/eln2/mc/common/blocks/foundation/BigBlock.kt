@@ -32,6 +32,7 @@ import net.minecraft.world.phys.shapes.CollisionContext
 import net.minecraft.world.phys.shapes.Shapes
 import net.minecraft.world.phys.shapes.VoxelShape
 import net.minecraftforge.client.extensions.common.IClientBlockExtensions
+import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
 import org.eln2.mc.OnServerThread
 import org.eln2.mc.ServerOnly
@@ -208,8 +209,10 @@ interface BigBlockRepresentativeBlockEntity<Self> : MultiblockRepresentative whe
         )
     }
 
+    // New logic [!]
     override fun onDelegateDestroyed(pDelegate: MultiblockDelegateBlockEntity) {
-        error("Invalid call to onDelegateDestroyed! $this $pDelegate")
+        // P.S. now rightfully called by the block removed logic, what to do?
+        error(DEBUGGER_BREAK("Invalid call to onDelegateDestroyed! $this $pDelegate"))
     }
 }
 
@@ -333,6 +336,22 @@ open class MultiblockDelegateBlock(properties: Properties? = null) : BaseEntityB
         }
 
         super.onBlockExploded(state, level, pos, explosion)
+    }
+
+    // New logic [!]
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun onRemove(
+        pState: BlockState,
+        pLevel: Level,
+        pPos: BlockPos,
+        pNewState: BlockState,
+        pMovedByPiston: Boolean
+    ) {
+        runWithRepresentativeAndDelegate(pLevel, pPos) { delegate, representative ->
+            representative.onDelegateDestroyed(delegate)
+        }
+
+        super.onRemove(pState, pLevel, pPos, pNewState, pMovedByPiston)
     }
 }
 

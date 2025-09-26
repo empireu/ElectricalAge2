@@ -120,7 +120,7 @@ class SimpleProcessingRecipeInventoryHandler<B : BlockEntity>(val blockEntity: B
 
         val recipe = recipeOp.get()
 
-        check(extractItem(INPUT_SLOT, 1, false).count == 1) {
+        check(super.extractItem(INPUT_SLOT, 1, false).count == 1) {
             DEBUGGER_BREAK("Did not extract exactly one input item")
         }
 
@@ -170,5 +170,13 @@ class SimpleProcessingRecipeInventoryHandler<B : BlockEntity>(val blockEntity: B
         }
 
         blockEntity.setChanged()
+    }
+
+    override fun extractItem(slot: Int, amount: Int, simulate: Boolean): ItemStack {
+        if(slot == INPUT_SLOT) {
+            return ItemStack.EMPTY // prevents automation from extracting input
+        }
+
+        return super.extractItem(slot, amount, simulate)
     }
 }

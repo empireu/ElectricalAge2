@@ -139,6 +139,7 @@ object Content {
 
     val CRUSHED_IRON_ORE = itemDefault("crushed_iron_ore")
     val CRUSHED_COPPER_ORE = itemDefault("crushed_copper_ore")
+    val CRUSHED_GOLD_ORE = itemDefault("crushed_gold_ore")
 
     //#endregion
 

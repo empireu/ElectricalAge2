@@ -11,6 +11,7 @@ import net.minecraft.world.inventory.Slot
 import net.minecraft.world.item.ItemStack
 import net.minecraftforge.items.IItemHandler
 import net.minecraftforge.items.SlotItemHandler
+import java.util.Optional
 import kotlin.math.min
 
 object ContainerHelper {
@@ -79,7 +80,7 @@ object ContainerHelper {
         pSourceSlot: Slot,
         pSlots: List<Slot>,
         pReverse: Boolean,
-        pSkip: ((Int) -> Boolean)?
+        pSkip: ((Int) -> Boolean)?,
     ): Boolean {
         val sourceStack = pSourceSlot.item
         val sourceSize = sourceStack.count
@@ -208,3 +209,28 @@ class SlotItemHandlerWithPlacePredicate(itemHandler: IItemHandler?, index: Int, 
         return super.mayPlace(stack) && predicate(stack)
     }
 }
+
+class SlotItemHandlerWithPlacePredicateAndSkipPickupCheck(itemHandler: IItemHandler?, index: Int, xPosition: Int, yPosition: Int, private val predicate: (ItemStack) -> Boolean) : SlotItemHandler(itemHandler, index, xPosition, yPosition) {
+    override fun mayPlace(stack: ItemStack): Boolean {
+        return super.mayPlace(stack) && predicate(stack)
+    }
+
+    override fun mayPickup(playerIn: Player): Boolean {
+        return true
+    }
+
+    override fun remove(amount: Int): ItemStack {
+        val stackInSlot = this.item
+
+        if (stackInSlot.isEmpty) {
+            return ItemStack.EMPTY
+        }
+
+        val takeAmount = amount.coerceAtMost(stackInSlot.count)
+        val result = stackInSlot.split(takeAmount)
+
+        this.setChanged()
+        return result
+    }
+}
+

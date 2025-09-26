@@ -55,6 +55,7 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.containers.ContainerHelper
 import org.eln2.mc.common.containers.MyAbstractContainerScreen
 import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
+import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicateAndSkipPickupCheck
 import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.sendBulkPacket
@@ -387,7 +388,6 @@ class CrusherBlockEntity(pos: BlockPos, state: BlockState) :
         }
     }
 
-    val inventoryHandler = SimpleProcessingRecipeInventoryHandler(this, Content.CRUSHING_RECIPE)
     val data = CrusherContainerData()
 
     //#region Client State
@@ -419,12 +419,20 @@ class CrusherBlockEntity(pos: BlockPos, state: BlockState) :
 
     //#endregion
 
+    val inventoryHandler = SimpleProcessingRecipeInventoryHandler(this, Content.CRUSHING_RECIPE)
+    val inventoryHandlerLazy = LazyOptional.of { inventoryHandler }
+
     override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
         if (cap == ForgeCapabilities.ITEM_HANDLER) {
-            return LazyOptional.of { inventoryHandler }.cast()
+            return inventoryHandlerLazy.cast()
         }
 
         return super.getCapability(cap, side)
+    }
+
+    override fun invalidateCaps() {
+        super.invalidateCaps()
+        inventoryHandlerLazy.invalidate()
     }
 
     @ServerOnly
@@ -734,7 +742,7 @@ class CrusherMenu(
 
     init {
         addSlot(
-            SlotItemHandlerWithPlacePredicate(handler, INPUT_SLOT, 34, 35) {
+            SlotItemHandlerWithPlacePredicateAndSkipPickupCheck(handler, INPUT_SLOT, 34, 35) {
                 level.canCrush(it)
             }
         )
