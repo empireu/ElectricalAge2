@@ -7,6 +7,7 @@ package org.eln2.mc.common.content
 import net.minecraft.client.gui.screens.MenuScreens
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.world.item.crafting.RecipeType
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.phys.AABB
 import net.minecraftforge.registries.RegistryObject
@@ -14,6 +15,7 @@ import org.ageseries.libage.data.AMPERE
 import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.CENTIMETER
 import org.ageseries.libage.data.G_PER_CM3
+import org.ageseries.libage.data.KILO
 import org.ageseries.libage.data.KILOGRAM
 import org.ageseries.libage.data.METER2
 import org.ageseries.libage.data.MILLI
@@ -36,6 +38,7 @@ import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.ThermalMassDefinition
+import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.ThermalTint
@@ -82,6 +85,9 @@ import org.eln2.mc.common.cells.foundation.ElectricalSize
 import org.eln2.mc.common.cells.foundation.ThermalSize
 import org.eln2.mc.common.content.OscilloscopePart.OscilloscopeScreen
 import org.eln2.mc.common.parts.foundation.eln2ReadPartGuiData
+import org.eln2.mc.common.recipes.RecipeRegistry.registerProcessingRecipe
+import org.eln2.mc.common.recipes.foundation.SimpleProcessingRecipe
+import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
 import org.eln2.mc.cylinderResistance
 import org.eln2.mc.data.directionMonopolarMapPlanar
 import org.eln2.mc.data.directionPoleMapPlanar
@@ -112,6 +118,7 @@ object Content {
         MenuScreens.register(FURNACE_MENU.get(), ::FurnaceScreen)
         MenuScreens.register(HEAT_GENERATOR_MENU.get(), ::HeatGeneratorScreen)
         MenuScreens.register(FLAT_OSCILLOSCOPE_MENU.get(), ::OscilloscopeScreen)
+        MenuScreens.register(CRUSHER_MENU.get(), ::CrusherScreen)
 
         LOG.info("Client screens completed.")
     }
@@ -1079,6 +1086,45 @@ object Content {
     }
 
     //#endregion
+
+    //#endregion
+
+    //#region Crusher
+
+    val CRUSHING_RECIPE: RecipeType<SimpleProcessingRecipe> = registerProcessingRecipe("crushing")
+
+    val BASIC_CRUSHER_CELL = cellMemoize("basic_crusher") {
+        val options = CrusherOptions(
+            Quantity(LARGE_RESISTANCE, OHM),
+            Quantity(100.0, OHM),
+            Quantity(1.0, OHM),
+            Quantity(240.0, VOLT),
+            Quantity(6.0, KILO * WATT),
+            0.5,
+            1.25,
+            0.1,
+            1.0,
+            ThermalMassDefinition(ChemicalElement.Iron.asMaterial, mass = Quantity(5.0, KILOGRAM)),
+            ConnectionParameters(Quantity(10.0, WATT_PER_KELVIN)),
+            Quantity(150.0, CELSIUS),
+            Quantity(700.0, VOLT)
+        )
+
+        val electricalMap = directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)
+        val thermalMap = directionPoleMapPlanar(Base6Direction3d.Back)
+
+        CellFactory {
+            CrusherCell(it, options, electricalMap, thermalMap)
+        }
+    }
+
+    val CRUSHER_BLOCK = blockAndItem("crusher", ::CrusherBlock)
+
+    val CRUSHER_SOUND_ROCK = soundEventVariableRange("crusher.rock")
+
+    val CRUSHER_BLOCK_ENTITY = blockEntityOnly("crusher", CRUSHER_BLOCK.block, ::CrusherBlockEntity)
+
+    val CRUSHER_MENU = menu("crusher", ::CrusherMenu)
 
     //#endregion
 }

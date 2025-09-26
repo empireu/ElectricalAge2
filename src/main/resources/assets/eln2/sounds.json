@@ -1,0 +1,12 @@
+{
+    "crusher.rock": {
+        "sounds": [
+            {
+                "name": "eln2:crusher/crusher_rock",
+                "stream": false,
+                "volume": 1.0,
+                "pitch": 1.0
+            }
+        ]
+    }
+}

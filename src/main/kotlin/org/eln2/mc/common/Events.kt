@@ -51,6 +51,11 @@ object ModEvents {
             Content.LAMP_POLE_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
+
+        event.registerBlockEntityRenderer(
+            Content.CRUSHER_BLOCK_ENTITY.get(),
+            DummyBlockEntityRendererProvider()
+        )
     }
 
     @SubscribeEvent @JvmStatic

@@ -2010,9 +2010,9 @@ abstract class CellSpec<C : Cell>(ci: SpecCreateInfo, final override val provide
     final override val cell: C get() = cellField
         ?: error(
             if(placement.level.isClientSide) {
-                "TRIED TO ACCESS SPEC CELL ON CLIENT"
+                DEBUGGER_BREAK("TRIED TO ACCESS SPEC CELL ON CLIENT")
             } else {
-                "Tried to get spec cell before it is set $this"
+                DEBUGGER_BREAK("Tried to get spec cell before it is set $this")
             }
         )
 

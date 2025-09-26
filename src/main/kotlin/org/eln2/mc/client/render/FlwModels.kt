@@ -15,6 +15,8 @@ import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 
 object FlwModels {
+    //#region Wires
+
     val ELECTRICAL_WIRE_HUB = partialBlock(
         "wire/electrical/standard/insulated/hub"
     )
@@ -42,16 +44,19 @@ object FlwModels {
         "wire/thermal/standard/uninsulated/copper/connection_full"
     )
 
+    //#endregion
+
+    //#region Batteries
+
     val LEAD_ACID_BATTERY = partialBlock("battery/lead_acid")
     val SPEC_LEAD_ACID_BATTERY = partialBlock("battery/spec_lead_acid_battery")
+
+    //#endregion
 
     val VOLTAGE_SOURCE = partialBlock("voltage_source")
     val RESISTOR = partialBlock("resistor")
     val GROUND = partialBlock("ground_pin")
     val GROUND_MICRO_GRID = partialBlock("ground_pin_micro_grid")
-    val SMALL_WALL_LAMP_EMITTER = partialBlock("small_wall_lamp/emitter")
-    val SMALL_WALL_LAMP_CAGE = partialBlock("small_wall_lamp/cage")
-    val SMALL_WALL_LAMP_CAGE_MICRO_GRID = partialBlock("small_wall_lamp/cage_micro_grid")
 
     val PELTIER_BODY = partialBlock("peltier/body")
     val PELTIER_LEFT = partialBlock("peltier/left")
@@ -61,39 +66,69 @@ object FlwModels {
 
     val SOLAR_PANEL_ONE_BLOCK = partialBlock("solar_panel_one_block")
 
-    val POWER_GRID_INTERFACE = partialBlock("grid/power_grid_interface")
     val STANDARD_CONNECTION = patchPartial("standard_connection")
-
-    val SMALL_GARDEN_LIGHT = partialBlock("small_garden_light/full")
-    val TALL_GARDEN_LIGHT_EMITTER = partialBlock("tall_garden_light/emitter")
-    val TALL_GARDEN_LIGHT_CAGE = partialBlock("tall_garden_light/cage")
 
     val POLE_TEMPORARY = partialBlock("pole")
 
     val SPEC_PART_FRAME = partialBlock("spec_part_frame")
 
-    val MICRO_GRID_ANCHOR = partialBlock("grid/micro_grid_anchor")
-    val SIGNAL_GRID_ANCHOR = partialBlock("grid/signal_grid_anchor")
+    //#region Grid Anchors and Interfaces
+
+    val POWER_GRID_INTERFACE = partialBlock("grid/power_grid_interface")
+
     val MICRO_GRID_INTERFACE = partialBlock("grid/micro_grid_interface")
+    val MICRO_GRID_ANCHOR = partialBlock("grid/micro_grid_anchor")
+
     val SIGNAL_GRID_INTERFACE = partialBlock("grid/signal_grid_interface")
+    val SIGNAL_GRID_ANCHOR = partialBlock("grid/signal_grid_anchor")
+
+    //#endregion
+
+    //#region Lights
+
+    val SMALL_WALL_LAMP_EMITTER = partialBlock("small_wall_lamp/emitter")
+    val SMALL_WALL_LAMP_CAGE = partialBlock("small_wall_lamp/cage")
+    val SMALL_WALL_LAMP_CAGE_MICRO_GRID = partialBlock("small_wall_lamp/cage_micro_grid")
+
+    val SMALL_GARDEN_LIGHT = partialBlock("small_garden_light/full")
+    val TALL_GARDEN_LIGHT_EMITTER = partialBlock("tall_garden_light/emitter")
+    val TALL_GARDEN_LIGHT_CAGE = partialBlock("tall_garden_light/cage")
 
     val LAMP_POLE_BODY = partialBlock("lamp_pole/body")
     val LAMP_POLE_EMITTER = partialBlock("lamp_pole/emitter")
+
+    //#endregion
+
+    //#region Small Thermal Electric Generator
 
     val SMALL_THERMAL_ELECTRIC_GENERATOR_BODY = partialBlock("small_thermal_electric_generator/body")
     val SMALL_THERMAL_ELECTRIC_GENERATOR_COLD_SIDE = partialBlock("small_thermal_electric_generator/cold_side")
     val SMALL_THERMAL_ELECTRIC_GENERATOR_HOT_SIDE = partialBlock("small_thermal_electric_generator/hot_side")
     val SMALL_THERMAL_ELECTRIC_GENERATOR_FLYWHEELS = partialBlock("small_thermal_electric_generator/flywheels")
 
+    //#endregion
+
     val SMALL_DC_TO_DC_CONVERTER = partialBlock("small_dc_to_dc_converter/full")
 
     val FLAT_OSCILLOSCOPE_PART = partialBlock("oscilloscopes/flat_oscilloscope_part")
+
+    //#region Probes
 
     val POTENTIAL_PROBE_BODY = partialBlock("probes/potential/body")
     val POTENTIAL_PROBE_KNOB_INPUT_RANGE_MIN = partialBlock("probes/potential/knob_input_range_min")
     val POTENTIAL_PROBE_KNOB_INPUT_RANGE_MAX = partialBlock("probes/potential/knob_input_range_max")
     val POTENTIAL_PROBE_KNOB_OUTPUT_RANGE_MIN = partialBlock("probes/potential/knob_output_range_min")
     val POTENTIAL_PROBE_KNOB_OUTPUT_RANGE_MAX = partialBlock("probes/potential/knob_output_range_max")
+
+    //#endregion
+
+    //#region Crusher
+
+    val CRUSHER_BODY = partialBlock("crusher/body")
+    val CRUSHER_GRINDER_0 = partialBlock("crusher/grinder0")
+    val CRUSHER_GRINDER_1 = partialBlock("crusher/grinder1")
+
+    //#endregion
 
     private fun partial(path: String): PartialModel = PartialModel.of(resource(path))
     fun partialBlock(path: String): PartialModel = PartialModel.of(resource("block/$path"))

@@ -23,17 +23,7 @@ class VoltageSourceCell(
 ) : Cell(ci), SidedElectricalMonoMapped<VoltageSourceCell> {
     @SimObject
     val voltageSource = VoltageSourceObject(this).also {
-        it.source.potential = 100.0
-    }
-
-    var t = 0.0
-
-    override fun subscribe(subscribers: SubscriberCollection) {
-        subscribers.addPre { dt, _ ->
-            voltageSource.source.potential = sin(t) * 100.0
-
-            t += dt
-        }
+        it.source.potential = 240.0
     }
 }
 

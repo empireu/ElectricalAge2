@@ -53,7 +53,7 @@ import org.ageseries.libage.sim.electrical.mna.NEGATIVE
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.ClientOnly
-import org.eln2.mc.GuiSmoother
+import org.eln2.mc.FramerateIndependentSmoother2d
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.OnClientThread
@@ -1124,7 +1124,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
     }
 
     class OscilloscopeScreen(menu: OscilloscopeMenu, playerInventory: Inventory, title: Component) : MyAbstractContainerScreen<OscilloscopeMenu>(menu, playerInventory, title) {
-        private val mousePosSmoother = GuiSmoother(0.025)
+        private val mousePosSmoother = FramerateIndependentSmoother2d(0.025)
 
         private class Widgets(val perChannel: Array<PerChannelWidgets>) {
             class PerChannelWidgets(

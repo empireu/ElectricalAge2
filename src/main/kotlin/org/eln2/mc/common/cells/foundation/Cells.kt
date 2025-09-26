@@ -1847,7 +1847,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
             updates++
 
         } catch (t: Throwable) {
-            LOG.error("FAILED TO UPDATE SIMULATION at $stage: $t")
+            LOG.error(DEBUGGER_BREAK("FAILED TO UPDATE SIMULATION at $stage: $t ${t.stackTraceToString()}"))
         } finally {
             // Maybe blow up the game instead of just allowing this to go on?
             simulationStopLock.unlock()

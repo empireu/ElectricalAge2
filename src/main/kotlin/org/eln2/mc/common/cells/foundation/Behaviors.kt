@@ -265,11 +265,9 @@ class TemperatureExplosionBehavior private constructor(
                 null
             }
 
-        fun create(
-            options: TemperatureExplosionBehaviorOptions,
-            cell: Cell,
-            temperatureAccessor: () -> Quantity<Temperature>
-        ) = create(options, { defaultNotifier(cell) }, temperatureAccessor)
+        fun create(options: TemperatureExplosionBehaviorOptions, cell: Cell, temperatureAccessor: () -> Quantity<Temperature>) = create(options, { defaultNotifier(cell) }, temperatureAccessor)
+
+        fun create(temperature: Quantity<Temperature>, cell: Cell, temperatureAccessor: () -> Quantity<Temperature>) = create(TemperatureExplosionBehaviorOptions(temperature), cell, temperatureAccessor)
     }
 }
 

@@ -22,6 +22,7 @@ import org.ageseries.libage.data.put
 import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.common.cells.CellRegistry
@@ -106,7 +107,17 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
     val hasCell get() = cellField != null
 
     @ServerOnly
-    val cell: C get() = cellField ?: error("Tried to get cell too early! $this")
+    val cell: C get() = cellField ?: if(level == null) {
+        error(DEBUGGER_BREAK("TRIED TO ACCESS BLOCK ENTITY CELL BEFORE LEVEL WAS SET!"))
+    }
+    else {
+        if(level!!.isClientSide) {
+            error(DEBUGGER_BREAK("TRIED TO ACCESS BLOCK ENTITY CELL ON CLIENT!"))
+        }
+        else {
+            error(DEBUGGER_BREAK("Tried to get block entity cell before it was set $this"))
+        }
+    }
 
     open fun setPlacedBy(level: Level, cellProvider: CellProvider<C>) {
         this.cellProvider = cellProvider

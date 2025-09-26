@@ -34,6 +34,8 @@ import org.eln2.mc.common.items.CreativeTabRegistry
 import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.parts.PartRegistry
+import org.eln2.mc.common.recipes.RecipeRegistry
+import org.eln2.mc.common.sounds.SoundRegistry
 import org.eln2.mc.common.specs.SpecRegistry
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.common.specs.foundation.SpecPlacementOverlayClient
@@ -64,6 +66,8 @@ class Eln2 {
         ItemRegistry.setup(modEventBus)
         CreativeTabRegistry.setup(modEventBus)
         ContainerRegistry.setup(modEventBus)
+        RecipeRegistry.setup(modEventBus)
+        SoundRegistry.setup(modEventBus)
 
         DistExecutor.unsafeRunWhenOn(Dist.CLIENT) {
             Runnable {
@@ -120,7 +124,7 @@ class Eln2 {
 /**
  * Gets a [ResourceLocation] with ELN2's modid.
  * */
-fun resource(path: String) = ResourceLocation.fromNamespaceAndPath(MODID, path)
+fun resource(path: String): ResourceLocation = ResourceLocation.fromNamespaceAndPath(MODID, path)
 
 /**
  * Gets the [Resource] at the specified [location]. If it does not exist, an exception is thrown.

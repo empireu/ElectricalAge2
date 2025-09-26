@@ -127,6 +127,11 @@ object FlwVisualizerRegistry {
             Content.LAMP_POLE_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::LampPoleBlockEntityVisual) { true }
         )
+
+        VisualizerRegistry.setVisualizer(
+            Content.CRUSHER_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::CrusherBlockEntityVisual) { true }
+        )
     }
 
     fun registerPartVisualizers() {

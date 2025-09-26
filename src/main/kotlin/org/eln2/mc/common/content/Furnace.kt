@@ -56,6 +56,9 @@ import org.eln2.mc.common.containers.ContainerHelper
 import org.eln2.mc.common.containers.MyAbstractContainerScreen
 import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
 import org.eln2.mc.data.PoleMap
+import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
+import org.eln2.mc.common.recipes.foundation.OUTPUT_SLOT
+import org.eln2.mc.extensions.canSmelt
 import org.eln2.mc.extensions.constructMenuHelper2
 import org.eln2.mc.extensions.getQuantity
 import org.eln2.mc.extensions.putQuantity
@@ -142,23 +145,8 @@ class FurnaceCell(ci: CellCreateInfo, override val electricalMap: PoleMap) : Cel
     }
 }
 
-fun Level.canSmelt(stack: ItemStack): Boolean {
-    val recipeManager = this.recipeManager
-
-    val recipe = recipeManager.getRecipeFor(
-        RecipeType.SMELTING,
-        SimpleContainer(stack),
-        this
-    )
-
-    return recipe.isPresent
-}
-
 class FurnaceBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<FurnaceCell>(pos, state, Content.FURNACE_BLOCK_ENTITY.get()), ComponentDisplay {
     companion object {
-        const val INPUT_SLOT = 0
-        const val OUTPUT_SLOT = 1
-
         private const val BURN_TIME_TARGET = 40
 
         private const val INVENTORY = "inventory"
@@ -181,7 +169,7 @@ class FurnaceBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<Fur
         }
     }
 
-    class InventoryHandler(private val blockEntity: FurnaceBlockEntity) : ItemStackHandler(2) {
+    class InventoryHandler(val blockEntity: FurnaceBlockEntity) : ItemStackHandler(2) {
         override fun insertItem(slot: Int, stack: ItemStack, simulate: Boolean): ItemStack {
             if(slot == OUTPUT_SLOT) {
                 return stack
@@ -336,8 +324,8 @@ class FurnaceMenu(
     playerInventory: Inventory,
     handler: ItemStackHandler,
     val containerData: FurnaceBlockEntity.FurnaceData,
-    private val access: ContainerLevelAccess,
-    private val level: Level
+    val access: ContainerLevelAccess,
+    val level: Level
 ) : AbstractContainerMenu(Content.FURNACE_MENU.get(), pContainerId) {
     @ServerOnly
     constructor(entity: FurnaceBlockEntity, id: Int, inventory: Inventory): this(
@@ -361,13 +349,13 @@ class FurnaceMenu(
 
     init {
         addSlot(
-            SlotItemHandlerWithPlacePredicate(handler, FurnaceBlockEntity.INPUT_SLOT, 56, 35) {
+            SlotItemHandlerWithPlacePredicate(handler, INPUT_SLOT, 56, 35) {
                 level.canSmelt(it)
             }
         )
 
         addSlot(
-            SlotItemHandlerWithPlacePredicate(handler, FurnaceBlockEntity.OUTPUT_SLOT, 116, 35) {
+            SlotItemHandlerWithPlacePredicate(handler, OUTPUT_SLOT, 116, 35) {
                 false
             }
         )

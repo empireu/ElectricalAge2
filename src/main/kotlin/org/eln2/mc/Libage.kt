@@ -12,6 +12,7 @@ import org.ageseries.libage.sim.electrical.mna.component.IResistor
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.electrical.mna.component.Term
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
+import org.ageseries.libage.sim.electrical.mna.component.updateResistance
 import org.ageseries.libage.utils.Stopwatch
 import org.ageseries.libage.utils.sourceName
 import kotlin.math.abs
@@ -19,25 +20,55 @@ import kotlin.math.exp
 import kotlin.math.sqrt
 import kotlin.reflect.jvm.kotlinProperty
 
-class GuiSmoother(val tau: Double) {
+class FramerateIndependentSmoother1d(val tau: Double) {
+    var value = 0.0
+
+    private var initialized = false
+    private val watch = Stopwatch()
+
+    fun reset() {
+        initialized = false
+        value = 0.0
+    }
+
+    fun update(target: Double) : Double {
+        val dt = !watch.sample()
+
+        if(!initialized) {
+            value = target
+            initialized = true
+            return dt
+        }
+
+        val alpha = 1.0 - exp(-dt / tau)
+        value += (target - value) * alpha
+
+        return dt
+    }
+}
+
+class FramerateIndependentSmoother2d(val tau: Double) {
     var x = 0.0
     var y = 0.0
 
     private var initialized = false
     private val watch = Stopwatch()
 
-    fun update(targetX: Double, targetY: Double) {
+    fun update(targetX: Double, targetY: Double) : Double {
+        val dt = !watch.sample()
+
         if(!initialized) {
             x = targetX
             y = targetY
             initialized = true
-            return
+            return dt
         }
 
-        val dt = !watch.sample()
         val alpha = 1.0 - exp(-dt / tau)
         x += (targetX - x) * alpha
         y += (targetY - y) * alpha
+
+        return dt
     }
 }
 
@@ -220,9 +251,32 @@ class TheveninEstimatingResistor(
 
     private fun perturb() {
         val dithering = 1.0 + ditherSign * ditherFraction
-        resistance = (baseResistance * dithering).coerceIn(1e-8, LARGE_RESISTANCE)
+        resistance = (baseResistance * dithering)
         ditherSign *= -1
     }
+}
+
+fun TheveninEstimatingResistor.setLoad(power: Double, minResistance: Double = 1e-6, maxResistance: Double = LARGE_RESISTANCE, resistanceEps: Double = 1e-5) : Double {
+    require(power >= 0.0) { "TheveninEstimatingResistor#setLoad" }
+
+    if(power.approxEq(0.0)) {
+        this.updateResistance(maxResistance, resistanceEps)
+        return maxResistance
+    }
+
+    val v = this.openCircuitPotentialEstimate
+
+    var loadResistance = (v * v) / power
+
+    if(loadResistance.isNaN() || loadResistance.isInfinite()) {
+        loadResistance = 0.0
+    }
+
+    loadResistance = loadResistance.coerceIn(minResistance, maxResistance)
+
+    this.updateResistance(loadResistance, resistanceEps)
+
+    return loadResistance
 }
 
 /**

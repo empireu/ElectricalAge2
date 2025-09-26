@@ -15,6 +15,12 @@ fun DEBUGGER_BREAK(){
     noop()
 }
 
+@Suppress("FunctionName")
+fun<T> DEBUGGER_BREAK(r: T) : T {
+    DEBUGGER_BREAK()
+    return r
+}
+
 private fun defaultHandleInvalid(property: KProperty1<*, *>) {
     error("Invalid field $property")
 }

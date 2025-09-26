@@ -35,6 +35,7 @@ import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.ClientOnly
+import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
@@ -766,9 +767,9 @@ abstract class CellPart<C: Cell>(
     final override val cell: C get() = cellField
         ?: error(
             if(placement.level.isClientSide) {
-                "TRIED TO ACCESS PART CELL ON CLIENT"
+                DEBUGGER_BREAK("TRIED TO ACCESS PART CELL ON CLIENT")
             } else {
-                "Tried to get spec cell before it is set $this"
+                DEBUGGER_BREAK("Tried to get part cell before it is set $this")
             }
         )
 

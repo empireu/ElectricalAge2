@@ -13,14 +13,19 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.level.ChunkPos
+import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.event.TickEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.network.NetworkEvent
+import org.eln2.mc.ClientOnly
 import org.eln2.mc.CrossThreadAccess
+import org.eln2.mc.DEBUGGER_BREAK
+import org.eln2.mc.ELN2_DEBUG
 import org.eln2.mc.LOG
+import org.eln2.mc.ServerOnly
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.data.AveragingList
@@ -233,7 +238,79 @@ abstract class BulkDimensionMessage<M : InWorldMessage>(val dim: Int, val messag
  * P.S. Parts have this API built into the base class, so there's no counterpart interface for them.
  * */
 interface BulkMessageHandlerBlockEntity {
+    @ClientOnly
     fun handleBulkMessage(payload: ByteArray)
+}
+
+/**
+ * Enqueues the message for sending, if the [BlockEntity.level] and [BlockEntity.getBlockPos] are available.
+ * @return True if the message was sent.
+ * */
+@ServerOnly
+fun BlockEntity.enqueueBulkMessage(payload: ByteArray) : Boolean {
+    val level = this.level
+        ?: return false
+
+    require(!level.isClientSide) {
+        DEBUGGER_BREAK("Tried to send bulk block entity message from client")
+    }
+
+    val pos = this.blockPos
+        ?: return false
+
+    BulkMessages.enqueueBlockEntityMessage(level as ServerLevel, BlockEntityMessage(pos, payload))
+    return true
+}
+
+/**
+ * Enqueues a bulk packet to be sent to the client.
+ * This makes sense to call if and only if [P] is registered on the client in [BulkPacketHandlerBlockEntity.setupPacketsOnClient], and the default behavior of [org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity.handleBulkMessage] gets executed.
+ * */
+inline fun<reified P> BlockEntity.sendBulkPacket(packet: P) = this.enqueueBulkMessage(ClientSidePacketHandler.encode(packet))
+
+/**
+ * Implemented by block entities that wish to receive bulk packets, using the [ClientSidePacketHandler].
+ * */
+interface BulkPacketHandlerBlockEntity : BulkMessageHandlerBlockEntity {
+    /**
+     * [ClientSidePacketHandler] for server -> client packets. **Must be implemented as a field, with the value given by [createClientSideHandler]!**
+     * It will receive messages if and only if the [handleBulkMessage] overridden in this interface gets called when a bulk message is received.
+     * If you override that, make sure you keep this in mind.
+     * */
+    @ClientOnly
+    val clientSidePacketHandlerLazy: Lazy<ClientSidePacketHandler>
+
+    /**
+     * Call this to initialize your [clientSidePacketHandlerLazy] field.
+     * */
+    @ClientOnly
+    fun createClientSideHandler() = lazy {
+        val builder = ClientSidePacketHandlerBuilder()
+        setupPacketsOnClient(builder)
+        builder.build()
+    }
+
+    /**
+     * Called to register the packets to handle.
+     * */
+    @ClientOnly
+    fun setupPacketsOnClient(handler: ClientSidePacketHandlerBuilder)
+
+    @ClientOnly
+    override fun handleBulkMessage(payload: ByteArray) {
+        if(ELN2_DEBUG) {
+            // Quick sanity check:
+            require(clientSidePacketHandlerLazy === clientSidePacketHandlerLazy) {
+                DEBUGGER_BREAK("BulkPacketHandlerBlockEntity#clientSidePacketHandlerLazy is not returning the same ref")
+            }
+
+            require(clientSidePacketHandlerLazy.value === clientSidePacketHandlerLazy.value) {
+                DEBUGGER_BREAK("BulkPacketHandlerBlockEntity#clientSidePacketHandlerLazy#value is not returning the same ref")
+            }
+        }
+
+        clientSidePacketHandlerLazy.value.handle(payload)
+    }
 }
 
 class BulkDimensionMessageBlockEntity(dim: Int, messages: List<BlockEntityMessage>) : BulkDimensionMessage<BlockEntityMessage>(dim, messages) {

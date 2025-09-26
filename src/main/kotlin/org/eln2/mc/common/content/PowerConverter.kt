@@ -68,7 +68,6 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
     // P.S. the nbt saving might screw these for the first tick, meh
     val inputResistorDisplay = theveninResistor.display()
     val sourceDisplay = source.display()
-    val outputResistorDisplay = outputResistor.display()
 
     var setpointPotential = Quantity(0.0, VOLT)
 

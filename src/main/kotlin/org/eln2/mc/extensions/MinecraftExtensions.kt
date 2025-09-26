@@ -20,6 +20,7 @@ import net.minecraft.util.Mth
 import net.minecraft.util.RandomSource
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.MenuProvider
+import net.minecraft.world.SimpleContainer
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.item.ItemEntity
@@ -27,6 +28,7 @@ import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.crafting.RecipeType
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.GameRules
 import net.minecraft.world.level.Level
@@ -45,6 +47,7 @@ import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.mathematics.geometry.*
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
+import org.eln2.mc.common.content.Content
 import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.joml.Quaternionf
@@ -621,3 +624,26 @@ fun FriendlyByteBuf.readPose2d() = Pose2d(
     this.readRotation2d()
 )
 
+fun Level.canSmelt(stack: ItemStack): Boolean {
+    val recipeManager = this.recipeManager
+
+    val recipe = recipeManager.getRecipeFor(
+        RecipeType.SMELTING,
+        SimpleContainer(stack),
+        this
+    )
+
+    return recipe.isPresent
+}
+
+fun Level.canCrush(stack: ItemStack): Boolean {
+    val recipeManager = this.recipeManager
+
+    val recipe = recipeManager.getRecipeFor(
+        Content.CRUSHING_RECIPE,
+        SimpleContainer(stack),
+        this
+    )
+
+    return recipe.isPresent
+}
