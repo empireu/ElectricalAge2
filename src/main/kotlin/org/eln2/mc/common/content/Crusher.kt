@@ -61,8 +61,10 @@ import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.sendBulkPacket
 import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
 import org.eln2.mc.common.recipes.foundation.OUTPUT_SLOT
+import org.eln2.mc.common.recipes.foundation.ProcessingDevice
 import org.eln2.mc.common.recipes.foundation.SimpleProcessingRecipe
 import org.eln2.mc.common.recipes.foundation.SimpleProcessingRecipeInventoryHandler
+import org.eln2.mc.common.recipes.foundation.SimpleProcessingRecipeLoop
 import org.eln2.mc.common.sounds.foundation.SimpleLoopingBlockEntitySoundInstance
 import org.eln2.mc.common.sounds.foundation.SoundInfo
 import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
@@ -129,7 +131,7 @@ class CrusherElectricalObject(cell: CrusherCell) : ElectricalObject<CrusherCell>
     /**
      * The base grinding speed, calculated each tick.
      * */
-    var grindingSpeed = 0.0
+    var processingSpeed = 0.0
 
     override fun subscribe(subscribers: SubscriberCollection) {
         subscribers.addPre(this::tick)
@@ -142,7 +144,7 @@ class CrusherElectricalObject(cell: CrusherCell) : ElectricalObject<CrusherCell>
     }
 
     /**
-     * Converts the input power into some thermal power and updates the [grindingSpeed].
+     * Converts the input power into some thermal power and updates the [processingSpeed].
      * */
     private fun tick(dt: Double, subscriberPhase: SubscriberPhase) {
         val options = cell.options
@@ -162,7 +164,7 @@ class CrusherElectricalObject(cell: CrusherCell) : ElectricalObject<CrusherCell>
         }
 
         if(!cell.isActive) {
-            grindingSpeed = 0.0
+            processingSpeed = 0.0
             resistor.resistance = !options.idleResistance
             return
         }
@@ -170,7 +172,7 @@ class CrusherElectricalObject(cell: CrusherCell) : ElectricalObject<CrusherCell>
         val potential = resistor.openCircuitPotentialEstimate
 
         if(potential <= 0.0) {
-            grindingSpeed = 0.0
+            processingSpeed = 0.0
             setLoad(0.0)
             return
         }
@@ -200,7 +202,7 @@ class CrusherElectricalObject(cell: CrusherCell) : ElectricalObject<CrusherCell>
             isGrinding = true
         }
 
-        grindingSpeed = if (isGrinding) {
+        processingSpeed = if (isGrinding) {
             options.baseSpeedFactor * (resistor.power.absoluteValue / !options.nominalPower)
         } else {
             0.0
@@ -208,17 +210,22 @@ class CrusherElectricalObject(cell: CrusherCell) : ElectricalObject<CrusherCell>
     }
 }
 
-class CrusherCell(ci: CellCreateInfo, val options: CrusherOptions, override val electricalMap: PoleMap, override val thermalMap: PoleMap) : Cell(ci), SidedElectricalMapped<CrusherCell>, SidedThermalMapped<CrusherCell> {
+class CrusherCell(
+    ci: CellCreateInfo,
+    val options: CrusherOptions,
+    override val electricalMap: PoleMap,
+    override val thermalMap: PoleMap
+) : Cell(ci), SidedElectricalMapped<CrusherCell>, SidedThermalMapped<CrusherCell>, ProcessingDevice {
     override val electricalSize: ElectricalSize
         get() = ElectricalSize.Any
 
     override val thermalSize: ThermalSize
         get() = ThermalSize.Any
 
-    /**
-     * Set this flag from the game thread to indicate if the crusher is active.
-     * */
-    var isActive = false
+    override var isActive = false
+
+    override val processingSpeed: Double
+        get() = crusher.processingSpeed
 
     @SimObject
     val thermalWire = ThermalWireObject(
@@ -364,8 +371,6 @@ class CrusherBlockEntity(pos: BlockPos, state: BlockState) :
 {
     companion object {
         private const val INVENTORY = "inventory"
-        private const val IS_WORKING = "hasRecipe"
-        private const val TIME_PROGRESS = "timeProgress"
 
         fun tick(pLevel: Level?, pPos: BlockPos?, pState: BlockState?, pBlockEntity: BlockEntity?) {
             if (pLevel == null || pBlockEntity == null) {
@@ -396,30 +401,18 @@ class CrusherBlockEntity(pos: BlockPos, state: BlockState) :
 
     // Updated in [clientTick] for audio and particles:
     @ClientOnly
-    val clientTickSpeedSmoother = FramerateIndependentSmoother1d(0.15)
+    val clientTickSpeedSmoother = FramerateIndependentSmoother1d(0.2)
 
     @ClientOnly
     var soundInstance: SimpleLoopingBlockEntitySoundInstance<CrusherBlockEntity>? = null
 
     //#endregion
 
-    //#region Server State
-
     @ServerOnly
-    var operation: CrushingOperation? = null
-
-    @ServerOnly
-    var savedProgress: Double? = null // Level not available in [load], we do the trick the cell block entity does.
-
-    @ServerOnly
-    class CrushingOperation(val recipe: SimpleProcessingRecipe) {
-        var timeProgress = 0.0
-    }
-
-    //#endregion
+    val loop = SimpleProcessingRecipeLoop(this)
 
     val inventoryHandler = SimpleProcessingRecipeInventoryHandler(this, Content.CRUSHING_RECIPE)
-    val inventoryHandlerLazy = LazyOptional.of { inventoryHandler }
+    val inventoryHandlerLazy: LazyOptional<SimpleProcessingRecipeInventoryHandler<CrusherBlockEntity>> = LazyOptional.of { inventoryHandler }
 
     override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
         if (cap == ForgeCapabilities.ITEM_HANDLER) {
@@ -436,66 +429,13 @@ class CrusherBlockEntity(pos: BlockPos, state: BlockState) :
 
     @ServerOnly
     fun serverTick() {
-        // We need to make sure to keep the speed up between operations so we don't cause jumps in the client's audio.
+        val result = loop.tick(cell, inventoryHandler)
 
-        if(operation == null) {
-            data.progress = 0.0f
-
-            val recipe = inventoryHandler.searchForRecipe() // Should be fast
-
-            if(recipe.isPresent) {
-                cell.isActive = true
-
-                // Create new operation:
-                operation = CrushingOperation(recipe.get())
-
-                if(savedProgress != null) {
-                    operation!!.timeProgress = savedProgress!!
-                    savedProgress = null
-                }
-
-                setChanged()
-            }
-            else {
-                cell.isActive = false
-            }
-        }
-        else {
-            val op = operation!!
-
-            // Check if input changed, and reset operation if the recipe is different:
-            if(inventoryHandler.wasRecipeChanged(op.recipe)) {
-                operation = null
-                setChanged()
-            }
-            else {
-                // Progress if we have space for the output.
-                // If we don't, we just wait with the current recipe.
-                if(inventoryHandler.hasSpaceForExport(op.recipe)) {
-                    cell.isActive = true
-                    op.timeProgress += cell.crusher.grindingSpeed * (1.0 / 20.0)
-                    op.timeProgress = op.timeProgress.coerceIn(0.0, op.recipe.duration)
-                    data.progress = (op.timeProgress / op.recipe.duration).toFloat()
-
-                    if(op.timeProgress == op.recipe.duration) {
-                        // Finish processing:
-                        inventoryHandler.exportProcessingResult()
-                        operation = null
-                    }
-
-                    setChanged()
-                }
-                else {
-                    cell.isActive = false
-                }
-            }
+        if(!result.speed.approxEq(lastSentSpeed, 1e-4)) {
+            sendSync(result.speed)
         }
 
-        val speed = cell.crusher.grindingSpeed
-
-        if(!speed.approxEq(lastSentSpeed, 1e-4)) {
-            sendSync(speed)
-        }
+        data.progress = result.progress
     }
 
     @ClientOnly
@@ -553,26 +493,15 @@ class CrusherBlockEntity(pos: BlockPos, state: BlockState) :
     @ServerOnly
     override fun saveAdditional(pTag: CompoundTag) {
         super.saveAdditional(pTag)
-
         pTag.put(INVENTORY, inventoryHandler.serializeNBT())
-        pTag.putBoolean(IS_WORKING, operation != null)
-
-        if(operation != null) {
-            pTag.putDouble(TIME_PROGRESS, operation!!.timeProgress)
-        }
+        loop.saveAdditional(pTag)
     }
 
     @ServerOnly
     override fun load(pTag: CompoundTag) {
         super.load(pTag)
-
         inventoryHandler.deserializeNBT(pTag.getCompound(INVENTORY))
-
-        val isWorking = pTag.getBoolean(IS_WORKING)
-
-        if(isWorking) {
-            savedProgress = pTag.getDouble(TIME_PROGRESS)
-        }
+        loop.load(pTag)
     }
 
     //#region Sync
@@ -586,7 +515,7 @@ class CrusherBlockEntity(pos: BlockPos, state: BlockState) :
     @ServerOnly
     override fun getUpdateTag(): CompoundTag {
         if(hasCell) {
-            sendSync(cell.crusher.grindingSpeed)
+            sendSync(cell.crusher.processingSpeed)
         }
 
         return super.getUpdateTag()
@@ -615,13 +544,13 @@ class CrusherBlockEntity(pos: BlockPos, state: BlockState) :
 
     @ServerOnly
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.debugInIDE { "Speed: ${cell.crusher.grindingSpeed.rounded()}" }
+        builder.debugInIDE { "Speed: ${cell.crusher.processingSpeed.rounded()}" }
         builder.debugInIDE { "OC: ${cell.crusher.resistorDisplay.openCircuitPotentialEstimate.value.rounded()}" }
         builder.quantityInput(cell.crusher.resistorDisplay.power)
         builder.quantity(cell.thermalWire.thermalBodyDisplay.temperature)
 
-        if(operation != null) {
-            builder.progress(operation!!.timeProgress / operation!!.recipe.duration)
+        loop.operation?.also {
+            builder.progress(it.timeProgress / it.recipe.duration)
         }
     }
 }

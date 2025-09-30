@@ -2,6 +2,7 @@ package org.eln2.mc.common.recipes.foundation
 
 import com.google.gson.JsonObject
 import net.minecraft.core.RegistryAccess
+import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.util.GsonHelper
@@ -11,12 +12,17 @@ import net.minecraft.world.item.crafting.*
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraftforge.items.ItemStackHandler
+import org.eln2.mc.CrossThreadAccess
 import org.eln2.mc.DEBUGGER_BREAK
+import org.eln2.mc.OnServerThread
+import org.eln2.mc.ServerOnly
 import java.util.*
 
 // Standard inventory slots for input and output item in processing:
 const val INPUT_SLOT = 0
 const val OUTPUT_SLOT = 1
+
+interface Eln2Recipe
 
 /**
  * Recipe for converting an item into another item. Can be used for e.g. a crusher.
@@ -24,7 +30,7 @@ const val OUTPUT_SLOT = 1
  * @param output The output item. Must be a single item stack with 1 or more count.
  * @param duration The base duration, in seconds.
  * */
-class SimpleProcessingRecipe(val recipeSerializer: Serializer, val recipeId: ResourceLocation, val input: Ingredient, val output: ItemStack, val duration: Double) : Recipe<SimpleContainer> {
+class SimpleProcessingRecipe(val recipeSerializer: Serializer, val recipeId: ResourceLocation, val input: Ingredient, val output: ItemStack, val duration: Double) : Recipe<SimpleContainer>, Eln2Recipe {
     init {
         require(input.items.size == 1 && input.items[0].count == 1) {
             "Simple processing recipe requires exactly one/one input!"
@@ -178,5 +184,128 @@ class SimpleProcessingRecipeInventoryHandler<B : BlockEntity>(val blockEntity: B
         }
 
         return super.extractItem(slot, amount, simulate)
+    }
+}
+
+/**
+ * Cell that allows starting/stopping its operation and provides the processing speed.
+ * */
+interface ProcessingDevice {
+    /**
+     * Set by the game object when processing is needed.
+     * */
+    @CrossThreadAccess @OnServerThread
+    var isActive: Boolean
+
+    /**
+     * Read by the game object and used to advance the recipe.
+     * */
+    @CrossThreadAccess @OnServerThread
+    val processingSpeed: Double
+}
+
+/**
+ * Server tick for a machine that uses a [ProcessingDevice] and applies a [SimpleProcessingRecipe].
+ * */
+@ServerOnly
+class SimpleProcessingRecipeLoop(val blockEntity: BlockEntity) {
+    companion object {
+        private const val IS_WORKING = "hasRecipe"
+        private const val TIME_PROGRESS = "timeProgress"
+    }
+
+    class Operation(val recipe: SimpleProcessingRecipe) {
+        var timeProgress = 0.0
+    }
+
+    var operation: Operation? = null
+    var savedProgress: Double? = null // Level not available in [load], we do the trick the cell block entity does.
+
+    /**
+     * @param speed The [ProcessingDevice.processingSpeed], used for rendering.
+     * @param progress The progress to sync to the GUI.
+     * */
+    data class Result(val speed: Double, val progress: Float)
+
+    /**
+     * Advances the processing, if the inventory is eligible for operation.
+     * Calls [BlockEntity.setChanged] if the NBT needs to be serialized.
+     * */
+    fun tick(device: ProcessingDevice, inventoryHandler: SimpleProcessingRecipeInventoryHandler<*>) : Result {
+        val processingSpeed = device.processingSpeed
+        val progress: Float
+
+        if(operation == null) {
+            progress = 0.0f
+
+            val recipe = inventoryHandler.searchForRecipe() // Should be fast
+
+            if(recipe.isPresent) {
+                device.isActive = true
+
+                // Create new operation:
+                operation = Operation(recipe.get())
+
+                if(savedProgress != null) {
+                    operation!!.timeProgress = savedProgress!!
+                    savedProgress = null
+                }
+
+                blockEntity.setChanged()
+            }
+            else {
+                device.isActive = false
+            }
+        }
+        else {
+            val op = operation!!
+
+            // Check if input changed, and reset operation if the recipe is different:
+            if(inventoryHandler.wasRecipeChanged(op.recipe)) {
+                operation = null
+                blockEntity.setChanged()
+                progress = 0.0f
+            }
+            else {
+                // Progress if we have space for the output.
+                // If we don't, we just wait with the current recipe.
+                progress = (op.timeProgress / op.recipe.duration).toFloat().coerceIn(0.0f, 1.0f)
+
+                if(inventoryHandler.hasSpaceForExport(op.recipe)) {
+                    device.isActive = true
+                    op.timeProgress += processingSpeed * (1.0 / 20.0)
+                    op.timeProgress = op.timeProgress.coerceIn(0.0, op.recipe.duration)
+
+                    if(op.timeProgress == op.recipe.duration) {
+                        // Finish processing:
+                        inventoryHandler.exportProcessingResult()
+                        operation = null
+                    }
+
+                    blockEntity.setChanged()
+                }
+                else {
+                    device.isActive = false
+                }
+            }
+        }
+
+        return Result(processingSpeed, progress)
+    }
+
+    fun saveAdditional(pTag: CompoundTag) {
+        pTag.putBoolean(IS_WORKING, operation != null)
+
+        if(operation != null) {
+            pTag.putDouble(TIME_PROGRESS, operation!!.timeProgress)
+        }
+    }
+
+    fun load(pTag: CompoundTag) {
+        val isWorking = pTag.getBoolean(IS_WORKING)
+
+        if(isWorking) {
+            savedProgress = pTag.getDouble(TIME_PROGRESS)
+        }
     }
 }
