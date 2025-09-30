@@ -7,6 +7,7 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.AbstractContainerMenu
+import net.minecraft.world.inventory.SimpleContainerData
 import net.minecraft.world.inventory.Slot
 import net.minecraft.world.item.ItemStack
 import net.minecraftforge.items.IItemHandler
@@ -234,3 +235,12 @@ class SlotItemHandlerWithPlacePredicateAndSkipPickupCheck(itemHandler: IItemHand
     }
 }
 
+class ProgressContainerData : SimpleContainerData(1) {
+    companion object {
+        private const val PROGRESS = 0
+    }
+
+    var progress: Float
+        get() = Float.fromBits(this.get(PROGRESS))
+        set(value) { this.set(PROGRESS, value.toBits()) }
+}

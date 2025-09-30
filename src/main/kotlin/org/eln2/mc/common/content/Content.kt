@@ -7,7 +7,6 @@ package org.eln2.mc.common.content
 import net.minecraft.client.gui.screens.MenuScreens
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
-import net.minecraft.world.item.Item
 import net.minecraft.world.item.crafting.RecipeType
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.phys.AABB
@@ -84,6 +83,8 @@ import org.eln2.mc.data.Pole
 import org.eln2.mc.REVOLUTION_PER_SECOND
 import org.eln2.mc.common.cells.foundation.ElectricalSize
 import org.eln2.mc.common.cells.foundation.ThermalSize
+import org.eln2.mc.common.recipes.MotorProcessingCell
+import org.eln2.mc.common.recipes.MotorProcessingCellOptions
 import org.eln2.mc.common.content.OscilloscopePart.OscilloscopeScreen
 import org.eln2.mc.common.items.ItemRegistry.itemDefault
 import org.eln2.mc.common.parts.foundation.eln2ReadPartGuiData
@@ -1108,7 +1109,7 @@ object Content {
     val CRUSHING_RECIPE: RecipeType<SimpleProcessingRecipe> = registerProcessingRecipe("crushing")
 
     val BASIC_CRUSHER_CELL = cellMemoize("basic_crusher") {
-        val options = CrusherOptions(
+        val options = MotorProcessingCellOptions(
             Quantity(LARGE_RESISTANCE, OHM),
             Quantity(100.0, OHM),
             Quantity(1.0, OHM),
@@ -1128,7 +1129,7 @@ object Content {
         val thermalMap = directionPoleMapPlanar(Base6Direction3d.Back)
 
         CellFactory {
-            CrusherCell(it, options, electricalMap, thermalMap)
+            MotorProcessingCell(it, options, electricalMap, thermalMap)
         }
     }
 

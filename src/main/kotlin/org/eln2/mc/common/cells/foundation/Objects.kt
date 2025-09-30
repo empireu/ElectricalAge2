@@ -1,9 +1,6 @@
 package org.eln2.mc.common.cells.foundation
 
 import net.minecraft.nbt.CompoundTag
-import org.ageseries.libage.data.Locator
-import org.ageseries.libage.data.MEGA
-import org.ageseries.libage.data.OHM
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.approxEq
@@ -14,7 +11,9 @@ import org.ageseries.libage.sim.electrical.mna.*
 import org.ageseries.libage.sim.electrical.mna.component.*
 import org.eln2.mc.*
 import org.eln2.mc.common.grids.GridConnectionCell
-import org.eln2.mc.data.*
+import org.eln2.mc.data.Pole
+import org.eln2.mc.data.PoleMap
+import org.eln2.mc.data.evaluate
 import org.eln2.mc.extensions.getQuantity
 import org.eln2.mc.extensions.putQuantity
 
