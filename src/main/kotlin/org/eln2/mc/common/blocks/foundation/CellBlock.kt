@@ -86,7 +86,10 @@ abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirection
         pNewState: BlockState,
         pMovedByPiston: Boolean
     ) {
-        markCellDestroyed(pLevel, pPos)
+        if(!pState.`is`(pNewState.block)) {
+            markCellDestroyed(pLevel, pPos)
+        }
+
         super.onRemove(pState, pLevel, pPos, pNewState, pMovedByPiston)
     }
 

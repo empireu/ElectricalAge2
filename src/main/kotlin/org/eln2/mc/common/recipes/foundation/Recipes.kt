@@ -1,3 +1,5 @@
+@file:Suppress("RemoveRedundantQualifierName")
+
 package org.eln2.mc.common.recipes.foundation
 
 import com.google.gson.JsonObject
@@ -17,27 +19,68 @@ import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.OnServerThread
 import org.eln2.mc.ServerOnly
 import java.util.*
+import java.util.function.Supplier
 
-// Standard inventory slots for input and output item in processing:
+// Standard inventory slots for input and output item in processing.
+// Applies to [SimpleProcessingRecipe], [SimpleCatalyzedProcessingRecipe]
 const val INPUT_SLOT = 0
 const val OUTPUT_SLOT = 1
+const val CATALYST_SLOT = 2
 
-interface Eln2Recipe
+interface Eln2Recipe {
+    /**
+     * The ID of the recipe, including the path of the data file.
+     * */
+    val recipeId: ResourceLocation
+
+    /**
+     * The base duration, in seconds. Granularity of this value is in game ticks.
+     * The processing takes [duration] (in equivalent ticks) (excluding I/O) if the device's speed is 1.
+     * */
+    val duration: Double
+}
+
+interface Eln2SimpleRecipe : Eln2Recipe {
+    val output: ItemStack
+}
+
+/**
+ * Processor (probably a [org.eln2.mc.common.cells.foundation.Cell]) that allows starting/stopping its operation and provides the processing speed.
+ * */
+interface ProcessingDevice {
+    /**
+     * Set by the game object when processing is needed.
+     * */
+    @CrossThreadAccess @OnServerThread
+    var isActive: Boolean
+
+    /**
+     * Read by the game object and used to advance the recipe.
+     * */
+    @CrossThreadAccess @OnServerThread
+    val processingSpeed: Double
+}
 
 /**
  * Recipe for converting an item into another item. Can be used for e.g. a crusher.
  * @param input The input ingredient. Must be a single item stack with 1 count.
- * @param output The output item. Must be a single item stack with 1 or more count.
+ * @param output The output item. Must be a single item with 1 or more count.
  * @param duration The base duration, in seconds.
  * */
-class SimpleProcessingRecipe(val recipeSerializer: Serializer, val recipeId: ResourceLocation, val input: Ingredient, val output: ItemStack, val duration: Double) : Recipe<SimpleContainer>, Eln2Recipe {
+class DirectSimpleProcessingRecipe(
+    val recipeSerializer: DirectSimpleProcessingRecipe.Serializer,
+    override val recipeId: ResourceLocation,
+    val input: Ingredient,
+    override val output: ItemStack,
+    override val duration: Double
+) : Recipe<SimpleContainer>, Eln2SimpleRecipe {
     init {
         require(input.items.size == 1 && input.items[0].count == 1) {
             "Simple processing recipe requires exactly one/one input!"
         }
     }
 
-    override fun matches(pContainer: SimpleContainer, pLevel: Level) = input.test(pContainer.getItem(0))
+    override fun matches(pContainer: SimpleContainer, pLevel: Level) = input.test(pContainer.getItem(INPUT_SLOT))
     override fun assemble(pContainer: SimpleContainer, pRegistryAccess: RegistryAccess): ItemStack = output.copy()
     override fun canCraftInDimensions(pWidth: Int, pHeight: Int) = true
     override fun getResultItem(pRegistryAccess: RegistryAccess): ItemStack = output.copy()
@@ -46,22 +89,36 @@ class SimpleProcessingRecipe(val recipeSerializer: Serializer, val recipeId: Res
     override fun getSerializer() = recipeSerializer
     override fun getType() = recipeSerializer.recipeType
 
-    class Serializer(val recipeType: RecipeType<SimpleProcessingRecipe>) : RecipeSerializer<SimpleProcessingRecipe> {
-        override fun fromJson(pRecipeId: ResourceLocation, pSerializedRecipe: JsonObject): SimpleProcessingRecipe {
+    class Serializer(val recipeType: RecipeType<DirectSimpleProcessingRecipe>) : RecipeSerializer<DirectSimpleProcessingRecipe> {
+        override fun fromJson(pRecipeId: ResourceLocation, pSerializedRecipe: JsonObject): DirectSimpleProcessingRecipe {
             val input = Ingredient.fromJson(pSerializedRecipe.get("ingredient"))
             val output = ShapedRecipe.itemStackFromJson(GsonHelper.getAsJsonObject(pSerializedRecipe, "result"))
             val duration = pSerializedRecipe.getAsJsonPrimitive("duration").asDouble
-            return SimpleProcessingRecipe(this, pRecipeId, input, output, duration)
+
+            return DirectSimpleProcessingRecipe(
+                this,
+                pRecipeId,
+                input,
+                output,
+                duration
+            )
         }
 
-        override fun fromNetwork(pRecipeId: ResourceLocation, pBuffer: FriendlyByteBuf): SimpleProcessingRecipe {
+        override fun fromNetwork(pRecipeId: ResourceLocation, pBuffer: FriendlyByteBuf): DirectSimpleProcessingRecipe {
             val input = Ingredient.fromNetwork(pBuffer)
             val output = pBuffer.readItem()
             val duration = pBuffer.readDouble()
-            return SimpleProcessingRecipe(this, pRecipeId, input, output, duration)
+
+            return DirectSimpleProcessingRecipe(
+                this,
+                pRecipeId,
+                input,
+                output,
+                duration
+            )
         }
 
-        override fun toNetwork(pBuffer: FriendlyByteBuf, pRecipe: SimpleProcessingRecipe) {
+        override fun toNetwork(pBuffer: FriendlyByteBuf, pRecipe: DirectSimpleProcessingRecipe) {
             pRecipe.input.toNetwork(pBuffer)
             pBuffer.writeItem(pRecipe.output)
             pBuffer.writeDouble(pRecipe.duration)
@@ -70,26 +127,102 @@ class SimpleProcessingRecipe(val recipeSerializer: Serializer, val recipeId: Res
 }
 
 /**
- * Inventory handler with size 2 for a processing-like recipe (e.g. smelting, crushing):
- * - Doesn't allow any insert into [OUTPUT_SLOT]
- * - Only allows insertion into [INPUT_SLOT] if the item can be processed.
+ * Recipe for converting an item into another item, using a catalyst item that isn't consumed. Can be used for e.g. a press.
+ * @param input The input ingredient. Must be a single item stack with 1 count.
+ * @param catalyst The catalyst. Must abe a single item stack with 1 count.
+ * @param output The output item. Must be a single item with 1 or more count.
+ * @param duration The base duration, in seconds.
  * */
-class SimpleProcessingRecipeInventoryHandler<B : BlockEntity>(val blockEntity: B, val recipeType: RecipeType<SimpleProcessingRecipe>) : ItemStackHandler(2) {
-    private var inputChanged = false
+class CatalyzedSimpleProcessingRecipe(
+    val recipeSerializer: CatalyzedSimpleProcessingRecipe.Serializer,
+    override val recipeId: ResourceLocation,
+    val input: Ingredient,
+    val catalyst: Ingredient,
+    override val output: ItemStack,
+    override val duration: Double
+) : Recipe<SimpleContainer>, Eln2SimpleRecipe {
+    init {
+        require(input.items.size == 1 && input.items[0].count == 1) {
+            "Simple catalyzed processing recipe requires exactly one/one input!"
+        }
 
+        require(catalyst.items.size == 1 && catalyst.items[0].count == 1) {
+            "Simple catalyzed processing recipe requires exactly one/one catalyst!"
+        }
+    }
+
+    override fun matches(pContainer: SimpleContainer, pLevel: Level) =
+        input.test(pContainer.getItem(INPUT_SLOT)) &&
+        catalyst.test(pContainer.getItem(CATALYST_SLOT))
+
+    override fun assemble(pContainer: SimpleContainer, pRegistryAccess: RegistryAccess): ItemStack = output.copy()
+    override fun canCraftInDimensions(pWidth: Int, pHeight: Int) = true
+    override fun getResultItem(pRegistryAccess: RegistryAccess): ItemStack = output.copy()
+
+    override fun getId() = recipeId
+    override fun getSerializer() = recipeSerializer
+    override fun getType() = recipeSerializer.recipeType
+
+    class Serializer(val recipeType: RecipeType<CatalyzedSimpleProcessingRecipe>) : RecipeSerializer<CatalyzedSimpleProcessingRecipe> {
+        override fun fromJson(pRecipeId: ResourceLocation, pSerializedRecipe: JsonObject): CatalyzedSimpleProcessingRecipe {
+            val input = Ingredient.fromJson(pSerializedRecipe.get("ingredient"))
+            val catalyst = Ingredient.fromJson(pSerializedRecipe.get("catalyst"))
+            val output = ShapedRecipe.itemStackFromJson(GsonHelper.getAsJsonObject(pSerializedRecipe, "result"))
+            val duration = pSerializedRecipe.getAsJsonPrimitive("duration").asDouble
+
+            return CatalyzedSimpleProcessingRecipe(
+                this,
+                pRecipeId,
+                input,
+                catalyst,
+                output,
+                duration
+            )
+        }
+
+        override fun fromNetwork(pRecipeId: ResourceLocation, pBuffer: FriendlyByteBuf): CatalyzedSimpleProcessingRecipe {
+            val input = Ingredient.fromNetwork(pBuffer)
+            val catalyst = Ingredient.fromNetwork(pBuffer)
+            val output = pBuffer.readItem()
+            val duration = pBuffer.readDouble()
+
+            return CatalyzedSimpleProcessingRecipe(
+                this,
+                pRecipeId,
+                input,
+                catalyst,
+                output,
+                duration
+            )
+        }
+
+        override fun toNetwork(pBuffer: FriendlyByteBuf, pRecipe: CatalyzedSimpleProcessingRecipe) {
+            pRecipe.input.toNetwork(pBuffer)
+            pRecipe.catalyst.toNetwork(pBuffer)
+            pBuffer.writeItem(pRecipe.output)
+            pBuffer.writeDouble(pRecipe.duration)
+        }
+    }
+}
+
+
+interface ProcessingInventoryHandler<R : Eln2Recipe> {
     /**
      * Checks if the input was recently changed, and resets the flag.
      * */
-    fun wasInputChanged() : Boolean {
-        val result = inputChanged
-        inputChanged = false
-        return result
-    }
+    fun wasInputChanged() : Boolean
+
+    /**
+     * Searches for the recipe in the current input slot.
+     * Guaranteed to be present if the input slot is not empty because the input is filtered.
+     * (**Implementations of the interface must guarantee this filtering logic!**)
+     * */
+    fun searchForRecipe() : Optional<R>
 
     /**
      * If the input was recently changed, checks if the previous recipe is the same as the current one.
      * */
-    fun wasRecipeChanged(previousRecipe: SimpleProcessingRecipe) : Boolean {
+    fun wasRecipeChanged(previousRecipe: R) : Boolean {
         if(!wasInputChanged()) {
             return false
         }
@@ -104,6 +237,45 @@ class SimpleProcessingRecipeInventoryHandler<B : BlockEntity>(val blockEntity: B
     }
 
     /**
+     * Checks if the output slot is compatible with the output item and has enough space.
+     * */
+    fun hasSpaceForExport(recipe: R) : Boolean
+
+    /**
+     * Consumes the input and exports the output.
+     * **Only allowed if the input is present and if [hasSpaceForExport] returns true for the recipe returned by [searchForRecipe].**
+     * */
+    fun execute()
+}
+
+class SimpleProcessingRecipeInventoryHandler<R>(
+    val onChanged: Runnable,
+    val levelSupplier: Supplier<Level>,
+    val recipeType: RecipeType<R>,
+    size: Int
+) : ItemStackHandler(size), ProcessingInventoryHandler<R> where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>{
+    companion object {
+        fun<R> create(
+            blockEntity: BlockEntity,
+            recipeType: RecipeType<R>,
+            size: Int
+        ) where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer> =
+            SimpleProcessingRecipeInventoryHandler<R>(
+                blockEntity::setChanged,
+                { blockEntity.level ?: error(DEBUGGER_BREAK("Level null in block entity simple processing inventory handler")) },
+                recipeType, size
+            )
+    }
+
+    private var inputChanged = false
+
+    override fun wasInputChanged() : Boolean {
+        val result = inputChanged
+        inputChanged = false
+        return result
+    }
+
+    /**
      * Prevents inserting items into the output slot.
      * Filters input items by [isItemValid].
      * */
@@ -115,9 +287,9 @@ class SimpleProcessingRecipeInventoryHandler<B : BlockEntity>(val blockEntity: B
         return super.insertItem(slot, stack, simulate)
     }
 
-    fun hasSpaceForExport(recipe: SimpleProcessingRecipe) = super.insertItem(OUTPUT_SLOT, recipe.output, true).isEmpty
+    override fun hasSpaceForExport(recipe: R) = super.insertItem(OUTPUT_SLOT, recipe.output, true).isEmpty
 
-    fun exportProcessingResult() {
+    override fun execute() {
         val recipeOp = searchForRecipe()
 
         if(recipeOp.isEmpty) {
@@ -135,32 +307,31 @@ class SimpleProcessingRecipeInventoryHandler<B : BlockEntity>(val blockEntity: B
         }
     }
 
-    /**
-     * Searches for the recipe in the current input slot.
-     * Guaranteed to be present if the input slot is not empty because the input is filtered.
-     * */
-    fun searchForRecipe(): Optional<SimpleProcessingRecipe> {
+    override fun searchForRecipe(): Optional<R> {
         val stack = getStackInSlot(INPUT_SLOT)
 
         if(stack.isEmpty) {
-            return Optional.empty<SimpleProcessingRecipe>()
+            return Optional.empty<R>()
         }
 
-        return blockEntity.level!!.recipeManager.getRecipeFor(
+        val level = levelSupplier.get()
+
+        return level.recipeManager.getRecipeFor(
             recipeType,
             SimpleContainer(getStackInSlot(INPUT_SLOT)),
-            blockEntity.level!!
+            level
         )
     }
 
     override fun isItemValid(slot: Int, stack: ItemStack): Boolean {
         return if(slot == INPUT_SLOT) {
-            val recipeManager = blockEntity.level!!.recipeManager
+            val level = levelSupplier.get()
+            val recipeManager = level.recipeManager
 
             val recipe = recipeManager.getRecipeFor(
                 recipeType,
                 SimpleContainer(stack),
-                blockEntity.level!!
+                level
             )
 
             return recipe.isPresent
@@ -175,7 +346,7 @@ class SimpleProcessingRecipeInventoryHandler<B : BlockEntity>(val blockEntity: B
             inputChanged = true
         }
 
-        blockEntity.setChanged()
+        onChanged.run()
     }
 
     override fun extractItem(slot: Int, amount: Int, simulate: Boolean): ItemStack {
@@ -187,39 +358,27 @@ class SimpleProcessingRecipeInventoryHandler<B : BlockEntity>(val blockEntity: B
     }
 }
 
-/**
- * Cell that allows starting/stopping its operation and provides the processing speed.
- * */
-interface ProcessingDevice {
-    /**
-     * Set by the game object when processing is needed.
-     * */
-    @CrossThreadAccess @OnServerThread
-    var isActive: Boolean
-
-    /**
-     * Read by the game object and used to advance the recipe.
-     * */
-    @CrossThreadAccess @OnServerThread
-    val processingSpeed: Double
-}
 
 /**
- * Server tick for a machine that uses a [ProcessingDevice] and applies a [SimpleProcessingRecipe].
+ * Server tick for a machine that uses a [ProcessingDevice] and applies a [DirectSimpleProcessingRecipe] or [CatalyzedSimpleProcessingRecipe].
  * */
 @ServerOnly
-class SimpleProcessingRecipeLoop(val blockEntity: BlockEntity) {
+class ProcessingRecipeLoop<R : Eln2Recipe>(val onChanged: Runnable) {
     companion object {
         private const val IS_WORKING = "hasRecipe"
         private const val TIME_PROGRESS = "timeProgress"
+
+        fun<R : Eln2Recipe> create(blockEntity: BlockEntity) = ProcessingRecipeLoop<R> {
+            blockEntity.setChanged()
+        }
     }
 
-    class Operation(val recipe: SimpleProcessingRecipe) {
+    class Operation<R : Eln2Recipe>(val recipe: R) {
         var timeProgress = 0.0
     }
 
-    var operation: Operation? = null
-    var savedProgress: Double? = null // Level not available in [load], we do the trick the cell block entity does.
+    var operation: Operation<R>? = null
+    var savedProgress: Double? = null // Level not available in [load] for block entities, we do the trick the cell block entity does.
 
     /**
      * @param speed The [ProcessingDevice.processingSpeed], used for rendering.
@@ -231,7 +390,7 @@ class SimpleProcessingRecipeLoop(val blockEntity: BlockEntity) {
      * Advances the processing, if the inventory is eligible for operation.
      * Calls [BlockEntity.setChanged] if the NBT needs to be serialized.
      * */
-    fun tick(device: ProcessingDevice, inventoryHandler: SimpleProcessingRecipeInventoryHandler<*>) : Result {
+    fun tick(device: ProcessingDevice, inventoryHandler: ProcessingInventoryHandler<R>) : Result {
         val processingSpeed = device.processingSpeed
         val progress: Float
 
@@ -251,7 +410,7 @@ class SimpleProcessingRecipeLoop(val blockEntity: BlockEntity) {
                     savedProgress = null
                 }
 
-                blockEntity.setChanged()
+                onChanged.run()
             }
             else {
                 device.isActive = false
@@ -263,7 +422,7 @@ class SimpleProcessingRecipeLoop(val blockEntity: BlockEntity) {
             // Check if input changed, and reset operation if the recipe is different:
             if(inventoryHandler.wasRecipeChanged(op.recipe)) {
                 operation = null
-                blockEntity.setChanged()
+                onChanged.run()
                 progress = 0.0f
             }
             else {
@@ -278,11 +437,11 @@ class SimpleProcessingRecipeLoop(val blockEntity: BlockEntity) {
 
                     if(op.timeProgress == op.recipe.duration) {
                         // Finish processing:
-                        inventoryHandler.exportProcessingResult()
+                        inventoryHandler.execute()
                         operation = null
                     }
 
-                    blockEntity.setChanged()
+                    onChanged.run()
                 }
                 else {
                     device.isActive = false

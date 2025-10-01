@@ -1,7 +1,10 @@
 package org.eln2.mc.extensions
 
+import dev.engine_room.flywheel.lib.instance.TransformedInstance
+import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.MutableSetMapMultiMap
 import org.eln2.mc.LOG
@@ -22,6 +25,14 @@ inline fun <reified T : Cell> Level.getCellOrNull(mb: MultiblockManager, cellPos
 inline fun <reified T : Cell> Level.getCell(mb: MultiblockManager, cellPosId: BlockPos): T =
     getCellOrNull(mb, cellPosId) ?: error("Cell was not present")
 */
+
+inline fun<reified I> I.transformFacingBlock(visualPos: net.minecraft.core.BlockPos, blockEntity: BlockEntity) : I where I : TransformedInstance {
+    this.translate(visualPos)
+    this.center()
+    this.rotateToFace(blockEntity.blockState.getValue(HorizontalDirectionalBlock.FACING))
+    this.uncenter()
+    return this
+}
 
 fun<T> T.enqueueBulkMessage(payload: ByteArray) where T : BlockEntity, T : BulkMessageHandlerBlockEntity {
     val level = this.level as? ServerLevel

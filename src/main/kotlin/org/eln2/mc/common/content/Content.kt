@@ -88,13 +88,18 @@ import org.eln2.mc.common.recipes.MotorProcessingCellOptions
 import org.eln2.mc.common.content.OscilloscopePart.OscilloscopeScreen
 import org.eln2.mc.common.items.ItemRegistry.itemDefault
 import org.eln2.mc.common.parts.foundation.eln2ReadPartGuiData
-import org.eln2.mc.common.recipes.RecipeRegistry.registerProcessingRecipe
-import org.eln2.mc.common.recipes.foundation.SimpleProcessingRecipe
+import org.eln2.mc.common.recipes.MotorProcessingCellElectricalOptions
+import org.eln2.mc.common.recipes.MotorProcessingCellThermalOptions
+import org.eln2.mc.common.recipes.RecipeRegistry.registerCatalyzedRecipe
+import org.eln2.mc.common.recipes.RecipeRegistry.registerDirectRecipe
+import org.eln2.mc.common.recipes.foundation.CatalyzedSimpleProcessingRecipe
+import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipe
 import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
 import org.eln2.mc.cylinderResistance
 import org.eln2.mc.data.directionMonopolarMapPlanar
 import org.eln2.mc.data.directionPoleMapPlanar
 import org.eln2.mc.data.monopolarMapPlanar
+import org.eln2.mc.data.nullPolarMap
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.maskXY
@@ -1104,25 +1109,38 @@ object Content {
 
     //#endregion
 
+    fun motorProcessingElectrical(power: Quantity<Power>) = MotorProcessingCellElectricalOptions(
+        Quantity(LARGE_RESISTANCE, OHM),
+        Quantity(100.0, OHM),
+        Quantity(1.0, OHM),
+        Quantity(240.0, VOLT),
+        power,
+        0.5,
+        1.25,
+        Quantity(700.0, VOLT)
+    )
+
     //#region Crusher
 
-    val CRUSHING_RECIPE: RecipeType<SimpleProcessingRecipe> = registerProcessingRecipe("crushing")
+    val CRUSHING_RECIPE = registerDirectRecipe("crushing")
 
     val BASIC_CRUSHER_CELL = cellMemoize("basic_crusher") {
         val options = MotorProcessingCellOptions(
-            Quantity(LARGE_RESISTANCE, OHM),
-            Quantity(100.0, OHM),
-            Quantity(1.0, OHM),
-            Quantity(240.0, VOLT),
-            Quantity(6.0, KILO * WATT),
-            0.5,
-            1.25,
-            0.1,
             1.0,
-            ThermalMassDefinition(ChemicalElement.Iron.asMaterial, mass = Quantity(5.0, KILOGRAM)),
-            ConnectionParameters(Quantity(10.0, WATT_PER_KELVIN)),
-            Quantity(150.0, CELSIUS),
-            Quantity(700.0, VOLT)
+            motorProcessingElectrical(
+                Quantity(6.0, KILO * WATT)
+            ),
+            MotorProcessingCellThermalOptions(
+                0.1,
+                ThermalMassDefinition(
+                    ChemicalElement.Iron.asMaterial,
+                    mass = Quantity(5.0, KILOGRAM)
+                ),
+                ConnectionParameters(
+                    Quantity(10.0, WATT_PER_KELVIN)
+                ),
+                Quantity(150.0, CELSIUS),
+            )
         )
 
         val electricalMap = directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)
@@ -1140,6 +1158,33 @@ object Content {
     val CRUSHER_BLOCK_ENTITY = blockEntityOnly("crusher", CRUSHER_BLOCK.block, ::CrusherBlockEntity)
 
     val CRUSHER_MENU = menu("crusher", ::CrusherMenu)
+
+    //#endregion
+    
+    //#region Extruder
+
+    val EXTRUDING_RECIPE = registerCatalyzedRecipe("extruding")
+
+    val BASIC_EXTRUDER_CELL = cellMemoize("basic_extruder") {
+        val options = MotorProcessingCellOptions(
+            1.0,
+            motorProcessingElectrical(
+                Quantity(812.5, WATT)
+            ),
+            null
+        )
+
+        val electricalMap = directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)
+        val thermalMap = nullPolarMap()
+
+        CellFactory {
+            MotorProcessingCell(it, options, electricalMap, thermalMap)
+        }
+    }
+
+    val EXTRUDER_BLOCK = blockAndItem("extruder", ::ExtruderBlock)
+
+    val EXTRUDER_BLOCK_ENTITY = blockEntityOnly("extruder", EXTRUDER_BLOCK.block, ::ExtruderBlockEntity)
 
     //#endregion
 }

@@ -130,6 +130,17 @@ object FlwModels {
 
     //#endregion
 
+    //#region Extruder
+
+    val EXTRUDER_BODY = partialBlock("extruder/body")
+    val EXTRUDER_DIE = partialBlock("extruder/die")
+    val EXTRUDER_SHAFT_A0 = partialBlock("extruder/shaft_a0")
+    val EXTRUDER_SHAFT_A1 = partialBlock("extruder/shaft_a1")
+    val EXTRUDER_SHAFT_B0 = partialBlock("extruder/shaft_b0")
+    val EXTRUDER_SHAFT_B1 = partialBlock("extruder/shaft_b1")
+
+    //#endregion
+
     private fun partial(path: String): PartialModel = PartialModel.of(resource(path))
     fun partialBlock(path: String): PartialModel = PartialModel.of(resource("block/$path"))
     fun polarBlock(path: String): PolarModel = PolarModel(resource("block/$path"))

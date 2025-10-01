@@ -42,15 +42,17 @@ import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
 import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicateAndSkipPickupCheck
 import org.eln2.mc.common.recipes.MotorProcessingBlock
 import org.eln2.mc.common.recipes.MotorProcessingBlockEntity
+import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipe
 import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
 import org.eln2.mc.common.recipes.foundation.OUTPUT_SLOT
 import org.eln2.mc.extensions.canCrush
 import org.eln2.mc.extensions.nextDouble
+import org.eln2.mc.extensions.transformFacingBlock
 import org.joml.Vector3f
 import java.util.function.Consumer
 import kotlin.math.ceil
 
-class CrusherBlock : MotorProcessingBlock<CrusherBlockEntity>() {
+class CrusherBlock : MotorProcessingBlock<DirectSimpleProcessingRecipe, CrusherBlockEntity>() {
     override fun getTitle(): MutableComponent = Component.translatable("manu.$MODID.crusher")
 
     override fun createMenu(
@@ -59,18 +61,14 @@ class CrusherBlock : MotorProcessingBlock<CrusherBlockEntity>() {
         pPlayerInventory: Inventory,
     ) = CrusherMenu(pBlockEntity, pContainerId, pPlayerInventory)
 
-    override fun getCellProvider(): CellProvider<MotorProcessingCell> {
-        return Content.BASIC_CRUSHER_CELL.get()
-    }
+    override fun getCellProvider() = Content.BASIC_CRUSHER_CELL.get()
 
-    override fun newBlockEntity(pPos: BlockPos, pState: BlockState): BlockEntity {
-        return CrusherBlockEntity(pPos, pState)
-    }
+    override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = CrusherBlockEntity(pPos, pState)
 
     /**
      * Animates bursts of particles based on speed.
      * */
-    override fun animateMachineTick(blockEntity: MotorProcessingBlockEntity, speed: Double, pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {
+    override fun animateMachineTick(blockEntity: CrusherBlockEntity, speed: Double, pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {
         val sparkBurst = ceil(speed * 4).toInt()
         val dustBurst = ceil(speed * 2).toInt()
 
@@ -128,7 +126,7 @@ class CrusherBlock : MotorProcessingBlock<CrusherBlockEntity>() {
     }
 }
 
-class CrusherBlockEntity(pos: BlockPos, state: BlockState) : MotorProcessingBlockEntity(pos, state, Content.CRUSHER_BLOCK_ENTITY.get()) {
+class CrusherBlockEntity(pos: BlockPos, state: BlockState) : MotorProcessingBlockEntity<DirectSimpleProcessingRecipe>(pos, state, Content.CRUSHER_BLOCK_ENTITY.get(), 2) {
     override fun getRecipe() = Content.CRUSHING_RECIPE
 
     override fun getSound() = Content.CRUSHER_SOUND_ROCK
@@ -176,12 +174,7 @@ class CrusherBlockEntityVisual(
     val body: TransformedInstance = visualizationContext.instancerProvider()
         .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.CRUSHER_BODY, Materials.CUTOUT_BLOCK))
         .createInstance()
-        .also {
-            it.translate(visualPos)
-            it.center()
-            it.rotateToFace(blockEntity.blockState.getValue(HorizontalDirectionalBlock.FACING))
-            it.uncenter()
-        }
+        .transformFacingBlock(visualPos, blockEntity)
 
     val grinder0: TransformedInstance = visualizationContext.instancerProvider()
         .instancer(InstanceTypes.TRANSFORMED, Models.partial(FlwModels.CRUSHER_GRINDER_0))
@@ -216,11 +209,7 @@ class CrusherBlockEntityVisual(
 
     override fun beginFrame(p0: DynamicVisual.Context?) {
         val dt = velocitySmoother.update(blockEntity.targetClientSpeed)
-
-        if(velocitySmoother.value.approxEq(0.0)) {
-            velocitySmoother.value = 0.0
-        }
-
+        velocitySmoother.pullDown()
         val incr = velocitySmoother.value * dt
 
         if(incr != 0.0) {

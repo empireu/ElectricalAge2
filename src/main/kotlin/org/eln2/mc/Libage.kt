@@ -45,6 +45,12 @@ class FramerateIndependentSmoother1d(val tau: Double) {
 
         return dt
     }
+
+    fun pullDown(eps: Double = 1e-6) {
+        if(abs(value) < eps) {
+            value = 0.0
+        }
+    }
 }
 
 class FramerateIndependentSmoother2d(val tau: Double) {

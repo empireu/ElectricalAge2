@@ -244,6 +244,10 @@ fun  monopolarMapPlanar(dir: Base6Direction3d) = MonopoleMap { c1, c2 ->
     }
 }
 
+fun nullPolarMap() = PoleMap { a, b -> null }
+
+fun nullMonopoleMap() = MonopoleMap { a, b -> false }
+
 /**
  * Creates a [PoleMap] that maps [plusDir] to plus and [minusDir] to minus.
  * These directions are in the observer's frame.

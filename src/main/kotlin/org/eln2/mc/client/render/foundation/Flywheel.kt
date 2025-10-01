@@ -132,6 +132,11 @@ object FlwVisualizerRegistry {
             Content.CRUSHER_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::CrusherBlockEntityVisual) { true }
         )
+
+        VisualizerRegistry.setVisualizer(
+            Content.EXTRUDER_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::ExtruderBlockEntityVisual) { true }
+        )
     }
 
     fun registerPartVisualizers() {

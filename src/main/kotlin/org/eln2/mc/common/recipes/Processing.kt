@@ -9,9 +9,11 @@ import net.minecraft.sounds.SoundEvent
 import net.minecraft.util.RandomSource
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
+import net.minecraft.world.SimpleContainer
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.AbstractContainerMenu
+import net.minecraft.world.item.crafting.Recipe
 import net.minecraft.world.item.crafting.RecipeType
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntity
@@ -23,49 +25,26 @@ import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.registries.RegistryObject
-import org.ageseries.libage.data.JOULE
-import org.ageseries.libage.data.Potential
-import org.ageseries.libage.data.Power
-import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.Resistance
-import org.ageseries.libage.data.Temperature
-import org.ageseries.libage.data.registerHandler
+import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.mna.component.updateResistance
-import org.eln2.mc.ClientOnly
-import org.eln2.mc.FramerateIndependentSmoother1d
-import org.eln2.mc.LOG
-import org.eln2.mc.ServerOnly
-import org.eln2.mc.TheveninEstimatingResistor
+import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.CellBlock
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
-import org.eln2.mc.common.cells.foundation.Behavior
-import org.eln2.mc.common.cells.foundation.Cell
-import org.eln2.mc.common.cells.foundation.CellCreateInfo
-import org.eln2.mc.common.cells.foundation.DielectricBreakdownBehavior
-import org.eln2.mc.common.cells.foundation.ElectricalObject
-import org.eln2.mc.common.cells.foundation.ElectricalSize
-import org.eln2.mc.common.cells.foundation.SidedElectricalMapped
-import org.eln2.mc.common.cells.foundation.SidedThermalMapped
-import org.eln2.mc.common.cells.foundation.SimObject
-import org.eln2.mc.common.cells.foundation.SubscriberCollection
-import org.eln2.mc.common.cells.foundation.SubscriberPhase
-import org.eln2.mc.common.cells.foundation.TemperatureExplosionBehavior
-import org.eln2.mc.common.cells.foundation.ThermalSize
-import org.eln2.mc.common.cells.foundation.addPre
+import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.containers.ProgressContainerData
 import org.eln2.mc.common.content.ThermalWireObject
 import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.sendBulkPacket
+import org.eln2.mc.common.recipes.foundation.Eln2SimpleRecipe
 import org.eln2.mc.common.recipes.foundation.ProcessingDevice
-import org.eln2.mc.common.recipes.foundation.SimpleProcessingRecipe
+import org.eln2.mc.common.recipes.foundation.ProcessingRecipeLoop
 import org.eln2.mc.common.recipes.foundation.SimpleProcessingRecipeInventoryHandler
-import org.eln2.mc.common.recipes.foundation.SimpleProcessingRecipeLoop
 import org.eln2.mc.common.sounds.foundation.SimpleLoopingBlockEntitySoundInstance
 import org.eln2.mc.common.sounds.foundation.SoundInfo
 import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
@@ -75,27 +54,16 @@ import org.eln2.mc.data.evaluate
 import org.eln2.mc.extensions.constructMenuHelper2
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.offerNegative
-import org.eln2.mc.offerPositive
-import org.eln2.mc.setLoad
 import kotlin.math.absoluteValue
 
 /**
- * Crusher model. If active (needs to crush):
- * - The device doesn't start (speed = 0) when the potential is under the threshold, but still draws power (tries to draw [nominalPower]).
- * - The device keeps ~[nominalPower] when the potential is in the specified range.
- * - Speed is proportional to input power.
- * - The device starts increasing in power draw like a resistor when the potential is over the specified range.
- * - A fraction of the input power is converted into heat, setting a hard cap on the amount of work you can do.
- * - The device is destroyed when it reaches a certain temperature, and also has dielectric breakdown.
  * @param nominalPotential The target potential.
  * @param nominalPower The target power. It is delivered in the range of [[potentialThresholdFactor] * [nominalPotential], [maxRatedPotentialFactor] * [nominalPotential]].
  * @param potentialThresholdFactor The device doesn't run if the potential is negative or less than [potentialThresholdFactor] * [nominalPotential].
  * @param maxRatedPotentialFactor The device's efficiency starts to degrade and the power draw starts increasing when the potential is above [maxRatedPotentialFactor] * [nominalPotential].
- * @param thermalFactor `power` * [thermalFactor] of the power is converted into heat.
- * @param baseSpeedFactor The device's raw speed is [baseSpeedFactor] * (`power` / [nominalPower]).
+ *
  * */
-data class MotorProcessingCellOptions(
+data class MotorProcessingCellElectricalOptions(
     val idleResistance: Quantity<Resistance>,
     val probingResistance: Quantity<Resistance>,
     val minResistance: Quantity<Resistance>,
@@ -103,12 +71,34 @@ data class MotorProcessingCellOptions(
     val nominalPower: Quantity<Power>,
     val potentialThresholdFactor: Double,
     val maxRatedPotentialFactor: Double,
+    val dielectricBreakdownPotential: Quantity<Potential>
+)
+
+/**
+ * @param thermalFactor `power` * [thermalFactor] of the power is converted into heat.
+ * */
+data class MotorProcessingCellThermalOptions(
     val thermalFactor: Double,
-    val baseSpeedFactor: Double,
     val massDef: ThermalMassDefinition,
     val leakageParameters: ConnectionParameters,
     val destroyTemperature: Quantity<Temperature>,
-    val dielectricBreakdownPotential: Quantity<Potential>,
+)
+
+/**
+ * Crusher model. If active (needs to crush):
+ * - The device doesn't start (speed = 0) when the potential is under the threshold, but still draws power (tries to draw [org.eln2.mc.common.recipes.MotorProcessingCellElectricalOptions.nominalPower]).
+ * - The device keeps ~[org.eln2.mc.common.recipes.MotorProcessingCellElectricalOptions.nominalPower] when the potential is in the specified range.
+ * - Speed is proportional to input power.
+ * - The device starts increasing in power draw like a resistor when the potential is over the specified range.
+ * - A fraction of the input power is converted into heat, setting a hard cap on the amount of work you can do.
+ * - The device is destroyed when it reaches a certain temperature, and also has dielectric breakdown.
+ * @param thermal If applicable, the terms dictating the waste heat production of the machine.
+ * @param baseSpeedFactor The device's raw speed is [baseSpeedFactor] * (`power` / [MotorProcessingCellElectricalOptions.nominalPower]).
+ *  */
+data class MotorProcessingCellOptions(
+    val baseSpeedFactor: Double,
+    val electrical: MotorProcessingCellElectricalOptions,
+    val thermal: MotorProcessingCellThermalOptions?,
 )
 
 /**
@@ -117,7 +107,7 @@ data class MotorProcessingCellOptions(
  * */
 class MotorProcessingElectricalObject(cell: MotorProcessingCell) : ElectricalObject<MotorProcessingCell>(cell) {
     val resistor = TheveninEstimatingResistor().also {
-        it.resistance = !cell.options.idleResistance
+        it.resistance = !cell.options.electrical.idleResistance
     }
 
     val resistorDisplay = resistor.display()
@@ -148,23 +138,25 @@ class MotorProcessingElectricalObject(cell: MotorProcessingCell) : ElectricalObj
     private fun tick(dt: Double, subscriberPhase: SubscriberPhase) {
         val options = cell.options
 
-        // Convert fraction of power to heat:
-        if(resistor.potential > 0.0 && resistor.power > 0.0) {
-            val energy = options.thermalFactor * resistor.power * dt
+        if(options.thermal != null) {
+            // Convert fraction of power to heat:
+            if(resistor.potential > 0.0 && resistor.power > 0.0) {
+                val energy = options.thermal.thermalFactor * resistor.power * dt
 
-            if(!energy.approxEq(0.0)) {
-                cell.thermalWire.thermalBody.energy += Quantity(energy, JOULE)
-                cell.setChanged()
+                if(!energy.approxEq(0.0)) {
+                    cell.thermalWire!!.thermalBody.energy += Quantity(energy, JOULE)
+                    cell.setChanged()
+                }
             }
         }
 
         fun setLoad(power: Double) {
-            resistor.setLoad(power, !options.minResistance, !options.probingResistance)
+            resistor.setLoad(power, !options.electrical.minResistance, !options.electrical.probingResistance)
         }
 
         if(!cell.isActive) {
             processingSpeed = 0.0
-            resistor.resistance = !options.idleResistance
+            resistor.resistance = !options.electrical.idleResistance
             return
         }
 
@@ -176,33 +168,33 @@ class MotorProcessingElectricalObject(cell: MotorProcessingCell) : ElectricalObj
             return
         }
 
-        val potentialThreshold = options.potentialThresholdFactor * !options.nominalPotential
+        val potentialThreshold = options.electrical.potentialThresholdFactor * !options.electrical.nominalPotential
 
         val isGrinding: Boolean
 
         if(potential < potentialThreshold) {
             // Draw nominal power even if we can't drive the grinding.
-            setLoad(!options.nominalPower)
+            setLoad(!options.electrical.nominalPower)
             isGrinding = false
         }
         else {
-            val maxPotential = options.maxRatedPotentialFactor * !options.nominalPotential
+            val maxPotential = options.electrical.maxRatedPotentialFactor * !options.electrical.nominalPotential
 
             if(potential > maxPotential) {
                 // Over-potential. Act like a resistor now:
-                val r = ((maxPotential * maxPotential) / !options.nominalPower).coerceAtLeast(1e-6)
+                val r = ((maxPotential * maxPotential) / !options.electrical.nominalPower).coerceAtLeast(1e-6)
                 resistor.updateResistance(r)
             }
             else {
                 // Operating within margin. Consume ~nominalPower:
-                setLoad(!options.nominalPower)
+                setLoad(!options.electrical.nominalPower)
             }
 
             isGrinding = true
         }
 
         processingSpeed = if (isGrinding) {
-            options.baseSpeedFactor * (resistor.power.absoluteValue / !options.nominalPower)
+            options.baseSpeedFactor * (resistor.power.absoluteValue / !options.electrical.nominalPower)
         } else {
             0.0
         }
@@ -227,37 +219,47 @@ class MotorProcessingCell(
         get() = motor.processingSpeed
 
     @SimObject
-    val thermalWire = ThermalWireObject(
-        this,
-        options.massDef(),
-        options.leakageParameters
-    )
+    val thermalWire = if(options.thermal != null) {
+        ThermalWireObject(
+            this,
+            options.thermal.massDef(),
+            options.thermal.leakageParameters
+        )
+    }
+    else null
 
     @SimObject
     val motor = MotorProcessingElectricalObject(this)
 
     @Behavior
-    val temperatureExplosion = TemperatureExplosionBehavior.create(
-        options.destroyTemperature,
-        this,
-        thermalWire.thermalBody::temperature
-    )
+    val temperatureExplosion = if(options.thermal != null) {
+        TemperatureExplosionBehavior.create(
+            options.thermal.destroyTemperature,
+            this,
+            thermalWire!!.thermalBody::temperature
+        )
+    }
+    else null
 
     @Behavior
     val dielectricBreakdown = DielectricBreakdownBehavior.create(this).also {
         it.addPort(
             motor.resistor,
-            !options.dielectricBreakdownPotential,
-            !options.dielectricBreakdownPotential
+            !options.electrical.dielectricBreakdownPotential,
+            !options.electrical.dielectricBreakdownPotential
         )
     }
 }
 
-abstract class MotorProcessingBlock<E : MotorProcessingBlockEntity> : CellBlock<MotorProcessingCell>() {
+abstract class MotorProcessingBlock<R, BE> : CellBlock<MotorProcessingCell>()
+    where R : Eln2SimpleRecipe,
+          R : Recipe<SimpleContainer>,
+          BE : MotorProcessingBlockEntity<R>
+{
     abstract fun getTitle() : Component
 
     abstract fun createMenu(
-        pBlockEntity: E,
+        pBlockEntity: BE,
         pContainerId: Int,
         pPlayerInventory: Inventory
     ) : AbstractContainerMenu
@@ -290,14 +292,14 @@ abstract class MotorProcessingBlock<E : MotorProcessingBlockEntity> : CellBlock<
             getTitle()
         ) { a, b, c ->
             @Suppress("UNCHECKED_CAST")
-            createMenu(a as E, b, c)
+            createMenu(a as BE, b, c)
         }
     }
 
-    open fun animateMachineTick(blockEntity: MotorProcessingBlockEntity, speed: Double, pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) { }
+    open fun animateMachineTick(blockEntity: BE, speed: Double, pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) { }
 
     override fun animateTick(pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {
-        val blockEntity = pLevel.getBlockEntity(pPos) as? MotorProcessingBlockEntity
+        @Suppress("UNCHECKED_CAST") val blockEntity = pLevel.getBlockEntity(pPos) as? BE
             ?: return
 
         val speed = blockEntity.clientTickSpeedSmoother.value
@@ -310,10 +312,15 @@ abstract class MotorProcessingBlock<E : MotorProcessingBlockEntity> : CellBlock<
     }
 }
 
-abstract class MotorProcessingBlockEntity(pos: BlockPos, state: BlockState, targetType: BlockEntityType<*>) :
-    CellBlockEntity<MotorProcessingCell>(pos, state, targetType),
+abstract class MotorProcessingBlockEntity<R>(
+    pos: BlockPos,
+    state: BlockState,
+    targetType: BlockEntityType<*>,
+    inventorySize: Int
+) : CellBlockEntity<MotorProcessingCell>(pos, state, targetType),
     ComponentDisplay,
     BulkPacketHandlerBlockEntity
+    where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>
 {
     companion object {
         private const val INVENTORY = "inventory"
@@ -324,7 +331,7 @@ abstract class MotorProcessingBlockEntity(pos: BlockPos, state: BlockState, targ
                 return
             }
 
-            if (pBlockEntity !is MotorProcessingBlockEntity) {
+            if (pBlockEntity !is MotorProcessingBlockEntity<*>) {
                 LOG.error("Got $pBlockEntity instead of motor processing block entity")
                 return
             }
@@ -350,17 +357,17 @@ abstract class MotorProcessingBlockEntity(pos: BlockPos, state: BlockState, targ
     val clientTickSpeedSmoother = FramerateIndependentSmoother1d(0.2)
 
     @ClientOnly
-    var soundInstance: SimpleLoopingBlockEntitySoundInstance<MotorProcessingBlockEntity>? = null
+    var soundInstance: SimpleLoopingBlockEntitySoundInstance<MotorProcessingBlockEntity<R>>? = null
 
     //#endregion
 
     @ServerOnly
-    val loop = SimpleProcessingRecipeLoop(this)
+    val loop = ProcessingRecipeLoop.create<R>(this)
 
-    abstract fun getRecipe() : RecipeType<SimpleProcessingRecipe>
+    abstract fun getRecipe() : RecipeType<R>
 
-    val inventoryHandler = SimpleProcessingRecipeInventoryHandler(this, getRecipe())
-    val inventoryHandlerLazy: LazyOptional<SimpleProcessingRecipeInventoryHandler<MotorProcessingBlockEntity>> = LazyOptional.of { inventoryHandler }
+    val inventoryHandler = SimpleProcessingRecipeInventoryHandler.create(this, getRecipe(), inventorySize)
+    val inventoryHandlerLazy: LazyOptional<SimpleProcessingRecipeInventoryHandler<R>> = LazyOptional.of { inventoryHandler }
 
     override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
         if (cap == ForgeCapabilities.ITEM_HANDLER) {
@@ -478,7 +485,10 @@ abstract class MotorProcessingBlockEntity(pos: BlockPos, state: BlockState, targ
         builder.debugInIDE { "Speed: ${cell.motor.processingSpeed.rounded()}" }
         builder.debugInIDE { "OC: ${cell.motor.resistorDisplay.openCircuitPotentialEstimate.value.rounded()}" }
         builder.quantityInput(cell.motor.resistorDisplay.power)
-        builder.quantity(cell.thermalWire.thermalBodyDisplay.temperature)
+
+        if(cell.thermalWire != null) {
+            builder.quantity(cell.thermalWire!!.thermalBodyDisplay.temperature)
+        }
 
         loop.operation?.also {
             builder.progress(it.timeProgress / it.recipe.duration)
