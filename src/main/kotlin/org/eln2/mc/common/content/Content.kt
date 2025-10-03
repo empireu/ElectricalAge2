@@ -127,6 +127,7 @@ object Content {
         MenuScreens.register(HEAT_GENERATOR_MENU.get(), ::HeatGeneratorScreen)
         MenuScreens.register(FLAT_OSCILLOSCOPE_MENU.get(), ::OscilloscopeScreen)
         MenuScreens.register(CRUSHER_MENU.get(), ::CrusherScreen)
+        MenuScreens.register(EXTRUDER_MENU.get(), ::ExtruderScreen)
 
         LOG.info("Client screens completed.")
     }
@@ -141,11 +142,17 @@ object Content {
 
     //#region Intermediary Items
 
-    //#region Crushed Ores
+    //#region Ingredients
 
     val CRUSHED_IRON_ORE = itemDefault("crushed_iron_ore")
     val CRUSHED_COPPER_ORE = itemDefault("crushed_copper_ore")
     val CRUSHED_GOLD_ORE = itemDefault("crushed_gold_ore")
+
+    val HOT_COPPER_INGOT = itemDefault("hot_copper_ingot")
+
+    val EXTRUDER_ROD_DIE = itemDefault("extruder_rod_die")
+
+    val COPPER_ROD = itemDefault("copper_rod")
 
     //#endregion
 
@@ -1109,6 +1116,10 @@ object Content {
 
     //#endregion
 
+    /**
+     * Creates a standard [MotorProcessingCellElectricalOptions] (testing tier).
+     * @param power The nominal power.
+     * */
     fun motorProcessingElectrical(power: Quantity<Power>) = MotorProcessingCellElectricalOptions(
         Quantity(LARGE_RESISTANCE, OHM),
         Quantity(100.0, OHM),
@@ -1117,7 +1128,8 @@ object Content {
         power,
         0.5,
         1.25,
-        Quantity(700.0, VOLT)
+        Quantity(700.0, VOLT),
+        power * 2.125
     )
 
     //#region Crusher
@@ -1184,7 +1196,11 @@ object Content {
 
     val EXTRUDER_BLOCK = blockAndItem("extruder", ::ExtruderBlock)
 
+    val EXTRUDER_SOUND = soundEventVariableRange("extruder")
+
     val EXTRUDER_BLOCK_ENTITY = blockEntityOnly("extruder", EXTRUDER_BLOCK.block, ::ExtruderBlockEntity)
+
+    val EXTRUDER_MENU = menu("extruder", ::ExtruderMenu)
 
     //#endregion
 }

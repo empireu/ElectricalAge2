@@ -41,7 +41,9 @@ import org.eln2.mc.common.content.ThermalWireObject
 import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.sendBulkPacket
+import org.eln2.mc.common.recipes.foundation.CATALYST_SLOT
 import org.eln2.mc.common.recipes.foundation.Eln2SimpleRecipe
+import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
 import org.eln2.mc.common.recipes.foundation.ProcessingDevice
 import org.eln2.mc.common.recipes.foundation.ProcessingRecipeLoop
 import org.eln2.mc.common.recipes.foundation.SimpleProcessingRecipeInventoryHandler
@@ -71,7 +73,8 @@ data class MotorProcessingCellElectricalOptions(
     val nominalPower: Quantity<Power>,
     val potentialThresholdFactor: Double,
     val maxRatedPotentialFactor: Double,
-    val dielectricBreakdownPotential: Quantity<Potential>
+    val dielectricBreakdownPotential: Quantity<Potential>,
+    val overPowerThreshold: Quantity<Power>
 )
 
 /**
@@ -249,6 +252,10 @@ class MotorProcessingCell(
             !options.electrical.dielectricBreakdownPotential
         )
     }
+
+    val overPower = OverPowerBehavior.create(options.electrical.overPowerThreshold, this) {
+        motor.resistor.power
+    }
 }
 
 abstract class MotorProcessingBlock<R, BE> : CellBlock<MotorProcessingCell>()
@@ -366,7 +373,15 @@ abstract class MotorProcessingBlockEntity<R>(
 
     abstract fun getRecipe() : RecipeType<R>
 
-    val inventoryHandler = SimpleProcessingRecipeInventoryHandler.create(this, getRecipe(), inventorySize)
+    val inventoryHandler = SimpleProcessingRecipeInventoryHandler.create(
+        this,
+        getRecipe(),
+        inventorySize,
+        getInputSlots()
+    )
+
+    open fun getInputSlots() : IntArray = intArrayOf(INPUT_SLOT)
+
     val inventoryHandlerLazy: LazyOptional<SimpleProcessingRecipeInventoryHandler<R>> = LazyOptional.of { inventoryHandler }
 
     override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
@@ -383,7 +398,7 @@ abstract class MotorProcessingBlockEntity<R>(
     }
 
     @ServerOnly
-    fun serverTick() {
+    open fun serverTick() {
         val result = loop.tick(cell, inventoryHandler)
 
         if(!result.speed.approxEq(lastSentSpeed, 1e-4)) {

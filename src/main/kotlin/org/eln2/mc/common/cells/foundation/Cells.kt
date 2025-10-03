@@ -976,7 +976,7 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
         if (graphChanged) {
             if(lastLevel != null) {
                 if(lastLevel != graph.level) {
-                    LOG.fatal("ELN2 illegal switch level $lastLevel ${graph.level}")
+                    LOG.fatal(DEBUGGER_BREAK("ELN2 illegal switch level $lastLevel ${graph.level}"))
                 }
             }
 

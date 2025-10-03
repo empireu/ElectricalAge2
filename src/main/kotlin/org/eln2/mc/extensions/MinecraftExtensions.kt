@@ -18,6 +18,7 @@ import net.minecraft.sounds.SoundEvent
 import net.minecraft.sounds.SoundSource
 import net.minecraft.util.Mth
 import net.minecraft.util.RandomSource
+import net.minecraft.world.Container
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.MenuProvider
 import net.minecraft.world.SimpleContainer
@@ -28,6 +29,7 @@ import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.crafting.Recipe
 import net.minecraft.world.item.crafting.RecipeType
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.GameRules
@@ -42,6 +44,7 @@ import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.Vec3
 import net.minecraft.world.phys.shapes.VoxelShape
 import net.minecraftforge.common.ForgeMod
+import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.network.NetworkHooks
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.mathematics.geometry.*
@@ -624,11 +627,11 @@ fun FriendlyByteBuf.readPose2d() = Pose2d(
     this.readRotation2d()
 )
 
-fun Level.canSmelt(stack: ItemStack): Boolean {
+fun Level.recipeExists(recipe: RecipeType<*>, stack: ItemStack) : Boolean {
     val recipeManager = this.recipeManager
 
-    val recipe = recipeManager.getRecipeFor(
-        RecipeType.SMELTING,
+    @Suppress("UNCHECKED_CAST") val recipe = recipeManager.getRecipeFor(
+        recipe as RecipeType<Recipe<Container>>,
         SimpleContainer(stack),
         this
     )
@@ -636,12 +639,22 @@ fun Level.canSmelt(stack: ItemStack): Boolean {
     return recipe.isPresent
 }
 
-fun Level.canCrush(stack: ItemStack): Boolean {
+fun ItemStackHandler.bind() : SimpleContainer {
+    val copy = SimpleContainer(this.slots)
+
+    repeat(this.slots) {
+        copy.setItem(it, this.getStackInSlot(it).copy())
+    }
+
+    return copy
+}
+
+fun Level.recipeExists(recipe: RecipeType<*>, container: SimpleContainer) : Boolean {
     val recipeManager = this.recipeManager
 
-    val recipe = recipeManager.getRecipeFor(
-        Content.CRUSHING_RECIPE,
-        SimpleContainer(stack),
+    @Suppress("UNCHECKED_CAST") val recipe = recipeManager.getRecipeFor(
+        recipe as RecipeType<Recipe<Container>>,
+        container,
         this
     )
 

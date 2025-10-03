@@ -1,0 +1,9 @@
+{
+    "type": "minecraft:smelting",
+    "ingredient": {
+        "item": "minecraft:copper_ingot"
+    },
+    "result": "eln2:hot_copper_ingot",
+    "experience": 0.7,
+    "cookingtime": 200
+}

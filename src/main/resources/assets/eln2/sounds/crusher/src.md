@@ -1,5 +1,4 @@
 # Crusher:
-### Sounds:
 
 - https://sounds.deadsounds.com/grinding-sound-effects
 - https://sounds.deadsounds.com/stones-rocks-sound-effects

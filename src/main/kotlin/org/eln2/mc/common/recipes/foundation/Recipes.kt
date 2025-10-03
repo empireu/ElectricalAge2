@@ -18,6 +18,8 @@ import org.eln2.mc.CrossThreadAccess
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.OnServerThread
 import org.eln2.mc.ServerOnly
+import org.eln2.mc.extensions.bind
+import org.eln2.mc.extensions.recipeExists
 import java.util.*
 import java.util.function.Supplier
 
@@ -76,7 +78,7 @@ class DirectSimpleProcessingRecipe(
 ) : Recipe<SimpleContainer>, Eln2SimpleRecipe {
     init {
         require(input.items.size == 1 && input.items[0].count == 1) {
-            "Simple processing recipe requires exactly one/one input!"
+            DEBUGGER_BREAK("Simple processing recipe requires exactly one/one input!")
         }
     }
 
@@ -143,11 +145,11 @@ class CatalyzedSimpleProcessingRecipe(
 ) : Recipe<SimpleContainer>, Eln2SimpleRecipe {
     init {
         require(input.items.size == 1 && input.items[0].count == 1) {
-            "Simple catalyzed processing recipe requires exactly one/one input!"
+            DEBUGGER_BREAK("Simple catalyzed processing recipe requires exactly one/one input!")
         }
 
         require(catalyst.items.size == 1 && catalyst.items[0].count == 1) {
-            "Simple catalyzed processing recipe requires exactly one/one catalyst!"
+            DEBUGGER_BREAK("Simple catalyzed processing recipe requires exactly one/one catalyst!")
         }
     }
 
@@ -205,7 +207,6 @@ class CatalyzedSimpleProcessingRecipe(
     }
 }
 
-
 interface ProcessingInventoryHandler<R : Eln2Recipe> {
     /**
      * Checks if the input was recently changed, and resets the flag.
@@ -213,7 +214,7 @@ interface ProcessingInventoryHandler<R : Eln2Recipe> {
     fun wasInputChanged() : Boolean
 
     /**
-     * Searches for the recipe in the current input slot.
+     * Searches for the recipe in the current input slot. Must be fast (think: called per-tick).
      * Guaranteed to be present if the input slot is not empty because the input is filtered.
      * (**Implementations of the interface must guarantee this filtering logic!**)
      * */
@@ -252,18 +253,20 @@ class SimpleProcessingRecipeInventoryHandler<R>(
     val onChanged: Runnable,
     val levelSupplier: Supplier<Level>,
     val recipeType: RecipeType<R>,
-    size: Int
+    size: Int,
+    val inputSlots: IntArray
 ) : ItemStackHandler(size), ProcessingInventoryHandler<R> where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>{
     companion object {
         fun<R> create(
             blockEntity: BlockEntity,
             recipeType: RecipeType<R>,
-            size: Int
+            size: Int,
+            inputSlots: IntArray = intArrayOf(INPUT_SLOT)
         ) where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer> =
             SimpleProcessingRecipeInventoryHandler<R>(
                 blockEntity::setChanged,
                 { blockEntity.level ?: error(DEBUGGER_BREAK("Level null in block entity simple processing inventory handler")) },
-                recipeType, size
+                recipeType, size, inputSlots
             )
     }
 
@@ -318,23 +321,16 @@ class SimpleProcessingRecipeInventoryHandler<R>(
 
         return level.recipeManager.getRecipeFor(
             recipeType,
-            SimpleContainer(getStackInSlot(INPUT_SLOT)),
+            this.bind(),
             level
         )
     }
 
     override fun isItemValid(slot: Int, stack: ItemStack): Boolean {
         return if(slot == INPUT_SLOT) {
-            val level = levelSupplier.get()
-            val recipeManager = level.recipeManager
-
-            val recipe = recipeManager.getRecipeFor(
-                recipeType,
-                SimpleContainer(stack),
-                level
-            )
-
-            return recipe.isPresent
+            val copy = this.bind()
+            copy.setItem(slot, stack)
+            return levelSupplier.get().recipeExists(recipeType, copy)
         }
         else {
             true
@@ -342,7 +338,7 @@ class SimpleProcessingRecipeInventoryHandler<R>(
     }
 
     override fun onContentsChanged(slot: Int) {
-        if(slot == INPUT_SLOT) {
+        if(inputSlots.contains(slot)) {
             inputChanged = true
         }
 
@@ -357,7 +353,6 @@ class SimpleProcessingRecipeInventoryHandler<R>(
         return super.extractItem(slot, amount, simulate)
     }
 }
-
 
 /**
  * Server tick for a machine that uses a [ProcessingDevice] and applies a [DirectSimpleProcessingRecipe] or [CatalyzedSimpleProcessingRecipe].

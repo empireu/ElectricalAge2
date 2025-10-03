@@ -1,0 +1,14 @@
+{
+    "type": "eln2:extruding",
+    "ingredient": {
+        "item": "eln2:hot_copper_ingot"
+    },
+    "result": {
+        "item": "eln2:copper_rod",
+        "count": 1
+    },
+    "catalyst": {
+        "item": "eln2:extruder_rod_die"
+    },
+    "duration": 15
+}

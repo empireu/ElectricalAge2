@@ -23,30 +23,22 @@ import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.inventory.ContainerLevelAccess
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
-import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraftforge.items.ItemStackHandler
-import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.PartialModelHelper
-import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.recipes.MotorProcessingCell
-import org.eln2.mc.common.containers.ContainerHelper
-import org.eln2.mc.common.containers.MyAbstractContainerScreen
-import org.eln2.mc.common.containers.ProgressContainerData
-import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
-import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicateAndSkipPickupCheck
+import org.eln2.mc.common.containers.*
 import org.eln2.mc.common.recipes.MotorProcessingBlock
 import org.eln2.mc.common.recipes.MotorProcessingBlockEntity
 import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipe
 import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
 import org.eln2.mc.common.recipes.foundation.OUTPUT_SLOT
-import org.eln2.mc.extensions.canCrush
 import org.eln2.mc.extensions.nextDouble
+import org.eln2.mc.extensions.recipeExists
 import org.eln2.mc.extensions.transformFacingBlock
 import org.joml.Vector3f
 import java.util.function.Consumer
@@ -268,7 +260,7 @@ class CrusherMenu(
     init {
         addSlot(
             SlotItemHandlerWithPlacePredicateAndSkipPickupCheck(handler, INPUT_SLOT, 34, 35) {
-                level.canCrush(it)
+                level.recipeExists(Content.CRUSHING_RECIPE, it)
             }
         )
 

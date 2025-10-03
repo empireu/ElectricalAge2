@@ -3,7 +3,6 @@ package org.eln2.mc.common.cells.foundation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
-import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.ThermalMass
@@ -49,6 +48,11 @@ interface CellBehavior {
 }
 
 /**
+ * [CellBehavior] that is allowed to be added multiple times.
+ * */
+interface RepeatableCellBehavior : CellBehavior
+
+/**
  * Container for multiple [CellBehavior]s. It is a Set. As such, there may be one instance of each behavior type.
  * */
 class CellBehaviorContainer {
@@ -57,26 +61,33 @@ class CellBehaviorContainer {
     fun addToCollection(b: CellBehavior) {
         requireIsOnServerThread { "addToCollection" }
 
-        if (behaviors.any { it.javaClass == b.javaClass }) {
-            error("Duplicate behavior $b")
+        if(b !is RepeatableCellBehavior) {
+            if (behaviors.any { it.javaClass == b.javaClass }) {
+                error("Duplicate behavior $b")
+            }
         }
 
         behaviors.add(b)
         b.onAdded(this)
     }
 
-    fun forEach(action: ((CellBehavior) -> Unit)) = behaviors.forEach(action)
-    inline fun <reified T : CellBehavior> getOrNull(): T? = behaviors.first { it is T } as? T
-    inline fun <reified T : CellBehavior> get(): T = getOrNull() ?: error("Failed to get behavior")
-
     fun destroy(behavior: CellBehavior) {
-        requireIsOnServerThread { "destroy" }
-        require(behaviors.remove(behavior)) { "Illegal behavior remove $behavior" }
+        requireIsOnServerThread {
+            DEBUGGER_BREAK("CellBehaviorContainer#destroy")
+        }
+
+        require(behaviors.remove(behavior)) {
+            DEBUGGER_BREAK("Illegal behavior remove $behavior")
+        }
+
         behavior.destroy()
     }
 
     fun destroy() {
-        requireIsOnServerThread { "destroy" }
+        requireIsOnServerThread {
+            "CellBehaviorContainer#destroy"
+        }
+
         behaviors.toList().forEach { destroy(it) }
     }
 }
@@ -268,8 +279,7 @@ abstract class ExplosionBehavior(private val consumer: ExplosionConsumer) : Cell
  * and decreased when the temperature is under threshold. Once a score of 1 is reached, the explosion is enqueued
  * using the [Scheduler]
  * The explosion uses an [ExplosionConsumer] to access the game object. [ExplosionConsumer.explode] is called from the game thread.
- * If no consumer is specified, a default one is used. Currently, only [CellPart] is implemented.
- * Injection is supported using [TemperatureAccessor], [TemperatureField]
+ * If no consumer is specified, a default one is used.
  * */
 class TemperatureExplosionBehavior private constructor(
     val temperatureAccessor: () -> Quantity<Temperature>,
@@ -320,10 +330,7 @@ data class DielectricBreakdownBehaviorOptions(
     val maxObjects: Int = 25
 )
 
-class DielectricBreakdownBehavior(
-    val options: DielectricBreakdownBehaviorOptions,
-    consumer: ExplosionConsumer
-) : ExplosionBehavior(consumer) {
+class DielectricBreakdownBehavior(val options: DielectricBreakdownBehaviorOptions, consumer: ExplosionConsumer) : ExplosionBehavior(consumer) {
     val examined = ArrayList<ExaminedNPole>()
 
     /**
@@ -440,6 +447,46 @@ class DielectricBreakdownBehavior(
             cell,
             groundBreakdownPotential
         )
+    }
+}
+
+data class OverPowerBehaviorOptions(
+    val powerThreshold: Quantity<Power>,
+
+    /**
+     * The score increase speed.
+     * This value is **not** scaled by the difference between the power and the threshold power.
+     * I've chosen not to scale it, so very small power spikes don't cause annoying explosions.
+     * As a result, at breakdown, it takes `1 / [increaseSpeed]` seconds to explode, regardless of power.
+     * */
+    val increaseSpeed: Double = 0.75,
+
+    /**
+     * The score decrease speed. This value is not controlled by power.
+     * */
+    val decayRate: Double = 0.5
+)
+
+class OverPowerBehavior private constructor(
+    val powerAccessor: () -> Double,
+    val options: OverPowerBehaviorOptions,
+    consumer: ExplosionConsumer,
+) : ExplosionBehavior(consumer) {
+    override fun updateScore(dt: Double, phase: SubscriberPhase) {
+        val power = abs(powerAccessor())
+
+        if (power > !options.powerThreshold) {
+            score += options.increaseSpeed * dt
+        } else {
+            score -= options.decayRate * dt
+        }
+    }
+
+    companion object {
+        fun create(power: Quantity<Power>, cell: Cell, powerAccessor: () -> Double) = OverPowerBehavior(
+            powerAccessor,
+            OverPowerBehaviorOptions(power)
+        ) { defaultNotifier(cell) }
     }
 }
 

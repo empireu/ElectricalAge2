@@ -58,10 +58,10 @@ import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
 import org.eln2.mc.data.PoleMap
 import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
 import org.eln2.mc.common.recipes.foundation.OUTPUT_SLOT
-import org.eln2.mc.extensions.canSmelt
 import org.eln2.mc.extensions.constructMenuHelper2
 import org.eln2.mc.extensions.getQuantity
 import org.eln2.mc.extensions.putQuantity
+import org.eln2.mc.extensions.recipeExists
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.resource
@@ -182,7 +182,7 @@ class FurnaceBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<Fur
 
         override fun isItemValid(slot: Int, stack: ItemStack): Boolean {
             return if(slot == INPUT_SLOT) {
-                blockEntity.level!!.canSmelt(stack)
+                blockEntity.level!!.recipeExists(RecipeType.SMELTING, stack)
             }
             else {
                 true
@@ -350,7 +350,7 @@ class FurnaceMenu(
     init {
         addSlot(
             SlotItemHandlerWithPlacePredicate(handler, INPUT_SLOT, 56, 35) {
-                level.canSmelt(it)
+                level.recipeExists(RecipeType.SMELTING, it)
             }
         )
 

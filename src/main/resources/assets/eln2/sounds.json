@@ -8,5 +8,15 @@
                 "pitch": 1.0
             }
         ]
+    },
+    "extruder": {
+        "sounds": [
+            {
+                "name": "eln2:extruder/extruder",
+                "stream": false,
+                "volume": 1.0,
+                "pitch": 1.0
+            }
+        ]
     }
 }
