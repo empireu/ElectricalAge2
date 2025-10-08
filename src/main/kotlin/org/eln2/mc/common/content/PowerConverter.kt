@@ -55,6 +55,10 @@ fun interface RejectedEnergyAcceptor {
     fun accept(energy: Quantity<Energy>)
 }
 
+/**
+ * DC-DC converter implemented as a power sink + power source with a control loop.
+ * This can generate 2 sub-solvers.
+ * */
 abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConverterModel, val rejectedEnergyAcceptor: RejectedEnergyAcceptor? = null) : ElectricalObject<C>(cell), PersistentObject {
     var energyBuffer = 0.0
         private set
@@ -63,7 +67,6 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
     private val theveninResistor = TheveninEstimatingResistor().also { it.resistance = !model.initialResistance }
     private val source = MyPowerVoltageSource()
     private val outputResistor = Resistor().also { it.resistance = !model.outputResistance }
-    private val tempResistor = Resistor().also { it.resistance = LARGE_RESISTANCE } // FIXME remove once solver forests are in
 
     // P.S. the nbt saving might screw these for the first tick, meh
     val inputResistorDisplay = theveninResistor.display()
@@ -75,7 +78,6 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
         circuit.add(theveninResistor)
         circuit.add(source)
         circuit.add(outputResistor)
-        circuit.add(tempResistor)
     }
 
     protected fun offerInputNegative() = theveninResistor.offerNegative()
@@ -86,9 +88,6 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
     override fun build(map: ElectricalConnectivityMap) {
         super.build(map)
         map.join(source.offerNegative(), outputResistor.offerPositive())
-        // FIXME:
-        map.join(source.offerNegative(), tempResistor.offerPositive())
-        map.join(theveninResistor.offerPositive(), tempResistor.offerNegative())
     }
 
     override fun subscribe(subscribers: SubscriberCollection) {
@@ -208,7 +207,10 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
         energyBuffer -= consumedFromBuffer
 
         if(energyBuffer < 0.0) {
-            LOG.debug("Outputted more energy ($consumedFromBuffer) than possible which left buffer at $energyBuffer")
+            if(energyBuffer < -1e-6) {
+                LOG.debug("Outputted more energy ($consumedFromBuffer) than possible which left buffer at $energyBuffer")
+            }
+
             energyBuffer = 0.0
             cell.setChanged()
         }
@@ -223,7 +225,6 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
 
         rejectedEnergy += collectInputEnergy(dt)
         rejectedEnergy += drainOutputtedEnergy(dt)
-        rejectedEnergy += tempResistor.power * dt
 
         rejectedEnergyAcceptor?.accept(Quantity(rejectedEnergy, JOULE))
     }

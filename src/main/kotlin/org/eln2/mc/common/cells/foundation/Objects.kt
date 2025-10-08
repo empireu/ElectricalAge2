@@ -156,26 +156,16 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
 
 abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     /**
-     * The circuit this object is part of.
-     * It is initialized while the solver is being built.
-     * @see setNewCircuit
+     * The sub-solvers this object's network created.
+     * This doesn't mean it contains exclusively the sub-solvers this object's [Term]s are part of.
+     * Set in the last step of the building process, after [build].
      * */
-    var circuit: Circuit? = null
+    var subSolvers: SubSolverSet<Circuit>? = null
         private set
 
     val connections = ArrayList<ElectricalObject<*>>()
 
     final override val type = SimulationObjectType.Electrical
-
-    /**
-     * Called by the building logic when the electrical object is made part of a circuit.
-     * Also calls the *registerComponents* method.
-     * */
-    fun setNewCircuit(builder: CircuitBuilder) {
-        this.circuit = builder.circuit
-
-        addComponents(builder)
-    }
 
     /**
      * Called by the cell when a valid connection candidate is discovered.
@@ -238,7 +228,7 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
      * This is called before build.
      * By default, offers for all [connections] are gathered using [offerPolar], and the offered components are all added to the [circuit]
      * */
-    protected open fun addComponents(circuit: ElectricalComponentSet) {
+    open fun addComponents(circuit: ElectricalComponentSet) {
         for (remote in connections) {
             val offer = offerComponent(remote)
                 ?: continue
@@ -274,6 +264,13 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
         }
     }
 
+    /**
+     * Called after [build], once the circuits have been created.
+     * */
+    open fun setSubSolvers(subSolvers: SubSolverSet<Circuit>) {
+        this.subSolvers = subSolvers
+    }
+
     protected fun VoltageSource.display() = cell.displayer.display(this)
     protected fun IResistor.display() = cell.displayer.display(this)
     protected fun TheveninEstimatingResistor.display() = cell.displayer.display(this)
@@ -282,7 +279,8 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
 
 abstract class KineticObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     /**
-     * The sub-solvers this object is part of.
+     * The sub-solvers this object's network created.
+     * This doesn't mean it contains exclusively the sub-solvers this object's [KineticNode]s are part of.
      * Set in the last step of the building process, after [build].
      * */
     var subSolvers: SubSolverSet<KineticSimulation>? = null

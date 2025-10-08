@@ -5,6 +5,9 @@ import org.ageseries.libage.mathematics.SYMFORCE_EPS
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.lerp
 import org.ageseries.libage.sim.ThermalMass
+import org.ageseries.libage.sim.electrical.mna.Circuit
+import org.ageseries.libage.sim.electrical.mna.CircuitBuilder
+import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
 import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
 import org.ageseries.libage.sim.electrical.mna.NEGATIVE
@@ -31,6 +34,114 @@ import kotlin.math.sqrt
 import kotlin.reflect.jvm.kotlinProperty
 
 //#region Sim
+
+/**
+ * Frak you Grissess (gently and with love though ♡).
+ * */
+class ElectricalSubSolverSystemBuilder : ElectricalComponentSet, ElectricalConnectivityMap {
+    class SubSolverData : SubSolverSystemBuilder.PerSubSolverData<SubSolverData, Term>() {
+        data class Connection(val a: Term, val aIdx: Int, val b: Term, val bIdx: Int)
+
+        val connections = ArrayList<Connection>()
+
+        override fun copyFrom(other: SubSolverData) {
+            super.copyFrom(other)
+
+            connections.addAll(other.connections)
+        }
+
+        override fun recycle() {
+            super.recycle()
+
+            connections.clear()
+        }
+    }
+
+    private val builder = SubSolverSystemBuilder<Term, SubSolverData> { SubSolverData() }
+    private var built = false
+
+    private fun validateUsage() {
+        require(!built) {
+            "Cannot re-use electrical simulation builder"
+        }
+    }
+
+    override fun add(component: VirtualComponent): Boolean {
+        validateUsage()
+        return builder.addNode(component)
+    }
+
+    override fun add(component: Component): Boolean {
+        validateUsage()
+        return builder.addNode(component)
+    }
+
+    override fun add(component: Term): Boolean {
+        validateUsage()
+        return builder.addNode(component)
+    }
+
+    override fun connect(a: VirtualComponent, aIdx: Int, b: VirtualComponent, bIdx: Int) {
+        validateUsage()
+        builder
+            .unite(a, b)
+            .connections
+            .add(SubSolverData.Connection(a, aIdx, b, bIdx))
+    }
+
+    override fun connect(a: VirtualComponent, aIdx: Int, b: Component, bIdx: Int) {
+        validateUsage()
+        builder
+            .unite(a, b)
+            .connections
+            .add(SubSolverData.Connection(a, aIdx, b, bIdx))
+    }
+
+    override fun connect(a: Component, aIdx: Int, b: VirtualComponent, bIdx: Int) {
+        validateUsage()
+        builder
+            .unite(a, b)
+            .connections
+            .add(SubSolverData.Connection(a, aIdx, b, bIdx))
+    }
+
+    override fun connect(a: Component, aIdx: Int, b: Component, bIdx: Int) {
+        validateUsage()
+        builder
+            .unite(a, b)
+            .connections
+            .add(SubSolverData.Connection(a, aIdx, b, bIdx))
+    }
+
+    override fun connect(a: Term, aIdx: Int, b: Term, bIdx: Int) {
+        validateUsage()
+        builder
+            .unite(a, b)
+            .connections
+            .add(SubSolverData.Connection(a, aIdx, b, bIdx))
+    }
+
+    fun build() = SubSolverSet(run {
+        validateUsage()
+        built = true
+
+        builder.subSolvers.map {
+            val circuit = Circuit()
+            val builder = CircuitBuilder(circuit)
+
+            it.nodes.forEach { term ->
+                builder.add(term)
+            }
+
+            it.connections.forEach { (a, aIdx, b, bIdx) ->
+                builder.connect(a, aIdx, b, bIdx)
+            }
+
+            builder.build()
+            circuit
+        }
+    })
+}
 
 /**
  * Represents a set of kinetic nodes.
