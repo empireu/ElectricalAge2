@@ -21,6 +21,7 @@ import org.ageseries.libage.sim.electrical.mna.Circuit
 import org.ageseries.libage.sim.electrical.mna.CircuitBuilder
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.ageseries.libage.utils.Stopwatch
+import org.ageseries.libage.utils.addUnique
 import org.ageseries.libage.utils.measureDuration
 import org.ageseries.libage.utils.putUnique
 import org.ageseries.libage.utils.sourceName
@@ -704,6 +705,14 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
                             count++
                         }
                     }
+                    Kinetic -> {
+                        localObj as KineticObject
+                        remoteObj as KineticObject
+
+                        if(localObj.acceptsRemoteObject(remoteObj) && remoteObj.acceptsRemoteObject(localObj)) {
+                            count++
+                        }
+                    }
                 }
             }
         }
@@ -743,7 +752,7 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
 
     fun removeConnection(cell: Cell) {
         if (!connections.remove(cell)) {
-            error("Tried to remove non-existent connection")
+            error(DEBUGGER_BREAK("Tried to remove non-existent connection"))
         }
     }
 
@@ -759,7 +768,7 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
 
             if(o != null) {
                 require(fields.put(o, it) == null) {
-                    "Duplicate obj $o"
+                    DEBUGGER_BREAK("Duplicate obj $o")
                 }
             }
 
@@ -1038,6 +1047,17 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
                     Thermal -> {
                         localObj as ThermalObject
                         remoteObj as ThermalObject
+
+                        if(!localObj.acceptsRemoteObject(remoteObj) || !remoteObj.acceptsRemoteObject(localObj)) {
+                            continue
+                        }
+
+                        localObj.addConnection(remoteObj)
+                    }
+
+                    Kinetic -> {
+                        localObj as KineticObject
+                        remoteObj as KineticObject
 
                         if(!localObj.acceptsRemoteObject(remoteObj) || !remoteObj.acceptsRemoteObject(localObj)) {
                             continue
@@ -1337,8 +1357,6 @@ object CellConnections {
 
         val markedNeighbors = actualCell.connections.toHashSet()
 
-
-
         connections.forEach { (neighbor, neighborContainer) ->
             val containsA = actualCell.connections.contains(neighbor)
             val containsB = neighbor.connections.contains(actualCell)
@@ -1352,12 +1370,12 @@ object CellConnections {
 
                 markedNeighbors.remove(neighbor)
             } else if (containsA != containsB) {
-                error("Mismatched connection vs query result")
+                error(DEBUGGER_BREAK("Mismatched connection vs query result"))
             }
         }
 
         if (markedNeighbors.isNotEmpty()) {
-            error("Lingering connections $actualCell $markedNeighbors")
+            error(DEBUGGER_BREAK("Lingering connections $actualCell $markedNeighbors"))
         }
 
         /*
@@ -1373,7 +1391,9 @@ object CellConnections {
             // Case 1. Destroy this circuit.
 
             // Make sure we don't make any logic errors somewhere else.
-            check(graph.size == 1)
+            check(graph.size == 1) {
+                DEBUGGER_BREAK("disconnectCell - case 1")
+            }
 
             graph.destroy()
         } else if (connections.size == 1) {
@@ -1457,7 +1477,7 @@ object CellConnections {
         val bfsVisited = HashSet<Cell>()
         val bfsQueue = ArrayDeque<Cell>()
 
-        while (neighborQueue.size > 0) {
+        while (neighborQueue.isNotEmpty()) {
             val neighbor = neighborQueue.removeFirst()
 
             // Create new circuit for all cells connected to this one.
@@ -1466,7 +1486,7 @@ object CellConnections {
             // Start BFS at the neighbor.
             bfsQueue.add(neighbor)
 
-            while (bfsQueue.size > 0) {
+            while (bfsQueue.isNotEmpty()) {
                 val cell = bfsQueue.removeFirst()
 
                 if (!bfsVisited.add(cell)) {
@@ -1480,13 +1500,17 @@ object CellConnections {
                 // Enqueue neighbors (excluding the cell we are removing) for processing
                 cell.connections.forEach { connCell ->
                     // This must be handled above.
-                    check(connCell != removedCell)
+                    check(connCell != removedCell) {
+                        DEBUGGER_BREAK("rebuildTopologies - connCell != removedCell")
+                    }
 
                     bfsQueue.add(connCell)
                 }
             }
 
-            check(bfsQueue.isEmpty())
+            check(bfsQueue.isEmpty()) {
+                DEBUGGER_BREAK("rebuildTopologies - bfsQueue#isEmpty")
+            }
 
             // Refit cells
             graph.forEach { cell ->
@@ -1544,6 +1568,7 @@ inline fun wrappedCellScan(
     val actualFaceWorld = actualCell.locator.requireLocator(Locators.FACE) { "Wrapped Scan requires a face" }
     val wrapDirection = actualFaceWorld.opposite
 
+    @Suppress("KotlinConstantConditions")
     if(!ALLOW_WRAPPED_DIAGONAL_WHATEVER) {
         if(!level.getBlockState(actualPosWorld + searchDirection).isAir) {
             return
@@ -1657,6 +1682,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
     private val cells = CellList()
     private val electricalSims = ArrayList<Circuit>()
     private val thermalSims = ArrayList<Simulator>()
+    private val kineticSubSolverSets = ArrayList<SubSolverSet<KineticSimulation>>()
 
     private val simulationStopLock = ReentrantLock()
 
@@ -1743,18 +1769,12 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         val result = cells.getByLocator(locator)
 
         if (result == null) {
-            LOG.error("Could not get cell at $locator") // exception may be swallowed
+            LOG.error(DEBUGGER_BREAK("Could not get cell at $locator")) // exception may be swallowed
             error("Could not get cell at $locator")
         }
 
         return result
     }
-
-    /**
-     * Checks if the graph contains a cell with the specified [locator].
-     * @return True if a cell with the [locator] exists in this graph. Otherwise, false.
-     * */
-    fun containsCellByLocator(locator: Locator) = cells.contains(locator)
 
     fun setChanged() {
         if(!isLoading) {
@@ -1790,6 +1810,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         UpdateSubsPre,
         UpdateElectricalSims,
         UpdateThermalSims,
+        UpdateKineticSims,
         UpdateSubsPost
     }
 
@@ -1835,6 +1856,15 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
                         it.step(DT)
                     }
                 }
+
+                stage = UpdateStep.UpdateKineticSims
+                val kineticTime = measureDuration {
+                    kineticSubSolverSets.forEach {
+                        it.solvers.forEach { solver ->
+                            solver.step()
+                        }
+                    }
+                }
             }
 
             stage = UpdateStep.UpdateSubsPost
@@ -1866,25 +1896,38 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         cells.forEach { it.onBuildStarted() }
         cells.forEach { it.recordObjectConnections() }
 
-        val circuitBuilders = realizeElectrical()
-
+        val electricalBuilders = realizeElectrical()
         realizeThermal()
+        val kinetic = realizeKinetic()
 
         cells.forEach { cell ->
-            cell.objects.forEachObject {
-                when(it.type) {
+            cell.objects.forEachObject { obj ->
+                when(obj.type) {
                     Electrical -> {
-                        (it as ElectricalObject<*>).build(circuitBuilders[it.circuit!!]!!)
+                        (obj as ElectricalObject<*>).build(electricalBuilders[obj.circuit!!]!!)
                     }
                     Thermal -> {
-                        (it as ThermalObject<*>).build()
+                        (obj as ThermalObject<*>).build()
+                    }
+                    Kinetic -> {
+                        (obj as KineticObject<*>).build(kinetic.builderByObject[obj]!!)
                     }
                 }
             }
         }
 
-        circuitBuilders.values.forEach {
+        electricalBuilders.values.forEach {
             it.build()
+        }
+
+        kinetic.objectsByBuilder.keys.forEach { builder ->
+            val subSolvers = builder.build(DT)
+
+            kinetic.objectsByBuilder[builder].forEach { obj ->
+                obj.setSubSolvers(subSolvers)
+            }
+
+            kineticSubSolverSets.add(subSolvers)
         }
 
         electricalSims.forEach { postProcessCircuit(it) }
@@ -1893,7 +1936,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
     }
 
     /**
-     * This method realizes the electrical circuits for all cells that have an electrical object.
+     * Realizes the electrical circuits for all cells that have an electrical object.
      * */
     private fun realizeElectrical() : HashMap<Circuit, CircuitBuilder> {
         electricalSims.clear()
@@ -1903,10 +1946,8 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         realizeComponents(Electrical, factory = { set ->
             val circuit = Circuit()
             val builder = CircuitBuilder(circuit)
-
             set.forEach { it.objects.electricalObject.setNewCircuit(builder) }
             electricalSims.add(circuit)
-
             builders[circuit] = builder
         })
 
@@ -1921,6 +1962,40 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
             set.forEach { it.objects.thermalObject.setNewSimulation(simulation) }
             thermalSims.add(simulation)
         })
+    }
+
+    /**
+     * Result of realizing the kinetic object graphs based (**only**) on object connections.
+     * Each builder here will create one or more sub-solvers.
+     * @param builderByObject The builder assigned to each object.
+     * @param objectsByBuilder The builders, mapped to all the kinetic objects that have connections between each other.
+     * */
+    private class KineticRealizationData(
+        val builderByObject: Map<KineticObject<*>, KineticSubSolverSystemBuilder>,
+        val objectsByBuilder: MultiMap<KineticSubSolverSystemBuilder, KineticObject<*>>
+    )
+
+    /**
+     * Realizes the sub-system builders for all kinetic objects.
+     * */
+    private fun realizeKinetic() : KineticRealizationData {
+        kineticSubSolverSets.clear()
+
+        val builderByObject = HashMap<KineticObject<*>, KineticSubSolverSystemBuilder>()
+        val objectsByBuilder = MutableSetMapMultiMap<KineticSubSolverSystemBuilder, KineticObject<*>>()
+
+        realizeComponents(Kinetic, factory = { set ->
+            val builder = KineticSubSolverSystemBuilder()
+
+            set.forEach {
+                val obj = it.objects.kineticObject
+                obj.addNodes(builder)
+                builderByObject.putUnique(obj, builder)
+                objectsByBuilder[builder].addUnique(obj)
+            }
+        })
+
+        return KineticRealizationData(builderByObject, objectsByBuilder)
     }
 
     /**
@@ -1948,14 +2023,14 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
 
         val results = ArrayList<TComponent>()
 
-        while (pending.size > 0) {
-            check(queue.size == 0)
+        while (pending.isNotEmpty()) {
+            check(queue.isEmpty())
 
             visited.clear()
 
             queue.add(pending.first())
 
-            while (queue.size > 0) {
+            while (queue.isNotEmpty()) {
                 val cell = queue.removeFirst()
 
                 if (!visited.add(cell)) {
@@ -2022,7 +2097,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
      * */
     fun stopSimulation() {
         if (simulationTask == null) {
-            error("Tried to stop simulation, but it was not running")
+            return
         }
 
         simulationStopLock.lock()

@@ -16,6 +16,9 @@ import org.eln2.mc.data.PoleMap
 import org.eln2.mc.data.evaluate
 import org.eln2.mc.extensions.getQuantity
 import org.eln2.mc.extensions.putQuantity
+import kotlin.contracts.ExperimentalContracts
+import kotlin.contracts.InvocationKind
+import kotlin.contracts.contract
 
 /**
  * Represents a discrete simulation unit that participates in one simulation type.
@@ -162,19 +165,7 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
 
     val connections = ArrayList<ElectricalObject<*>>()
 
-    val connectionList get() = connections as List<ElectricalObject<*>>
-
     final override val type = SimulationObjectType.Electrical
-
-    protected fun indexOf(obj: ElectricalObject<*>): Int {
-        val index = connections.indexOf(obj)
-
-        if (index == -1) {
-            error("Connections did not have $obj")
-        }
-
-        return index
-    }
 
     /**
      * Called by the building logic when the electrical object is made part of a circuit.
@@ -289,6 +280,89 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     protected fun MyPowerVoltageSource.display() = cell.displayer.display(this)
 }
 
+abstract class KineticObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
+    /**
+     * The sub-solvers this object is part of.
+     * Set in the last step of the building process, after [build].
+     * */
+    var subSolvers: SubSolverSet<KineticSimulation>? = null
+        private set
+
+    val connections = ArrayList<KineticObject<*>>()
+
+    final override val type = SimulationObjectType.Kinetic
+
+    /**
+     * Called by the cell when a valid connection candidate is discovered.
+     * */
+    open fun addConnection(remoteObj: KineticObject<*>) {
+        require(!connections.contains(remoteObj)) {
+            "Duplicate connection"
+        }
+
+        connections.add(remoteObj)
+    }
+
+    /**
+     * Called when the builder must be updated with the components owned by this object.
+     * This is called before [build].
+     * */
+    abstract fun addNodes(builder: KineticNodeSet)
+
+    /**
+     * Called when this object is destroyed. Connections are also cleaned up.
+     * */
+    override fun destroy() {
+        connections.forEach { it.connections.remove(this) }
+    }
+
+    override fun clear() {
+        connections.clear()
+        clearNodes()
+    }
+
+    /**
+     * Called when the solver is being built, and the components need to be re-created (or refreshed)
+     * The connections are not available at this stage.
+     * */
+    protected open fun clearNodes() { }
+
+    /**
+     * Called by kinetic objects to fetch a connection candidate.
+     * The same extension **must** be returned by subsequent calls to this method, during same re-building moment.
+     * */
+    abstract fun offerExtension(remote: KineticObject<*>) : KineticExtension?
+
+    /**
+     * Implements object-based rules.
+     * @param remote The remote kinetic object.
+     * @return True, if the connection is allowed. Otherwise, false.
+     * */
+    open fun acceptsRemoteObject(remote: KineticObject<*>) : Boolean = true
+
+    /**
+     * Builds the constraints. After this, the sub-solvers will be realized and made available in [setSubSolvers].
+     * */
+    open fun build(map: KineticConstraintMap) {
+        for (remote in connections) {
+            val localExtension = this.offerExtension(remote)
+                ?: continue
+
+            val remoteExtension = remote.offerExtension(this)
+                ?: continue
+
+            map.join(localExtension, remoteExtension)
+        }
+    }
+
+    /**
+     * Called after [build], once the kinetic simulations have been created.
+     * */
+    open fun setSubSolvers(subSolvers: SubSolverSet<KineticSimulation>) {
+        this.subSolvers = subSolvers
+    }
+}
+
 /**
  * Represents an object with NBT saving capabilities.
  * */
@@ -298,44 +372,74 @@ interface PersistentObject {
 }
 
 class SimulationObjectSet(objects: List<SimulationObject<*>>) {
-    private val objects = HashMap<SimulationObjectType, SimulationObject<*>>()
+    private var electrical: ElectricalObject<*>? = null
+    private var thermal: ThermalObject<*>? = null
+    private var kinetic: KineticObject<*>? = null
 
     init {
         objects.forEach {
-            if (this.objects.put(it.type, it) != null) {
-                error("Duplicate object of type ${it.type}")
+            when(it.type) {
+                SimulationObjectType.Electrical -> {
+                    if(electrical != null) {
+                        error("Duplicate add electrical $electrical $it")
+                    }
+
+                    electrical = it as ElectricalObject<*>
+                }
+                SimulationObjectType.Thermal -> {
+                    if(thermal != null) {
+                        error("Duplicate add thermal $thermal $it")
+                    }
+
+                    thermal = it as ThermalObject<*>
+                }
+                SimulationObjectType.Kinetic -> {
+                    if(kinetic != null) {
+                        error("Duplicate add kinetic $kinetic $it")
+                    }
+
+                    kinetic = it as KineticObject<*>
+                }
             }
         }
     }
 
-    fun hasObject(type: SimulationObjectType): Boolean {
-        return objects.contains(type)
+    fun hasObject(type: SimulationObjectType) = when(type) {
+        SimulationObjectType.Electrical -> electrical != null
+        SimulationObjectType.Thermal -> thermal != null
+        SimulationObjectType.Kinetic -> kinetic != null
     }
 
-    private fun getObject(type: SimulationObjectType): SimulationObject<*> {
-        return objects[type] ?: error("Object set does not have $type")
+    fun getObjectOrNull(type: SimulationObjectType): SimulationObject<*>? = when(type) {
+        SimulationObjectType.Electrical -> electrical
+        SimulationObjectType.Thermal -> thermal
+        SimulationObjectType.Kinetic -> kinetic
     }
 
-    fun getObjectOrNull(type: SimulationObjectType): SimulationObject<*>? {
-        return objects[type]
-    }
+    private fun getObject(type: SimulationObjectType) = getObjectOrNull(type) ?: error("Object set does not have $type")
 
-    val electricalObject get() = getObject(SimulationObjectType.Electrical) as ElectricalObject
+    val electricalObject get() = electrical ?: error("Cannot get electrical object")
+    val thermalObject get() = thermal ?: error("Cannot get thermal object")
+    val kineticObject get() = kinetic ?: error("Cannot get kinetic object")
 
-    val thermalObject get() = getObject(SimulationObjectType.Thermal) as ThermalObject
-
+    @OptIn(ExperimentalContracts::class)
     fun forEachObject(function: ((SimulationObject<*>) -> Unit)) {
-        objects.values.forEach(function)
+        contract {
+            callsInPlace(function, InvocationKind.UNKNOWN)
+        }
+
+        if(electrical != null) function(electrical!!)
+        if(thermal != null) function(thermal!!)
+        if(kinetic != null) function(kinetic!!)
     }
 
-    operator fun get(type: SimulationObjectType): SimulationObject<*> {
-        return objects[type] ?: error("Object set does not have $type")
-    }
+    operator fun get(type: SimulationObjectType) = getObject(type)
 }
 
 enum class SimulationObjectType(val index: Int, val id: Int, val domain: String) {
     Electrical(0, 1, "electrical"),
-    Thermal(1, 2, "thermal");
+    Thermal(1, 2, "thermal"),
+    Kinetic(2, 3, "kinetic");
 }
 
 interface ThermalBipole {
