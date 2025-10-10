@@ -5,6 +5,7 @@ import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.task.Plan
 import dev.engine_room.flywheel.api.visual.DynamicVisual
 import dev.engine_room.flywheel.api.visual.LightUpdatedVisual
+import dev.engine_room.flywheel.api.visual.ShaderLightVisual
 import dev.engine_room.flywheel.api.visual.TickableVisual
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
 import dev.engine_room.flywheel.lib.instance.FlatLit
@@ -1571,8 +1572,12 @@ class MultipartBlockEntityVisual(
     ctx: VisualizationContext,
     blockEntity: MultipartBlockEntity,
     partialTick: Float,
-): AbstractBlockEntityVisual<MultipartBlockEntity>(ctx, blockEntity, partialTick), DynamicVisual, TickableVisual,
-    LightUpdatedVisual {
+): AbstractBlockEntityVisual<MultipartBlockEntity>(ctx, blockEntity, partialTick),
+    DynamicVisual,
+    TickableVisual,
+    LightUpdatedVisual,
+    ShaderLightVisual // P.S. this is an issue...
+{
     val parts = HashMap<Part, AbstractPartVisual<*>>()
     val multipartVisualizationContext = MultipartVisualizationContext(visualizationContext, this)
     val storage = SpecialVisualStorage<AbstractPartVisual<*>>()

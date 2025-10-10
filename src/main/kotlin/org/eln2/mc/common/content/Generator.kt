@@ -70,7 +70,6 @@ import org.eln2.mc.data.PoleMap
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import kotlin.math.abs
 import kotlin.math.min
 
 /**
@@ -817,69 +816,6 @@ class ElectricalHeatEnginePart(ci: PartCreateInfo) :
         val angle: Double,
         val angularVelocity: Double,
         val angularAccelerationEstimate: Double
-    )
-}
-
-class RotationUpdateProfile2d(val p0: Rotation2d, val v0: Double, val a1: Double, val a2: Double, val duration: Double) {
-    var currentTime = 0.0
-    val timeRemaining get() = (duration - currentTime).coerceIn(0.0, duration)
-
-    var sampleP = p0
-        private set
-
-    var sampleV = v0
-        private set
-
-    fun sampleTrajectory() : Double {
-        val x = currentTime.coerceIn(0.0, duration)
-        val t = duration / 2.0
-
-        return if (x <= t) {
-            sampleP = p0 + (v0 * x + 0.5 * a1 * x * x)
-            sampleV = v0 + a1 * x
-            a1
-        }
-        else {
-            val p1 = p0 + (v0 * t + 0.5 * a1 * t * t)
-            val v1 = v0 + a1 * t
-            val y = x - t
-
-            sampleP = p1 + (v1 * y + 0.5 * a2 * y * y)
-            sampleV = v1 + a2 * y
-            a2
-        }
-    }
-}
-
-@Suppress("LocalVariableName")
-fun computeRotationUpdateAccelerationProfile(targetPos: Rotation2d, targetVel: Double, sourcePos: Rotation2d, sourceVel: Double, T: Double) : RotationUpdateProfile2d {
-    val dp = targetPos - sourcePos
-    val dv = targetVel - sourceVel
-
-    val t = T / 2.0
-    val t2 = t * t
-
-    val a1 = (dp + targetVel * T) / t2 - (2.0 * sourceVel) / t - dv / T
-    val a2 = dv / t - a1
-
-    return RotationUpdateProfile2d(sourcePos, sourceVel, a1, a2, T)
-}
-
-fun computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
-    accelerationEstimate: Double,
-    targetPos: Rotation2d, targetVel: Double,
-    sourcePos: Rotation2d, sourceVel: Double,
-    maxTransitionTime: Double = 0.25
-) : RotationUpdateProfile2d {
-
-    val dv = abs(targetVel - sourceVel)
-    val accelEstimate = abs(accelerationEstimate).coerceAtLeast(dv / maxTransitionTime)
-    val duration = dv / accelEstimate
-
-    return computeRotationUpdateAccelerationProfile(
-        targetPos, targetVel,
-        sourcePos, sourceVel,
-        duration
     )
 }
 

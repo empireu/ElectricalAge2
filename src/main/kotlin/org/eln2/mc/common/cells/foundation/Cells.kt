@@ -605,11 +605,17 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
         }
     }
 
+    protected open fun defaultKineticConnectionPredicate(remote: Cell) : Boolean {
+        return !connectionSizeRejection<SidedKinetic<*>, KineticSize>(this, remote, KineticSize.compatibility) {
+            int, dir, b -> int.getKineticSizeOnSide(dir, b)
+        }
+    }
+
     // Default to just the cell predicates:
 
     open fun thermalObjectPredicate(remote: ThermalObject<*>) = defaultThermalConnectionPredicate(remote.cell)
-
     open fun electricalObjectPredicate(remote: ElectricalObject<*>) = defaultElectricalConnectionPredicate(remote.cell)
+    open fun kineticObjectPredicate(remote: KineticObject<*>) = defaultKineticConnectionPredicate(remote.cell)
 
     /**
      * If true, the default connection predicate will check only if the remote cell is a [GridConnectionCell].
@@ -618,16 +624,22 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     open val isExclusivelyGridConnected get() = false
 
     /**
-     * If true, the default connection predicate will, instead of allowing connection if a **thermal OR an electrical connection** is possible, allow the cell connection only if **the default thermal predicate reports true**.
+     * If true, the default connection predicate will, instead of allowing connection if a **thermal OR electrical OR kinetic connection** is possible, allow the cell connection only if **the default thermal predicate reports true**.
      * Use it for transport devices only. *P.S. I haven't found a legitimate use for it yet.*
      * */
     open val isExclusivelyThermalConnected get() = false
 
     /**
-     * If true, the default connection predicate will, instead of allowing connection if a **thermal OR an electrical connection** is possible, allow the cell connection only if **the default electrical predicate reports true**.
+     * If true, the default connection predicate will, instead of allowing connection if a **thermal OR electrical OR kinetic connection** is possible, allow the cell connection only if **the default electrical predicate reports true**.
      * Use it for transport devices only. For example, set it to true for an electrical wire that exports both thermal and electrical connections to the same sides, so it's not allowed to connect to a thermal conduit.
      * */
     open val isExclusivelyElectricalConnected get() = false
+
+    /**
+     * If true, the default connection predicate will, instead of allowing connection if a **thermal OR electrical OR kinetic connection** is possible, allow the cell connection only if **the default kinetic predicate reports true**.
+     * Use it for transport devices only. For example, set it to true for a shaft that exports both thermal and kinetic connections to the same sides, so it's not allowed to connect to a thermal conduit.
+     * */
+    open val isExclusivelyKineticConnected get() = false
 
     /**
      * Checks if this cell accepts a connection from the remote cell.
@@ -638,6 +650,17 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
      * @return True if the connection is accepted. Otherwise, false.
      * */
     protected open fun cellConnectionPredicate(remote: Cell) : Boolean {
+        // Sanity check:
+        var i = 0
+        if(isExclusivelyGridConnected) { i++ }
+        if(isExclusivelyElectricalConnected) { i++ }
+        if(isExclusivelyThermalConnected) { i++ }
+        if(isExclusivelyKineticConnected) { i++ }
+
+        if(i > 1) {
+            DEBUGGER_BREAK()
+        }
+
         if(isExclusivelyGridConnected) {
             return defaultExclusivelyGridConnectionPredicate(remote)
         }
@@ -650,12 +673,20 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
             return defaultElectricalConnectionPredicate(remote)
         }
 
+        if(isExclusivelyKineticConnected) {
+            return defaultKineticConnectionPredicate(remote)
+        }
+
         // By default, allow *Cell-Cell* connection if any of the exported simulation domain connection sizes coincide:
         if(this.hasObject(Thermal) && defaultThermalConnectionPredicate(remote)) {
             return true
         }
 
         if(this.hasObject(Electrical) && defaultElectricalConnectionPredicate(remote)) {
+            return true
+        }
+
+        if(this.hasObject(Kinetic) && defaultKineticConnectionPredicate(remote)) {
             return true
         }
 
@@ -1902,6 +1933,12 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
     fun buildSolver() {
         validateMutationAccess()
 
+        kineticSubSolverSets.forEach {
+            it.solvers.forEach { solver ->
+                solver.destroy()
+            }
+        }
+
         electricalSubSolverSets.clear()
         kineticSubSolverSets.clear()
 
@@ -2667,6 +2704,17 @@ enum class ElectricalSize(val sizeTranslationKey: String, override val index: In
     }
 }
 
+enum class KineticSize(val sizeTranslationKey: String, override val index: Int) : Indexed {
+    Standard("standard_kinetic_size", 0),
+    Any("any_kinetic_size", 1);
+
+    companion object {
+        val compatibility = SizeCompatibilityMatrixBuilder<KineticSize>(Any)
+            .selfCompatible(entries)
+            .build()
+    }
+}
+
 /**
  * Supplies the [ElectricalSize] for a side of the cell, in the local frame.
  * If the returned size is null, the connection is rejected immediately. If the returned size is not equal to the other cell's size on its respective side, the connection is also rejected.
@@ -2728,7 +2776,7 @@ interface SidedElectricalMapped<C> : SidedElectrical<C> where C : Cell, C : Side
     val electricalSize: ElectricalSize?
 
     /**
-     * Returns the [electricalSize] is the [electricalMap] covers this connection.
+     * Returns the [electricalSize] if the [electricalMap] covers this connection.
      * */
     override fun getElectricalSizeOnSide(side: Base6Direction3d, targetCell: Cell): ElectricalSize? {
         return if(electricalMap.evaluateOrNull(this as Cell, targetCell) != null) electricalSize else null
@@ -2801,9 +2849,57 @@ interface SidedThermalMapped<C> : SidedThermal<C> where C : Cell, C : SidedTherm
     val thermalSize: ThermalSize?
 
     /**
-     * Returns the [thermalSize] is the [thermalMap] covers this connection.
+     * Returns the [thermalSize] if the [thermalMap] covers this connection.
      * */
     override fun getThermalSizeOnSide(side: Base6Direction3d, targetCell: Cell): ThermalSize? {
         return if(thermalMap.evaluateOrNull(this as Cell, targetCell) != null) thermalSize else null
+    }
+}
+
+/**
+ * Supplies the [KineticSize] for a side of the cell, in the local frame.
+ * If the returned size is null, the connection is rejected immediately. If the returned size is not equal to the other cell's size on its respective side, the connection is also rejected.
+ * The connection is accepted if both cells report the same size on their respective sides.
+ * */
+interface SidedKinetic<C> where C : Cell, C : SidedKinetic<C> {
+    /**
+     * Gets the size of the kinetic shaft on that side.
+     * @param side The side, pre-calculated, in the cell's local frame.
+     * @param targetCell The remote cell, useful if a locator map is used instead of raw directions in the connection code.
+     * */
+    fun getKineticSizeOnSide(side: Base6Direction3d, targetCell: Cell) : KineticSize?
+}
+
+/**
+ * Cell with a constant kinetic shaft size on 2 specific sides.
+ * */
+interface SidedKineticBipole<C> : SidedKinetic<C> where C : Cell, C : SidedKineticBipole<C> {
+    val side1: Base6Direction3d
+    val side2: Base6Direction3d
+    val kineticSize: KineticSize
+
+    override fun getKineticSizeOnSide(side: Base6Direction3d, targetCell: Cell) = when(side) {
+        side1 -> kineticSize
+        side2 -> kineticSize
+        else -> null
+    }
+}
+
+/**
+ * Kinetic size provider, based on a pole map.
+ * */
+interface SidedKineticMapped<C> : SidedKinetic<C> where C : Cell, C : SidedKineticMapped<C> {
+    val kineticMap : PoleMap
+
+    /**
+     * The kinetic size. It will be supplied to all sides the [kineticMap] covers.
+     * */
+    val kineticSize: KineticSize?
+
+    /**
+     * Returns the [kineticSize] if the [kineticMap] covers this connection.
+     * */
+    override fun getKineticSizeOnSide(side: Base6Direction3d, targetCell: Cell): KineticSize? {
+        return if(kineticMap.evaluateOrNull(this as Cell, targetCell) != null) kineticSize else null
     }
 }

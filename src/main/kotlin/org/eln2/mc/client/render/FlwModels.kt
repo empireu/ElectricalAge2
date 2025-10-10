@@ -46,6 +46,13 @@ object FlwModels {
 
     //#endregion
 
+    //#region Shafts
+
+    val STANDARD_IRON_SHAFT_BODY = partialBlock("shaft/standard/iron/body")
+    val STANDARD_IRON_SHAFT_SHAFT = partialBlock("shaft/standard/iron/shaft")
+
+    //#endregion
+
     //#region Batteries
 
     val LEAD_ACID_BATTERY = partialBlock("battery/lead_acid")

@@ -9,6 +9,7 @@ import dev.engine_room.flywheel.api.layout.LayoutBuilder
 import dev.engine_room.flywheel.api.material.Material
 import dev.engine_room.flywheel.api.model.Model
 import dev.engine_room.flywheel.api.visual.DynamicVisual
+import dev.engine_room.flywheel.api.visual.ShaderLightVisual
 import dev.engine_room.flywheel.api.visual.TickableVisual
 import dev.engine_room.flywheel.api.visual.Visual
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
@@ -44,9 +45,11 @@ import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Rotation3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.utils.Stopwatch
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
+import org.eln2.mc.RotationUpdateProfile2d
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.buildDirectionTable
 import org.eln2.mc.client.render.FlwMaterials
@@ -63,6 +66,7 @@ import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.common.specs.foundation.*
 import org.eln2.mc.common.specs.foundation.SpecGeometry
+import org.eln2.mc.computeRotationUpdateAccelerationProfileWithAccelerationEstimate
 import org.eln2.mc.extensions.bind
 import org.eln2.mc.extensions.cast
 import org.eln2.mc.extensions.getListTag
@@ -221,6 +225,14 @@ object FlwVisualizerRegistry {
             BasicPartVisual(
                 ctx, part,
                 FlwModels.FLAT_OSCILLOSCOPE_PART
+            )
+        }
+
+        setPartVisualizer<KineticShaftPart>(Content.STANDARD_IRON_SHAFT_PART.part.get()) { ctx, part ->
+            BasicKineticPartVisual(
+                ctx, part,
+                FlwModels.STANDARD_IRON_SHAFT_BODY,
+                FlwModels.STANDARD_IRON_SHAFT_SHAFT
             )
         }
     }
@@ -911,6 +923,137 @@ open class ConnectedPartVisual<P>(
         }
 
         connectionInstances.clear()
+    }
+}
+
+interface BasicKineticPart {
+    val renderState: RenderState?
+
+    interface RenderState {
+        val version: Int
+        val angle: Double
+        val angularVelocity: Double
+        val angularAccelerationEstimate: Double
+    }
+
+    @Serializable
+    data class RotationSyncPacket(
+        val angle: Double,
+        val angularVelocity: Double,
+        val angularAccelerationEstimate: Double
+    )
+
+    class RenderStateImpl private constructor(): RenderState {
+        override var version = 0
+            private set
+
+        override var angle = 0.0
+            private set
+
+        override var angularVelocity = 0.0
+            private set
+
+        override var angularAccelerationEstimate = 0.0
+            private set
+
+        fun load(packet: RotationSyncPacket) {
+            angle = packet.angle
+            angularVelocity = packet.angularVelocity
+            angularAccelerationEstimate = packet.angularAccelerationEstimate
+            version++
+        }
+
+        companion object {
+            fun createFor(part: Part) = if(part.placement.level.isClientSide) {
+                RenderStateImpl()
+            }
+            else null
+        }
+    }
+}
+
+class BasicKineticPartVisual<P>(
+    visualizationContext: MultipartVisualizationContext,
+    part: P,
+    body: PartialModel,
+    shaft: PartialModel
+) : AbstractPartVisual<P>(visualizationContext, part), SimpleDynamicVisual, ShaderLightVisual where P : Part, P : BasicKineticPart {
+    val body: TransformedInstance = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, Models.partial(body))
+        .createInstance()
+        .also { it.partTransformation(visualizationContext.parent, part) }
+
+    val shaftCenter = FlwModels
+        .getModelCenter(shaft)
+
+    val shaft: TransformedInstance = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(shaft, FlwMaterials.SMOOTH_LIT))
+        .createInstance()
+
+    var version = 0
+    var rotation = Rotation2d.identity
+    var velocity = 0.0
+    var interpolationState: RotationUpdateProfile2d? = null
+    val frameTimer = Stopwatch()
+
+    private fun poseShaft() {
+        val x = shaftCenter.x
+        val y = shaftCenter.y
+
+        shaft.setIdentityTransform()
+            .partTransformation(visualizationContext.parent, part)
+            .translate(x, y, 0.0)
+            .rotateZ(rotation.ln().toFloat())
+            .translate(-x, -y, 0.0)
+            .handle()
+            .setChanged()
+    }
+
+    init {
+        poseShaft()
+    }
+
+    override fun beginFrame(p0: DynamicVisual.Context?) {
+        val renderState = part.renderState!!
+
+        val targetVersion = renderState.version
+        if(version != targetVersion) {
+            version = targetVersion
+
+            interpolationState = computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
+                renderState.angularAccelerationEstimate,
+                Rotation2d.exp(renderState.angle), renderState.angularVelocity,
+                rotation, velocity
+            )
+        }
+
+        val dt = !frameTimer.sample()
+
+        if(interpolationState == null) {
+            rotation += velocity * dt
+        }
+        else {
+            val state = interpolationState!!
+            state.currentTime += dt
+            state.sampleTrajectory()
+            rotation = state.sampleP
+            velocity = state.sampleV
+
+            if(state.timeRemaining == 0.0) {
+                interpolationState = null
+            }
+        }
+
+        poseShaft()
+    }
+
+    override fun updateLight(p0: Float) {
+        visualizationContext.parent.relightInstances(body)
+    }
+
+    override fun _delete() {
+        body.delete()
+        shaft.delete()
     }
 }
 

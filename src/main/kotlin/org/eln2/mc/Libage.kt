@@ -3,6 +3,7 @@ package org.eln2.mc
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.SYMFORCE_EPS
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.lerp
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.electrical.mna.Circuit
@@ -810,7 +811,10 @@ class KineticSimulation(
     val rigidConstraints: Array<RigidExtensionConstraint>,
     val clutchConstraints: Array<ClutchConstraint>
 ) {
-    val shaftNodes = nodes.mapNotNull { it as? KineticShaft }.toTypedArray()
+    /**
+     * Nodes which have built-in friction.
+     * */
+    val frictionNodes = nodes.mapNotNull { it as? FrictionKineticNode }.toTypedArray()
 
     /**
      * Baumgarte stabilization factor.
@@ -900,8 +904,10 @@ class KineticSimulation(
     @Suppress("NOTHING_TO_INLINE") @JvmInline
     private value class LambdaArray(val backingStorage: DoubleArray) {
         constructor(constraintCount: Int) : this(DoubleArray(constraintCount * 2))
+
         inline fun getLambda(constraint: Int) = backingStorage[constraint * 2]
         inline fun getMaxLambda(constraint: Int) = backingStorage[constraint * 2 + 1]
+
         inline fun setLambda(constraint: Int, lambda: Double) { backingStorage[constraint * 2] = lambda }
         inline fun setMaxLambda(constraint: Int, maxLambda: Double) { backingStorage[constraint * 2 + 1] = maxLambda }
     }
@@ -1116,17 +1122,13 @@ class KineticSimulation(
             }
         }
 
-        /**
-         * Applies individual friction to shafts:
-         * */
-        shaftNodes.forEach { shaft ->
-            shaft.calculateFrictionTorque()
-            shaft.externalTorque += shaft.frictionTorque
+        // Applies friction to individual nodes:
+        frictionNodes.forEach { node ->
+            node.calculateFrictionTorque()
+            node.externalTorque += node.frictionTorque
         }
 
-        /**
-         * Stores the old angle, updates the inverse inertia and writes the unconstrained (predicted) velocities based on external torque.
-         * */
+        // Stores the old angle, updates the inverse inertia and writes the unconstrained (predicted) velocities based on external torque:
         nodes.forEach { node ->
             node.previousAngle = node.angle
             val invI = 1.0 / node.inertia
@@ -1135,10 +1137,8 @@ class KineticSimulation(
             node.externalTorque = 0.0
         }
 
-        /**
-         * Sets up rigid constraints.
-         * Only calculates the jacobian and the bias. The max lambda is constant.
-         * */
+        // Sets up rigid constraints.
+        // Only calculates the jacobian and the bias. The max lambda is constant.
         rigidConstraints.forEach { rigid ->
             val a = rigid.a
             val b = rigid.b
@@ -1151,10 +1151,8 @@ class KineticSimulation(
             rigidConstraintData.setBias(rigid.id, bias)
         }
 
-        /**
-         * Sets up clutch constraints.
-         * Calculates the jacobian and bias, the initial guess lambda and the max lambda and finds clutches which are candidates for locking.
-         * */
+        // Sets up clutch constraints.
+        // Calculates the jacobian and bias, the initial guess lambda and the max lambda and finds clutches which are candidates for locking:
         clutchConstraints.forEach { clutch ->
             val a = clutch.a
             val b = clutch.b
@@ -1218,9 +1216,7 @@ class KineticSimulation(
             }
         }
 
-        /**
-         * Applies warm start:
-         * */
+        // Applies warm start with previous impulses:
         warmStart(rigidConstraintData, rigidConstraintLambda)
         warmStart(clutchConstraintData, clutchConstraintLambda)
 
@@ -1260,7 +1256,7 @@ class KineticSimulation(
 
         kineticEnergy = 0.0
 
-        // Integrate and copy back:
+        // Integrate for angle and copy back:
         nodes.forEach { node ->
             node.omega = omegaStar[node.idInOwner]
             node.angle += node.omega * dt
@@ -1337,13 +1333,13 @@ class KineticSimulation(
             shaft.distributeResults()
         }
 
-        // Calculate friction heat for individual shafts:
-        shaftNodes.forEach { shaft ->
-            val dTheta = shaft.angle - shaft.previousAngle
-            val workByFriction = shaft.frictionTorque * dTheta
+        // Calculate friction heat for individual nodes:
+        frictionNodes.forEach { node ->
+            val dTheta = node.angle - node.previousAngle
+            val workByFriction = node.frictionTorque * dTheta
             val heatFromNodeFriction = if (workByFriction < 0.0) -workByFriction else 0.0
-            shaft.heatFromFriction += heatFromNodeFriction
-            shaft.deltaHeatFromFriction = heatFromNodeFriction
+            node.heatFromFriction += heatFromNodeFriction
+            node.deltaHeatFromFriction = heatFromNodeFriction
         }
 
         // Calculate friction heat for internal shafts inside each optimized LineShaft:
@@ -1394,6 +1390,8 @@ abstract class KineticNode(val allowOptimization: Boolean) {
     val idInOwner get() = if(idInternal == -1) error("Cannot get ID before added to simulation") else idInternal
     val simulation get() = simulatorInternal ?: error("Cannot get simulator before added")
     val proxy get() = if(simulatorInternal == null) error("Cannot get proxy before added") else proxyInternal
+
+    val isInProxy get() = proxyInternal != null
 
     private val constraintsInternal = ArrayList<NodeConstraint<*, *>>()
     val nodeConstraints: List<NodeConstraint<*, *>> get() = constraintsInternal
@@ -1450,7 +1448,7 @@ abstract class KineticNode(val allowOptimization: Boolean) {
         set(value) {
             if(field != value) {
                 if(allowOptimization) {
-                    if(proxy != null) {
+                    if(isInProxy) {
                         error("Changing inertia while optimized is not allowed")
                     }
                 }
@@ -1462,15 +1460,17 @@ abstract class KineticNode(val allowOptimization: Boolean) {
     val energy get() = 0.5 * inertia * (omega * omega)
 
     var previousAngle = 0.0
+
+    fun setExternalAngle(angle: Double) {
+        this.angle = angle
+        this.previousAngle = angle
+    }
 }
 
 /**
- * A two-ended node. It's pretty much the bread and butter of all simulations.
+ * Node that has some built-in friction.
  * */
-class KineticShaft(allowOptimization: Boolean = true) : KineticNode(allowOptimization) {
-    val e1 = RigidKineticExtension(this)
-    val e2 = RigidKineticExtension(this)
-
+abstract class FrictionKineticNode(allowOptimization: Boolean) : KineticNode(allowOptimization) {
     /**
      * Viscous friction(`𝜏 = -[viscousDamping] * ω`).
      * */
@@ -1521,11 +1521,36 @@ class KineticShaft(allowOptimization: Boolean = true) : KineticNode(allowOptimiz
             }
         }
     }
+}
+
+/**
+ * A two-ended node.
+ * It's pretty much the bread and butter of all simulations.
+ * */
+class KineticShaft(allowOptimization: Boolean = true) : FrictionKineticNode(allowOptimization) {
+    val e1 = RigidKineticExtension(this)
+    val e2 = RigidKineticExtension(this)
 
     override fun simulationDestroyed() {
         super.simulationDestroyed()
         e1.simulationDestroyed()
         e2.simulationDestroyed()
+    }
+}
+
+fun KineticShaft.minus() = this.e1
+fun KineticShaft.plus() = this.e2
+
+/**
+ * A one-ended node.
+ * Useful for e.g. flywheels, and for the gears of a gearbox or the halves of a clutch.
+ * */
+class KineticMono : FrictionKineticNode(false) {
+    val ext = RigidKineticExtension(this)
+
+    override fun simulationDestroyed() {
+        super.simulationDestroyed()
+        ext.simulationDestroyed()
     }
 }
 
@@ -1744,7 +1769,7 @@ class RigidKineticExtension(node: KineticNode, val maxLambda: Double = Double.PO
     var ratio: Double = 1.0
         set(value) {
             if(field != value) {
-                if(node.proxy != null) {
+                if(node.isInProxy) {
                     error("Setting ratio while optimized is not allowed")
                 }
 
@@ -2033,6 +2058,7 @@ interface SimulationDisplayer {
     fun display(resistor: IResistor) : DisplayResistor
     fun display(resistor: TheveninEstimatingResistor) : DisplayTheveninResistor
     fun display(powerSource: MyPowerVoltageSource) : DisplayVoltagePowerSource
+    fun display(kineticNode: KineticNode) : DisplayKineticNode
     fun remove(source: DisplaySource)
 
     interface DisplaySource
@@ -2079,6 +2105,14 @@ interface SimulationDisplayer {
         val power: Quantity<Power>
         val powerIdeal: Quantity<Power>
     }
+
+    interface DisplayKineticNode : DisplaySource {
+        val angle: Quantity<Angle>
+        val angularVelocity: Quantity<AngularVelocity>
+        val angularAcceleration: Quantity<AngularAcceleration>
+        val inertia: Quantity<Inertia>
+        val kineticEnergy: Quantity<Energy>
+    }
 }
 
 class SimulationDisplayerImpl() : SimulationDisplayer {
@@ -2111,13 +2145,16 @@ class SimulationDisplayerImpl() : SimulationDisplayer {
     override fun display(powerSource: MyPowerVoltageSource) = DisplayVoltagePowerSourceImpl(powerSource)
         .add<SimulationDisplayer.DisplayVoltagePowerSource>()
 
+    override fun display(kineticNode: KineticNode) = DisplayKineticNodeImpl(kineticNode)
+        .add<SimulationDisplayer.DisplayKineticNode>()
+
     fun step(dt: Double) {
         implementations.forEach {
             it.step(if(firstStep) -1.0 else dt)
         }
 
         if(implementations.size > 25) {
-            error("Dangling displays! ${implementations.size}")
+            error(DEBUGGER_BREAK("Dangling displays! ${implementations.size}"))
         }
 
         firstStep = false
@@ -2125,7 +2162,7 @@ class SimulationDisplayerImpl() : SimulationDisplayer {
 
     override fun remove(source: SimulationDisplayer.DisplaySource) {
         check(implementations.remove(source)) {
-            "Tried to remove non-added display source $source"
+            DEBUGGER_BREAK("Tried to remove non-added display source $source")
         }
     }
 
@@ -2225,6 +2262,30 @@ class SimulationDisplayerImpl() : SimulationDisplayer {
             powerIdeal = Quantity(obj.powerIdeal, WATT)
         }
     }
+
+    private class DisplayKineticNodeImpl(override val obj: KineticNode) : SimulationDisplayer.DisplayKineticNode, Implementation {
+        override var angle = Quantity<Angle>(0.0)
+        override var angularVelocity = Quantity<AngularVelocity>(0.0)
+        var previousAngularVelocity = Quantity<AngularVelocity>(0.0)
+        override var angularAcceleration = Quantity<AngularAcceleration>(0.0)
+        override var inertia = Quantity<Inertia>(0.0)
+        override var kineticEnergy = Quantity<Energy>(0.0)
+
+        override fun step(dt: Double) {
+            angle = Quantity(obj.angle, RADIAN)
+            angularVelocity = Quantity(obj.omega, RADIAN_PER_SECOND)
+
+            if(dt != -1.0) {
+                val dw = angularVelocity - previousAngularVelocity
+                angularAcceleration = Quantity(!dw / dt, RADIAN_PER_SECOND2)
+            }
+
+            previousAngularVelocity = angularVelocity
+
+            inertia = Quantity(obj.inertia, KILOGRAM_METER2)
+            kineticEnergy = Quantity(obj.energy, JOULE)
+        }
+    }
 }
 
 /**
@@ -2235,7 +2296,7 @@ class SimulationDisplayerImpl() : SimulationDisplayer {
 fun Quantity<ElectricalResistivity>.cylinderResistance(L: Quantity<Distance>, A: Quantity<Area>) = Quantity((!this * !L) / !A, OHM)
 
 @DimensionClassifier("kg×m²") interface Inertia
-val KILOGRAM_METER_SQUARED = standardScale<Inertia>()
+val KILOGRAM_METER2 = standardScale<Inertia>()
 
 @DimensionClassifier("Nms") interface ViscousFriction
 val NEWTON_METER_SECOND = standardScale<ViscousFriction>()
@@ -2245,6 +2306,9 @@ val RADIAN = standardScale<Angle>()
 
 @DimensionClassifier("rad/s") interface AngularVelocity
 val RADIAN_PER_SECOND = standardScale<AngularVelocity>()
+
+@DimensionClassifier("rad/s²")interface AngularAcceleration
+val RADIAN_PER_SECOND2 = standardScale<AngularAcceleration>()
 
 @DimensionClassifier("Nm") interface Torque
 val NEWTON_METER = standardScale<Torque>()
@@ -2292,4 +2356,67 @@ val ELN2_DIMENSION_TYPES : BiMap<Class<*>, String> = run {
     }
 
     map
+}
+
+class RotationUpdateProfile2d(val p0: Rotation2d, val v0: Double, val a1: Double, val a2: Double, val duration: Double) {
+    var currentTime = 0.0
+    val timeRemaining get() = (duration - currentTime).coerceIn(0.0, duration)
+
+    var sampleP = p0
+        private set
+
+    var sampleV = v0
+        private set
+
+    fun sampleTrajectory() : Double {
+        val x = currentTime.coerceIn(0.0, duration)
+        val t = duration / 2.0
+
+        return if (x <= t) {
+            sampleP = p0 + (v0 * x + 0.5 * a1 * x * x)
+            sampleV = v0 + a1 * x
+            a1
+        }
+        else {
+            val p1 = p0 + (v0 * t + 0.5 * a1 * t * t)
+            val v1 = v0 + a1 * t
+            val y = x - t
+
+            sampleP = p1 + (v1 * y + 0.5 * a2 * y * y)
+            sampleV = v1 + a2 * y
+            a2
+        }
+    }
+}
+
+@Suppress("LocalVariableName")
+fun computeRotationUpdateAccelerationProfile(targetPos: Rotation2d, targetVel: Double, sourcePos: Rotation2d, sourceVel: Double, T: Double) : RotationUpdateProfile2d {
+    val dp = targetPos - sourcePos
+    val dv = targetVel - sourceVel
+
+    val t = T / 2.0
+    val t2 = t * t
+
+    val a1 = (dp + targetVel * T) / t2 - (2.0 * sourceVel) / t - dv / T
+    val a2 = dv / t - a1
+
+    return RotationUpdateProfile2d(sourcePos, sourceVel, a1, a2, T)
+}
+
+fun computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
+    accelerationEstimate: Double,
+    targetPos: Rotation2d, targetVel: Double,
+    sourcePos: Rotation2d, sourceVel: Double,
+    maxTransitionTime: Double = 0.25
+) : RotationUpdateProfile2d {
+
+    val dv = abs(targetVel - sourceVel)
+    val accelEstimate = abs(accelerationEstimate).coerceAtLeast(dv / maxTransitionTime)
+    val duration = dv / accelEstimate
+
+    return computeRotationUpdateAccelerationProfile(
+        targetPos, targetVel,
+        sourcePos, sourceVel,
+        duration
+    )
 }

@@ -7,7 +7,6 @@ package org.eln2.mc.common.content
 import net.minecraft.client.gui.screens.MenuScreens
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
-import net.minecraft.world.item.crafting.RecipeType
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.phys.AABB
 import net.minecraftforge.registries.RegistryObject
@@ -75,7 +74,7 @@ import org.eln2.mc.common.parts.foundation.transformPartWorld
 import org.eln2.mc.common.specs.SpecRegistry.specImmediateBB
 import org.eln2.mc.common.specs.SpecRegistry.specMemoizeBB
 import org.eln2.mc.common.specs.foundation.SpecFactory
-import org.eln2.mc.KILOGRAM_METER_SQUARED
+import org.eln2.mc.KILOGRAM_METER2
 import org.eln2.mc.data.Locators
 import org.eln2.mc.NEWTON_METER
 import org.eln2.mc.NEWTON_METER_SECOND
@@ -92,8 +91,6 @@ import org.eln2.mc.common.recipes.MotorProcessingCellElectricalOptions
 import org.eln2.mc.common.recipes.MotorProcessingCellThermalOptions
 import org.eln2.mc.common.recipes.RecipeRegistry.registerCatalyzedRecipe
 import org.eln2.mc.common.recipes.RecipeRegistry.registerDirectRecipe
-import org.eln2.mc.common.recipes.foundation.CatalyzedSimpleProcessingRecipe
-import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipe
 import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
 import org.eln2.mc.cylinderResistance
 import org.eln2.mc.data.directionMonopolarMapPlanar
@@ -267,6 +264,38 @@ object Content {
     }
 
     val THERMAL_RADIATOR_PART = partImmediateBB("thermal_radiator", 16.0, 3.0, 16.0, ::RadiatorPart)
+
+    //#endregion
+
+    //#region Shafts
+
+    val STANDARD_IRON_SHAFT_CELL = cellMemoize("standard_iron_shaft") {
+        val thermal = ThermalMassDefinition(
+            ChemicalElement.Iron.asMaterial,
+            mass = Quantity(60.25, KILOGRAM)
+        )
+
+        val map = directionPoleMapPlanar(Base6Direction3d.Front, Base6Direction3d.Back)
+
+        val desc = KineticShaftDescription(
+            Quantity(0.0770, KILOGRAM_METER2),
+            0.0,
+            Quantity(0.0, NEWTON_METER),
+            Quantity(0.0, NEWTON_METER)
+        )
+
+        CellFactory {
+            KineticShaftCell(it,
+                thermal,
+                map,
+                desc
+            )
+        }
+    }
+
+    val STANDARD_IRON_SHAFT_PART = partImmediateBB("standard_iron_shaft", 6.0, 10.0, 16.0) {
+        KineticShaftPart(it, STANDARD_IRON_SHAFT_CELL)
+    }
 
     //#endregion
 
@@ -645,7 +674,7 @@ object Content {
             0.5,
             Quantity(10.0, WATT_PER_KELVIN),
             Quantity(0.05, WATT_PER_KELVIN),
-            Quantity(1.0, KILOGRAM_METER_SQUARED),
+            Quantity(1.0, KILOGRAM_METER2),
             Quantity(0.025, NEWTON_METER_SECOND),
             Quantity(5.0, NEWTON_METER),
             Quantity(2400.0, WATT),

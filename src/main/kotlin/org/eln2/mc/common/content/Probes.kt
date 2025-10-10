@@ -8,7 +8,6 @@ import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
-import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.ServerOnly
@@ -35,7 +34,6 @@ import org.eln2.mc.data.Pole
 import org.eln2.mc.data.PoleMap
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.join
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.offerNegative
 import org.eln2.mc.offerPositive
@@ -111,14 +109,13 @@ class ProbeRangeToRangeMap : ProbeSignalMap {
  * @param outputMap The pole map used to map the single output of the generator.
  * @param signalMap The map from measured quantities to the output signal.
  * */
-abstract class PassthroughProbeObject(
+abstract class PassthroughElectricalProbeObject(
     cell: PotentialProbeCell,
     val comparerMap: PoleMap,
     val outputMap: MonopoleMap,
     val signalMap: ProbeSignalMap
 ) : ElectricalObject<PotentialProbeCell>(cell) {
     val signalSource = SignalSource()
-    val tempResistor = Resistor().also { it.resistance = LARGE_RESISTANCE }  // TODO FIXME GRISSESS PLS ADD SUBSOLVER PLS GIB!
 
     /**
      * The internal resistor, mapped by [comparerMap].
@@ -147,15 +144,11 @@ abstract class PassthroughProbeObject(
     override fun addComponents(circuit: ElectricalComponentSet) {
         circuit.add(signalSource)
         circuit.add(internalResistor)
-        circuit.add(tempResistor) // FIXME
     }
 
     override fun build(map: ElectricalConnectivityMap) {
         super.build(map)
         signalSource.build(map)
-        // FIXME
-        map.join(signalSource.voltageSource.offerNegative(), tempResistor.offerNegative())
-        map.join(tempResistor.offerPositive(), internalResistor.offerNegative())
     }
 
     override fun subscribe(subscribers: SubscriberCollection) {
@@ -182,7 +175,7 @@ class PotentialProbeObject(
     comparerMap: PoleMap,
     outputMap: MonopoleMap,
     signalMap: ProbeSignalMap
-) : PassthroughProbeObject(cell, comparerMap, outputMap, signalMap) {
+) : PassthroughElectricalProbeObject(cell, comparerMap, outputMap, signalMap) {
     init { internalResistor.resistance = 1e7 }
 
     override fun getMeasuredQuantity(dt: Double, subscriberPhase: SubscriberPhase) = internalResistor.potential

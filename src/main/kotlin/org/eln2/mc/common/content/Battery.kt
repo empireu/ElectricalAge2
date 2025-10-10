@@ -82,7 +82,6 @@ interface BatteryView {
      * Gets the capacity percentage of this battery, relative to the initial state.
      * */
     val capacityCoefficient get() = model.capacityFunction.computeCapacity(this).coerceIn(0.0, 1.0)
-
     /**
      * Gets the capacity of this battery, based on the [capacityCoefficient].
      * */

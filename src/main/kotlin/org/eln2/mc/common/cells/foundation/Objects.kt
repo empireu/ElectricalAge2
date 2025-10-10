@@ -336,7 +336,9 @@ abstract class KineticObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
      * @param remote The remote kinetic object.
      * @return True, if the connection is allowed. Otherwise, false.
      * */
-    open fun acceptsRemoteObject(remote: KineticObject<*>) : Boolean = true
+    open fun acceptsRemoteObject(remote: KineticObject<*>) : Boolean {
+        return cell.kineticObjectPredicate(remote)
+    }
 
     /**
      * Builds the constraints. After this, the sub-solvers will be realized and made available in [setSubSolvers].
@@ -359,6 +361,8 @@ abstract class KineticObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     open fun setSubSolvers(subSolvers: SubSolverSet<KineticSimulation>) {
         this.subSolvers = subSolvers
     }
+
+    protected fun KineticNode.display() = cell.displayer.display(this)
 }
 
 /**
