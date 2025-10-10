@@ -161,7 +161,7 @@ fun isServerPaused() : Boolean {
     val server = ServerLifecycleHooks.getCurrentServer()
 
     if(server == null) {
-        LOG.fatal("ELN2: SERVER NULL")
+        LOG.fatal(DEBUGGER_BREAK("ELN2: SERVER NULL"))
         return true
     }
 

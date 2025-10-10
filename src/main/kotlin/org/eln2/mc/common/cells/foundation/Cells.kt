@@ -1925,6 +1925,30 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         }
     }
 
+    private fun clearElectricalSimulation() {
+        electricalSubSolverSets.clear()
+    }
+
+    private fun clearRotationSimulation() {
+        // Reset angles and other state (so the fresh node's phase coincides with the rest of the network):
+        kineticSubSolverSets.forEach {
+            it.solvers.forEach { solver ->
+                solver.nodes.forEach { node ->
+                    node.resetForRestart()
+                }
+            }
+        }
+
+        // Destroy old references:
+        kineticSubSolverSets.forEach {
+            it.solvers.forEach { solver ->
+                solver.destroy()
+            }
+        }
+
+        kineticSubSolverSets.clear()
+    }
+
     /**
      * This realizes the object subsets and creates the underlying simulations.
      * The simulation must be suspended before calling this method.
@@ -1933,14 +1957,8 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
     fun buildSolver() {
         validateMutationAccess()
 
-        kineticSubSolverSets.forEach {
-            it.solvers.forEach { solver ->
-                solver.destroy()
-            }
-        }
-
-        electricalSubSolverSets.clear()
-        kineticSubSolverSets.clear()
+        clearElectricalSimulation()
+        clearRotationSimulation()
 
         cells.forEach { it.clearObjectConnections() }
         cells.forEach { it.onBuildStarted() }
@@ -1997,7 +2015,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         }
 
         kinetic.objectsByBuilder.keys.forEach { builder ->
-            val subSolvers = builder.build(DT)
+            val subSolvers = builder.build(DT, true)
 
             kinetic.objectsByBuilder[builder].forEach { obj ->
                 obj.setSubSolvers(subSolvers)
@@ -2171,7 +2189,8 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
      * */
     fun destroy() {
         validateMutationAccess()
-
+        clearElectricalSimulation()
+        clearRotationSimulation()
         manager.removeGraph(this)
         manager.setDirty()
     }

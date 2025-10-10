@@ -48,6 +48,7 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.utils.Stopwatch
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.ClientOnly
+import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
 import org.eln2.mc.RotationUpdateProfile2d
 import org.eln2.mc.ServerOnly

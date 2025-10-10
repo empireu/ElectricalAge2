@@ -1,6 +1,7 @@
 package org.eln2.mc.common.content
 
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.world.InteractionResult
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.JOULE
 import org.ageseries.libage.data.Quantity
@@ -38,8 +39,10 @@ import org.eln2.mc.common.cells.foundation.addPost
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
+import org.eln2.mc.common.parts.foundation.PartUseInfo
 import org.eln2.mc.data.Pole
 import org.eln2.mc.data.PoleMap
+import org.eln2.mc.extensions.debugInIDE
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.minus
@@ -157,6 +160,19 @@ class KineticShaftPart(ci: PartCreateInfo, cellProvider: RegistryObject<CellProv
     @ClientOnly
     override val renderState = BasicKineticPart.RenderStateImpl.createFor(this)
 
+    override fun onUsedBy(context: PartUseInfo): InteractionResult {
+        if(!placement.level.isClientSide) {
+            if(hasCell) {
+                cell.kinetic.shaft.externalTorque += 100.0
+            }
+
+            return InteractionResult.SUCCESS
+        }
+
+
+        return super.onUsedBy(context)
+    }
+
     @ClientOnly
     override fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) {
         builder.withHandler<BasicKineticPart.RotationSyncPacket> {
@@ -175,6 +191,7 @@ class KineticShaftPart(ci: PartCreateInfo, cellProvider: RegistryObject<CellProv
 
     @ServerOnly
     override fun submitDisplay(builder: ComponentDisplayList) {
+        cell.kinetic.subSolvers?.debugInIDE(builder)
         builder.quantity(cell.kinetic.shaftDisplay.angle)
         builder.quantity(cell.kinetic.shaftDisplay.angularVelocity)
         builder.quantity(cell.kinetic.shaftDisplay.angularAcceleration)

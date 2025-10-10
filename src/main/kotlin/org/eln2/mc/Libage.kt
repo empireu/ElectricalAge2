@@ -236,7 +236,9 @@ class SubSolverSystemBuilder<Node, SubSolver : SubSolverSystemBuilder.PerSubSolv
     private fun releaseSubSolver(subSolver: SubSolver) {
         subSolver.recycle()
         pool.add(subSolver)
-        check(subSolvers.remove(subSolver))
+        check(subSolvers.remove(subSolver)) {
+            DEBUGGER_BREAK()
+        }
     }
 
     /**
@@ -248,7 +250,7 @@ class SubSolverSystemBuilder<Node, SubSolver : SubSolverSystemBuilder.PerSubSolv
         }
 
         val subSolver = getSubSolver()
-        check(subSolver.addNode(node))
+        check(subSolver.addNode(node)) { DEBUGGER_BREAK() }
         subSolversByNode.putUnique(node, Handle(subSolver))
 
         return true
@@ -300,16 +302,14 @@ class SubSolverSystemBuilder<Node, SubSolver : SubSolverSystemBuilder.PerSubSolv
  * Represents a rigid line of shafts connected end-to-end. They have the same inertia, same max lambdas, gear ratio of 1.
  * */
 class LineShaft(val lineGraph: Array<KineticShaft>) : KineticNode(false), KineticNodeProxy {
-    val e1 = RigidKineticExtension(this)
-    val e2 = RigidKineticExtension(this)
+    val e1 = RigidKineticExtension(this, 1)
+    val e2 = RigidKineticExtension(this, -1)
 
     private var previousLineOmega = 0.0
     private val originalExternalTorque = DoubleArray(lineGraph.size)
 
     init {
         inertia = lineGraph.sumOf { it.inertia }
-        e1.ratio = lineGraph[0].e1.ratio
-        e2.ratio = e1.ratio
     }
 
     private fun importShaftAngularVelocities() {
@@ -384,13 +384,13 @@ class LineShaft(val lineGraph: Array<KineticShaft>) : KineticNode(false), Kineti
         }
 
         if (e1.constraints.isNotEmpty()) {
-            check(e1.constraints.size == 1)
+            check(e1.constraints.size == 1) { DEBUGGER_BREAK() }
             val leftPhysicalConstraint = lineGraph.first().e1.constraints[0]
             leftPhysicalConstraint.lambda = e1.constraints[0].lambda
         }
 
         if (e2.constraints.isNotEmpty()) {
-            check(e2.constraints.size == 1)
+            check(e2.constraints.size == 1) { DEBUGGER_BREAK() }
             val rightPhysicalConstraint = lineGraph.last().e2.constraints[0]
             rightPhysicalConstraint.lambda = e2.constraints[0].lambda
         }
@@ -446,9 +446,17 @@ class LineShaft(val lineGraph: Array<KineticShaft>) : KineticNode(false), Kineti
             rightConstraint.lambda = lambdaRight
         }
     }
+
+    override fun resetForRestart() {
+        super.resetForRestart()
+
+        lineGraph.forEach {
+            it.resetForRestart()
+        }
+    }
 }
 
-class KineticNetworkOptimizer(val nodes: Set<KineticNode>, val rigidConstraints: List<RigidExtensionConstraint>) {
+class KineticNetworkOptimizer(val originalNodes: Set<KineticNode>, val originalRigidConstraints: List<RigidExtensionConstraint>) {
     companion object {
         /**
          * Gets the neighbor for the [extension]. Returns a node if:
@@ -463,7 +471,11 @@ class KineticNetworkOptimizer(val nodes: Set<KineticNode>, val rigidConstraints:
                 if(constraint is RigidExtensionConstraint) {
                     check(constraint.a == extension || constraint.b == extension)
 
-                    val otherExtension = if(constraint.a == extension) constraint.b else constraint.a
+                    val otherExtension = constraint.getOther(extension)
+
+                    if(otherExtension.pole != -extension.pole) {
+                        return null // Direction not preserved
+                    }
 
                     if(otherExtension.maxLambda != extension.maxLambda) {
                         return null
@@ -494,15 +506,44 @@ class KineticNetworkOptimizer(val nodes: Set<KineticNode>, val rigidConstraints:
      * */
     private val lineGraphs = ArrayList<ArrayList<KineticShaft>>()
 
-    // Re-written nodes and rigid constraints:
+    /**
+     * All the nodes to remove from the solver's nodes.
+     * */
+    val nodesToSubtract = HashSet<KineticNode>()
+    /**
+     * All the constraints to remove from the solver's constraints.
+     * */
+    val constraintsToSubtract = HashSet<RigidExtensionConstraint>()
+
+    /**
+     * All created line shafts.
+     * */
+    val lineShafts = ArrayList<LineShaft>()
+    /**
+     * Map of extension of node that was optimized away to corresponding extension of owner line.
+     * Two of these per line.
+     * */
+    val eliminatedNodeExtensionToNewNodeExtension = HashMap<RigidKineticExtension, RigidKineticExtension>()
+    /**
+     * Lookup to prevent double-rewriting of constraints between lines. P.S. When the constraint is created, Pair(a, b) AND Pair(b, a) for easier inspection.
+     * We iterate over all the lines, and we re-write constraints. But the constraints are reciprocal, so we will end up creating a constraint twice, unless we check for it.
+     * */
+    val realizedLinePairs = LinkedHashSet<Pair<RigidKineticExtension, RigidKineticExtension>>()
+
+    /**
+     * Final nodes to pass to solver.
+     * */
     val newNodes = ArrayList<KineticNode>()
+    /**
+     * Final constraints to pass to solver.
+     * */
     val newRigidConstraints = ArrayList<RigidExtensionConstraint>()
 
-    // The optimized line shafts:
-    val lineShafts = ArrayList<LineShaft>()
-
+    /**
+     * Gathers all the line graphs in [lineGraphs].
+     * */
     private fun gatherGraphs() {
-        val eligibleShafts = nodes
+        val eligibleShafts = originalNodes
             .asSequence()
             .mapNotNull { it as? KineticShaft }
             .filter {
@@ -537,9 +578,38 @@ class KineticNetworkOptimizer(val nodes: Set<KineticNode>, val rigidConstraints:
                     return@filter false
                 }
 
-                return@filter getNeighborFromExtension(e1) != null || getNeighborFromExtension(e2) != null
+                return@filter true // first pass. We need to then filter by neighbor using the shafts gathered from this first pass.
             }
             .toHashSet()
+
+        val withoutNeighbor = eligibleShafts
+            .asSequence()
+            .filter { subject ->
+                // |e1      e2|-----|e1 e2|-----|e1      e2|
+                // neighborOnE1     subject     neighborOnE2
+
+                // [getNeighborFromExtension] already checks the poles to make sure we are preserving direction.
+
+                val neighborOnE1 = getNeighborFromExtension(subject.e1)
+
+                if(neighborOnE1 != null && eligibleShafts.contains(neighborOnE1)) {
+                    return@filter false
+                }
+
+                val neighborOnE2 = getNeighborFromExtension(subject.e2)
+
+                return@filter !(neighborOnE2 != null && eligibleShafts.contains(neighborOnE2))
+                // Check if direction is preserved:
+            }
+            .toHashSet()
+
+        eligibleShafts.removeAll(withoutNeighbor)
+
+        // All shafts visited to the left of current:
+        val visitedLeft = HashSet<KineticShaft>()
+
+        // All shafts visited to the right of the left-most shaft found (including left-most, including anchor):
+        val visitedRight = HashSet<KineticShaft>()
 
         while (eligibleShafts.isNotEmpty()) {
             var current = eligibleShafts.first()
@@ -550,7 +620,7 @@ class KineticNetworkOptimizer(val nodes: Set<KineticNode>, val rigidConstraints:
             while (true) {
                 val left = getNeighborFromExtension(current.e1)
 
-                if(left != null && eligibleShafts.contains(left)) {
+                if(left != null && eligibleShafts.contains(left) && visitedLeft.add(left)) {
                     current = left
                 }
                 else {
@@ -558,20 +628,18 @@ class KineticNetworkOptimizer(val nodes: Set<KineticNode>, val rigidConstraints:
                 }
             }
 
-            val leftMost = current
-
             // Then traverse toward the right and add to list.
             // But also make sure we didn't create a cycle.
             val lineGraph = ArrayList<KineticShaft>()
 
             while (true) {
+                if(!visitedRight.add(current)) {
+                    break
+                }
+
                 lineGraph.add(current)
 
                 val right = getNeighborFromExtension(current.e2)
-
-                if(right == leftMost) {
-                    break  // Cycle
-                }
 
                 if(right != null && eligibleShafts.contains(right)) {
                     current = right
@@ -586,80 +654,181 @@ class KineticNetworkOptimizer(val nodes: Set<KineticNode>, val rigidConstraints:
             }
 
             lineGraphs.add(lineGraph)
+
+            visitedLeft.clear()
+            visitedRight.clear()
         }
     }
 
-    fun execute() {
-        /**
-         * Gathers all the line graphs in [lineGraphs].
-         * */
-        gatherGraphs()
-
-        // Make lookups for all internal nodes and internal constraints (this doesn't include constraints at the edge nodes):
-        val nodesToSubtract = HashSet<KineticNode>()
-        val constraintsToSubtract = HashSet<RigidExtensionConstraint>()
-
+    /**
+     * Gathers all the nodes to eliminate from the global system in [nodesToSubtract] and the constraints to eliminate in [constraintsToSubtract].
+     * */
+    private fun gatherNodesAndConstraintsToSubtract() {
         lineGraphs.forEach { graph ->
-            nodesToSubtract.addAll(graph) // Subtract all nodes from line graphs. They will be owned by the super nodes
+            // Subtract all nodes from line graphs.
+            // They will be owned by the super nodes.
+            nodesToSubtract.addAll(graph)
 
-            // Subtract constraints on the interior only for now.
-            for (i in 0 until graph.size - 1) {
-                constraintsToSubtract.add(graph[i].e2.constraints[0] as RigidExtensionConstraint)
+            // Subtract all constraints too.
+            graph.forEach { node ->
+                check(node.e1.constraints.size <= 1) { DEBUGGER_BREAK() }
+                check(node.e2.constraints.size <= 1) { DEBUGGER_BREAK() }
+
+                if(node.e1.constraints.isNotEmpty()) {
+                    constraintsToSubtract.add(node.e1.constraints[0] as RigidExtensionConstraint)
+                }
+
+                if(node.e2.constraints.isNotEmpty()) {
+                    constraintsToSubtract.add(node.e2.constraints[0] as RigidExtensionConstraint)
+                }
             }
         }
+    }
 
-        // For each line graph, create a new combined node. Also blacklist the edge constraints.
-        // Then, we can re-create the edge constraints to be with this new master node:
+    /**
+     * Creates a line shaft in [lineShafts] for each of the graphs in [lineGraphs].
+     * Maps the left and right extensions of the eliminated nodes to the left and right extensions of the new owner line shaft.
+     *
+     * We can't rewrite the constraints here because there can be adjacent lines, so we need all the lines already created so we can look up their extensions in a second pass.
+     *
+     * Finally, the created shafts are copied into [newNodes].
+     * */
+    private fun createCombinedNodesAndEdgeMap() {
         lineGraphs.forEach { graph ->
-            val superNode = LineShaft(graph.toTypedArray())
-            lineShafts.add(superNode)
-            newNodes.add(superNode)
+            val line = LineShaft(graph.toTypedArray())
+
+            lineShafts.add(line)
 
             val leftNode = graph.first()
             val rightNode = graph.last()
 
-            fun processEdge(virtualExtension: RigidKineticExtension, physicalExtension: RigidKineticExtension) {
-                if(virtualExtension.constraints.isEmpty()) {
-                    return
-                }
-
-                check(virtualExtension.constraints.size == 1)
-
-                val constraint = virtualExtension.constraints[0] as RigidExtensionConstraint
-
-                // Blacklist old constraint with the now virtual nodes:
-                constraintsToSubtract.add(constraint)
-
-                // Create a new constraint with the super node:
-                if(constraint.a == virtualExtension) {
-                    newRigidConstraints.add(
-                        RigidExtensionConstraint(physicalExtension, constraint.b)
-                    )
-                }
-                else {
-                    check(constraint.b == virtualExtension)
-                    newRigidConstraints.add(
-                        RigidExtensionConstraint(constraint.a, physicalExtension)
-                    )
-                }
-            }
-
-            // Blacklist edge constraints of the internal nodes and rebuild them for the super node:
-            processEdge(leftNode.e1, superNode.e1)
-            processEdge(rightNode.e2, superNode.e2)
+            // Make the edge mapping:
+            eliminatedNodeExtensionToNewNodeExtension.putUnique(leftNode.e1, line.e1)
+            eliminatedNodeExtensionToNewNodeExtension.putUnique(rightNode.e2, line.e2)
         }
 
-        // Create new collections:
+        // Add new nodes:
+        lineShafts.forEach {
+            newNodes.add(it)
+        }
+    }
 
-        rigidConstraints.forEach { constraint ->
+    /**
+     * Translates the constraints of the eliminated node edge extensions in each graph in [lineGraphs] into constraints with the created line's extensions.
+     * This is done as a separate pass to [createCombinedNodesAndEdgeMap] because all the lines need to be known, because lines can form one next to each other, so mapping needs all the line nodes ahead of time.
+     * */
+    private fun rewriteConstraints() {
+        lineShafts.forEach { line ->
+            val leftNode = line.lineGraph.first()
+            val rightNode = line.lineGraph.last()
+
+            /**
+             * Translates the constraint to the [formerExtension] (a node now owned by the line and not simulated) into a constraint with the line, which is simulated.
+             * @param formerExtension The extension going outside the graph, from the first or the last node.
+             * If for the first node, it is `e1`, and if it's for the last node, it is `e2`.
+             * The extension connected this one can be another generated line, so we use the [eliminatedNodeExtensionToNewNodeExtension] to find that out.
+             * If it is, we just create a constraint, and that's all. If it is not, we need to remove the old constraint from the unaffected other node and create the new constraint.
+             * @param physicalExtension The corresponding extension of the line shaft.
+             * */
+            fun translateExtension(formerExtension: RigidKineticExtension, physicalExtension: RigidKineticExtension) {
+                if(formerExtension.constraints.isEmpty()) {
+                    return // Nothing to translate
+                }
+
+                check(formerExtension.constraints.size == 1) { DEBUGGER_BREAK() }
+
+                /**
+                 * The constraint to translate. It is already eliminated from the solver by [gatherNodesAndConstraintsToSubtract].
+                 * This constraint contains an extension from the internal node, and an extension from a node outside this line.
+                 * */
+                val constraint = formerExtension.constraints[0] as RigidExtensionConstraint
+                val otherExtension = constraint.getOther(formerExtension)
+
+                // P.S. The constructor of [ExtensionConstraint] adds the constraint to the internal lists on the extensions.
+
+                // otherExtension can be the extension of a node that was optimized away:
+                val correspondingOwnerExtension = eliminatedNodeExtensionToNewNodeExtension[otherExtension]
+
+                val newConstraint = if(correspondingOwnerExtension == null) {
+                    // Maps to a former, unoptimized node:
+                    otherExtension.removeConstraint(constraint)
+                    RigidExtensionConstraint(physicalExtension, otherExtension)
+                }
+                else {
+                    val isAlreadyRealized =
+                        !realizedLinePairs.add(Pair(physicalExtension, correspondingOwnerExtension)) ||
+                        !realizedLinePairs.add(Pair(correspondingOwnerExtension, physicalExtension))
+
+                    // Make sure we didn't already remap this.
+                    // Re-mapping this specific pair will occur twice (once, in this order, and second time, in the reverse order).
+                    if(isAlreadyRealized) {
+                        return
+                    }
+
+                    // Maps to another line:
+                    RigidExtensionConstraint(physicalExtension, correspondingOwnerExtension)
+                }
+
+                newRigidConstraints.add(newConstraint)
+            }
+
+            translateExtension(leftNode.e1, line.e1)
+            translateExtension(rightNode.e2, line.e2)
+        }
+    }
+
+    /**
+     * Transfers [originalNodes] that aren't in [nodesToSubtract] into [newNodes].
+     * Transfers [originalRigidConstraints] that aren't in [constraintsToSubtract] into [newRigidConstraints].
+     * */
+    private fun transferNonEliminatedNodesAndConstraints() {
+        originalNodes.forEach { node ->
+            if(!nodesToSubtract.contains(node)) {
+                newNodes.add(node)
+            }
+        }
+
+        originalRigidConstraints.forEach { constraint ->
             if(!constraintsToSubtract.contains(constraint)) {
                 newRigidConstraints.add(constraint)
             }
         }
+    }
 
-        nodes.forEach { node ->
-            if(!nodesToSubtract.contains(node)) {
-                newNodes.add(node)
+    fun execute() {
+        gatherGraphs()
+        gatherNodesAndConstraintsToSubtract()
+        createCombinedNodesAndEdgeMap()
+        rewriteConstraints()
+        transferNonEliminatedNodesAndConstraints()
+
+        if(ELN2_DEBUG) {
+            lineGraphs.forEach { graph ->
+                graph.indices.forEach { i ->
+                    val subject = graph[i]
+
+                    if(i != 0) {
+                        if(getNeighborFromExtension(subject.e1) !== graph[i - 1]) {
+                            DEBUGGER_BREAK()
+                        }
+                    }
+
+                    if(i != graph.size - 1) {
+                        if(getNeighborFromExtension(subject.e2) !== graph[i + 1]) {
+                            DEBUGGER_BREAK()
+                        }
+                    }
+                }
+            }
+
+            newRigidConstraints.forEach { constraint ->
+                if(!newNodes.contains(constraint.a.node)) {
+                    DEBUGGER_BREAK()
+                }
+
+                if(!newNodes.contains(constraint.b.node)) {
+                    DEBUGGER_BREAK()
+                }
             }
         }
     }
@@ -861,6 +1030,12 @@ class KineticSimulation(
 
     //#endregion
 
+    var lastIterationCount = 0
+        private set
+
+    var lastError: StepError = StepErrorImpl().also { it.begin() }
+        private set
+
     /**
      * Packed storage for constraints during solve.
      * In the data:
@@ -988,9 +1163,18 @@ class KineticSimulation(
         }
     }
 
-    private class IterationError {
-        var maxDeltaL = Double.NaN
-        var maxResidual = Double.NaN
+    /**
+     * Holds the max (absolute) displacement and max (absolute) residual from the last iteration.
+     * If all constraints were skipped, the value is [Double.NEGATIVE_INFINITY].
+     * */
+    interface StepError {
+        val maxDeltaL : Double
+        val maxResidual: Double
+    }
+
+    private class StepErrorImpl : StepError {
+        override var maxDeltaL = Double.NaN
+        override var maxResidual = Double.NaN
 
         fun begin() {
             maxDeltaL = Double.NEGATIVE_INFINITY
@@ -1013,7 +1197,7 @@ class KineticSimulation(
     }
 
     @Suppress("NOTHING_TO_INLINE")
-    private inline fun projectedGaussSeidelConstraint(constraintId: Int, constraints: ConstraintArray, lambdas: LambdaArray, error: IterationError) {
+    private inline fun projectedGaussSeidelConstraint(constraintId: Int, constraints: ConstraintArray, lambdas: LambdaArray, error: StepErrorImpl) {
         val nodeA = constraints.getIndexA(constraintId)
         val nodeB = constraints.getIndexB(constraintId)
         val jacobian = constraints.getJacobian(constraintId)
@@ -1073,7 +1257,7 @@ class KineticSimulation(
      * Executes one PGS iteration for the given constraints and writes the error into [error].
      * @param reversed If true, the constraints will be iterated in reverse order.
      * */
-    private fun projectedGaussSeidelIteration(constraints: ConstraintArray, lambdas: LambdaArray, error: IterationError, reversed: Boolean) {
+    private fun projectedGaussSeidelIteration(constraints: ConstraintArray, lambdas: LambdaArray, error: StepErrorImpl, reversed: Boolean) {
         // Tested unrolling, the cost is insignificant so it's not worth it.
 
         if(reversed) {
@@ -1093,10 +1277,9 @@ class KineticSimulation(
     }
 
     /**
-     * Steps the simulation.
-     * @return The number of PGS iterations taken.
+     * Steps the simulation. The [lastIterationCount] and [lastError] are updated.
      * */
-    fun step() : Int {
+    fun step()  {
         validateUsage()
 
         optimizedShafts.forEach { shaft ->
@@ -1143,8 +1326,14 @@ class KineticSimulation(
             val a = rigid.a
             val b = rigid.b
 
-            val j = -b.ratio / a.ratio
-            val posError = a.ratio * a.node.angle - b.ratio * b.node.angle
+            // See the direction of connection. If it is [-1] ---- [1], preserve relationship. Otherwise, flip.
+
+            // Electrical circuit analogy:
+            // 1 when "positive" connected to "negative", and -1 when "positive" connected to "positive" or "negative" connected to "negative"
+            val sign = -a.pole * b.pole
+
+            val j = -b.ratio / a.ratio * sign
+            val posError = a.ratio * a.node.angle - b.ratio * b.node.angle * sign
             val bias = biasFactor / dt * (posError / a.ratio)
 
             rigidConstraintData.setJacobian(rigid.id, j)
@@ -1220,8 +1409,8 @@ class KineticSimulation(
         warmStart(rigidConstraintData, rigidConstraintLambda)
         warmStart(clutchConstraintData, clutchConstraintLambda)
 
-        var endIterations = 0
-        val error = IterationError()
+        lastIterationCount = 0
+        val error = StepErrorImpl()
 
         val maxIterations = if(firstStep) maxIterationsFirstStep else maxIterations
 
@@ -1244,7 +1433,7 @@ class KineticSimulation(
                 forward = !forward
             }
 
-            endIterations = iteration
+            lastIterationCount = iteration
 
             if(iteration >= minIterations) {
                 // Exit condition:
@@ -1354,8 +1543,7 @@ class KineticSimulation(
         }
 
         firstStep = false
-
-        return endIterations
+        lastError = error
     }
 
     fun destroy() {
@@ -1465,6 +1653,15 @@ abstract class KineticNode(val allowOptimization: Boolean) {
         this.angle = angle
         this.previousAngle = angle
     }
+
+    /**
+     * Called when the simulation is being rebuilt (after the player placed a new device).
+     * Angular velocity should be preserved, but angles should be set to 0.
+     * */
+    open fun resetForRestart() {
+        angle = 0.0
+        previousAngle = 0.0
+    }
 }
 
 /**
@@ -1528,8 +1725,8 @@ abstract class FrictionKineticNode(allowOptimization: Boolean) : KineticNode(all
  * It's pretty much the bread and butter of all simulations.
  * */
 class KineticShaft(allowOptimization: Boolean = true) : FrictionKineticNode(allowOptimization) {
-    val e1 = RigidKineticExtension(this)
-    val e2 = RigidKineticExtension(this)
+    val e1 = RigidKineticExtension(this, 1)
+    val e2 = RigidKineticExtension(this, -1)
 
     override fun simulationDestroyed() {
         super.simulationDestroyed()
@@ -1546,7 +1743,7 @@ fun KineticShaft.plus() = this.e2
  * Useful for e.g. flywheels, and for the gears of a gearbox or the halves of a clutch.
  * */
 class KineticMono : FrictionKineticNode(false) {
-    val ext = RigidKineticExtension(this)
+    val ext = RigidKineticExtension(this, 1)
 
     override fun simulationDestroyed() {
         super.simulationDestroyed()
@@ -1710,6 +1907,18 @@ abstract class ExtensionConstraint<A : KineticExtension, B : KineticExtension>(v
 class RigidExtensionConstraint(a: RigidKineticExtension, b: RigidKineticExtension) : ExtensionConstraint<RigidKineticExtension, RigidKineticExtension>(a, b) {
     override val impulseA get() = lambda
     override val impulseB get() = lambda * (-b.ratio / a.ratio)
+
+    fun getOther(x: RigidKineticExtension) : RigidKineticExtension {
+        if(x === a) {
+            return b
+        }
+
+        if(x === b) {
+            return a
+        }
+
+        error(DEBUGGER_BREAK("Cannot get other $x of ($a, $b)"))
+    }
 }
 
 /**
@@ -1718,7 +1927,7 @@ class RigidExtensionConstraint(a: RigidKineticExtension, b: RigidKineticExtensio
  * Constraints are formed "between" two [KineticExtension]s. The extensions are analyzed and a fitting constraint is created between the nodes, based on the type of both extensions.
  * Example: for a shaft, you have a "left" extension, and a "right" extension. If you build a line of shafts, the right extension of the first shaft is joined with the left extension of the second one; the right extension of the second shaft with the left extension of the third one, and so on.
  * */
-abstract class KineticExtension(val node: KineticNode) {
+abstract class KineticExtension(val node: KineticNode, val pole: Int) {
     /**
      * Priority, used for sorting, used for creating the [ExtensionConstraint].
      * This is done so, if you have say extension of type `A` and extension of type `B`, you need only implement `ExtensionConstraint<A, B>` and not `ExtensionConstraint<B, A>` too.
@@ -1739,7 +1948,12 @@ abstract class KineticExtension(val node: KineticNode) {
         var result = 0.0
 
         constraints.forEach { constraint ->
-            result += if(this == constraint.a) constraint.impulseA else constraint.impulseB
+            result += if(this == constraint.a) {
+                constraint.impulseA
+            }
+            else {
+                constraint.impulseB
+            }
         }
 
         return result
@@ -1750,7 +1964,19 @@ abstract class KineticExtension(val node: KineticNode) {
             "Cannot add to the same constraint"
         }
 
+        if(constraintsInternal.isNotEmpty()) {
+            DEBUGGER_BREAK()
+        }
+
         constraintsInternal.add(constraint)
+    }
+
+    fun removeConstraint(constraint: ExtensionConstraint<*, *>) {
+        require(constraintsInternal.contains(constraint)) {
+            DEBUGGER_BREAK()
+        }
+
+        constraintsInternal.remove(constraint)
     }
 
     fun simulationDestroyed() {
@@ -1762,7 +1988,7 @@ abstract class KineticExtension(val node: KineticNode) {
  * Extension that, when combined with another [RigidKineticExtension], creates a [RigidExtensionConstraint].
  * @param maxLambda The max solver impulse. Setting a bound is useful if destruction is needed (prevents a big jolt being transmitted before the node is destroyed).
  * */
-class RigidKineticExtension(node: KineticNode, val maxLambda: Double = Double.POSITIVE_INFINITY) : KineticExtension(node) {
+class RigidKineticExtension(node: KineticNode, pole: Int, val maxLambda: Double = Double.POSITIVE_INFINITY) : KineticExtension(node, pole) {
     override val priority: Int
         get() = 0
 
@@ -2121,7 +2347,7 @@ class SimulationDisplayerImpl() : SimulationDisplayer {
 
     private inline fun<reified Target> Implementation.add() : Target {
         check(!implementations.any { it === this || it.obj === this.obj }) {
-            "Duplicate add repository $this"
+            DEBUGGER_BREAK("Duplicate add repository $this")
         }
 
         implementations.add(this)
@@ -2400,6 +2626,10 @@ fun computeRotationUpdateAccelerationProfile(targetPos: Rotation2d, targetVel: D
     val a1 = (dp + targetVel * T) / t2 - (2.0 * sourceVel) / t - dv / T
     val a2 = dv / t - a1
 
+    if(a1.isNaN() || a2.isNaN()) {
+        DEBUGGER_BREAK()
+    }
+
     return RotationUpdateProfile2d(sourcePos, sourceVel, a1, a2, T)
 }
 
@@ -2411,8 +2641,8 @@ fun computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
 ) : RotationUpdateProfile2d {
 
     val dv = abs(targetVel - sourceVel)
-    val accelEstimate = abs(accelerationEstimate).coerceAtLeast(dv / maxTransitionTime)
-    val duration = dv / accelEstimate
+    val accelEstimate = abs(accelerationEstimate).coerceAtLeast(abs(dv) / maxTransitionTime)
+    val duration = if(!accelEstimate.approxEq(0.0)) dv / accelEstimate else maxTransitionTime
 
     return computeRotationUpdateAccelerationProfile(
         targetPos, targetVel,
