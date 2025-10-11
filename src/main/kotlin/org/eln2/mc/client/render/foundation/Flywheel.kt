@@ -48,7 +48,6 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.utils.Stopwatch
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.ClientOnly
-import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
 import org.eln2.mc.RotationUpdateProfile2d
 import org.eln2.mc.ServerOnly
@@ -74,10 +73,12 @@ import org.eln2.mc.extensions.getListTag
 import org.eln2.mc.extensions.getViewRay
 import org.eln2.mc.extensions.rotationFast
 import org.eln2.mc.extensions.vector3d
+import org.eln2.mc.mathematics.Axis3d
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.maskXY
 import org.eln2.mc.requireIsOnServerThread
 import org.eln2.mc.resource
+import org.joml.Quaternionf
 import org.lwjgl.system.MemoryUtil
 import java.nio.ByteBuffer
 import java.nio.IntBuffer
@@ -86,6 +87,10 @@ import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
 import kotlin.math.PI
+
+private fun interface PartVisualizerSupplier<P : Part> {
+    fun get() : PartVisualizer<P>
+}
 
 object FlwVisualizerRegistry {
     private val partVisualizerRegistry = HashMap<PartProvider, PartVisualizer<*>>()
@@ -98,6 +103,9 @@ object FlwVisualizerRegistry {
 
         partVisualizerRegistry[partProvider] = visualizer
     }
+
+    private fun <P : Part> setPartVisualizerMemoized(partProvider: PartProvider, memoizer: PartVisualizerSupplier<P>) =
+        setPartVisualizer(partProvider, memoizer.get())
 
     private fun <S : Spec> setSpecVisualizer(specProvider: SpecProvider, visualizer: SpecVisualizer<S>) {
         if(specVisualizerRegistry.contains(specProvider)) {
@@ -229,7 +237,7 @@ object FlwVisualizerRegistry {
             )
         }
 
-        setPartVisualizer<KineticShaftPart>(Content.STANDARD_IRON_SHAFT_PART.part.get()) { ctx, part ->
+        setPartVisualizer<ShaftPart>(Content.STANDARD_IRON_SHAFT_PART.part.get()) { ctx, part ->
             BasicKineticPartVisual(
                 ctx, part,
                 FlwModels.STANDARD_IRON_SHAFT_BODY,
@@ -242,6 +250,29 @@ object FlwVisualizerRegistry {
                 ctx, part,
                 FlwModels.BASIC_DC_MOTOR
             )
+        }
+
+        setPartVisualizerMemoized<ShaftPart>(Content.STANDARD_IRON_SHAFT_PART_90DEG.part.get()) {
+            val descriptions = listOf(
+                ShaftDescription(
+                    FlwModels.STANDARD_IRON_SHAFT_90DEG_SHAFT1,
+                    Axis3d.X,
+                    -1.0
+                ),
+                ShaftDescription(
+                    FlwModels.STANDARD_IRON_SHAFT_90DEG_SHAFT2,
+                    Axis3d.Z,
+                    1.0
+                )
+            )
+
+            PartVisualizer { ctx, part ->
+                SingleNodeMultiShaftKineticPartVisual(
+                    ctx, part,
+                    FlwModels.STANDARD_IRON_SHAFT_90DEG_BODY,
+                    descriptions
+                )
+            }
         }
     }
 
@@ -1062,6 +1093,145 @@ class BasicKineticPartVisual<P>(
     override fun _delete() {
         body.delete()
         shaft.delete()
+    }
+}
+
+/**
+ * @param model The model for the shaft.
+ * @param axis The axis to rotate around.
+ * @param factor The model is rotated by `angle * [factor]`.
+ * */
+data class ShaftDescription(
+    val model: PartialModel,
+    val axis: Axis3d,
+    val factor: Double
+)
+
+/**
+ * Visual meant for a part with one single kinetic node, but multiple shaft outputs (e.g. a rigid coupling).
+ * */
+class SingleNodeMultiShaftKineticPartVisual<P>(
+    visualizationContext: MultipartVisualizationContext,
+    part: P,
+    body: PartialModel,
+    shaftDescriptions: List<ShaftDescription>
+) : AbstractPartVisual<P>(visualizationContext, part), SimpleDynamicVisual, ShaderLightVisual where P : Part, P : BasicKineticPart {
+    class ShaftInstance(
+        val description: ShaftDescription,
+        val instance: TransformedInstance,
+        val center: Vector3d
+    )
+
+    val body: TransformedInstance = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, Models.partial(body))
+        .createInstance()
+        .also { it.partTransformation(visualizationContext.parent, part) }
+
+    val shafts = shaftDescriptions.map {
+        val instance = visualizationContext.instancerProvider()
+            .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(it.model, FlwMaterials.SMOOTH_LIT))
+            .createInstance()
+
+        val center = FlwModels.getModelCenter(it.model)
+
+        ShaftInstance(it, instance, center)
+    }
+
+    var version = 0
+    var rotation = Rotation2d.identity
+    var velocity = 0.0
+    var interpolationState: RotationUpdateProfile2d? = null
+    val frameTimer = Stopwatch()
+
+    private fun poseShafts() {
+        val t = rotation.ln()
+
+        shafts.forEach {
+            val angle = (t * it.description.factor).toFloat()
+
+            val x: Double
+            val y: Double
+            val z: Double
+            val q: Quaternionf
+
+            when(it.description.axis) {
+                Axis3d.X -> {
+                    x = 0.0
+                    y = it.center.y
+                    z = it.center.z
+                    q = Quaternionf().rotateX(angle)
+                }
+                Axis3d.Y -> {
+                    x = it.center.x
+                    y = 0.0
+                    z = it.center.z
+                    q = Quaternionf().rotateY(angle)
+                }
+                Axis3d.Z -> {
+                    x = it.center.x
+                    y = it.center.y
+                    z = 0.0
+                    q = Quaternionf().rotateZ(angle)
+                }
+            }
+
+            it.instance.setIdentityTransform()
+                .partTransformation(visualizationContext.parent, part)
+                .translate(x, y, z)
+                .rotate(q)
+                .translate(-x, -y, -z)
+                .setChanged()
+        }
+    }
+
+    init {
+        poseShafts()
+    }
+
+    override fun beginFrame(p0: DynamicVisual.Context?) {
+        val renderState = part.renderState!!
+
+        val targetVersion = renderState.version
+        if(version != targetVersion) {
+            version = targetVersion
+
+            interpolationState = computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
+                renderState.angularAccelerationEstimate,
+                Rotation2d.exp(renderState.angle), renderState.angularVelocity,
+                rotation, velocity
+            )
+        }
+
+        val dt = !frameTimer.sample()
+
+        if(interpolationState == null) {
+            rotation += velocity * dt
+        }
+        else {
+            val state = interpolationState!!
+            state.currentTime += dt
+            state.sampleTrajectory()
+            rotation = state.sampleP
+            velocity = state.sampleV
+
+            if(state.timeRemaining == 0.0) {
+                interpolationState = null
+            }
+        }
+
+        poseShafts()
+    }
+
+    override fun updateLight(p0: Float) {
+        visualizationContext.parent.relightInstances(body)
+    }
+
+    override fun _delete() {
+        body.delete()
+
+        shafts.forEach {
+            it.instance.delete()
+        }
     }
 }
 

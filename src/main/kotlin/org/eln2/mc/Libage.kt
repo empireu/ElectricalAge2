@@ -2688,3 +2688,19 @@ fun computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
         duration
     )
 }
+
+data class FrictionNodeDescription(
+    val inertia: Quantity<Inertia>,
+    val damping: Double,
+    val coulombFriction: Quantity<Torque>,
+    val staticThreshold: Quantity<Torque>,
+    val velocityEps: Quantity<AngularVelocity> = Quantity(0.01, RADIAN_PER_SECOND)
+) {
+    fun applyTo(shaft: FrictionKineticNode) {
+        shaft.inertia = !inertia
+        shaft.viscousDamping = damping
+        shaft.coulombFriction = !coulombFriction
+        shaft.staticFriction = !staticThreshold
+        shaft.velocityEps = !velocityEps
+    }
+}

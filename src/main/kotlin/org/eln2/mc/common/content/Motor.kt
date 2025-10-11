@@ -37,8 +37,7 @@ import org.eln2.mc.integration.ComponentDisplayList
  * @param relaxation Relaxation factor for the applied torque.
  * */
 data class DcMotorOptions(
-    val inertia: Quantity<Inertia>,
-    val damping: Quantity<ViscousFriction>,
+    val frictionNodeDescription: FrictionNodeDescription,
     val coreDependentLoss: Double, // W / (rad * rad). Fuck you, I am not making a quantity
     val armatureResistance: Quantity<Resistance>,
     val armatureInductance: Quantity<Inductance>,
@@ -86,14 +85,13 @@ class DcMotorElectricalObject(cell: DcMotorCell) : ElectricalObject<DcMotorCell>
     }
 }
 
-class DcMotorKineticObject(cell: DcMotorCell) : KineticObject<DcMotorCell>(cell) {
+class DcMotorKineticObject(cell: DcMotorCell) : KineticObject<DcMotorCell>(cell), PersistentObject {
     val node = KineticMono()
 
     val nodeDisplay = node.display()
 
     init {
-        node.inertia = !cell.options.inertia
-        node.viscousDamping = !cell.options.damping
+        cell.options.frictionNodeDescription.applyTo(node)
     }
 
     override fun addNodes(builder: KineticNodeSet) {
@@ -101,6 +99,21 @@ class DcMotorKineticObject(cell: DcMotorCell) : KineticObject<DcMotorCell>(cell)
     }
 
     override fun offerExtension(remote: KineticObject<*>) = node.extension
+
+    override fun saveObjectNbt() = CompoundTag().also {
+        it.putDouble(ANGLE, node.angle)
+        it.putDouble(OMEGA, node.omega)
+    }
+
+    override fun loadObjectNbt(tag: CompoundTag) {
+        node.setExternalAngle(tag.getDouble(ANGLE))
+        node.omega = tag.getDouble(OMEGA)
+    }
+
+    companion object {
+        private const val ANGLE = "angle"
+        private const val OMEGA = "omega"
+    }
 }
 
 class DcMotorCell(
@@ -192,11 +205,13 @@ class DcMotorPart(ci: PartCreateInfo, cellProvider: RegistryObject<CellProvider<
 {
     override fun submitDisplay(builder: ComponentDisplayList) {
         builder.debugInIDE { "Back-EMF: ${cell.electrical.voltageSourceDisplay.potential}" }
+        builder.debugInIDE { "Flux: ${cell.electrical.armatureInductor.flux}" }
         builder.debugInIDE { "Constraint impulse: ${cell.kinetic.node.extension.impulse}" }
         builder.quantity(cell.kinetic.nodeDisplay.kineticEnergy)
         builder.quantity(cell.kinetic.nodeDisplay.angularVelocity)
         builder.quantity(cell.kinetic.nodeDisplay.angularAcceleration)
         builder.quantity(cell.electrical.resistorDisplay.current)
         builder.quantityOutput(Quantity(cell.lastAppliedTorque, NEWTON_METER))
+        builder.quantity(cell.thermal.thermalBodyDisplay.temperature)
     }
 }

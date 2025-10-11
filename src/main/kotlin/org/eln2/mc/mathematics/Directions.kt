@@ -8,6 +8,12 @@ import org.ageseries.libage.data.ImmutableByteArrayView
 import org.eln2.mc.extensions.*
 import org.joml.Matrix4f
 
+enum class Axis3d(val id: Int) {
+    X(0),
+    Y(1),
+    Z(2);
+}
+
 enum class Base6Direction3d(val id: Int) {
     Front(0),
     Back(1),

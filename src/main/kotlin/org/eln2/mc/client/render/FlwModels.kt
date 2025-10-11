@@ -51,6 +51,10 @@ object FlwModels {
     val STANDARD_IRON_SHAFT_BODY = partialBlock("shaft/standard/iron/body")
     val STANDARD_IRON_SHAFT_SHAFT = partialBlock("shaft/standard/iron/shaft")
 
+    val STANDARD_IRON_SHAFT_90DEG_BODY = partialBlock("bevel_gears/standard/iron/body")
+    val STANDARD_IRON_SHAFT_90DEG_SHAFT1 = partialBlock("bevel_gears/standard/iron/shaft1")
+    val STANDARD_IRON_SHAFT_90DEG_SHAFT2 = partialBlock("bevel_gears/standard/iron/shaft2")
+
     //#endregion
 
     //#region Batteries

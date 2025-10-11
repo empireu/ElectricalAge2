@@ -5,18 +5,14 @@ import net.minecraft.world.InteractionResult
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.JOULE
 import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.ThermalMassDefinition
-import org.eln2.mc.AngularVelocity
 import org.eln2.mc.ClientOnly
-import org.eln2.mc.Inertia
+import org.eln2.mc.FrictionNodeDescription
 import org.eln2.mc.KineticNodeSet
 import org.eln2.mc.KineticShaft
-import org.eln2.mc.RADIAN_PER_SECOND
 import org.eln2.mc.ServerOnly
-import org.eln2.mc.Torque
 import org.eln2.mc.client.render.foundation.BasicKineticPart
 import org.eln2.mc.common.cells.foundation.Cell
 import org.eln2.mc.common.cells.foundation.CellCreateInfo
@@ -28,7 +24,6 @@ import org.eln2.mc.common.cells.foundation.KineticSize
 import org.eln2.mc.common.cells.foundation.PersistentObject
 import org.eln2.mc.common.cells.foundation.Replicator
 import org.eln2.mc.common.cells.foundation.RotatingKineticState
-import org.eln2.mc.common.cells.foundation.SidedKinetic
 import org.eln2.mc.common.cells.foundation.SidedKineticMapped
 import org.eln2.mc.common.cells.foundation.SidedThermalMapped
 import org.eln2.mc.common.cells.foundation.SimObject
@@ -48,26 +43,10 @@ import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.minus
 import org.eln2.mc.plus
 
-data class KineticShaftDescription(
-    val inertia: Quantity<Inertia>,
-    val damping: Double,
-    val coulombFriction: Quantity<Torque>,
-    val staticThreshold: Quantity<Torque>,
-    val velocityEps: Quantity<AngularVelocity> = Quantity(0.01, RADIAN_PER_SECOND)
-) {
-    fun applyTo(shaft: KineticShaft) {
-        shaft.inertia = !inertia
-        shaft.viscousDamping = damping
-        shaft.coulombFriction = !coulombFriction
-        shaft.staticFriction = !staticThreshold
-        shaft.velocityEps = !velocityEps
-    }
-}
-
 class KineticShaftObject(
     cell: KineticShaftCell,
     val map: PoleMap,
-    shaftParameters: KineticShaftDescription,
+    shaftParameters: FrictionNodeDescription,
     val thermalBody: ThermalMass?
 ) : KineticObject<KineticShaftCell>(cell), PersistentObject {
     val shaft = KineticShaft()
@@ -100,17 +79,17 @@ class KineticShaftObject(
 
     override fun saveObjectNbt() = CompoundTag().also {
         it.putDouble(ANGLE, shaft.angle)
-        it.putDouble(ANGULAR_VELOCITY, shaft.omega)
+        it.putDouble(OMEGA, shaft.omega)
     }
 
     override fun loadObjectNbt(tag: CompoundTag) {
         shaft.setExternalAngle(tag.getDouble(ANGLE))
-        shaft.omega = tag.getDouble(ANGULAR_VELOCITY)
+        shaft.omega = tag.getDouble(OMEGA)
     }
 
     companion object {
         private const val ANGLE = "angle"
-        private const val ANGULAR_VELOCITY = "omega"
+        private const val OMEGA = "omega"
     }
 }
 
@@ -118,7 +97,7 @@ class KineticShaftCell(
     ci: CellCreateInfo,
     thermalDef: ThermalMassDefinition,
     val map: PoleMap,
-    shaftDef: KineticShaftDescription,
+    shaftDef: FrictionNodeDescription,
     leakageParameters: ConnectionParameters = ConnectionParameters.DEFAULT
 ) : Cell(ci), SidedThermalMapped<KineticShaftCell>, SidedKineticMapped<KineticShaftCell> {
     override val thermalMap: PoleMap
@@ -151,7 +130,7 @@ class KineticShaftCell(
     )
 }
 
-class KineticShaftPart(ci: PartCreateInfo, cellProvider: RegistryObject<CellProvider<KineticShaftCell>>) :
+class ShaftPart(ci: PartCreateInfo, cellProvider: RegistryObject<CellProvider<KineticShaftCell>>) :
     CellPart<KineticShaftCell>(ci, cellProvider.get()),
     BasicKineticPart,
     InternalKineticStateConsumer,
@@ -168,7 +147,6 @@ class KineticShaftPart(ci: PartCreateInfo, cellProvider: RegistryObject<CellProv
 
             return InteractionResult.SUCCESS
         }
-
 
         return super.onUsedBy(context)
     }

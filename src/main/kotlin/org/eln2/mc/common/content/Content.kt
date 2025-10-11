@@ -17,7 +17,6 @@ import org.ageseries.libage.data.G_PER_CM3
 import org.ageseries.libage.data.HENRY
 import org.ageseries.libage.data.KILO
 import org.ageseries.libage.data.KILOGRAM
-import org.ageseries.libage.data.KILOGRAM_PER_METER2
 import org.ageseries.libage.data.METER2
 import org.ageseries.libage.data.MILLI
 import org.ageseries.libage.data.OHM
@@ -40,6 +39,7 @@ import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
+import org.eln2.mc.FrictionNodeDescription
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.ThermalTint
@@ -282,7 +282,7 @@ object Content {
 
         val map = directionPoleMapPlanar(Base6Direction3d.Front, Base6Direction3d.Back)
 
-        val desc = KineticShaftDescription(
+        val desc = FrictionNodeDescription(
             Quantity(0.0770, KILOGRAM_METER2),
             0.0,
             Quantity(0.0, NEWTON_METER),
@@ -298,8 +298,37 @@ object Content {
         }
     }
 
+    val STANDARD_IRON_SHAFT_90DEG_CELL = cellMemoize("standard_iron_shaft_90deg") {
+        val thermal = ThermalMassDefinition(
+            ChemicalElement.Iron.asMaterial,
+            mass = Quantity(60.25, KILOGRAM)
+        )
+
+        val map = directionPoleMapPlanar(Base6Direction3d.Front, Base6Direction3d.Left)
+
+        val desc = FrictionNodeDescription(
+            Quantity(0.11025, KILOGRAM_METER2),
+            0.0,
+            Quantity(0.0, NEWTON_METER),
+            Quantity(0.0, NEWTON_METER)
+        )
+
+        CellFactory {
+            KineticShaftCell(it,
+                thermal,
+                map,
+                desc
+            )
+        }
+    }
+
+
     val STANDARD_IRON_SHAFT_PART = partImmediateBB("standard_iron_shaft", 6.0, 10.0, 16.0) {
-        KineticShaftPart(it, STANDARD_IRON_SHAFT_CELL)
+        ShaftPart(it, STANDARD_IRON_SHAFT_CELL)
+    }
+
+    val STANDARD_IRON_SHAFT_PART_90DEG = partImmediateBB("standard_iron_shaft_90deg", 16.0, 10.0, 16.0) {
+        ShaftPart(it, STANDARD_IRON_SHAFT_90DEG_CELL)
     }
 
     //#endregion
@@ -1248,9 +1277,13 @@ object Content {
         val kineticSize = KineticSize.Standard
 
         val model = DcMotorOptions(
-            Quantity(3.1278, KILOGRAM_METER2),
-            Quantity(0.0),
-            0.0,
+            FrictionNodeDescription(
+                Quantity(3.1278, KILOGRAM_METER2),
+                0.01,
+                Quantity(1.0),
+                Quantity(0.1)
+            ),
+            1e-6,
             Quantity(0.0667, OHM),
             Quantity(1.25, MILLI * HENRY),
             Quantity(2.06, VOLT_PER_RADIAN_PER_SECOND),
