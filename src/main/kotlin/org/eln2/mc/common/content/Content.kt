@@ -14,8 +14,10 @@ import org.ageseries.libage.data.AMPERE
 import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.CENTIMETER
 import org.ageseries.libage.data.G_PER_CM3
+import org.ageseries.libage.data.HENRY
 import org.ageseries.libage.data.KILO
 import org.ageseries.libage.data.KILOGRAM
+import org.ageseries.libage.data.KILOGRAM_PER_METER2
 import org.ageseries.libage.data.METER2
 import org.ageseries.libage.data.MILLI
 import org.ageseries.libage.data.OHM
@@ -77,10 +79,13 @@ import org.eln2.mc.common.specs.foundation.SpecFactory
 import org.eln2.mc.KILOGRAM_METER2
 import org.eln2.mc.data.Locators
 import org.eln2.mc.NEWTON_METER
+import org.eln2.mc.NEWTON_METER_PER_AMPERE
 import org.eln2.mc.NEWTON_METER_SECOND
 import org.eln2.mc.data.Pole
 import org.eln2.mc.REVOLUTION_PER_SECOND
+import org.eln2.mc.VOLT_PER_RADIAN_PER_SECOND
 import org.eln2.mc.common.cells.foundation.ElectricalSize
+import org.eln2.mc.common.cells.foundation.KineticSize
 import org.eln2.mc.common.cells.foundation.ThermalSize
 import org.eln2.mc.common.recipes.MotorProcessingCell
 import org.eln2.mc.common.recipes.MotorProcessingCellOptions
@@ -1231,5 +1236,47 @@ object Content {
 
     val EXTRUDER_MENU = menu("extruder", ::ExtruderMenu)
 
+    //#endregion
+
+    //#region Motors
+
+    val BASIC_DC_MOTOR_CELL = cellMemoize("basic_dc_motor") {
+        val electricalMap = directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)
+        val kineticMap = monopolarMapPlanar(Base6Direction3d.Front)
+
+        val electricalSize = ElectricalSize.Standard
+        val kineticSize = KineticSize.Standard
+
+        val model = DcMotorOptions(
+            Quantity(3.1278, KILOGRAM_METER2),
+            Quantity(0.0),
+            0.0,
+            Quantity(0.0667, OHM),
+            Quantity(1.25, MILLI * HENRY),
+            Quantity(2.06, VOLT_PER_RADIAN_PER_SECOND),
+            Quantity(2.05, NEWTON_METER_PER_AMPERE)
+        )
+
+        val thermalDef = ThermalMassDefinition(
+            ChemicalElement.Iron.asMaterial,
+            mass = Quantity(65.0, KILOGRAM)
+        )
+
+        val leakage = ConnectionParameters.DEFAULT
+
+        CellFactory {
+            DcMotorCell(it,
+                electricalMap, kineticMap,
+                electricalSize, kineticSize,
+                model,
+                thermalDef, leakage
+            )
+        }
+    }
+
+    val BASIC_DC_MOTOR_PART = partImmediateBB("basic_dc_motor", 16.0, 13.0, 14.3) {
+        DcMotorPart(it, BASIC_DC_MOTOR_CELL)
+    }
+    
     //#endregion
 }

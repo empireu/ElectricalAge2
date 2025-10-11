@@ -2922,3 +2922,23 @@ interface SidedKineticMapped<C> : SidedKinetic<C> where C : Cell, C : SidedKinet
         return if(kineticMap.evaluateOrNull(this as Cell, targetCell) != null) kineticSize else null
     }
 }
+
+/**
+ * Kinetic size provider, based on a monopolar map.
+ * */
+interface SidedKineticMonoMapped<C> : SidedKinetic<C> where C : Cell, C : SidedKineticMonoMapped<C> {
+    val kineticMap : MonopoleMap
+
+    /**
+     * The kinetic size. It will be supplied to all sides the [kineticMap] covers.
+     * */
+    val kineticSize: KineticSize?
+
+    /**
+     * Returns the [kineticSize] if the [kineticMap] covers this connection.
+     * */
+    override fun getKineticSizeOnSide(side: Base6Direction3d, targetCell: Cell): KineticSize? {
+        return if(kineticMap.evaluates(this as Cell, targetCell)) kineticSize else null
+    }
+}
+

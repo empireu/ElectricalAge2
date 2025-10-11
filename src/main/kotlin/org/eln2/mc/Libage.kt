@@ -16,6 +16,7 @@ import org.ageseries.libage.sim.electrical.mna.POSITIVE
 import org.ageseries.libage.sim.electrical.mna.VirtualComponent
 import org.ageseries.libage.sim.electrical.mna.component.Component
 import org.ageseries.libage.sim.electrical.mna.component.IResistor
+import org.ageseries.libage.sim.electrical.mna.component.Inductor
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.electrical.mna.component.Term
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
@@ -1743,11 +1744,11 @@ fun KineticShaft.plus() = this.e2
  * Useful for e.g. flywheels, and for the gears of a gearbox or the halves of a clutch.
  * */
 class KineticMono : FrictionKineticNode(false) {
-    val ext = RigidKineticExtension(this, 1)
+    val extension = RigidKineticExtension(this, 1)
 
     override fun simulationDestroyed() {
         super.simulationDestroyed()
-        ext.simulationDestroyed()
+        extension.simulationDestroyed()
     }
 }
 
@@ -2283,6 +2284,7 @@ interface SimulationDisplayer {
     fun display(voltageSource: VoltageSource) : DisplayVoltageSource
     fun display(resistor: IResistor) : DisplayResistor
     fun display(resistor: TheveninEstimatingResistor) : DisplayTheveninResistor
+    fun display(inductor: Inductor) : DisplayInductor
     fun display(powerSource: MyPowerVoltageSource) : DisplayVoltagePowerSource
     fun display(kineticNode: KineticNode) : DisplayKineticNode
     fun remove(source: DisplaySource)
@@ -2322,6 +2324,14 @@ interface SimulationDisplayer {
         val current: Quantity<Current>
         val potential: Quantity<Potential>
         val power: Quantity<Power>
+    }
+
+    interface DisplayInductor : DisplaySource {
+        val inductance: Quantity<Inductance>
+        val energy: Quantity<Energy>
+        val flux: Quantity<MagneticFlux>
+        val current: Quantity<Current>
+        val potential: Quantity<Potential>
     }
 
     interface DisplayVoltagePowerSource : DisplaySource {
@@ -2367,6 +2377,9 @@ class SimulationDisplayerImpl() : SimulationDisplayer {
 
     override fun display(resistor: TheveninEstimatingResistor) = DisplayTheveninResistorImpl(resistor)
         .add<SimulationDisplayer.DisplayTheveninResistor>()
+
+    override fun display(inductor: Inductor) = DisplayInductorImpl(inductor)
+        .add<SimulationDisplayer.DisplayInductor>()
 
     override fun display(powerSource: MyPowerVoltageSource) = DisplayVoltagePowerSourceImpl(powerSource)
         .add<SimulationDisplayer.DisplayVoltagePowerSource>()
@@ -2473,6 +2486,22 @@ class SimulationDisplayerImpl() : SimulationDisplayer {
         }
     }
 
+    private class DisplayInductorImpl(override val obj: Inductor) : SimulationDisplayer.DisplayInductor, Implementation {
+        override var inductance = Quantity<Inductance>(0.0)
+        override var energy = Quantity<Energy>(0.0)
+        override var flux = Quantity<MagneticFlux>(0.0)
+        override var current = Quantity<Current>(0.0)
+        override var potential = Quantity<Potential>(0.0)
+
+        override fun step(dt: Double) {
+            inductance = Quantity(obj.inductance, HENRY)
+            energy = Quantity(obj.energy, JOULE)
+            flux = Quantity(obj.flux, WEBER)
+            current = Quantity(obj.current, AMPERE)
+            potential = Quantity(obj.potential, VOLT)
+        }
+    }
+
     private class DisplayVoltagePowerSourceImpl(override val obj: MyPowerVoltageSource) : SimulationDisplayer.DisplayVoltagePowerSource, Implementation {
         override var potential = Quantity<Potential>(0.0)
         override var potentialMax = Quantity<Potential>(0.0)
@@ -2544,6 +2573,15 @@ val REVOLUTION_PER_SECOND = RADIAN_PER_SECOND sourceAmplify 1.0 / 0.159154943091
 
 @DimensionClassifier("K/s") interface TemperatureRate
 val KELVIN_PER_SECOND = standardScale<TemperatureRate>()
+
+@DimensionClassifier("Nm/A") interface MotorTorqueConstant
+val NEWTON_METER_PER_AMPERE = standardScale<MotorTorqueConstant>()
+
+@DimensionClassifier("V / rad/s") interface BackEmfConstant
+val VOLT_PER_RADIAN_PER_SECOND = standardScale<BackEmfConstant>()
+
+@DimensionClassifier("Vs") interface MagneticFlux
+val WEBER = standardScale<MagneticFlux>()
 
 // Why is it private in libage? :
 internal infix fun <U> SourceQuantityScale<U>.sourceAmplify(amplify: Double) =

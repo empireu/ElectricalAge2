@@ -236,6 +236,13 @@ object FlwVisualizerRegistry {
                 FlwModels.STANDARD_IRON_SHAFT_SHAFT
             )
         }
+
+        setPartVisualizer<DcMotorPart>(Content.BASIC_DC_MOTOR_PART.part.get()) { ctx, part ->
+            BasicPartVisual(
+                ctx, part,
+                FlwModels.BASIC_DC_MOTOR
+            )
+        }
     }
 
     fun registerSpecVisualizers() {

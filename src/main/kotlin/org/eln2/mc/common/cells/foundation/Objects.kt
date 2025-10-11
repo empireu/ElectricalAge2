@@ -274,6 +274,7 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     protected fun VoltageSource.display() = cell.displayer.display(this)
     protected fun IResistor.display() = cell.displayer.display(this)
     protected fun TheveninEstimatingResistor.display() = cell.displayer.display(this)
+    protected fun Inductor.display() = cell.displayer.display(this)
     protected fun MyPowerVoltageSource.display() = cell.displayer.display(this)
 }
 
