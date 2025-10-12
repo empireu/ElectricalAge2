@@ -141,7 +141,7 @@ class SingleElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
 
     override fun addComponents(circuit: ElectricalComponentSet) = resistors.addComponents(connections, circuit)
 
-    override fun build(map: ElectricalConnectivityMap) {
+    override fun build(map: ElectricalConnectivityMap2) {
         // The Wire uses a bundle of 4 resistors. Every resistor's "Internal Pin" is connected to every
         // other resistor's internal pin. "External Pins" are offered to connection candidates:
 
@@ -435,7 +435,7 @@ open class ThermalWireCell(
     ci: CellCreateInfo, connectionCrossSection: Double,
     override val thermalSize: ThermalSize?,
     val thermalProperties: WireThermalProperties
-) : WireCell(ci, connectionCrossSection), SidedThermalULDR<ThermalWireCell> {
+) : WireCell(ci, connectionCrossSection), SidedThermalFLBR<ThermalWireCell> {
     @SimObject
     val thermalWire = ThermalWireObject(
         self(),
@@ -486,7 +486,7 @@ open class ElectrothermalWireCell(
     thermalProperties: WireThermalProperties,
     override val electricalSize: ElectricalSize?,
     val electricalProperties: WireElectricalProperties
-) : ThermalWireCell(ci, contactCrossSection, null, thermalProperties), SidedElectricalULDR<ElectrothermalWireCell> {
+) : ThermalWireCell(ci, contactCrossSection, null, thermalProperties), SidedElectricalFLBR<ElectrothermalWireCell> {
     /**
      * Disallow connections with thermal-only devices:
      * */

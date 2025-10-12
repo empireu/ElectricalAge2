@@ -252,7 +252,7 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     /**
      * Builds the connections, after the circuit was acquired in [setNewCircuit] and the components were added in [addComponents].
      * */
-    open fun build(map: ElectricalConnectivityMap) {
+    open fun build(map: ElectricalConnectivityMap2) {
         for (remote in connections) {
             val localInfo = this.offerComponent(remote)
                 ?: continue
@@ -578,7 +578,7 @@ abstract class VRGObject<C : Cell>(cell: C) : ElectricalObject<C>(cell) {
      * ```
      * where *A* and *B* are some external objects, *+* is the positive pin, *-* is the negative pin, *R* is [resistor] and *V* is [source].
      * */
-    final override fun build(map: ElectricalConnectivityMap) {
+    final override fun build(map: ElectricalConnectivityMap2) {
         map.join(resistor.offerInternal(), source.offerPositive())
         super.build(map)
     }
@@ -660,8 +660,8 @@ class VoltageSourceObject(cell: Cell) : ElectricalObject<Cell>(cell) {
         resistors.addComponents(connections, circuit)
     }
 
-    override fun build(map: ElectricalConnectivityMap) {
-        source.ground(INTERNAL_PIN)
+    override fun build(map: ElectricalConnectivityMap2) {
+        map.ground(source, INTERNAL_PIN)
         resistors.build(connections, this, map)
 
         resistors.forEach {
@@ -698,8 +698,7 @@ class GroundObject(cell: Cell) : ElectricalObject<Cell>(cell) {
 
     override fun offerPolar(remote: ElectricalObject<*>) = resistors.getOfferedResistor(remote)
 
-    // FIXME
-    //override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo) = resistors.getOfferedResistor(gc.electrical)
+    override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo) = resistors.getOfferedResistor(gc.electrical)
 
     override fun clearComponents() {
         resistors.clear()
@@ -709,10 +708,11 @@ class GroundObject(cell: Cell) : ElectricalObject<Cell>(cell) {
         resistors.addComponents(connections, circuit)
     }
 
-    override fun build(map: ElectricalConnectivityMap) {
+    override fun build(map: ElectricalConnectivityMap2) {
         resistors.build(connections, this, map)
+
         resistors.forEach {
-            it.ground(INTERNAL_PIN)
+            map.ground(it, INTERNAL_PIN)
         }
     }
 }
@@ -735,7 +735,7 @@ class PowerVoltageSourceObject<C : Cell>(cell: C, val map: PoleMap) : Electrical
         circuit.add(resistor)
     }
 
-    override fun build(map: ElectricalConnectivityMap) {
+    override fun build(map: ElectricalConnectivityMap2) {
         super.build(map)
         map.join(generator.offerNegative(), resistor.offerPositive())
     }
@@ -759,7 +759,7 @@ class PowerVoltageSourceDiodeObject<C : Cell>(cell: C, val map: PoleMap) : Elect
         circuit.add(diode)
     }
 
-    override fun build(map: ElectricalConnectivityMap) {
+    override fun build(map: ElectricalConnectivityMap2) {
         super.build(map)
         map.join(powerSource.offerNegative(), diode.offerNegative())
     }
@@ -787,9 +787,9 @@ class SignalSource {
      * */
     fun offerOutput() = resistor.offerExternal()
 
-    fun build(map: ElectricalConnectivityMap) {
+    fun build(map: ElectricalConnectivityMap2) {
         map.join(voltageSource.offerPositive(), resistor.offerInternal())
-        voltageSource.ground(NEGATIVE)
+        map.ground(voltageSource, NEGATIVE)
     }
 
     /**

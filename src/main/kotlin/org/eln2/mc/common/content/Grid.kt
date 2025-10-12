@@ -80,7 +80,7 @@ class GridAnchorElectricalObject(cell: Cell, val anchorResistance: Double) : Ele
             Pair(resistor, resistor.display())
         }.first.offerExternal()
 
-    override fun build(map: ElectricalConnectivityMap) {
+    override fun build(map: ElectricalConnectivityMap2) {
         super.build(map)
 
         anchorResistors.values.forEach { (a, _) ->
@@ -149,7 +149,7 @@ class GridInterfaceObject(cell: GridInterfaceCell, val tapResistance: Double, va
             resistor
         }.offerExternal()
 
-    override fun build(map: ElectricalConnectivityMap) {
+    override fun build(map: ElectricalConnectivityMap2) {
         super.build(map)
 
         anchorResistors.values.forEach { a ->
@@ -178,7 +178,7 @@ class GridInterfaceCell(
     tapResistance: Double,
     anchorResistance: Double,
     override val electricalSize: ElectricalSize
-) : Cell(ci), SidedElectricalULDR<GridInterfaceCell> {
+) : Cell(ci), SidedElectricalFLBR<GridInterfaceCell> {
     @Node
     val grid = GridNode(this)
 

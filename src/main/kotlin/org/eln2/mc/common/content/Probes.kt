@@ -10,6 +10,7 @@ import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.eln2.mc.ClientOnly
+import org.eln2.mc.ElectricalConnectivityMap2
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.TermRef
 import org.eln2.mc.client.render.FlwModels
@@ -146,7 +147,7 @@ abstract class PassthroughElectricalProbeObject(
         circuit.add(internalResistor)
     }
 
-    override fun build(map: ElectricalConnectivityMap) {
+    override fun build(map: ElectricalConnectivityMap2) {
         super.build(map)
         signalSource.build(map)
     }

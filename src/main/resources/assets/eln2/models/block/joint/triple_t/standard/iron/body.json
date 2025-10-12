@@ -1,12 +1,11 @@
 {
 	"format_version": "1.9.0",
 	"credit": "Made with Blockbench",
-	"parent": "iron_bevel_gears",
 	"texture_size": [64, 64],
-	"textures": {
-		"0": "eln2:block/shaft/standard/iron/iron_shaft",
-		"particle": "eln2:block/shaft/standard/iron/iron_shaft"
-	},
+    "textures": {
+        "0": "eln2:block/joint/double/standard/iron/iron_shaft",
+        "particle": "eln2:block/joint/double/standard/iron/iron_shaft"
+    },
 	"elements": [
 		{
 			"name": "side0",
@@ -60,6 +59,33 @@
 				"west": {"uv": [0, 4, 1.75, 15], "rotation": 270, "texture": "#0"},
 				"up": {"uv": [0, 0, 1.5, 4], "rotation": 270, "texture": "#0"},
 				"down": {"uv": [0, 0, 1.5, 4], "rotation": 90, "texture": "#0"}
+			}
+		},
+		{
+			"name": "base_r",
+			"from": [11, 0, 5],
+			"to": [16, 1, 11],
+			"rotation": {"angle": 0, "axis": "y", "origin": [13.5, 4.25, 8]},
+			"faces": {
+				"north": {"uv": [0, 15, 16, 16], "texture": "#0"},
+				"east": {"uv": [0, 4, 1.75, 15], "rotation": 270, "texture": "#0"},
+				"south": {"uv": [0, 15, 16, 16], "texture": "#0"},
+				"west": {"uv": [0, 4, 1.75, 15], "rotation": 270, "texture": "#0"},
+				"up": {"uv": [0, 0, 1.5, 4], "rotation": 90, "texture": "#0"},
+				"down": {"uv": [0, 0, 1.5, 4], "rotation": 270, "texture": "#0"}
+			}
+		},
+		{
+			"name": "side2",
+			"from": [14, 1, 6],
+			"to": [15, 10, 10],
+			"rotation": {"angle": 0, "axis": "y", "origin": [13.5, 4.25, 8]},
+			"faces": {
+				"north": {"uv": [4, 6.75, 5.25, 9.75], "texture": "#0"},
+				"east": {"uv": [1.5, 0, 8.75, 15], "texture": "#0"},
+				"south": {"uv": [7, 6, 8.5, 9.75], "texture": "#0"},
+				"west": {"uv": [1.5, 0, 8.75, 15], "texture": "#0"},
+				"up": {"uv": [3.5, 7.5, 6.5, 9], "rotation": 90, "texture": "#0"}
 			}
 		},
 		{

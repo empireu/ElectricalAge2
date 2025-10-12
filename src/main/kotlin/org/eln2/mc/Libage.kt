@@ -40,22 +40,34 @@ import kotlin.reflect.jvm.kotlinProperty
 /**
  * Frak you Grissess (gently and with love though ♡).
  * */
-class ElectricalSubSolverSystemBuilder : ElectricalComponentSet, ElectricalConnectivityMap {
+
+interface ElectricalConnectivityMap2 : ElectricalConnectivityMap {
+    /**
+     * Grounds the given [component] in retained-mode.
+     * */
+    fun ground(component: Component, idx: Int)
+}
+
+class ElectricalSubSolverSystemBuilder : ElectricalComponentSet, ElectricalConnectivityMap2 {
     class SubSolverData : SubSolverSystemBuilder.PerSubSolverData<SubSolverData, Term>() {
         data class Connection(val a: Term, val aIdx: Int, val b: Term, val bIdx: Int)
+        data class Grounding(val component: Component, val idx: Int)
 
         val connections = ArrayList<Connection>()
+        val groundings = ArrayList<Grounding>()
 
         override fun copyFrom(other: SubSolverData) {
             super.copyFrom(other)
 
             connections.addAll(other.connections)
+            groundings.addAll(other.groundings)
         }
 
         override fun recycle() {
             super.recycle()
 
             connections.clear()
+            groundings.clear()
         }
     }
 
@@ -66,6 +78,14 @@ class ElectricalSubSolverSystemBuilder : ElectricalComponentSet, ElectricalConne
         require(!built) {
             "Cannot re-use electrical simulation builder"
         }
+    }
+
+    override fun ground(component: Component, idx: Int) {
+        validateUsage()
+        builder
+            .getSubSolverOf(component)
+            .groundings
+            .add(SubSolverData.Grounding(component, idx))
     }
 
     override fun add(component: VirtualComponent): Boolean {
@@ -137,6 +157,10 @@ class ElectricalSubSolverSystemBuilder : ElectricalComponentSet, ElectricalConne
 
             it.connections.forEach { (a, aIdx, b, bIdx) ->
                 builder.connect(a, aIdx, b, bIdx)
+            }
+
+            it.groundings.forEach { (comp, idx) ->
+                comp.ground(idx)
             }
 
             builder.build()
@@ -258,6 +282,11 @@ class SubSolverSystemBuilder<Node, SubSolver : SubSolverSystemBuilder.PerSubSolv
     }
 
     /**
+     * Gets the sub-solver for [node]. The node must be added already.
+     * */
+    fun getSubSolverOf(node: Node) = (subSolversByNode[node] ?: error("Node $node is not added")).obj
+
+    /**
      * Marks the two nodes as connected.
      * If the nodes belong to different sub-solvers, the smaller sub-solver is merged into the larger sub-solver and the smaller one is released back into the pool.
      * @return The final sub-solver, shared by all nodes.
@@ -315,7 +344,7 @@ class LineShaft(val lineGraph: Array<KineticShaft>) : KineticNode(false), Kineti
 
     private fun importShaftAngularVelocities() {
         // Import angular velocity by conserving angular momentum (inelastic collision):
-        omega = lineGraph.sumOf { it.inertia * it.omega } / inertia
+        angularVelocity = lineGraph.sumOf { it.inertia * it.angularVelocity } / inertia
         // Writing the values back is not necessary, it is done in [distributeResults] after the simulation runs.
     }
 
@@ -335,7 +364,7 @@ class LineShaft(val lineGraph: Array<KineticShaft>) : KineticNode(false), Kineti
         }
 
         var totalFriction = 0.0
-        val lineOmega = this.omega
+        val lineOmega = this.angularVelocity
         for (i in lineGraph.indices) {
             val shaft = lineGraph[i]
             val viscous = -shaft.viscousDamping * lineOmega
@@ -356,7 +385,7 @@ class LineShaft(val lineGraph: Array<KineticShaft>) : KineticNode(false), Kineti
         }
 
         externalTorque = totalExternalTorque + totalFriction
-        previousLineOmega = omega
+        previousLineOmega = angularVelocity
     }
 
     override fun setSimulation(id: Int, simulation: KineticSimulation, proxy: KineticNodeProxy?) {
@@ -377,11 +406,11 @@ class LineShaft(val lineGraph: Array<KineticShaft>) : KineticNode(false), Kineti
 
     fun distributeResults() {
         val deltaAngle = angle - previousAngle
-        val deltaOmega = omega - previousLineOmega
+        val deltaOmega = angularVelocity - previousLineOmega
 
         lineGraph.forEach { shaft ->
             shaft.angle += deltaAngle
-            shaft.omega = this.omega
+            shaft.angularVelocity = this.angularVelocity
         }
 
         if (e1.constraints.isNotEmpty()) {
@@ -1296,7 +1325,7 @@ class KineticSimulation(
 
                 val a = clutch.a
                 val b = clutch.b
-                val tau = -p.viscousFrictionCoefficient * p.pressure * (a.omega + jacobian * b.omega)
+                val tau = -p.viscousFrictionCoefficient * p.pressure * (a.angularVelocity + jacobian * b.angularVelocity)
                 p.frictionTorque = tau
                 a.externalTorque += tau
                 b.externalTorque -= tau
@@ -1317,7 +1346,7 @@ class KineticSimulation(
             node.previousAngle = node.angle
             val invI = 1.0 / node.inertia
             inverseI[node.idInOwner] = invI
-            omegaStar[node.idInOwner] = node.omega + invI * node.externalTorque * dt
+            omegaStar[node.idInOwner] = node.angularVelocity + invI * node.externalTorque * dt
             node.externalTorque = 0.0
         }
 
@@ -1448,9 +1477,9 @@ class KineticSimulation(
 
         // Integrate for angle and copy back:
         nodes.forEach { node ->
-            node.omega = omegaStar[node.idInOwner]
-            node.angle += node.omega * dt
-            kineticEnergy += node.energy
+            node.angularVelocity = omegaStar[node.idInOwner]
+            node.angle += node.angularVelocity * dt
+            kineticEnergy += node.kineticEnergy
         }
 
         // Calculate clutch heating:
@@ -1630,7 +1659,7 @@ abstract class KineticNode(val allowOptimization: Boolean) {
     }
 
     var angle = 0.0
-    var omega = 0.0
+    var angularVelocity = 0.0
     var externalTorque = 0.0
 
     var inertia: Double = 1.0
@@ -1646,7 +1675,7 @@ abstract class KineticNode(val allowOptimization: Boolean) {
             }
         }
 
-    val energy get() = 0.5 * inertia * (omega * omega)
+    val kineticEnergy get() = 0.5 * inertia * (angularVelocity * angularVelocity)
 
     var previousAngle = 0.0
 
@@ -1663,6 +1692,12 @@ abstract class KineticNode(val allowOptimization: Boolean) {
         angle = 0.0
         previousAngle = 0.0
     }
+
+    //#region Quantity Getters
+    val angleQuantity get() = Quantity(angle, RADIAN)
+    val angularVelocityQuantity get() = Quantity(angularVelocity, RADIAN_PER_SECOND)
+    val kineticEnergyQuantity get() = Quantity(kineticEnergy, JOULE)
+    //#endregion
 }
 
 /**
@@ -1682,7 +1717,7 @@ abstract class FrictionKineticNode(allowOptimization: Boolean) : KineticNode(all
      * */
     var staticFriction = 0.0
     /**
-     * If |[omega]| is higher than this, then the node is considered to be moving.
+     * If |[angularVelocity]| is higher than this, then the node is considered to be moving.
      * */
     var velocityEps = 1e-6
 
@@ -1703,11 +1738,11 @@ abstract class FrictionKineticNode(allowOptimization: Boolean) : KineticNode(all
      * Calculates [frictionTorque] based on the parameters and the current angular velocity and external torque.
      * */
     fun calculateFrictionTorque() {
-        val viscous = -viscousDamping * omega
+        val viscous = -viscousDamping * angularVelocity
 
-        frictionTorque = if (abs(omega) > velocityEps) {
+        frictionTorque = if (abs(angularVelocity) > velocityEps) {
             // Node is moving: kinetic friction opposes velocity:
-            -coulombFriction * sign(omega) + viscous
+            -coulombFriction * sign(angularVelocity) + viscous
         } else {
             // Node is (nearly) stationary - consider static friction:
             if (abs(externalTorque) <= staticFriction) {
@@ -1718,6 +1753,23 @@ abstract class FrictionKineticNode(allowOptimization: Boolean) : KineticNode(all
                 -coulombFriction * sign(externalTorque) + viscous
             }
         }
+    }
+}
+
+/**
+ * A three-ended node.
+ * Useful for modeling a triple joint as a single node.
+ * */
+class KineticTriple() : FrictionKineticNode(false) {
+    val e1 = RigidKineticExtension(this, 1)
+    val e2 = RigidKineticExtension(this, -1)
+    val e3 = RigidKineticExtension(this, 1)
+
+    override fun simulationDestroyed() {
+        super.simulationDestroyed()
+        e1.simulationDestroyed()
+        e2.simulationDestroyed()
+        e3.simulationDestroyed()
     }
 }
 
@@ -2528,7 +2580,7 @@ class SimulationDisplayerImpl() : SimulationDisplayer {
 
         override fun step(dt: Double) {
             angle = Quantity(obj.angle, RADIAN)
-            angularVelocity = Quantity(obj.omega, RADIAN_PER_SECOND)
+            angularVelocity = Quantity(obj.angularVelocity, RADIAN_PER_SECOND)
 
             if(dt != -1.0) {
                 val dw = angularVelocity - previousAngularVelocity
@@ -2538,7 +2590,7 @@ class SimulationDisplayerImpl() : SimulationDisplayer {
             previousAngularVelocity = angularVelocity
 
             inertia = Quantity(obj.inertia, KILOGRAM_METER2)
-            kineticEnergy = Quantity(obj.energy, JOULE)
+            kineticEnergy = Quantity(obj.kineticEnergy, JOULE)
         }
     }
 }
@@ -2577,8 +2629,8 @@ val KELVIN_PER_SECOND = standardScale<TemperatureRate>()
 @DimensionClassifier("Nm/A") interface MotorTorqueConstant
 val NEWTON_METER_PER_AMPERE = standardScale<MotorTorqueConstant>()
 
-@DimensionClassifier("V / rad/s") interface BackEmfConstant
-val VOLT_PER_RADIAN_PER_SECOND = standardScale<BackEmfConstant>()
+@DimensionClassifier("V / rad/s") interface MotorBackEmfConstant
+val VOLT_PER_RADIAN_PER_SECOND = standardScale<MotorBackEmfConstant>()
 
 @DimensionClassifier("Vs") interface MagneticFlux
 val WEBER = standardScale<MagneticFlux>()

@@ -1,15 +1,14 @@
 {
 	"format_version": "1.9.0",
 	"credit": "Made with Blockbench",
-	"parent": "iron_bevel_gears",
 	"texture_size": [64, 64],
-	"textures": {
-		"0": "eln2:block/shaft/standard/iron/iron_shaft",
-		"particle": "eln2:block/shaft/standard/iron/iron_shaft"
-	},
+    "textures": {
+        "0": "eln2:block/joint/double/standard/iron/iron_shaft",
+        "particle": "eln2:block/joint/double/standard/iron/iron_shaft"
+    },
 	"elements": [
 		{
-			"name": "shaft_n",
+			"name": "shaft_2",
 			"from": [0, 7.3, 7.3],
 			"to": [7, 8.7, 8.7],
 			"rotation": {"angle": 0, "axis": "y", "origin": [3, 8, 8]},

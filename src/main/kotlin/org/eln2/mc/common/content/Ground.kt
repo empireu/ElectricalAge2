@@ -2,6 +2,7 @@ package org.eln2.mc.common.content
 
 import org.ageseries.libage.data.OHM
 import org.ageseries.libage.data.Quantity
+import org.eln2.mc.OnServerThread
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.BasicPartVisual
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
@@ -17,7 +18,7 @@ import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d
 
-class GroundCell(ci: CellCreateInfo) : Cell(ci), SidedElectricalULDR<GroundCell> {
+class GroundCell(ci: CellCreateInfo) : Cell(ci), SidedElectricalFLBR<GroundCell> {
     override val electricalSize: ElectricalSize
         get() = ElectricalSize.Standard
 
@@ -27,10 +28,7 @@ class GroundCell(ci: CellCreateInfo) : Cell(ci), SidedElectricalULDR<GroundCell>
     @Node
     val grid = GridNode(self())
 
-    override fun cellConnectionPredicate(remote: Cell): Boolean {
-        return super.cellConnectionPredicate(remote) && (remote is GridConnectionCell || locator.findDirActualPlanarOrNull(remote.locator) == Base6Direction3d.Front)
-    }
-
+    @OnServerThread
     fun submitDisplay(builder: ComponentDisplayList) {
         builder.quantity(Quantity(ground.resistors.resistance, OHM))
         builder.quantity(ground.resistors.totalCurrentDisplay)

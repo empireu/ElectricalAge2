@@ -196,7 +196,7 @@ class FuelBurnerBehavior(val cell: Cell, val body: ThermalMass) : CellBehavior {
         .useSubTagIfPreset(PID) { pid.stateFromNbt(it) }
 }
 
-class HeatGeneratorCell(ci: CellCreateInfo, thermalDef: ThermalMassDefinition, leakageParameters: ConnectionParameters) : Cell(ci), ThermalContactInfo, SidedThermalULDR<HeatGeneratorCell> {
+class HeatGeneratorCell(ci: CellCreateInfo, thermalDef: ThermalMassDefinition, leakageParameters: ConnectionParameters) : Cell(ci), ThermalContactInfo, SidedThermalFLBR<HeatGeneratorCell> {
     companion object {
         private const val BURNER_BEHAVIOR = "burner"
     }

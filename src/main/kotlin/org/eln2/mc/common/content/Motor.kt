@@ -9,7 +9,6 @@ import org.ageseries.libage.data.Resistance
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
-import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
 import org.ageseries.libage.sim.electrical.mna.component.Inductor
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
@@ -27,8 +26,6 @@ import org.eln2.mc.integration.ComponentDisplayList
 /**
  * Model for the [DcMotorCell].
  *
- * @param inertia The inertia of the kinetic node.
- * @param damping The viscous damping of the kinetic node.
  * @param coreDependentLoss A loss dependent on the angular velocity (`W / rad^2`).
  * @param armatureResistance The resistance of the armature (resolves into an actual resistor).
  * @param armatureInductance The inductance of the armature (resolves into an actual inductor).
@@ -38,10 +35,10 @@ import org.eln2.mc.integration.ComponentDisplayList
  * */
 data class DcMotorOptions(
     val frictionNodeDescription: FrictionNodeDescription,
-    val coreDependentLoss: Double, // W / (rad * rad). Fuck you, I am not making a quantity
+    val coreDependentLoss: Double, // W / (rad * rad). Maybe add quantity?
     val armatureResistance: Quantity<Resistance>,
     val armatureInductance: Quantity<Inductance>,
-    val backEmfConstant: Quantity<BackEmfConstant>,
+    val backEmfConstant: Quantity<MotorBackEmfConstant>,
     val torqueConstant: Quantity<MotorTorqueConstant>,
     val relaxation: Double = 0.5
 )
@@ -78,7 +75,7 @@ class DcMotorElectricalObject(cell: DcMotorCell) : ElectricalObject<DcMotorCell>
         Pole.Minus -> armatureResistor.offerNegative()
     }
 
-    override fun build(map: ElectricalConnectivityMap) {
+    override fun build(map: ElectricalConnectivityMap2) {
         super.build(map)
         map.join(armatureResistor.offerPositive(), armatureInductor.offerNegative())
         map.join(armatureInductor.offerPositive(), voltageSource.offerNegative())
@@ -102,12 +99,12 @@ class DcMotorKineticObject(cell: DcMotorCell) : KineticObject<DcMotorCell>(cell)
 
     override fun saveObjectNbt() = CompoundTag().also {
         it.putDouble(ANGLE, node.angle)
-        it.putDouble(OMEGA, node.omega)
+        it.putDouble(OMEGA, node.angularVelocity)
     }
 
     override fun loadObjectNbt(tag: CompoundTag) {
         node.setExternalAngle(tag.getDouble(ANGLE))
-        node.omega = tag.getDouble(OMEGA)
+        node.angularVelocity = tag.getDouble(OMEGA)
     }
 
     companion object {
@@ -149,7 +146,7 @@ class DcMotorCell(
     private fun tickPre(dt: Double, phase: SubscriberPhase) {
         // Back-EMF calculation.
         // The back-EMF opposes the applied potential.
-        electrical.voltageSource.potential = !options.backEmfConstant * kinetic.node.omega
+        electrical.voltageSource.potential = !options.backEmfConstant * kinetic.node.angularVelocity
     }
 
     /**
@@ -176,7 +173,7 @@ class DcMotorCell(
 
         wasteHeat += electrical.armatureResistor.power * dt
         wasteHeat += kinetic.node.deltaHeatFromFriction
-        wasteHeat += options.coreDependentLoss * (kinetic.node.omega * kinetic.node.omega) * dt
+        wasteHeat += options.coreDependentLoss * (kinetic.node.angularVelocity * kinetic.node.angularVelocity) * dt
 
         thermal.thermalBody.energy += Quantity(wasteHeat, JOULE)
     }

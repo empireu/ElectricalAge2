@@ -53,6 +53,7 @@ import org.ageseries.libage.sim.electrical.mna.NEGATIVE
 import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.ClientOnly
+import org.eln2.mc.ElectricalConnectivityMap2
 import org.eln2.mc.FramerateIndependentSmoother2d
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
@@ -393,11 +394,13 @@ class OscilloscopeObject(cell: OscilloscopeCell, val specification: Oscilloscope
         return resistor.offerPositive()
     }
 
-    override fun build(map: ElectricalConnectivityMap) {
+    override fun build(map: ElectricalConnectivityMap2) {
         super.build(map)
 
         resistors.forEach {
-            it?.ground(NEGATIVE)
+            if(it != null) {
+                map.ground(it, NEGATIVE)
+            }
         }
     }
 

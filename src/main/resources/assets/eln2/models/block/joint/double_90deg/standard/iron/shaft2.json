@@ -3,10 +3,10 @@
 	"credit": "Made with Blockbench",
 	"parent": "iron_bevel_gears",
 	"texture_size": [64, 64],
-	"textures": {
-		"0": "eln2:block/shaft/standard/iron/iron_shaft",
-		"particle": "eln2:block/shaft/standard/iron/iron_shaft"
-	},
+    "textures": {
+        "0": "eln2:block/joint/double/standard/iron/iron_shaft",
+        "particle": "eln2:block/joint/double/standard/iron/iron_shaft"
+    },
 	"elements": [
 		{
 			"name": "shaft_n",

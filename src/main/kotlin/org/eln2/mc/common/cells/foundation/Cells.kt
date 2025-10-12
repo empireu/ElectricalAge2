@@ -2730,6 +2730,7 @@ enum class KineticSize(val sizeTranslationKey: String, override val index: Int) 
     companion object {
         val compatibility = SizeCompatibilityMatrixBuilder<KineticSize>(Any)
             .selfCompatible(entries)
+            .compatible(Standard, Any)
             .build()
     }
 }
@@ -2752,7 +2753,7 @@ interface SidedElectrical<C> where C : Cell, C : SidedElectrical<C> {
  * Cell with a constant electrical wire size on all 4 horizontal sides.
  * To be used only for devices such as wires, anchors, connection hubs and such.
  * */
-interface SidedElectricalULDR<C> : SidedElectrical<C> where C : Cell, C : SidedElectricalULDR<C> {
+interface SidedElectricalFLBR<C> : SidedElectrical<C> where C : Cell, C : SidedElectricalFLBR<C> {
     /**
      * The electrical wire size. It will be supplied to all 4 sides.
      * */
@@ -2840,7 +2841,7 @@ interface SidedThermal<C> where C : Cell, C : SidedThermal<C> {
  * Cell with a constant thermal wire size on all 4 horizontal sides.
  * To be used only for devices such as wires, anchors, connection hubs and such.
  * */
-interface SidedThermalULDR<C> : SidedThermal<C> where C : Cell, C : SidedThermalULDR<C> {
+interface SidedThermalFLBR<C> : SidedThermal<C> where C : Cell, C : SidedThermalFLBR<C> {
     /**
      * The electrical wire size. It will be supplied to all 4 sides.
      * */

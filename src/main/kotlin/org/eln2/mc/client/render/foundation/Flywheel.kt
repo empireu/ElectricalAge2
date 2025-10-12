@@ -153,6 +153,90 @@ object FlwVisualizerRegistry {
     }
 
     fun registerPartVisualizers() {
+        //#region Joints
+
+        setPartVisualizer<JointPart<DoubleJointCell>>(Content.STANDARD_IRON_DOUBLE_JOINT_PART.part.get()) { ctx, part ->
+            BasicKineticPartVisual(
+                ctx, part,
+                FlwModels.STANDARD_IRON_DOUBLE_JOINT_BODY,
+                FlwModels.STANDARD_IRON_DOUBLE_JOINT_SHAFT
+            )
+        }
+
+        setPartVisualizerMemoized<JointPart<DoubleJointCell>>(Content.STANDARD_IRON_DOUBLE_JOINT_90DEG_PART.part.get()) {
+            val descriptions = listOf(
+                ShaftDescription(
+                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_SHAFT1,
+                    Axis3d.X,
+                    -1.0
+                ),
+                ShaftDescription(
+                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_SHAFT2,
+                    Axis3d.Z,
+                    1.0
+                )
+            )
+
+            PartVisualizer { ctx, part ->
+                SingleNodeMultiShaftKineticPartVisual(
+                    ctx, part,
+                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_BODY,
+                    descriptions
+                )
+            }
+        }
+
+        setPartVisualizerMemoized<JointPart<DoubleJointCell>>(Content.STANDARD_IRON_DOUBLE_JOINT_90DEG_2X_PART.part.get()) {
+            val descriptions = listOf(
+                ShaftDescription(
+                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_SHAFT1,
+                    Axis3d.X,
+                    -1.0
+                ),
+                ShaftDescription(
+                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_SHAFT2,
+                    Axis3d.Z,
+                    2.0
+                )
+            )
+
+            PartVisualizer { ctx, part ->
+                SingleNodeMultiShaftKineticPartVisual(
+                    ctx, part,
+                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_BODY,
+                    descriptions
+                )
+            }
+        }
+
+        setPartVisualizerMemoized<JointPart<TripleJointCell>>(Content.STANDARD_IRON_TRIPLE_T_JOINT_PART.part.get()) {
+            val descriptions = listOf(
+                ShaftDescription(
+                    FlwModels.STANDARD_IRON_TRIPLE_T_JOINT_SHAFT1,
+                    Axis3d.Z,
+                    -1.0
+                ),
+                ShaftDescription(
+                    FlwModels.STANDARD_IRON_TRIPLE_T_JOINT_SHAFT2,
+                    Axis3d.X,
+                    -1.0
+                ),
+                ShaftDescription(
+                    FlwModels.STANDARD_IRON_TRIPLE_T_JOINT_SHAFT3,
+                    Axis3d.X,
+                    1.0
+                )
+            )
+
+            PartVisualizer { ctx, part ->
+                SingleNodeMultiShaftKineticPartVisual(
+                    ctx, part,
+                    FlwModels.STANDARD_IRON_TRIPLE_T_JOINT_BODY,
+                    descriptions
+                )
+            }
+        }
+
         setPartVisualizer<SolarLightPart>(Content.SMALL_GARDEN_LIGHT.part.get()) { ctx, part ->
             BasicPartVisual(
                 ctx,
@@ -160,6 +244,8 @@ object FlwVisualizerRegistry {
                 FlwModels.SMALL_GARDEN_LIGHT
             )
         }
+
+        //#endregion
 
         setPartVisualizer<SolarLightPart>(Content.TALL_GARDEN_LIGHT.part.get()) { ctx, part ->
             LightFixturePartVisual(
@@ -237,42 +323,11 @@ object FlwVisualizerRegistry {
             )
         }
 
-        setPartVisualizer<ShaftPart>(Content.STANDARD_IRON_SHAFT_PART.part.get()) { ctx, part ->
-            BasicKineticPartVisual(
-                ctx, part,
-                FlwModels.STANDARD_IRON_SHAFT_BODY,
-                FlwModels.STANDARD_IRON_SHAFT_SHAFT
-            )
-        }
-
         setPartVisualizer<DcMotorPart>(Content.BASIC_DC_MOTOR_PART.part.get()) { ctx, part ->
             BasicPartVisual(
                 ctx, part,
                 FlwModels.BASIC_DC_MOTOR
             )
-        }
-
-        setPartVisualizerMemoized<ShaftPart>(Content.STANDARD_IRON_SHAFT_PART_90DEG.part.get()) {
-            val descriptions = listOf(
-                ShaftDescription(
-                    FlwModels.STANDARD_IRON_SHAFT_90DEG_SHAFT1,
-                    Axis3d.X,
-                    -1.0
-                ),
-                ShaftDescription(
-                    FlwModels.STANDARD_IRON_SHAFT_90DEG_SHAFT2,
-                    Axis3d.Z,
-                    1.0
-                )
-            )
-
-            PartVisualizer { ctx, part ->
-                SingleNodeMultiShaftKineticPartVisual(
-                    ctx, part,
-                    FlwModels.STANDARD_IRON_SHAFT_90DEG_BODY,
-                    descriptions
-                )
-            }
         }
     }
 

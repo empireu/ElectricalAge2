@@ -85,7 +85,7 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
     protected fun offerOutputNegative() = outputResistor.offerNegative()
     protected fun offerOutputPositive() = source.offerPositive()
 
-    override fun build(map: ElectricalConnectivityMap) {
+    override fun build(map: ElectricalConnectivityMap2) {
         super.build(map)
         map.join(source.offerNegative(), outputResistor.offerPositive())
     }

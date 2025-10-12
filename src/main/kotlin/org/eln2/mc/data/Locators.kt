@@ -9,6 +9,8 @@ import org.ageseries.libage.data.LocatorDispatcher
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.electrical.mna.NEGATIVE
 import org.ageseries.libage.sim.electrical.mna.POSITIVE
+import org.eln2.mc.DEBUGGER_BREAK
+import org.eln2.mc.ELN2_DEBUG
 import org.eln2.mc.common.cells.foundation.Cell
 import org.eln2.mc.common.cells.foundation.CellLayer
 import org.eln2.mc.common.network.serverToClient.getBlockPos
@@ -208,6 +210,31 @@ fun interface MonopoleMap {
     fun evaluates(sourceCell: Cell, targetCell: Cell): Boolean
 }
 
+// Inlined:
+
+fun anyEvaluates(source: Cell, target: Cell, a: MonopoleMap, b: MonopoleMap, c: MonopoleMap) =
+    if(ELN2_DEBUG) {
+        val rA = a.evaluates(source, target)
+        val rB = b.evaluates(source, target)
+        val rC = c.evaluates(source, target)
+        var i = 0
+
+        if(rA) { i++ }
+        if(rB) { i++ }
+        if(rC) { i++ }
+
+        check(i <= 1) {
+            DEBUGGER_BREAK("Inconsistent triple monopolar map")
+        }
+
+        i > 0
+    }
+    else {
+        a.evaluates(source, target) ||
+        b.evaluates(source, target) ||
+        c.evaluates(source, target)
+    }
+
 fun PoleMap.evaluate(sourceCell: Cell, targetCell: Cell): Pole =
     checkNotNull(evaluateOrNull(sourceCell, targetCell)) {
         "Unhandled pole map direction $sourceCell $targetCell $this"
@@ -237,7 +264,7 @@ fun directionMonopolarMapPlanar(dir: Base6Direction3d, pole: Pole) = PoleMap { c
     }
 }
 
-fun  monopolarMapPlanar(dir: Base6Direction3d) = MonopoleMap { c1, c2 ->
+fun monopolarMapPlanar(dir: Base6Direction3d) = MonopoleMap { c1, c2 ->
     when(c1.locator.findDirActualPlanarOrNull(c2.locator)) {
         dir -> true
         else -> false

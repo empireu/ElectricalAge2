@@ -2,10 +2,10 @@
 	"format_version": "1.9.0",
 	"credit": "Made with Blockbench",
 	"texture_size": [64, 64],
-	"textures": {
-		"0": "eln2:block/shaft/standard/iron/iron_shaft",
-		"particle": "eln2:block/shaft/standard/iron/iron_shaft"
-	},
+    "textures": {
+        "0": "eln2:block/joint/double/standard/iron/iron_shaft",
+        "particle": "eln2:block/joint/double/standard/iron/iron_shaft"
+    },
 	"elements": [
 		{
 			"name": "side0",

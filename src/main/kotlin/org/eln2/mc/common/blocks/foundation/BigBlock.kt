@@ -212,7 +212,7 @@ interface BigBlockRepresentativeBlockEntity<Self> : MultiblockRepresentative whe
     // New logic [!]
     override fun onDelegateDestroyed(pDelegate: MultiblockDelegateBlockEntity) {
         // P.S. now rightfully called by the block removed logic, what to do?
-        error(DEBUGGER_BREAK("Invalid call to onDelegateDestroyed! $this $pDelegate"))
+        // NOOP
     }
 }
 
