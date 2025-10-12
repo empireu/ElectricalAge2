@@ -64,11 +64,20 @@ abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirection
         cellEntity.setPlacedBy(level, getCellProvider())
     }
 
+    /**
+     * Replaced by [onRemove].
+     * */
+    /*
     override fun onBlockExploded(blockState: BlockState?, level: Level?, blockPos: BlockPos?, explosion: Explosion?) {
         markCellDestroyed(level ?: error("Level was null"), blockPos ?: error("Position was null"))
         super.onBlockExploded(blockState, level, blockPos, explosion)
     }
+    */
 
+    /**
+     * Replaced by [onRemove].
+     * */
+    /*
     override fun onDestroyedByPlayer(blockState: BlockState?, level: Level?, blockPos: BlockPos?, player: Player?, willHarvest: Boolean, fluidState: FluidState?): Boolean {
         markCellDestroyed(
             level ?: error(DEBUGGER_BREAK("Level was null")),
@@ -76,8 +85,12 @@ abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirection
         )
         return super.onDestroyedByPlayer(blockState, level, blockPos, player, willHarvest, fluidState)
     }
+    */
 
-    // New logic [!]
+    /**
+     * Called when the block state **changes**. This doesn't mean our block was removed (set to air).
+     * We will check if our block state just changed, but the block stays.
+     * */
     @Suppress("OVERRIDE_DEPRECATION")
     override fun onRemove(
         pState: BlockState,

@@ -180,7 +180,7 @@ interface BigBlockRepresentativeBlockEntity<Self> : MultiblockRepresentative whe
         )
     }
 
-    override fun onDelegateDestroyedByPlayer(
+    /*override fun onDelegateDestroyedByPlayer(
         delegate: MultiblockDelegateBlockEntity,
         pPlayer: Player,
         pWillHarvest: Boolean,
@@ -207,12 +207,16 @@ interface BigBlockRepresentativeBlockEntity<Self> : MultiblockRepresentative whe
             self.blockPos,
             pExplosion
         )
-    }
+    }*/
 
     // New logic [!]
     override fun onDelegateDestroyed(pDelegate: MultiblockDelegateBlockEntity) {
-        // P.S. now rightfully called by the block removed logic, what to do?
-        // NOOP
+        destroyDelegates()
+
+        self.level!!.destroyBlock(
+            self.blockPos,
+            true
+        )
     }
 }
 
@@ -315,6 +319,10 @@ open class MultiblockDelegateBlock(properties: Properties? = null) : BaseEntityB
         } ?: InteractionResult.FAIL
     }
 
+    /**
+     * Replaced by [onRemove].
+     * */
+    /*
     override fun onDestroyedByPlayer(
         state: BlockState,
         level: Level,
@@ -337,6 +345,7 @@ open class MultiblockDelegateBlock(properties: Properties? = null) : BaseEntityB
 
         super.onBlockExploded(state, level, pos, explosion)
     }
+    */
 
     // New logic [!]
     @Suppress("OVERRIDE_DEPRECATION")
@@ -347,6 +356,10 @@ open class MultiblockDelegateBlock(properties: Properties? = null) : BaseEntityB
         pNewState: BlockState,
         pMovedByPiston: Boolean
     ) {
+        check(pState.block !== pNewState.block) {
+            DEBUGGER_BREAK("Multiblock delegate changed its blockstate, which is illegal")
+        }
+
         runWithRepresentativeAndDelegate(pLevel, pPos) { delegate, representative ->
             representative.onDelegateDestroyed(delegate)
         }

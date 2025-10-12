@@ -208,6 +208,7 @@ class DcMotorPart(ci: PartCreateInfo, cellProvider: RegistryObject<CellProvider<
         builder.quantity(cell.kinetic.nodeDisplay.angularVelocity)
         builder.quantity(cell.kinetic.nodeDisplay.angularAcceleration)
         builder.quantity(cell.electrical.resistorDisplay.current)
+        builder.quantity(cell.electrical.voltageSourceDisplay.power)
         builder.quantityOutput(Quantity(cell.lastAppliedTorque, NEWTON_METER))
         builder.quantity(cell.thermal.thermalBodyDisplay.temperature)
     }
