@@ -303,8 +303,7 @@ private const val LIFE_EPS = 1e-3
  * */
 abstract class BatteryCell(
     ci: CellCreateInfo,
-    final override val model: BatteryModel,
-    explosionOptions: TemperatureExplosionBehaviorOptions = TemperatureExplosionBehaviorOptions(temperatureThreshold = Quantity(100.0, CELSIUS))
+    final override val model: BatteryModel
 ) : Cell(ci), BatteryView {
     abstract val generator: VRGObject<*>
 
@@ -315,7 +314,7 @@ abstract class BatteryCell(
     val heater = PowerHeatingBehavior({ generator.resistor.power }, thermalWire.thermalBody)
 
     @Behavior
-    val explosion = ThermalBreakdownBehavior.create(explosionOptions, this, thermalWire.thermalBody::temperature)
+    val explosion = ThermalBreakdownBehavior.create(Quantity(100.0, CELSIUS), this, thermalWire.thermalBody::temperature)
 
     final override var energy = Quantity<Energy>(0.0)
     final override var totalEnergyTransferred = Quantity<Energy>(0.0)

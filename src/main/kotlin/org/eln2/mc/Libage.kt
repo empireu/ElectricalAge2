@@ -25,6 +25,7 @@ import org.ageseries.libage.utils.Stopwatch
 import org.ageseries.libage.utils.addUnique
 import org.ageseries.libage.utils.putUnique
 import org.ageseries.libage.utils.sourceName
+import org.eln2.mc.common.cells.foundation.CellGraph
 import java.util.function.Supplier
 import kotlin.math.PI
 import kotlin.math.abs
@@ -331,7 +332,7 @@ class SubSolverSystemBuilder<Node, SubSolver : SubSolverSystemBuilder.PerSubSolv
 /**
  * Represents a rigid line of shafts connected end-to-end. They have the same inertia, same max lambdas, gear ratio of 1.
  * */
-class LineShaft(val lineGraph: Array<KineticShaft>) : KineticNode(false), KineticNodeProxy {
+class LineShaft(val lineGraph: Array<KineticDouble>) : KineticNode(false), KineticNodeProxy {
     val e1 = RigidKineticExtension(this, 1)
     val e2 = RigidKineticExtension(this, -1)
 
@@ -494,7 +495,7 @@ class KineticNetworkOptimizer(val originalNodes: Set<KineticNode>, val originalR
          * - the two extensions have equal max lambda
          * - the two nodes have equal inertia and ratio of 1
          * */
-        private fun getNeighborFromExtension(extension: RigidKineticExtension) : KineticShaft? {
+        private fun getNeighborFromExtension(extension: RigidKineticExtension) : KineticDouble? {
             if(extension.constraints.size == 1) {
                 val constraint = extension.constraints[0]
 
@@ -521,7 +522,7 @@ class KineticNetworkOptimizer(val originalNodes: Set<KineticNode>, val originalR
 
                     val otherNode = otherExtension.node
 
-                    if(otherNode is KineticShaft && otherNode.inertia == extension.node.inertia && otherExtension.constraints.size == 1) {
+                    if(otherNode is KineticDouble && otherNode.inertia == extension.node.inertia && otherExtension.constraints.size == 1) {
                         return otherNode
                     }
                 }
@@ -534,7 +535,7 @@ class KineticNetworkOptimizer(val originalNodes: Set<KineticNode>, val originalR
     /**
      * All the line graphs with two or more shafts from the eligible set.
      * */
-    private val lineGraphs = ArrayList<ArrayList<KineticShaft>>()
+    private val lineGraphs = ArrayList<ArrayList<KineticDouble>>()
 
     /**
      * All the nodes to remove from the solver's nodes.
@@ -575,7 +576,7 @@ class KineticNetworkOptimizer(val originalNodes: Set<KineticNode>, val originalR
     private fun gatherGraphs() {
         val eligibleShafts = originalNodes
             .asSequence()
-            .mapNotNull { it as? KineticShaft }
+            .mapNotNull { it as? KineticDouble }
             .filter {
                 if(!it.allowOptimization) {
                     return@filter false
@@ -636,10 +637,10 @@ class KineticNetworkOptimizer(val originalNodes: Set<KineticNode>, val originalR
         eligibleShafts.removeAll(withoutNeighbor)
 
         // All shafts visited to the left of current:
-        val visitedLeft = HashSet<KineticShaft>()
+        val visitedLeft = HashSet<KineticDouble>()
 
         // All shafts visited to the right of the left-most shaft found (including left-most, including anchor):
-        val visitedRight = HashSet<KineticShaft>()
+        val visitedRight = HashSet<KineticDouble>()
 
         while (eligibleShafts.isNotEmpty()) {
             var current = eligibleShafts.first()
@@ -660,7 +661,7 @@ class KineticNetworkOptimizer(val originalNodes: Set<KineticNode>, val originalR
 
             // Then traverse toward the right and add to list.
             // But also make sure we didn't create a cycle.
-            val lineGraph = ArrayList<KineticShaft>()
+            val lineGraph = ArrayList<KineticDouble>()
 
             while (true) {
                 if(!visitedRight.add(current)) {
@@ -1756,6 +1757,28 @@ abstract class FrictionKineticNode(allowOptimization: Boolean) : KineticNode(all
     }
 }
 
+private const val LIMIT_LAMBDA_MULTIPLIER = 5.0
+
+// The bias will have some trouble with this, but it's fine (we are breaking the devices):
+
+fun KineticMono.setSafeTorque(threshold: Quantity<Torque>) {
+    val limit = LIMIT_LAMBDA_MULTIPLIER * (!threshold * CellGraph.DT)
+    this.extension.maxLambda = limit
+}
+
+fun KineticDouble.setSafeTorque(threshold: Quantity<Torque>) {
+    val limit = LIMIT_LAMBDA_MULTIPLIER * (!threshold * CellGraph.DT)
+    this.e1.maxLambda = limit
+    this.e2.maxLambda = limit
+}
+
+fun KineticTriple.setSafeTorque(threshold: Quantity<Torque>) {
+    val limit = LIMIT_LAMBDA_MULTIPLIER * (!threshold * CellGraph.DT)
+    this.e1.maxLambda = limit
+    this.e2.maxLambda = limit
+    this.e3.maxLambda = limit
+}
+
 /**
  * A three-ended node.
  * Useful for modeling a triple joint as a single node.
@@ -1777,7 +1800,7 @@ class KineticTriple() : FrictionKineticNode(false) {
  * A two-ended node.
  * It's pretty much the bread and butter of all simulations.
  * */
-class KineticShaft(allowOptimization: Boolean = true) : FrictionKineticNode(allowOptimization) {
+class KineticDouble(allowOptimization: Boolean = true) : FrictionKineticNode(allowOptimization) {
     val e1 = RigidKineticExtension(this, 1)
     val e2 = RigidKineticExtension(this, -1)
 
@@ -1788,8 +1811,8 @@ class KineticShaft(allowOptimization: Boolean = true) : FrictionKineticNode(allo
     }
 }
 
-fun KineticShaft.minus() = this.e1
-fun KineticShaft.plus() = this.e2
+fun KineticDouble.minus() = this.e1
+fun KineticDouble.plus() = this.e2
 
 /**
  * A one-ended node.
@@ -2041,7 +2064,7 @@ abstract class KineticExtension(val node: KineticNode, val pole: Int) {
  * Extension that, when combined with another [RigidKineticExtension], creates a [RigidExtensionConstraint].
  * @param maxLambda The max solver impulse. Setting a bound is useful if destruction is needed (prevents a big jolt being transmitted before the node is destroyed).
  * */
-class RigidKineticExtension(node: KineticNode, pole: Int, val maxLambda: Double = Double.POSITIVE_INFINITY) : KineticExtension(node, pole) {
+class RigidKineticExtension(node: KineticNode, pole: Int, var maxLambda: Double = Double.POSITIVE_INFINITY) : KineticExtension(node, pole) {
     override val priority: Int
         get() = 0
 

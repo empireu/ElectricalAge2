@@ -129,36 +129,6 @@ class DcMotorKineticObject(cell: DcMotorCell) : KineticObject<DcMotorCell>(cell)
     }
 }
 
-class DcMotorCellReplicator(
-    val interval: Int,
-    val part: DcMotorPart,
-    val kinetic: DcMotorKineticObject,
-    val electrical: DcMotorElectricalObject
-) : ReplicatorBehavior {
-    var omegaEps = 1e-4
-    var powerEps = 0.1
-    private var replicatedAngularVelocity = 0.0
-    private var replicatedPower = 0.0
-
-    override fun subscribe(subscribers: SubscriberCollection) {
-        subscribers.addSubscriber(
-            SubscriberOptions(interval, SubscriberPhase.Post),
-            this::scan
-        )
-    }
-
-    private fun scan(dt: Double, subscriberPhase: SubscriberPhase) {
-        val targetAngularVelocity = kinetic.node.angularVelocity
-        val targetPower = electrical.voltageSource.power
-
-        if(!targetAngularVelocity.approxEq(replicatedAngularVelocity, omegaEps) || !targetPower.approxEq(replicatedPower, powerEps)) {
-            replicatedAngularVelocity = targetAngularVelocity
-            replicatedPower = targetPower
-            part.replicate(targetAngularVelocity, targetPower)
-        }
-    }
-}
-
 class DcMotorCell(
     ci: CellCreateInfo,
     override val electricalMap: PoleMap,
@@ -197,8 +167,8 @@ class DcMotorCell(
         thermal.thermalBody.temperature
     }
 
-    @Replicator
-    fun replicator(target: DcMotorPart) = DcMotorCellReplicator(5, target, kinetic, electrical)
+    @org.eln2.mc.common.cells.foundation.Replicator
+    fun replicator(target: DcMotorPart) = Replicator(5, target, kinetic, electrical)
 
     /**
      * Last applied torque, used for relaxation.
@@ -257,6 +227,36 @@ class DcMotorCell(
 
     override fun loadCellData(tag: CompoundTag) {
         lastAppliedTorque = tag.getDouble(LAST_APPLIED_TORQUE)
+    }
+
+    class Replicator(
+        val interval: Int,
+        val part: DcMotorPart,
+        val kinetic: DcMotorKineticObject,
+        val electrical: DcMotorElectricalObject
+    ) : ReplicatorBehavior {
+        var omegaEps = 1e-4
+        var powerEps = 0.1
+        private var replicatedAngularVelocity = 0.0
+        private var replicatedPower = 0.0
+
+        override fun subscribe(subscribers: SubscriberCollection) {
+            subscribers.addSubscriber(
+                SubscriberOptions(interval, SubscriberPhase.Post),
+                this::scan
+            )
+        }
+
+        private fun scan(dt: Double, subscriberPhase: SubscriberPhase) {
+            val targetAngularVelocity = kinetic.node.angularVelocity
+            val targetPower = electrical.voltageSource.power
+
+            if(!targetAngularVelocity.approxEq(replicatedAngularVelocity, omegaEps) || !targetPower.approxEq(replicatedPower, powerEps)) {
+                replicatedAngularVelocity = targetAngularVelocity
+                replicatedPower = targetPower
+                part.replicate(targetAngularVelocity, targetPower)
+            }
+        }
     }
 
     companion object {

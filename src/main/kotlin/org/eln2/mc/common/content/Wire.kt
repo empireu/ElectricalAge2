@@ -29,9 +29,11 @@ import net.minecraft.world.phys.shapes.VoxelShape
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.registries.RegistryObject
+import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.ImmutableIntArrayView
 import org.ageseries.libage.data.OHM
 import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
@@ -196,10 +198,10 @@ data class ElectricalWireRegistryObject(
 abstract class WireBuilder<C : WireCell>(val id: String) {
     var material = ThermalMassDefinition(ChemicalElement.Copper.asMaterial)
     var contactSurfaceArea = PI * (0.05 * 0.05)
-    var damageOptions = TemperatureExplosionBehaviorOptions()
     var replicatesInternalTemperature = true
     var isIncandescent: Boolean = true
     var hubSize = Vector3d(3.5 / 16.0, 2.0 / 16.0, 3.5 / 16.0)
+    var temperatureThreshold = Quantity(150.0, CELSIUS)
     var smokeTemperature: Double? = null
     private var renderInfo: Supplier<WireRenderModel>? = null
     var connectionSize = Vector3d(2.0 / 16.0, 1.5 / 16.0, 6.25 / 16.0)
@@ -218,7 +220,7 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
 
     protected fun createThermalProperties() = WireThermalProperties(
         material,
-        damageOptions,
+        temperatureThreshold,
         replicatesInternalTemperature,
         isIncandescent,
         radiantDescription,
@@ -261,7 +263,7 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
         val connections = wireShapes ?: createShapes(connectionSize)
         val connectionsFilled = wireShapesFilled ?: createShapes(Vector3d(connectionSize.x, connectionSize.y, 0.5))
 
-        val smokeTemperature = this.smokeTemperature ?: (!properties.damageOptions.temperatureThreshold * 0.9)
+        val smokeTemperature = this.smokeTemperature ?: (!properties.temperatureThreshold * 0.9)
 
         PartRegistry.partAndItemWithProvider(
             id,
@@ -370,7 +372,7 @@ class ElectricalWireBuilder(id: String) : WireBuilder<ElectrothermalWireCell>(id
  * */
 data class WireThermalProperties(
     val thermalDef: ThermalMassDefinition,
-    val damageOptions: TemperatureExplosionBehaviorOptions,
+    val temperatureThreshold: Quantity<Temperature>,
     val replicatesInternalTemperature: Boolean,
     val replicatesExternalTemperature: Boolean,
     val radiantInfo: RadiantBodyEmissionDescription?,
@@ -444,7 +446,7 @@ open class ThermalWireCell(
 
     @Behavior
     val explosion = ThermalBreakdownBehavior.create(
-        thermalProperties.damageOptions,
+        thermalProperties.temperatureThreshold,
         self(),
         thermalWire.thermalBody::temperature
     )

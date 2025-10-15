@@ -165,9 +165,7 @@ object Content {
     private val UNINSULATED_WIRE_LIGHT_FIELD = LightFieldPrimitives.sourceOnlyStart(15)
 
     val STANDARD_UNINSULATED_COPPER_THERMAL_WIRE = ThermalWireBuilder("standard_uninsulated_copper_thermal_wire").applyAndRegister {
-        damageOptions = TemperatureExplosionBehaviorOptions(
-            temperatureThreshold = Quantity(1000.0, CELSIUS)
-        )
+        temperatureThreshold = Quantity(1000.0, CELSIUS)
 
         material = ThermalMassDefinition(
             ChemicalElement.Copper.asMaterial.copy(
@@ -196,9 +194,7 @@ object Content {
     val STANDARD_INSULATED_COPPER_ELECTRICAL_WIRE = ElectricalWireBuilder("standard_insulated_copper_electrical_wire").applyAndRegister {
         isIncandescent = false
 
-        damageOptions = TemperatureExplosionBehaviorOptions(
-            temperatureThreshold = Quantity(150.0, CELSIUS)
-        )
+        temperatureThreshold = Quantity(150.0, CELSIUS)
 
         material = ThermalMassDefinition(
             ChemicalElement.Copper.asMaterial.copy(
@@ -224,7 +220,7 @@ object Content {
     val SIGNAL_WIRE = ElectricalWireBuilder("signal_wire").applyAndRegister {
         isIncandescent = false
 
-        damageOptions = TemperatureExplosionBehaviorOptions(temperatureThreshold = Quantity(133.0, CELSIUS))
+        temperatureThreshold = Quantity(133.0, CELSIUS)
         material = ThermalMassDefinition(ChemicalElement.Copper.asMaterial)
         leakageParameters = ConnectionParameters.DEFAULT.copy(conductance = Quantity(0.001, WATT_PER_KELVIN))
         breakdownPotential = 100.0
@@ -247,9 +243,7 @@ object Content {
                 ChemicalElement.Copper.asMaterial,
                 mass = Quantity(50.0, KILOGRAM)
             ),
-            TemperatureExplosionBehaviorOptions(
-                temperatureThreshold = Quantity(900.0, CELSIUS)
-            ),
+            Quantity(900.0, CELSIUS),
             replicatesInternalTemperature = true,
             replicatesExternalTemperature = true,
             null, // TODO maybe it does radiate?
@@ -296,7 +290,9 @@ object Content {
                 thermal,
                 map,
                 friction,
-                1.0
+                1.0,
+                Quantity(120.0, REVOLUTION_PER_SECOND),
+                Quantity(750.0, NEWTON_METER)
             )
         }
     }
@@ -321,7 +317,9 @@ object Content {
                 thermal,
                 map,
                 friction,
-                1.0
+                1.0,
+                Quantity(115.0, REVOLUTION_PER_SECOND),
+                Quantity(679.0, NEWTON_METER)
             )
         }
     }
@@ -346,7 +344,9 @@ object Content {
                 thermal,
                 map,
                 friction,
-                2.0
+                2.0,
+                Quantity(114.14, REVOLUTION_PER_SECOND),
+                Quantity(658.435, NEWTON_METER)
             )
         }
     }
@@ -374,7 +374,9 @@ object Content {
                 map1,
                 map2,
                 map3,
-                friction
+                friction,
+                Quantity(100.0, REVOLUTION_PER_SECOND),
+                Quantity(700.0, NEWTON_METER)
             )
         }
     }
@@ -1355,7 +1357,7 @@ object Content {
             Quantity(1.25, MILLI * HENRY),
             Quantity(2.06, VOLT_PER_RADIAN_PER_SECOND),
             Quantity(2.05, NEWTON_METER_PER_AMPERE),
-            Quantity(89.156, REVOLUTION_PER_SECOND),
+            Quantity(100.0, REVOLUTION_PER_SECOND),
             Quantity(781.691, VOLT),
             Quantity(173.25, CELSIUS)
         )

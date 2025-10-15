@@ -19,6 +19,8 @@ import org.eln2.mc.data.Locators
 import org.eln2.mc.extensions.destroyPart
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.random.Random
 
 /**
  * *A cell behavior* manages routines ([SimulationSubscriber]) that run on the simulation thread.
@@ -190,6 +192,31 @@ private fun defaultNotifier(cell: Cell) : Boolean {
     }
 }
 
+private const val EXPLOSION_BEHAVIOR_RANDOM_FACTOR = 0.05
+
+private fun randomizeThreshold(threshold: Double, index: Int, locator: Locator) : Double {
+    val random = Random(locator.hashCode())
+
+    repeat(index) {
+        random.nextDouble()
+    }
+
+    val factor = random.nextDouble(-EXPLOSION_BEHAVIOR_RANDOM_FACTOR, EXPLOSION_BEHAVIOR_RANDOM_FACTOR)
+    return threshold * (1.0 + factor)
+}
+
+private fun addTolerance(threshold: Double?, index: Int, locator: Locator) : Double? {
+    if(threshold == null) {
+        return null
+    }
+
+    val random = Random(31 * locator.hashCode() + index)
+    val factor = random.nextDouble(-EXPLOSION_BEHAVIOR_RANDOM_FACTOR, EXPLOSION_BEHAVIOR_RANDOM_FACTOR)
+    return threshold * (1.0 + factor)
+}
+
+private fun<T> addToleranceQ(q: Quantity<T>, index: Int, locator: Locator) = Quantity<T>(randomizeThreshold(!q, index, locator))
+
 abstract class ExplosionBehavior(private val consumer: ExplosionConsumer) : CellBehavior {
     var interval = 10
     var phase = SubscriberPhase.Post
@@ -298,7 +325,7 @@ class ThermalBreakdownBehavior private constructor(
     }
 
     companion object {
-        fun create(options: TemperatureExplosionBehaviorOptions, consumer: ExplosionConsumer, temperatureAccessor: () -> Quantity<Temperature>) =
+        private fun create(options: TemperatureExplosionBehaviorOptions, consumer: ExplosionConsumer, temperatureAccessor: () -> Quantity<Temperature>) =
             if(Eln2Config.serverConfig.explodeWhenHot.get()) {
                 ThermalBreakdownBehavior(temperatureAccessor, options, consumer)
             }
@@ -306,9 +333,14 @@ class ThermalBreakdownBehavior private constructor(
                 null
             }
 
-        fun create(options: TemperatureExplosionBehaviorOptions, cell: Cell, temperatureAccessor: () -> Quantity<Temperature>) = create(options, { defaultNotifier(cell) }, temperatureAccessor)
+        private fun create(options: TemperatureExplosionBehaviorOptions, cell: Cell, temperatureAccessor: () -> Quantity<Temperature>) =
+            create(options, { defaultNotifier(cell) }, temperatureAccessor)
 
-        fun create(temperature: Quantity<Temperature>, cell: Cell, temperatureAccessor: () -> Quantity<Temperature>) = create(TemperatureExplosionBehaviorOptions(temperature), cell, temperatureAccessor)
+        fun create(
+            temperature: Quantity<Temperature>,
+            cell: Cell, temperatureAccessor: () -> Quantity<Temperature>
+        ) = create(TemperatureExplosionBehaviorOptions(
+            addToleranceQ(temperature, 0, cell.locator)), cell, temperatureAccessor)
     }
 }
 
@@ -330,8 +362,9 @@ data class DielectricBreakdownBehaviorOptions(
     val maxObjects: Int = 25
 )
 
-class DielectricBreakdownBehavior(val options: DielectricBreakdownBehaviorOptions, consumer: ExplosionConsumer) : ExplosionBehavior(consumer) {
+class DielectricBreakdownBehavior private constructor(val locator: Locator, val options: DielectricBreakdownBehaviorOptions, consumer: ExplosionConsumer) : ExplosionBehavior(consumer) {
     val examined = ArrayList<ExaminedNPole>()
+    private var i = 0
 
     /**
      * Adds a port for watching.
@@ -339,19 +372,30 @@ class DielectricBreakdownBehavior(val options: DielectricBreakdownBehaviorOption
      * @param breakdownToEarth If not null, the device will break down if the potential of any terminal of [port] relative to ground is higher than [breakdownToEarth].
      * */
     fun addPort(port: Port, breakdownToSelf: Double?, breakdownToEarth: Double?) : ExaminedPort {
-        val result = ExaminedPort(port, breakdownToSelf, breakdownToEarth)
+        val result = ExaminedPort(
+            port,
+            addTolerance(breakdownToSelf, i++, locator),
+            addTolerance(breakdownToEarth, i++, locator)
+        )
+
         examined.add(result)
         return result
     }
 
     fun addResistor(virtualResistor: VirtualResistor, breakdownToSelf: Double?, breakdownToEarth: Double?) : ExaminedVirtualResistor {
-        val result = ExaminedVirtualResistor(virtualResistor, breakdownToSelf, breakdownToEarth)
+        val result = ExaminedVirtualResistor(
+            virtualResistor,
+            addTolerance(breakdownToSelf, i++, locator),
+            addTolerance(breakdownToEarth, i++, locator)
+        )
+
         examined.add(result)
         return result
     }
 
     fun clear() {
         examined.clear()
+        i = 0
     }
 
     override fun updateScore(dt: Double, phase: SubscriberPhase) {
@@ -424,10 +468,10 @@ class DielectricBreakdownBehavior(val options: DielectricBreakdownBehaviorOption
     }
 
     companion object {
-        fun create(
+        private fun create(
             options: DielectricBreakdownBehaviorOptions,
             cell: Cell
-        ) = DielectricBreakdownBehavior(options, { defaultNotifier(cell) })
+        ) = DielectricBreakdownBehavior(cell.locator, options) { defaultNotifier(cell) }
 
         fun create(cell: Cell) = create(DielectricBreakdownBehaviorOptions(), cell)
 
@@ -437,8 +481,13 @@ class DielectricBreakdownBehavior(val options: DielectricBreakdownBehaviorOption
             groundBreakdownPotential: Double,
             vararg ports: Port
         ) = create(options, cell).also { behavior ->
+            var i = 0
             ports.forEach {
-                behavior.addPort(it, null, groundBreakdownPotential)
+                behavior.addPort(
+                    it,
+                    null,
+                    randomizeThreshold(groundBreakdownPotential, i++, cell.locator)
+                )
             }
         }
 
@@ -485,7 +534,7 @@ class OverPowerBehavior private constructor(
     companion object {
         fun create(power: Quantity<Power>, cell: Cell, powerAccessor: () -> Double) = OverPowerBehavior(
             powerAccessor,
-            OverPowerBehaviorOptions(power)
+            OverPowerBehaviorOptions(addToleranceQ(power, 0, cell.locator))
         ) { defaultNotifier(cell) }
     }
 }
@@ -501,6 +550,10 @@ class KineticBreakdownBehavior private constructor(
     val options: KineticBreakdownBehaviorOptions,
     consumer: ExplosionConsumer
 ) : ExplosionBehavior(consumer) {
+    init {
+        interval = 0
+    }
+
     override fun updateScore(dt: Double, phase: SubscriberPhase) {
         val speed = abs(omegaAccessor())
 
@@ -517,6 +570,71 @@ class KineticBreakdownBehavior private constructor(
             omegaAccessor,
             KineticBreakdownBehaviorOptions(velocity)
         ) { defaultNotifier(cell) }
+
+        fun create(velocity: Quantity<AngularVelocity>, cell: Cell, node: KineticNode) = create(
+            addToleranceQ(velocity, 0, cell.locator),
+            cell,
+            { node.angularVelocity }
+        )
+    }
+}
+
+data class KineticStressBehaviorOptions(
+    val torqueThreshold: Quantity<Torque>,
+    val increaseSpeed: Double = 0.75,
+    val decayRate: Double = 0.5
+)
+
+class KineticStressBehavior private constructor(
+    val torqueAccessor: () -> Double,
+    val options: KineticStressBehaviorOptions,
+    consumer: ExplosionConsumer
+) : ExplosionBehavior(consumer) {
+    init {
+        interval = 0
+    }
+
+    override fun updateScore(dt: Double, phase: SubscriberPhase) {
+        val torque = abs(torqueAccessor())
+
+        if(torque > !options.torqueThreshold) {
+            score += (torque / !options.torqueThreshold) * options.increaseSpeed * dt
+        }
+        else {
+            score -= options.decayRate * dt
+        }
+    }
+
+    companion object {
+        fun create(torque: Quantity<Torque>, cell: Cell, node: KineticDouble) = KineticStressBehavior(
+            {
+                max(
+                    abs(node.e1.impulse / node.simulation.dt),
+                    abs(node.e2.impulse / node.simulation.dt)
+                )
+            },
+            KineticStressBehaviorOptions(addToleranceQ(torque, 0, cell.locator)),
+            { defaultNotifier(cell) }
+        )
+
+        fun create(torque: Quantity<Torque>, cell: Cell, node: KineticTriple) = KineticStressBehavior(
+            {
+                if(!node.isInSimulation) {
+                    DEBUGGER_BREAK(0.0)
+                }
+                else {
+                    max(
+                        abs(node.e1.impulse / node.simulation.dt),
+                        max(
+                            abs(node.e2.impulse / node.simulation.dt),
+                            abs(node.e3.impulse / node.simulation.dt)
+                        )
+                    )
+                }
+            },
+            KineticStressBehaviorOptions(addToleranceQ(torque, 0, cell.locator)),
+            { defaultNotifier(cell) }
+        )
     }
 }
 

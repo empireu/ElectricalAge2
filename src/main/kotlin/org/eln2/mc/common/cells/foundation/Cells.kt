@@ -2508,7 +2508,7 @@ class CellGraphManager(val level: ServerLevel) : SavedData() {
      * Gets the graph with the specified ID, or throws an exception.
      * */
     fun getGraph(id: UUID) = graphs[id]
-        ?: error("Graph with id $id not found")
+        ?: error(DEBUGGER_BREAK("Graph with id $id not found"))
 
     fun serverStop() {
         graphs.values.forEach { it.serverStop() }

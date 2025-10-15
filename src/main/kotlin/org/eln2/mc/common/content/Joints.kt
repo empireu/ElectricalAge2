@@ -5,6 +5,7 @@ import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.JOULE
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.registerHandler
+import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.ThermalMassDefinition
@@ -26,7 +27,6 @@ import org.eln2.mc.extensions.debugInIDE
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d
-import kotlin.math.abs
 
 private fun saveNodeNbt(node: KineticNode) = CompoundTag().also {
     it.putDouble("angle", node.angle)
@@ -40,6 +40,8 @@ private fun loadNodeNbt(tag: CompoundTag, node: KineticNode) {
 
 interface JointCell {
     val node: KineticNode
+
+    fun submitDebug(builder: ComponentDisplayList)
 }
 
 //#region Double Joint
@@ -49,7 +51,7 @@ interface JointCell {
  * Can be used for straight shafts and 90-degree bevel transmissions.
  * */
 class DoubleJointObject(cell: DoubleJointCell, friction: FrictionNodeDescription, ratio: Double, val thermalBody: ThermalMass?) : KineticObject<DoubleJointCell>(cell), PersistentObject {
-    val node = KineticShaft(ratio == 1.0)
+    val node = KineticDouble(ratio == 1.0)
     val display = node.display()
 
     init {
@@ -88,6 +90,8 @@ class DoubleJointCell(
     val map: PoleMap,
     shaftDef: FrictionNodeDescription,
     ratio: Double,
+    breakdownAngularVelocity: Quantity<AngularVelocity>,
+    maxTorque: Quantity<Torque>,
     leakageParameters: ConnectionParameters = ConnectionParameters.DEFAULT
 ) : Cell(ci), SidedThermalMapped<DoubleJointCell>, SidedKineticMapped<DoubleJointCell>, JointCell {
     override val thermalMap: PoleMap
@@ -109,7 +113,15 @@ class DoubleJointCell(
     val thermal = ThermalWireObject(this, thermalDef(), leakageParameters)
 
     @SimObject
-    val kinetic = DoubleJointObject(this, shaftDef, ratio, thermal.thermalBody)
+    val kinetic = DoubleJointObject(this, shaftDef, ratio, thermal.thermalBody).also {
+        it.node.setSafeTorque(maxTorque)
+    }
+
+    @Behavior
+    val kineticBreakdown = KineticBreakdownBehavior.create(breakdownAngularVelocity, this, kinetic.node)
+
+    @Behavior
+    val stress = KineticStressBehavior.create(maxTorque, this, kinetic.node)
 
     val kineticState get() = RotatingKineticState(kinetic.node.angle, kinetic.node.angularVelocity)
 
@@ -121,6 +133,10 @@ class DoubleJointCell(
 
     override val node: KineticNode
         get() = kinetic.node
+
+    override fun submitDebug(builder: ComponentDisplayList) {
+        builder.debugInIDE { "I0: ${kinetic.node.e1.impulse.rounded()}, I1: ${kinetic.node.e2.impulse.rounded()}" }
+    }
 }
 
 //#endregion
@@ -183,6 +199,8 @@ class TripleJointCell(
     val mapE2: MonopoleMap,
     val mapE3: MonopoleMap,
     shaftDef: FrictionNodeDescription,
+    breakdownAngularVelocity: Quantity<AngularVelocity>,
+    maxTorque: Quantity<Torque>,
     leakageParameters: ConnectionParameters = ConnectionParameters.DEFAULT
 ) : Cell(ci), SidedThermal<TripleJointCell>, SidedKinetic<TripleJointCell>, JointCell {
     override fun getThermalSizeOnSide(side: Base6Direction3d, targetCell: Cell) =
@@ -208,7 +226,15 @@ class TripleJointCell(
     val thermal = ThermalWireObject(this, thermalDef(), leakageParameters)
 
     @SimObject
-    val kinetic = TripleJointObject(this, shaftDef, thermal.thermalBody)
+    val kinetic = TripleJointObject(this, shaftDef, thermal.thermalBody).also {
+        it.node.setSafeTorque(maxTorque)
+    }
+
+    @Behavior
+    val kineticBreakdown = KineticBreakdownBehavior.create(breakdownAngularVelocity, this, kinetic.node)
+
+    @Behavior
+    val stress = KineticStressBehavior.create(maxTorque, this, kinetic.node)
 
     val kineticState get() = RotatingKineticState(kinetic.node.angle, kinetic.node.angularVelocity)
 
@@ -220,6 +246,10 @@ class TripleJointCell(
 
     override val node: KineticNode
         get() = kinetic.node
+
+    override fun submitDebug(builder: ComponentDisplayList) {
+        builder.debugInIDE { "I0: ${kinetic.node.e1.impulse.rounded()}, I1: ${kinetic.node.e2.impulse.rounded()}, I2: ${kinetic.node.e3.impulse.rounded()}" }
+    }
 }
 
 //#endregion
@@ -297,6 +327,7 @@ class JointPart<C>(ci: PartCreateInfo, cellProvider: RegistryObject<CellProvider
     @ServerOnly
     override fun submitDisplay(builder: ComponentDisplayList) {
         cell.objects.kineticObject.subSolvers?.debugInIDE(builder)
+        cell.submitDebug(builder)
         builder.quantity(cell.node.angleQuantity)
         builder.quantity(cell.node.angularVelocityQuantity)
         builder.quantity(cell.node.kineticEnergyQuantity)

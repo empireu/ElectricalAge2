@@ -27,6 +27,8 @@ import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraftforge.client.extensions.common.IClientBlockExtensions
 import net.minecraftforge.registries.RegistryObject
+import org.ageseries.libage.data.CELSIUS
+import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.registerHandler
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.BoundingBox3d
@@ -95,7 +97,7 @@ abstract class LightCell(ci: CellCreateInfo, val lightVariantType: LightVariantT
 
     @Behavior
     val explosion = ThermalBreakdownBehavior.create(
-        TemperatureExplosionBehaviorOptions(),
+        Quantity(200.0, CELSIUS),
         self(),
         thermalWire.thermalBody::temperature
     )
