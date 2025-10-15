@@ -94,7 +94,7 @@ abstract class LightCell(ci: CellCreateInfo, val lightVariantType: LightVariantT
     val thermalWire = ThermalWireObject(self())
 
     @Behavior
-    val explosion = TemperatureExplosionBehavior.create(
+    val explosion = ThermalBreakdownBehavior.create(
         TemperatureExplosionBehaviorOptions(),
         self(),
         thermalWire.thermalBody::temperature
@@ -460,7 +460,7 @@ class SolarLightPart(
         }
     }
 
-    override fun tick() {
+    override fun serverTick() {
         val state: Boolean
 
         // Is day -> sky darken

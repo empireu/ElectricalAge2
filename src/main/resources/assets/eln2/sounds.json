@@ -3,9 +3,7 @@
         "sounds": [
             {
                 "name": "eln2:crusher/crusher_rock",
-                "stream": false,
-                "volume": 1.0,
-                "pitch": 1.0
+                "stream": false
             }
         ]
     },
@@ -13,9 +11,31 @@
         "sounds": [
             {
                 "name": "eln2:extruder/extruder",
-                "stream": false,
-                "volume": 1.0,
-                "pitch": 1.0
+                "stream": false
+            }
+        ]
+    },
+    "shaft": {
+        "sounds": [
+            {
+                "name": "eln2:shaft/shaft",
+                "stream": false
+            }
+        ]
+    },
+    "motor.kinetic": {
+        "sounds": [
+            {
+                "name": "eln2:shaft/shaft",
+                "stream": false
+            }
+        ]
+    },
+    "motor.electromagnetic": {
+        "sounds": [
+            {
+                "name": "eln2:electromagnetic_hum",
+                "stream": false
             }
         ]
     }

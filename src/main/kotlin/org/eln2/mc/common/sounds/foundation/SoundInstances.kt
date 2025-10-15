@@ -10,8 +10,12 @@ import org.ageseries.libage.data.Event
 import org.ageseries.libage.data.EventBus
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.DEBUGGER_BREAK
+import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.requireIsOnRenderThread
+import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.pow
+import kotlin.math.sin
 
 data class SoundInfo(val pitch: Double, val volume: Double) {
     companion object {
@@ -23,8 +27,53 @@ data class SoundInfo(val pitch: Double, val volume: Double) {
             }
 
             return SoundInfo(
-                0.6 + speed * 0.4,
-                speed.pow(3) + 0.5
+                pitch = 0.6 + speed * 0.4,
+                volume = speed.pow(3) + 0.5
+            )
+        }
+
+        fun standardWithKineticScraping(omega: Double, refOmega: Double) : SoundInfo {
+            val speed = abs(omega) / abs(refOmega)
+
+            if(speed < 1e-8) {
+                return QUIET
+            }
+
+            val base = 0.1
+
+            return SoundInfo(
+                pitch = (speed.pow(2) + 0.6).coerceIn(0.0, 2.0),
+                volume = base * speed * (1.0 + sin(speed.coerceIn(0.0, 1.0) * (PI / 2.0))).coerceIn(0.0, 3.0)
+            )
+        }
+
+        fun electromagnetic(
+            power: Double,
+            nominalPower: Double,
+            basePitch: Double = 0.9,
+            pitchRange: Double = 1.6,
+            powExponent: Double = 0.6
+        ): SoundInfo {
+            if (power <= 1e-9 || nominalPower <= 0.0) {
+                return QUIET
+            }
+
+            val p = abs(power / nominalPower)
+
+            val saturation = p / (1.0 + p)
+            val pitch = (basePitch + pitchRange * saturation.pow(powExponent)).coerceIn(0.4, 4.0)
+
+            val quietDb = -48.0
+            val loudDb  = -6.0
+            val db = quietDb * (1.0 - saturation) + loudDb * saturation
+            val amplitude = (10.0).pow(db / 20.0)
+
+            val masterScale = 1.0
+            val volume = (amplitude * masterScale).coerceIn(0.0, 3.0)
+
+            return SoundInfo(
+                pitch = pitch,
+                volume = volume
             )
         }
     }
@@ -108,6 +157,16 @@ class SimpleLoopingBlockEntitySoundInstance<T : BlockEntity>(val machine: T, sou
     override fun getPosition(): Vector3d {
         val pos = machine.blockPos ?: error(DEBUGGER_BREAK("BlockEntity#blockPos null for SimpleLoopingBlockEntitySoundInstance"))
         return Vector3d(pos.x + 0.5, pos.y + 0.5, pos.z + 0.5)
+    }
+
+    override fun shouldRemove(): Boolean {
+        return machine.isRemoved
+    }
+}
+
+class SimpleLoopingPartSoundInstance<T : Part>(val machine: T, soundEvent: SoundEvent) : SimpleLoopingMachineSoundInstance<T>(soundEvent) {
+    override fun getPosition(): Vector3d {
+        return machine.placement.mountingPointWorld
     }
 
     override fun shouldRemove(): Boolean {

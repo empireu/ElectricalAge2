@@ -211,7 +211,7 @@ object Content {
             conductance = Quantity(0.01, WATT_PER_KELVIN) // Insulation
         )
 
-        breakdownPotential = 400.0
+        breakdownPotential = 800.0
 
         renderer {
             WireRenderModel(
@@ -274,6 +274,8 @@ object Content {
 
     //#region Joints
 
+    val JOINT_SOUND = soundEventVariableRange("shaft")
+
     val STANDARD_IRON_DOUBLE_JOINT_CELL = cellMemoize("standard_iron_double_joint") {
         val thermal = ThermalMassDefinition(
             ChemicalElement.Iron.asMaterial,
@@ -284,9 +286,9 @@ object Content {
 
         val friction = FrictionNodeDescription(
             Quantity(0.0770, KILOGRAM_METER2),
-            0.0,
-            Quantity(0.0, NEWTON_METER),
-            Quantity(0.0, NEWTON_METER)
+            0.01,
+            Quantity(1e-5, NEWTON_METER),
+            Quantity(0.1, NEWTON_METER)
         )
 
         CellFactory {
@@ -309,9 +311,9 @@ object Content {
 
         val friction = FrictionNodeDescription(
             Quantity(0.11025, KILOGRAM_METER2),
-            0.0,
-            Quantity(0.0, NEWTON_METER),
-            Quantity(0.0, NEWTON_METER)
+            0.0125,
+            Quantity(1e-5, NEWTON_METER),
+            Quantity(0.1, NEWTON_METER)
         )
 
         CellFactory {
@@ -334,9 +336,9 @@ object Content {
 
         val friction = FrictionNodeDescription(
             Quantity(0.11025, KILOGRAM_METER2),
-            0.0,
-            Quantity(0.0, NEWTON_METER),
-            Quantity(0.0, NEWTON_METER)
+            0.01567,
+            Quantity(1e-5, NEWTON_METER),
+            Quantity(0.1, NEWTON_METER)
         )
 
         CellFactory {
@@ -361,9 +363,9 @@ object Content {
 
         val friction = FrictionNodeDescription(
             Quantity(0.13025, KILOGRAM_METER2),
-            0.0,
-            Quantity(0.0, NEWTON_METER),
-            Quantity(0.0, NEWTON_METER)
+            0.02,
+            Quantity(1e-5, NEWTON_METER),
+            Quantity(0.1, NEWTON_METER)
         )
 
         CellFactory {
@@ -1331,6 +1333,9 @@ object Content {
 
     //#region Motors
 
+    val MOTOR_KINETIC_SOUND = soundEventVariableRange("motor.kinetic")
+    val MOTOR_ELECTROMAGNETIC_SOUND = soundEventVariableRange("motor.electromagnetic")
+
     val BASIC_DC_MOTOR_CELL = cellMemoize("basic_dc_motor") {
         val electricalMap = directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)
         val kineticMap = monopolarMapPlanar(Base6Direction3d.Front)
@@ -1349,12 +1354,15 @@ object Content {
             Quantity(0.0667, OHM),
             Quantity(1.25, MILLI * HENRY),
             Quantity(2.06, VOLT_PER_RADIAN_PER_SECOND),
-            Quantity(2.05, NEWTON_METER_PER_AMPERE)
+            Quantity(2.05, NEWTON_METER_PER_AMPERE),
+            Quantity(89.156, REVOLUTION_PER_SECOND),
+            Quantity(781.691, VOLT),
+            Quantity(173.25, CELSIUS)
         )
 
         val thermalDef = ThermalMassDefinition(
             ChemicalElement.Iron.asMaterial,
-            mass = Quantity(65.0, KILOGRAM)
+            mass = Quantity(2.1451, KILOGRAM) // Mass of the wiring itself. Not the entire rotor.
         )
 
         val leakage = ConnectionParameters.DEFAULT
@@ -1369,8 +1377,15 @@ object Content {
         }
     }
 
-    val BASIC_DC_MOTOR_PART = partImmediateBB("basic_dc_motor", 16.0, 13.0, 14.3) {
-        DcMotorPart(it, BASIC_DC_MOTOR_CELL)
+    val BASIC_DC_MOTOR_PART = partMemoizeBB("basic_dc_motor", 16.0, 13.0, 14.3) {
+        val soundOptions = DcMotorSoundOptions(
+            Quantity(10.0, REVOLUTION_PER_SECOND),
+            Quantity(12.0, KILO * WATT)
+        )
+
+        PartFactory {
+            DcMotorPart(it, soundOptions, BASIC_DC_MOTOR_CELL)
+        }
     }
     
     //#endregion

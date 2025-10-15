@@ -404,13 +404,8 @@ class MultipartBlock : BaseEntityBlock(
         pLevel: Level,
         pState: BlockState,
         pBlockEntityType: BlockEntityType<T>,
-    ): BlockEntityTicker<T>? {
-
-        return createTickerHelper(
-            pBlockEntityType,
-            BlockRegistry.MULTIPART_BLOCK_ENTITY.get(),
-            MultipartBlockEntity.Companion::serverTick
-        )
+    ): BlockEntityTicker<T> {
+        return BlockEntityTicker(MultipartBlockEntity::tick)
     }
 
     override fun animateTick(pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {
@@ -1019,6 +1014,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
                     }
 
                     clientAddPart(part)
+                    part.onAdded() // [!] Wasn't called before
                     joinCollider(part)
                 }
 
@@ -1519,24 +1515,24 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
             provider.placementCollisionSize
         )
 
-        fun <T : BlockEntity> serverTick(level: Level?, pos: BlockPos?, state: BlockState?, entity: T?) {
+        fun <T : BlockEntity> tick(level: Level?, pos: BlockPos?, state: BlockState?, entity: T?) {
             if (entity !is MultipartBlockEntity) {
-                LOG.error("Block tick entity is not a multipart!")
+                LOG.error(DEBUGGER_BREAK("Block tick entity is not a multipart!"))
                 return
             }
 
             if (level == null) {
-                LOG.error("Block tick level was null")
+                LOG.error(DEBUGGER_BREAK("Block tick level was null"))
                 return
             }
 
             if (state == null) {
-                LOG.error("Block tick BlockState was null")
+                LOG.error(DEBUGGER_BREAK("Block tick BlockState was null"))
                 return
             }
 
             if (pos == null) {
-                LOG.error("Block tick pos was null")
+                LOG.error(DEBUGGER_BREAK("Block tick pos was null"))
                 return
             }
 
@@ -1544,15 +1540,21 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
 
             if (!entity.needsTicks) {
                 // Remove the ticker
-
                 val chunk = level.getChunkAt(pos)
-
                 chunk.removeBlockEntityTicker(pos)
-
                 return
             }
 
-            entity.tickingParts.forEach { it.tick() }
+            if(level.isClientSide) {
+                entity.tickingParts.forEach {
+                    it.clientTick()
+                }
+            }
+            else {
+                entity.tickingParts.forEach {
+                    it.serverTick()
+                }
+            }
 
             for (removed in entity.tickingRemoveQueue) {
                 entity.tickingParts.remove(removed)

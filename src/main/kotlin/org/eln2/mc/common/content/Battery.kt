@@ -315,7 +315,7 @@ abstract class BatteryCell(
     val heater = PowerHeatingBehavior({ generator.resistor.power }, thermalWire.thermalBody)
 
     @Behavior
-    val explosion = TemperatureExplosionBehavior.create(explosionOptions, this, thermalWire.thermalBody::temperature)
+    val explosion = ThermalBreakdownBehavior.create(explosionOptions, this, thermalWire.thermalBody::temperature)
 
     final override var energy = Quantity<Energy>(0.0)
     final override var totalEnergyTransferred = Quantity<Energy>(0.0)

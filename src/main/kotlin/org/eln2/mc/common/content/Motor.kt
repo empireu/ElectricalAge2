@@ -1,11 +1,17 @@
 package org.eln2.mc.common.content
 
+import kotlinx.serialization.Serializable
 import net.minecraft.nbt.CompoundTag
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.Inductance
 import org.ageseries.libage.data.JOULE
+import org.ageseries.libage.data.Potential
+import org.ageseries.libage.data.Power
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Resistance
+import org.ageseries.libage.data.Temperature
+import org.ageseries.libage.data.registerHandler
+import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
@@ -14,14 +20,21 @@ import org.ageseries.libage.sim.electrical.mna.component.Resistor
 import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
 import org.eln2.mc.*
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
+import org.eln2.mc.common.parts.foundation.TickablePart
+import org.eln2.mc.common.sounds.foundation.SimpleLoopingMachineSoundInstance
+import org.eln2.mc.common.sounds.foundation.SimpleLoopingPartSoundInstance
+import org.eln2.mc.common.sounds.foundation.SoundInfo
+import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
 import org.eln2.mc.data.MonopoleMap
 import org.eln2.mc.data.Pole
 import org.eln2.mc.data.PoleMap
 import org.eln2.mc.data.evaluate
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import kotlin.math.abs
 
 /**
  * Model for the [DcMotorCell].
@@ -40,6 +53,9 @@ data class DcMotorOptions(
     val armatureInductance: Quantity<Inductance>,
     val backEmfConstant: Quantity<MotorBackEmfConstant>,
     val torqueConstant: Quantity<MotorTorqueConstant>,
+    val breakdownAngularVelocity: Quantity<AngularVelocity>,
+    val breakdownPotential: Quantity<Potential>,
+    val breakdownTemperature: Quantity<Temperature>,
     val relaxation: Double = 0.5
 )
 
@@ -113,6 +129,36 @@ class DcMotorKineticObject(cell: DcMotorCell) : KineticObject<DcMotorCell>(cell)
     }
 }
 
+class DcMotorCellReplicator(
+    val interval: Int,
+    val part: DcMotorPart,
+    val kinetic: DcMotorKineticObject,
+    val electrical: DcMotorElectricalObject
+) : ReplicatorBehavior {
+    var omegaEps = 1e-4
+    var powerEps = 0.1
+    private var replicatedAngularVelocity = 0.0
+    private var replicatedPower = 0.0
+
+    override fun subscribe(subscribers: SubscriberCollection) {
+        subscribers.addSubscriber(
+            SubscriberOptions(interval, SubscriberPhase.Post),
+            this::scan
+        )
+    }
+
+    private fun scan(dt: Double, subscriberPhase: SubscriberPhase) {
+        val targetAngularVelocity = kinetic.node.angularVelocity
+        val targetPower = electrical.voltageSource.power
+
+        if(!targetAngularVelocity.approxEq(replicatedAngularVelocity, omegaEps) || !targetPower.approxEq(replicatedPower, powerEps)) {
+            replicatedAngularVelocity = targetAngularVelocity
+            replicatedPower = targetPower
+            part.replicate(targetAngularVelocity, targetPower)
+        }
+    }
+}
+
 class DcMotorCell(
     ci: CellCreateInfo,
     override val electricalMap: PoleMap,
@@ -131,6 +177,28 @@ class DcMotorCell(
 
     @SimObject
     val thermal = ThermalWireObject(this, thermalDef(), leakage)
+
+    @Behavior
+    val kineticBreakdown = KineticBreakdownBehavior.create(options.breakdownAngularVelocity, this) {
+        kinetic.node.angularVelocity
+    }
+
+    @Behavior
+    val dielectricBreakdown = DielectricBreakdownBehavior.create(this).also {
+        it.addPort(
+            electrical.armatureResistor,
+            !options.breakdownPotential,
+            !options.breakdownPotential
+        )
+    }
+
+    @Behavior
+    val thermalBreakdown = ThermalBreakdownBehavior.create(options.breakdownTemperature, this) {
+        thermal.thermalBody.temperature
+    }
+
+    @Replicator
+    fun replicator(target: DcMotorPart) = DcMotorCellReplicator(5, target, kinetic, electrical)
 
     /**
      * Last applied torque, used for relaxation.
@@ -196,10 +264,94 @@ class DcMotorCell(
     }
 }
 
-class DcMotorPart(ci: PartCreateInfo, cellProvider: RegistryObject<CellProvider<DcMotorCell>>) :
+data class DcMotorSoundOptions(
+    val nominalSpeed: Quantity<AngularVelocity>,
+    val nominalPower: Quantity<Power>
+)
+
+class DcMotorPart(ci: PartCreateInfo, val soundOptions: DcMotorSoundOptions, cellProvider: RegistryObject<CellProvider<DcMotorCell>>) :
     CellPart<DcMotorCell>(ci, cellProvider.get()),
+    TickablePart,
     ComponentDisplay
 {
+    private val renderState = if(placement.level.isClientSide) RenderState() else null
+
+    private class RenderState {
+        var targetAngularVelocity = 0.0
+        var targetPower = 0.0
+
+        val angularVelocityInterpolator = FramerateIndependentSmoother1d(0.2)
+        val powerInterpolator = FramerateIndependentSmoother1d(0.25)
+
+        var kineticSound: SimpleLoopingPartSoundInstance<DcMotorPart>? = null
+        var electromagneticSound: SimpleLoopingMachineSoundInstance<DcMotorPart>? = null
+    }
+
+    override fun onAdded() {
+        if(placement.level.isClientSide) {
+            placement.multipart.addTicker(this)
+        }
+    }
+
+    @ClientOnly
+    override fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) {
+        builder.withHandler<SyncPacket> {
+            val state = renderState!!
+            state.targetAngularVelocity = abs(it.angularVelocity)
+            state.targetPower = abs(it.power)
+        }
+    }
+
+    @ClientOnly
+    override fun clientTick() {
+        val state = renderState!!
+
+        if(state.kineticSound == null) {
+            state.kineticSound = SimpleLoopingPartSoundInstance(this, Content.MOTOR_KINETIC_SOUND.get()).also {
+                it.events.registerHandler<SoundInstanceTickEvent> { e ->
+                    // Treat as the standard processing speed for machines, using a nominal speed as a baseline:
+                    state.angularVelocityInterpolator.update(state.targetAngularVelocity)
+                    it.soundInfo = SoundInfo.standardWithKineticScraping(
+                        state.angularVelocityInterpolator.value,
+                        !soundOptions.nominalSpeed
+                    )
+                }
+
+                it.registerOnAudioManager()
+            }
+        }
+
+        if(state.electromagneticSound == null) {
+            state.electromagneticSound = SimpleLoopingPartSoundInstance(this, Content.MOTOR_ELECTROMAGNETIC_SOUND.get()).also {
+                it.events.registerHandler<SoundInstanceTickEvent> { e ->
+                    // Treat as the standard processing speed for machines, using a nominal speed as a baseline:
+                    state.powerInterpolator.update(state.targetPower)
+                    it.soundInfo = SoundInfo.electromagnetic(
+                        state.powerInterpolator.value,
+                        !soundOptions.nominalPower
+                    )
+                }
+
+                it.registerOnAudioManager()
+            }
+        }
+    }
+
+    @ServerOnly @OnSimulationThread
+    fun replicate(angularVelocity: Double, power: Double) {
+        sendBulkPacket(SyncPacket(angularVelocity, power))
+    }
+
+    @ServerOnly
+    override fun onSyncSuggested() {
+        if(hasCell) {
+            replicate(cell.kinetic.node.angularVelocity, cell.electrical.voltageSource.power)
+        }
+    }
+
+    @Serializable
+    private data class SyncPacket(val angularVelocity: Double, val power: Double)
+
     override fun submitDisplay(builder: ComponentDisplayList) {
         builder.debugInIDE { "Back-EMF: ${cell.electrical.voltageSourceDisplay.potential}" }
         builder.debugInIDE { "Flux: ${cell.electrical.armatureInductor.flux}" }

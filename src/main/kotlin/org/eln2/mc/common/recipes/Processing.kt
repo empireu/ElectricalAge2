@@ -41,7 +41,6 @@ import org.eln2.mc.common.content.ThermalWireObject
 import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.sendBulkPacket
-import org.eln2.mc.common.recipes.foundation.CATALYST_SLOT
 import org.eln2.mc.common.recipes.foundation.Eln2SimpleRecipe
 import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
 import org.eln2.mc.common.recipes.foundation.ProcessingDevice
@@ -236,7 +235,7 @@ class MotorProcessingCell(
 
     @Behavior
     val temperatureExplosion = if(options.thermal != null) {
-        TemperatureExplosionBehavior.create(
+        ThermalBreakdownBehavior.create(
             options.thermal.destroyTemperature,
             this,
             thermalWire!!.thermalBody::temperature
@@ -432,7 +431,7 @@ abstract class MotorProcessingBlockEntity<R>(
             if(soundEvent != null) {
                 soundInstance = SimpleLoopingBlockEntitySoundInstance(this, soundEvent.get()).also {
                     it.events.registerHandler<SoundInstanceTickEvent> { e ->
-                        it.soundInfo = SoundInfo.Companion.standardWithProcessingSpeed(clientTickSpeedSmoother.value)
+                        it.soundInfo = SoundInfo.standardWithProcessingSpeed(clientTickSpeedSmoother.value)
                     }
 
                     it.registerOnAudioManager()

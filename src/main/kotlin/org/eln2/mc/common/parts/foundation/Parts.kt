@@ -258,6 +258,7 @@ abstract class Part(ci: PartCreateInfo) {
     val placement = ci.placement
     val partProviderShape: VoxelShape = Shapes.create(modelBoundingBox)
     var isRemoved = false
+        private set
 
     /**
      * Called to check if the part item should drop, just after it is destroyed.
@@ -581,7 +582,7 @@ abstract class Part(ci: PartCreateInfo) {
 
     fun setRemoved() {
         if(this.isRemoved) {
-            LOG.error("Multiple calls to setRemoved")
+            LOG.error(DEBUGGER_BREAK("Multiple calls to setRemoved"))
         }
 
         this.isRemoved = true
@@ -1147,7 +1148,9 @@ fun getPartConnection(
  * @see MultipartBlockEntity.markRemoveTicker
  * */
 interface TickablePart {
-    fun tick()
+    fun serverTick() { }
+
+    fun clientTick() { }
 }
 
 /**

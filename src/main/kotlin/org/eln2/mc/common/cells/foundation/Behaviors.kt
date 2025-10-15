@@ -273,7 +273,7 @@ abstract class ExplosionBehavior(private val consumer: ExplosionConsumer) : Cell
 }
 
 /**
- * The [TemperatureExplosionBehavior] will destroy the game object if a temperature is held
+ * The [ThermalBreakdownBehavior] will destroy the game object if a temperature is held
  * above a threshold for a certain time period, as specified in [TemperatureExplosionBehaviorOptions]
  * A **score** is used to determine if the object should blow up. The score is increased when the temperature is above threshold
  * and decreased when the temperature is under threshold. Once a score of 1 is reached, the explosion is enqueued
@@ -281,7 +281,7 @@ abstract class ExplosionBehavior(private val consumer: ExplosionConsumer) : Cell
  * The explosion uses an [ExplosionConsumer] to access the game object. [ExplosionConsumer.explode] is called from the game thread.
  * If no consumer is specified, a default one is used.
  * */
-class TemperatureExplosionBehavior private constructor(
+class ThermalBreakdownBehavior private constructor(
     val temperatureAccessor: () -> Quantity<Temperature>,
     val options: TemperatureExplosionBehaviorOptions,
     consumer: ExplosionConsumer,
@@ -300,7 +300,7 @@ class TemperatureExplosionBehavior private constructor(
     companion object {
         fun create(options: TemperatureExplosionBehaviorOptions, consumer: ExplosionConsumer, temperatureAccessor: () -> Quantity<Temperature>) =
             if(Eln2Config.serverConfig.explodeWhenHot.get()) {
-                TemperatureExplosionBehavior(temperatureAccessor, options, consumer)
+                ThermalBreakdownBehavior(temperatureAccessor, options, consumer)
             }
             else {
                 null
@@ -486,6 +486,36 @@ class OverPowerBehavior private constructor(
         fun create(power: Quantity<Power>, cell: Cell, powerAccessor: () -> Double) = OverPowerBehavior(
             powerAccessor,
             OverPowerBehaviorOptions(power)
+        ) { defaultNotifier(cell) }
+    }
+}
+
+data class KineticBreakdownBehaviorOptions(
+    val angularVelocityThreshold: Quantity<AngularVelocity>,
+    val increaseSpeed: Double = 0.75,
+    val decayRate: Double = 0.5
+)
+
+class KineticBreakdownBehavior private constructor(
+    val omegaAccessor: () -> Double,
+    val options: KineticBreakdownBehaviorOptions,
+    consumer: ExplosionConsumer
+) : ExplosionBehavior(consumer) {
+    override fun updateScore(dt: Double, phase: SubscriberPhase) {
+        val speed = abs(omegaAccessor())
+
+        if(speed > !options.angularVelocityThreshold) {
+            score += options.increaseSpeed * dt
+        }
+        else {
+            score -= options.decayRate * dt
+        }
+    }
+
+    companion object {
+        fun create(velocity: Quantity<AngularVelocity>, cell: Cell, omegaAccessor: () -> Double) = KineticBreakdownBehavior(
+            omegaAccessor,
+            KineticBreakdownBehaviorOptions(velocity)
         ) { defaultNotifier(cell) }
     }
 }

@@ -37,7 +37,6 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.*
 import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
-import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
 import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.foundation.*
@@ -363,7 +362,7 @@ class ElectricalWireBuilder(id: String) : WireBuilder<ElectrothermalWireCell>(id
 /**
  * Thermal properties of a wire.
  * @param thermalDef The definition used to create the thermal body of the wire.
- * @param damageOptions The damage config, passed to the [TemperatureExplosionBehavior]
+ * @param damageOptions The damage config, passed to the [ThermalBreakdownBehavior]
  * @param replicatesInternalTemperature Indicates if the wire should replicate the internal temperature (temperature of the wire's thermal body)
  * @param replicatesExternalTemperature Indicates if the wire should replicate the external temperatures (temperatures of connected thermal objects)
  * @param radiantInfo If not null, this wire will emit light based on the description.
@@ -444,7 +443,7 @@ open class ThermalWireCell(
     )
 
     @Behavior
-    val explosion = TemperatureExplosionBehavior.create(
+    val explosion = ThermalBreakdownBehavior.create(
         thermalProperties.damageOptions,
         self(),
         thermalWire.thermalBody::temperature

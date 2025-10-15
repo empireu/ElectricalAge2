@@ -4,6 +4,7 @@ import net.minecraft.nbt.CompoundTag
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.JOULE
 import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.registerHandler
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.ThermalMassDefinition
@@ -13,6 +14,10 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
+import org.eln2.mc.common.parts.foundation.TickablePart
+import org.eln2.mc.common.sounds.foundation.SimpleLoopingPartSoundInstance
+import org.eln2.mc.common.sounds.foundation.SoundInfo
+import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
 import org.eln2.mc.data.MonopoleMap
 import org.eln2.mc.data.Pole
 import org.eln2.mc.data.PoleMap
@@ -21,6 +26,7 @@ import org.eln2.mc.extensions.debugInIDE
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d
+import kotlin.math.abs
 
 private fun saveNodeNbt(node: KineticNode) = CompoundTag().also {
     it.putDouble("angle", node.angle)
@@ -227,10 +233,28 @@ class JointPart<C>(ci: PartCreateInfo, cellProvider: RegistryObject<CellProvider
     CellPart<C>(ci, cellProvider.get()),
     BasicKineticPart,
     InternalKineticStateConsumer,
-    ComponentDisplay where C : Cell, C : JointCell
+    TickablePart,
+    ComponentDisplay
+    where C : Cell, C : JointCell
 {
+    companion object {
+        private val NOMINAL_SPEED = Quantity(25.0, REVOLUTION_PER_SECOND)
+    }
+
     @ClientOnly
     override val renderState = BasicKineticPart.RenderStateImpl.createFor(this)
+
+    // Updated in [clientTick] for audio:
+    @ClientOnly
+    private val clientTickSpeedSmoother = FramerateIndependentSmoother1d(0.2)
+    private var soundInstance: SimpleLoopingPartSoundInstance<JointPart<C>>? = null
+
+    @ClientOnly
+    override fun onAdded() {
+        if(placement.level.isClientSide) {
+            placement.multipart.addTicker(this)
+        }
+    }
 
     @ClientOnly
     override fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) {
@@ -246,6 +270,28 @@ class JointPart<C>(ci: PartCreateInfo, cellProvider: RegistryObject<CellProvider
             state.angularVelocity,
             angularAccelerationEstimate
         ))
+    }
+
+    /**
+     * Does the sound.
+     * */
+    @ClientOnly
+    override fun clientTick() {
+        if (soundInstance != null) {
+            return
+        }
+
+        soundInstance = SimpleLoopingPartSoundInstance(this, Content.JOINT_SOUND.get()).also {
+            it.events.registerHandler<SoundInstanceTickEvent> { e ->
+                // Treat as the standard processing speed for machines, using a nominal speed as a baseline:
+                clientTickSpeedSmoother.update(renderState!!.angularVelocity)
+                it.soundInfo = SoundInfo.standardWithKineticScraping(
+                    clientTickSpeedSmoother.value, !NOMINAL_SPEED
+                )
+            }
+
+            it.registerOnAudioManager()
+        }
     }
 
     @ServerOnly
