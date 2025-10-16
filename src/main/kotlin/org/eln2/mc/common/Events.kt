@@ -1,7 +1,5 @@
 package org.eln2.mc.common
 
-import net.minecraft.client.renderer.blockentity.BlockEntityRenderer
-import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraftforge.client.event.EntityRenderersEvent
@@ -20,8 +18,6 @@ import org.eln2.mc.LOG
 import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
 import org.eln2.mc.common.blocks.BlockRegistry
-import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
-import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityLevelRender
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityLevelRendererProvider
 import org.eln2.mc.common.cells.foundation.CellGraph
 import org.eln2.mc.common.cells.foundation.CellGraphManager
@@ -58,7 +54,7 @@ object ModEvents {
         )
 
         event.registerBlockEntityRenderer(
-            Content.EXTRUDER_BLOCK_ENTITY.get(),
+            Content.ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
     }

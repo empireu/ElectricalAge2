@@ -1,13 +1,13 @@
 package org.eln2.mc.extensions
 
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
-import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.MutableSetMapMultiMap
 import org.ageseries.libage.mathematics.rounded
+import org.eln2.mc.KineticNode
 import org.eln2.mc.KineticSimulation
 import org.eln2.mc.LOG
 import org.eln2.mc.SubSolverSet
@@ -91,4 +91,12 @@ fun PIDController.stateFromNbt(tag: CompoundTag) {
 }
 
 
+fun KineticNode.saveNbt() = CompoundTag().also {
+    it.putDouble("angle", this.angle)
+    it.putDouble("omega", this.angularVelocity)
+}
 
+fun KineticNode.loadNbt(tag: CompoundTag) {
+    this.setExternalAngle(tag.getDouble("angle"))
+    this.angularVelocity = tag.getDouble("omega")
+}

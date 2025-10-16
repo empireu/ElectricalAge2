@@ -122,7 +122,7 @@ class Eln2WailaPlugin : IWailaPlugin {
                         display.submitDisplay(builder)
                     }
                 } catch (e : Throwable) {
-                    LOG.error("Display error $display: $e")
+                    LOG.error(DEBUGGER_BREAK("Display error $display: $e"))
                 }
             }
 

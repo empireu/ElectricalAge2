@@ -1652,7 +1652,7 @@ data class CellAndContainerHandle @Deprecated("Use [of]") constructor(val neighb
 
             return CellAndContainerHandle(
                 cell,
-                cell.container ?: error("Did not have container for $cell")
+                cell.container ?: error(DEBUGGER_BREAK("Did not have container for $cell"))
             )
         }
     }

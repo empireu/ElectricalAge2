@@ -2,10 +2,10 @@
 	"format_version": "1.9.0",
 	"credit": "Made with Blockbench",
 	"texture_size": [64, 64],
-	"textures": {
-		"0": "eln2:block/extruder/extruder",
-		"particle": "eln2:block/extruder/extruder"
-	},
+    "textures": {
+        "0": "eln2:block/electric_extruder/electric_extruder",
+        "particle": "eln2:block/electric_extruder/electric_extruder"
+    },
 	"elements": [
 		{
 			"name": "shaft1",

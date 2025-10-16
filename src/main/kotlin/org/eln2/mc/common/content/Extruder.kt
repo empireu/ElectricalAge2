@@ -1,17 +1,18 @@
 package org.eln2.mc.common.content
 
 import dev.engine_room.flywheel.api.instance.Instance
+import dev.engine_room.flywheel.api.model.Model
 import dev.engine_room.flywheel.api.visual.DynamicVisual
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.material.Materials
 import dev.engine_room.flywheel.lib.model.Models
+import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.core.BlockPos
-import net.minecraft.core.Direction
 import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.MutableComponent
 import net.minecraft.world.SimpleContainer
@@ -23,6 +24,7 @@ import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
+import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.level.block.state.properties.BooleanProperty
@@ -34,10 +36,21 @@ import net.minecraftforge.items.SlotItemHandler
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
+import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.*
+import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.BasicKineticPart
 import org.eln2.mc.client.render.foundation.PartialModelHelper
+import org.eln2.mc.client.render.foundation.partTransformation
+import org.eln2.mc.common.cells.foundation.InternalKineticReplicatorBehavior
+import org.eln2.mc.common.cells.foundation.InternalKineticStateConsumer
+import org.eln2.mc.common.cells.foundation.RotatingKineticState
 import org.eln2.mc.common.containers.*
+import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
+import org.eln2.mc.common.network.serverToClient.sendBulkPacket
+import org.eln2.mc.common.recipes.KineticProcessingBlock
+import org.eln2.mc.common.recipes.KineticProcessingBlockEntity
 import org.eln2.mc.common.recipes.MotorProcessingBlock
 import org.eln2.mc.common.recipes.MotorProcessingBlockEntity
 import org.eln2.mc.common.recipes.foundation.CATALYST_SLOT
@@ -48,95 +61,12 @@ import org.eln2.mc.extensions.recipeExists
 import org.eln2.mc.extensions.transformFacingBlock
 import java.util.function.Consumer
 
-class ExtruderBlock : MotorProcessingBlock<CatalyzedSimpleProcessingRecipe, ExtruderBlockEntity>() {
-    companion object {
-        val WITH_DIE: BooleanProperty = BooleanProperty.create("has_die")
-
-        private val size = Vector3d(16.0, 11.0, 16.0) / 32.0
-
-        private val collider = Shapes.box(
-            0.5 - size.x, 0.5 - size.y, 0.5 - size.z,
-            0.5 + size.x, 0.5 + size.y, 0.5 + size.z
-        )
-    }
-
-    init {
-        registerDefaultState(defaultBlockState().setValue(WITH_DIE, false))
-    }
-
-    override fun createBlockStateDefinition(pBuilder: StateDefinition.Builder<Block, BlockState>) {
-        super.createBlockStateDefinition(pBuilder)
-        pBuilder.add(WITH_DIE)
-    }
-
-    override fun getTitle(): MutableComponent = Component.translatable("menu.$MODID.extruder")
-
-    override fun createMenu(
-        pBlockEntity: ExtruderBlockEntity,
-        pContainerId: Int,
-        pPlayerInventory: Inventory,
-    ) = ExtruderMenu(pBlockEntity, pContainerId, pPlayerInventory)
-
-    override fun getCellProvider() = Content.BASIC_EXTRUDER_CELL.get()
-
-    override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = ExtruderBlockEntity(pPos, pState)
-
-    //#region Collider
-
-    @Suppress("OVERRIDE_DEPRECATION")
-    override fun getCollisionShape(
-        pState: BlockState,
-        pLevel: BlockGetter,
-        pPos: BlockPos,
-        pContext: CollisionContext,
-    ): VoxelShape = collider
-
-    @Suppress("OVERRIDE_DEPRECATION")
-    override fun getShape(
-        pState: BlockState,
-        pLevel: BlockGetter,
-        pPos: BlockPos,
-        pContext: CollisionContext,
-    ): VoxelShape = collider
-
-    @Suppress("OVERRIDE_DEPRECATION")
-    override fun getVisualShape(
-        pState: BlockState,
-        pLevel: BlockGetter,
-        pPos: BlockPos,
-        pContext: CollisionContext,
-    ): VoxelShape = collider
-
-    //#endregion
-}
-
-class ExtruderBlockEntity(pos: BlockPos, state: BlockState) : MotorProcessingBlockEntity<CatalyzedSimpleProcessingRecipe>(pos, state, Content.EXTRUDER_BLOCK_ENTITY.get(), 3) {
-    override fun getRecipe() = Content.EXTRUDING_RECIPE
-
-    override fun getSound() = Content.EXTRUDER_SOUND
-
-    override fun getInputSlots() = intArrayOf(INPUT_SLOT, CATALYST_SLOT)
-
-    override fun serverTick() {
-        super.serverTick()
-
-        val hasDieItem = !inventoryHandler.getStackInSlot(CATALYST_SLOT).isEmpty
-
-        if(hasDieItem != blockState.getValue(ExtruderBlock.WITH_DIE)) {
-            level!!.setBlock(
-                blockPos,
-                blockState.setValue(ExtruderBlock.WITH_DIE, hasDieItem),
-                Block.UPDATE_ALL
-            )
-        }
-    }
-}
-
-class ExtruderBlockEntityVisual(
+abstract class ExtruderBlockEntityVisual<BE>(
+    body: Model,
     ctx: VisualizationContext,
-    blockEntity: ExtruderBlockEntity,
+    blockEntity: BE,
     partialTick: Float
-) : AbstractBlockEntityVisual<ExtruderBlockEntity>(ctx, blockEntity, partialTick), SimpleDynamicVisual {
+) : AbstractBlockEntityVisual<BE>(ctx, blockEntity, partialTick), SimpleDynamicVisual where BE : BlockEntity {
     companion object {
         val centerA0 = FlwModels.getModelCenter(FlwModels.EXTRUDER_SHAFT_A0)
         val centerA1 = FlwModels.getModelCenter(FlwModels.EXTRUDER_SHAFT_A1)
@@ -145,7 +75,7 @@ class ExtruderBlockEntityVisual(
     }
 
     val body: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.EXTRUDER_BODY, Materials.CUTOUT_BLOCK))
+        .instancer(InstanceTypes.TRANSFORMED, body)
         .createInstance()
         .transformFacingBlock(visualPos, blockEntity)
 
@@ -167,10 +97,10 @@ class ExtruderBlockEntityVisual(
         .instancer(InstanceTypes.TRANSFORMED, Models.partial(FlwModels.EXTRUDER_SHAFT_B1))
         .createInstance()
 
-    var rotation = Rotation2d.identity
-    val velocitySmoother = FramerateIndependentSmoother1d(0.1) // Separate smoother (flywheel thread)
+    var processRotation = Rotation2d.identity
+    val processSpeedSmoother = FramerateIndependentSmoother1d(0.1) // Separate smoother (flywheel thread)
 
-    private fun poseShaft(instance: TransformedInstance, center: Vector3d, rotation: Double) {
+    protected fun poseShaft(instance: TransformedInstance, center: Vector3d, rotation: Double) {
         val z = center.z
         val y = center.y
 
@@ -192,21 +122,23 @@ class ExtruderBlockEntityVisual(
         poseShaft(shaftB1, centerB1, 0.0)
     }
 
+    abstract fun getProcessSpeed() : Double
+
     override fun beginFrame(p0: DynamicVisual.Context?) {
-        val dt = velocitySmoother.update(blockEntity.targetClientSpeed)
-        velocitySmoother.pullDown()
-        val incr = velocitySmoother.value * dt
+        val dt = processSpeedSmoother.update(getProcessSpeed())
+        processSpeedSmoother.pullDown()
+        val incr = processSpeedSmoother.value * dt
 
         if(incr != 0.0) {
-            rotation += incr
-            val angle = rotation.ln()
+            processRotation += incr
+            val angle = processRotation.ln()
             poseShaft(shaftA0, centerA0, -angle)
             poseShaft(shaftA1, centerA1, -angle)
             poseShaft(shaftB0, centerB0, +angle)
             poseShaft(shaftB1, centerB1, +angle)
         }
 
-        val hasDie = blockState.getValue(ExtruderBlock.WITH_DIE)
+        val hasDie = blockState.getValue(WITH_DIE)
 
         if(die != null && !hasDie) {
             die!!.delete()
@@ -240,16 +172,305 @@ class ExtruderBlockEntityVisual(
     }
 }
 
+private val WITH_DIE: BooleanProperty = BooleanProperty.create("has_die")
+
+private val size = Vector3d(16.0, 11.0, 16.0) / 32.0
+
+private val collider = Shapes.box(
+    0.5 - size.x, 0.5 - size.y, 0.5 - size.z,
+    0.5 + size.x, 0.5 + size.y, 0.5 + size.z
+)
+
+//#region Electric
+
+class ElectricExtruderBlock : MotorProcessingBlock<CatalyzedSimpleProcessingRecipe, ElectricExtruderBlockEntity>() {
+    init {
+        registerDefaultState(defaultBlockState().setValue(WITH_DIE, false))
+    }
+
+    override fun createBlockStateDefinition(pBuilder: StateDefinition.Builder<Block, BlockState>) {
+        super.createBlockStateDefinition(pBuilder)
+        pBuilder.add(WITH_DIE)
+    }
+
+    override fun getTitle(): MutableComponent = Component.translatable("menu.$MODID.extruder")
+
+    override fun createMenu(
+        pBlockEntity: ElectricExtruderBlockEntity,
+        pContainerId: Int,
+        pPlayerInventory: Inventory,
+    ) = ExtruderMenu(pBlockEntity, pContainerId, pPlayerInventory)
+
+    override fun getCellProvider() = Content.ELECTRIC_EXTRUDER_CELL.get()
+
+    override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = ElectricExtruderBlockEntity(pPos, pState)
+
+    //#region Collider
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun getCollisionShape(
+        pState: BlockState,
+        pLevel: BlockGetter,
+        pPos: BlockPos,
+        pContext: CollisionContext,
+    ): VoxelShape = collider
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun getShape(
+        pState: BlockState,
+        pLevel: BlockGetter,
+        pPos: BlockPos,
+        pContext: CollisionContext,
+    ): VoxelShape = collider
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun getVisualShape(
+        pState: BlockState,
+        pLevel: BlockGetter,
+        pPos: BlockPos,
+        pContext: CollisionContext,
+    ): VoxelShape = collider
+
+    //#endregion
+}
+
+class ElectricExtruderBlockEntity(pos: BlockPos, state: BlockState) : MotorProcessingBlockEntity<CatalyzedSimpleProcessingRecipe>(pos, state, Content.ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(), 3) {
+    override fun getRecipe() = Content.EXTRUDING_RECIPE
+
+    override fun getSound() = Content.EXTRUDER_SOUND
+
+    override fun getInputSlots() = intArrayOf(INPUT_SLOT, CATALYST_SLOT)
+
+    override fun serverTick() {
+        super.serverTick()
+
+        val hasDieItem = !inventoryHandler.getStackInSlot(CATALYST_SLOT).isEmpty
+
+        if(hasDieItem != blockState.getValue(WITH_DIE)) {
+            level!!.setBlock(
+                blockPos,
+                blockState.setValue(WITH_DIE, hasDieItem),
+                Block.UPDATE_ALL
+            )
+        }
+    }
+}
+
+class ElectricExtruderBlockEntityVisual(
+    ctx: VisualizationContext,
+    blockEntity: ElectricExtruderBlockEntity,
+    partialTick: Float
+) : ExtruderBlockEntityVisual<ElectricExtruderBlockEntity>(
+    PartialModelHelper.applyMaterial(FlwModels.EXTRUDER_BODY, Materials.CUTOUT_BLOCK),
+    ctx,
+    blockEntity,
+    partialTick
+) {
+    override fun getProcessSpeed() = blockEntity.targetClientSpeed
+}
+
+//#endregion
+
+//#region Kinetic
+
+class KineticExtruderBlock : KineticProcessingBlock<CatalyzedSimpleProcessingRecipe, KineticExtruderBlockEntity>() {
+    init {
+        registerDefaultState(defaultBlockState().setValue(WITH_DIE, false))
+    }
+
+    override fun createBlockStateDefinition(pBuilder: StateDefinition.Builder<Block, BlockState>) {
+        super.createBlockStateDefinition(pBuilder)
+        pBuilder.add(WITH_DIE)
+    }
+
+    override fun getTitle(): MutableComponent = Component.translatable("menu.$MODID.extruder")
+
+    override fun createMenu(
+        pBlockEntity: KineticExtruderBlockEntity,
+        pContainerId: Int,
+        pPlayerInventory: Inventory,
+    ) = ExtruderMenu(pBlockEntity, pContainerId, pPlayerInventory)
+
+    override fun getCellProvider() = Content.KINETIC_EXTRUDER_CELL.get()
+
+    override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = KineticExtruderBlockEntity(pPos, pState)
+
+    //#region Collider
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun getCollisionShape(
+        pState: BlockState,
+        pLevel: BlockGetter,
+        pPos: BlockPos,
+        pContext: CollisionContext,
+    ): VoxelShape = collider
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun getShape(
+        pState: BlockState,
+        pLevel: BlockGetter,
+        pPos: BlockPos,
+        pContext: CollisionContext,
+    ): VoxelShape = collider
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun getVisualShape(
+        pState: BlockState,
+        pLevel: BlockGetter,
+        pPos: BlockPos,
+        pContext: CollisionContext,
+    ): VoxelShape = collider
+
+    //#endregion
+}
+
+class KineticExtruderBlockEntity(pos: BlockPos, state: BlockState) :
+    KineticProcessingBlockEntity<CatalyzedSimpleProcessingRecipe>(pos, state, Content.KINETIC_EXTRUDER_BLOCK_ENTITY.get(), 3),
+    InternalKineticStateConsumer
+{
+    var renderState: BasicKineticPart.RenderStateImpl? = null
+        private set
+
+    override fun setLevel(pLevel: Level) {
+        super.setLevel(pLevel)
+
+        if(pLevel.isClientSide) {
+            renderState = BasicKineticPart.RenderStateImpl()
+        }
+    }
+
+    override fun getRecipe() = Content.EXTRUDING_RECIPE
+
+    override fun getSound() = Content.EXTRUDER_SOUND
+
+    override fun getInputSlots() = intArrayOf(INPUT_SLOT, CATALYST_SLOT)
+
+    override fun serverTick() {
+        super.serverTick()
+
+        val hasDieItem = !inventoryHandler.getStackInSlot(CATALYST_SLOT).isEmpty
+
+        if(hasDieItem != blockState.getValue(WITH_DIE)) {
+            level!!.setBlock(
+                blockPos,
+                blockState.setValue(WITH_DIE, hasDieItem),
+                Block.UPDATE_ALL
+            )
+        }
+    }
+
+    @ClientOnly
+    override fun setupPacketsOnClient(handler: ClientSidePacketHandlerBuilder) {
+        super.setupPacketsOnClient(handler)
+
+        handler.withHandler<BasicKineticPart.RotationSyncPacket> {
+            renderState!!.load(it)
+        }
+    }
+
+    @ServerOnly
+    override fun onKineticStateChanged(state: RotatingKineticState, angularAccelerationEstimate: Double, ) {
+        sendBulkPacket(BasicKineticPart.RotationSyncPacket(
+            state.angle,
+            state.angularVelocity,
+            angularAccelerationEstimate
+        ))
+    }
+}
+
+class KineticExtruderBlockEntityVisual(
+    ctx: VisualizationContext,
+    blockEntity: KineticExtruderBlockEntity,
+    partialTick: Float
+) : ExtruderBlockEntityVisual<KineticExtruderBlockEntity>(
+    PartialModelHelper.applyMaterial(FlwModels.EXTRUDER_KINETIC_BODY, Materials.CUTOUT_BLOCK),
+    ctx,
+    blockEntity,
+    partialTick
+) {
+    companion object {
+        val shaftCenter = FlwModels.getModelCenter(FlwModels.EXTRUDER_KINETIC_SHAFT)
+    }
+
+    override fun getProcessSpeed() = blockEntity.targetClientSpeed
+
+    val shaft: TransformedInstance = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.EXTRUDER_KINETIC_SHAFT, FlwMaterials.SMOOTH_LIT))
+        .createInstance()
+
+    var version = 0
+    var rotation = Rotation2d.identity
+    var velocity = 0.0
+    var interpolationState: RotationUpdateProfile2d? = null
+    val frameTimer = Stopwatch()
+
+    init {
+        poseShaft(shaft, shaftCenter, 0.0)
+    }
+
+    override fun beginFrame(p0: DynamicVisual.Context?) {
+        super.beginFrame(p0)
+
+        val renderState = blockEntity.renderState!!
+
+        val targetVersion = renderState.version
+        if(version != targetVersion) {
+            version = targetVersion
+
+            interpolationState = computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
+                renderState.angularAccelerationEstimate,
+                Rotation2d.exp(renderState.angle), renderState.angularVelocity,
+                rotation, velocity
+            )
+        }
+
+        val dt = !frameTimer.sample()
+
+        if(interpolationState == null) {
+            rotation += velocity * dt
+        }
+        else {
+            val state = interpolationState!!
+            state.currentTime += dt
+            state.sampleTrajectory()
+            rotation = state.sampleP
+            velocity = state.sampleV
+
+            if(state.timeRemaining == 0.0) {
+                interpolationState = null
+            }
+        }
+
+        poseShaft(shaft, shaftCenter, rotation.ln())
+    }
+
+    override fun _delete() {
+        super._delete()
+        shaft.delete()
+    }
+}
+
+//#endregion
+
 class ExtruderMenu(
     pContainerId: Int,
     playerInventory: Inventory,
     handler: ItemStackHandler,
     val containerData: ProgressContainerData,
     val access: ContainerLevelAccess,
-    val level: Level,
+    val level: Level
 ) : AbstractContainerMenu(Content.EXTRUDER_MENU.get(), pContainerId) {
     @ServerOnly
-    constructor(entity: ExtruderBlockEntity, id: Int, inventory: Inventory): this(
+    constructor(entity: ElectricExtruderBlockEntity, id: Int, inventory: Inventory): this(
+        id,
+        inventory,
+        entity.inventoryHandler,
+        entity.data,
+        ContainerLevelAccess.create(entity.level!!, entity.blockPos),
+        entity.level!!
+    )
+
+    constructor(entity: KineticExtruderBlockEntity, id: Int, inventory: Inventory): this(
         id,
         inventory,
         entity.inventoryHandler,
@@ -295,7 +516,9 @@ class ExtruderMenu(
         ContainerHelper.addPlayerGrid(playerInventory, this::addSlot)
     }
 
-    override fun stillValid(pPlayer: Player) = stillValid(access, pPlayer, Content.EXTRUDER_BLOCK.block.get())
+    override fun stillValid(pPlayer: Player) =
+        stillValid(access, pPlayer, Content.ELECTRIC_EXTRUDER_BLOCK.block.get()) ||
+        stillValid(access, pPlayer, Content.KINETIC_EXTRUDER_BLOCK.block.get())
 
     override fun quickMoveStack(pPlayer: Player, pIndex: Int) = ContainerHelper.quickMove(slots, pPlayer, pIndex)
 }

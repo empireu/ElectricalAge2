@@ -36,6 +36,7 @@ import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.CellBlock
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.cells.foundation.Cell
 import org.eln2.mc.common.containers.ProgressContainerData
 import org.eln2.mc.common.content.ThermalWireObject
 import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
@@ -53,8 +54,12 @@ import org.eln2.mc.data.Pole
 import org.eln2.mc.data.PoleMap
 import org.eln2.mc.data.evaluate
 import org.eln2.mc.extensions.constructMenuHelper2
+import org.eln2.mc.extensions.debugInIDE
+import org.eln2.mc.extensions.loadNbt
+import org.eln2.mc.extensions.saveNbt
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import kotlin.math.abs
 import kotlin.math.absoluteValue
 
 /**
@@ -79,7 +84,7 @@ data class MotorProcessingCellElectricalOptions(
 /**
  * @param thermalFactor `power` * [thermalFactor] of the power is converted into heat.
  * */
-data class MotorProcessingCellThermalOptions(
+data class ProcessingCellThermalOptions(
     val thermalFactor: Double,
     val massDef: ThermalMassDefinition,
     val leakageParameters: ConnectionParameters,
@@ -100,7 +105,7 @@ data class MotorProcessingCellThermalOptions(
 data class MotorProcessingCellOptions(
     val baseSpeedFactor: Double,
     val electrical: MotorProcessingCellElectricalOptions,
-    val thermal: MotorProcessingCellThermalOptions?,
+    val thermal: ProcessingCellThermalOptions?,
 )
 
 /**
@@ -257,10 +262,10 @@ class MotorProcessingCell(
     }
 }
 
-abstract class MotorProcessingBlock<R, BE> : CellBlock<MotorProcessingCell>()
-    where R : Eln2SimpleRecipe,
-          R : Recipe<SimpleContainer>,
-          BE : MotorProcessingBlockEntity<R>
+abstract class ProcessingBlock<R, C, BE> : CellBlock<C>()
+    where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>,
+          C : Cell, C : ProcessingDevice,
+          BE : ProcessingBlockEntity<R, C>
 {
     abstract fun getTitle() : Component
 
@@ -276,7 +281,7 @@ abstract class MotorProcessingBlock<R, BE> : CellBlock<MotorProcessingCell>()
     }
 
     fun tick(pLevel: Level?, pPos: BlockPos?, pState: BlockState?, pBlockEntity: BlockEntity?) {
-        MotorProcessingBlockEntity.tick(pLevel, pPos, pState, pBlockEntity)
+        ProcessingBlockEntity.tick(pLevel, pPos, pState, pBlockEntity)
     }
 
     override fun <T : BlockEntity?> getTicker(pLevel: Level, pState: BlockState, pBlockEntityType: BlockEntityType<T?>): BlockEntityTicker<T> {
@@ -318,15 +323,15 @@ abstract class MotorProcessingBlock<R, BE> : CellBlock<MotorProcessingCell>()
     }
 }
 
-abstract class MotorProcessingBlockEntity<R>(
+abstract class ProcessingBlockEntity<R, C>(
     pos: BlockPos,
     state: BlockState,
     targetType: BlockEntityType<*>,
     inventorySize: Int
-) : CellBlockEntity<MotorProcessingCell>(pos, state, targetType),
+) : CellBlockEntity<C>(pos, state, targetType),
     ComponentDisplay,
     BulkPacketHandlerBlockEntity
-    where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>
+    where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>, C : Cell, C : ProcessingDevice
 {
     companion object {
         private const val INVENTORY = "inventory"
@@ -337,8 +342,8 @@ abstract class MotorProcessingBlockEntity<R>(
                 return
             }
 
-            if (pBlockEntity !is MotorProcessingBlockEntity<*>) {
-                LOG.error("Got $pBlockEntity instead of motor processing block entity")
+            if (pBlockEntity !is ProcessingBlockEntity<*, *>) {
+                LOG.error(DEBUGGER_BREAK("Got $pBlockEntity instead of processing block entity"))
                 return
             }
 
@@ -363,7 +368,7 @@ abstract class MotorProcessingBlockEntity<R>(
     val clientTickSpeedSmoother = FramerateIndependentSmoother1d(0.2)
 
     @ClientOnly
-    var soundInstance: SimpleLoopingBlockEntitySoundInstance<MotorProcessingBlockEntity<R>>? = null
+    var soundInstance: SimpleLoopingBlockEntitySoundInstance<ProcessingBlockEntity<R, C>>? = null
 
     //#endregion
 
@@ -467,7 +472,7 @@ abstract class MotorProcessingBlockEntity<R>(
     @ServerOnly
     override fun getUpdateTag(): CompoundTag {
         if(hasCell) {
-            sendSync(cell.motor.processingSpeed)
+            sendSync(cell.processingSpeed)
         }
 
         return super.getUpdateTag()
@@ -493,12 +498,204 @@ abstract class MotorProcessingBlockEntity<R>(
     private class SyncPacket(val speed: Double)
 
     //#endregion
+}
 
+abstract class MotorProcessingBlock<R, BE> : ProcessingBlock<R, MotorProcessingCell, BE>()
+    where
+        R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>,
+        BE : MotorProcessingBlockEntity<R>
+
+abstract class MotorProcessingBlockEntity<R>(
+    pos: BlockPos,
+    state: BlockState,
+    targetType: BlockEntityType<*>,
+    inventorySize: Int
+) : ProcessingBlockEntity<R, MotorProcessingCell>(pos, state, targetType, inventorySize)
+    where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>
+{
     @ServerOnly
     override fun submitDisplay(builder: ComponentDisplayList) {
         builder.debugInIDE { "Speed: ${cell.motor.processingSpeed.rounded()}" }
         builder.debugInIDE { "OC: ${cell.motor.resistorDisplay.openCircuitPotentialEstimate.value.rounded()}" }
         builder.quantityInput(cell.motor.resistorDisplay.power)
+
+        if(cell.thermalWire != null) {
+            builder.quantity(cell.thermalWire!!.thermalBodyDisplay.temperature)
+        }
+
+        loop.operation?.also {
+            builder.progress(it.timeProgress / it.recipe.duration)
+        }
+    }
+}
+
+/**
+ * @param idleFriction The friction of the node when not processing.
+ * @param runningFriction The friction of the node when processing. This models the load.
+ * @param nominalAngularVelocity The angular velocity where the device is running at 100% speed.
+ * @param maxTorque Torque breaking limit.
+ * */
+data class KineticProcessingCellKineticOptions(
+    val idleFriction: FrictionNodeDescription,
+    val runningFriction: FrictionNodeDescription,
+    val nominalAngularVelocity: Quantity<AngularVelocity>,
+    val kineticBreakdownVelocity: Quantity<AngularVelocity>,
+    val maxTorque: Quantity<Torque>
+)
+
+/**
+ * Object emulating the behavior described in [KineticProcessingCellOptions] using a [KineticDouble].
+ * Uses the kinetic simulator's friction to emulate a load.
+ * */
+class KineticProcessingKineticObject(cell: KineticProcessingCell) : KineticObject<KineticProcessingCell>(cell), PersistentObject {
+    val node = KineticDouble(cell.options.kinetic.idleFriction.inertia == cell.options.kinetic.runningFriction.inertia)
+
+    init {
+        node.setSafeTorque(cell.options.kinetic.maxTorque)
+        cell.options.kinetic.idleFriction.applyTo(node)
+    }
+
+    override fun offerExtension(remote: KineticObject<*>) = node.chooseExtension(cell.kineticMap, remote)
+
+    /**
+     * The base grinding speed, calculated each tick.
+     * */
+    var processingSpeed = 0.0
+
+    override fun subscribe(subscribers: SubscriberCollection) {
+        subscribers.addPre(this::tick)
+    }
+
+    override fun addNodes(builder: KineticNodeSet) {
+        builder.add(node)
+    }
+
+    /**
+     * Converts the input power into some thermal power and updates the [processingSpeed].
+     * */
+    private fun tick(dt: Double, subscriberPhase: SubscriberPhase) {
+        val options = cell.options
+
+        if(options.thermal != null) {
+            // Convert fraction of power to heat:
+            val energy = node.deltaHeatFromFriction
+
+            if(!energy.approxEq(0.0)) {
+                cell.thermalWire!!.thermalBody.energy += Quantity(energy, JOULE)
+                cell.setChanged()
+            }
+        }
+
+        if(!cell.isActive) {
+            processingSpeed = 0.0
+            cell.options.kinetic.idleFriction.applyTo(node)
+            return
+        }
+
+        cell.options.kinetic.runningFriction.applyTo(node)
+
+        processingSpeed = if(node.angularVelocity.approxEq(0.0)) {
+            0.0
+        } else {
+            options.baseSpeedFactor * (abs(node.angularVelocity) / !options.kinetic.nominalAngularVelocity)
+        }
+    }
+
+    override fun saveObjectNbt() = node.saveNbt()
+    override fun loadObjectNbt(tag: CompoundTag) = node.loadNbt(tag)
+}
+
+/**
+ * Crusher model. If active (needs to crush):
+ * - The device applies the parameters from [KineticProcessingCellKineticOptions.runningFriction].
+ * - Speed is proportional to angular velocity.
+ * - The max speed is capped by [KineticProcessingCellKineticOptions.maxTorque].
+ * - A fraction of the friction heat is converted into heat, setting another hard cap on the amount of work you can do.
+ * - The device is destroyed when it reaches a certain temperature, and also has angular velocity and torque breakdown.
+ * @param thermal If applicable, the terms dictating the waste heat production of the machine.
+ * @param baseSpeedFactor The device's raw speed is [baseSpeedFactor] * (`power` / [KineticProcessingCellKineticOptions.nominalAngularVelocity]).
+ *  */
+data class KineticProcessingCellOptions(
+    val baseSpeedFactor: Double,
+    val kinetic: KineticProcessingCellKineticOptions,
+    val thermal: ProcessingCellThermalOptions?,
+)
+
+class KineticProcessingCell(
+    ci: CellCreateInfo,
+    val options: KineticProcessingCellOptions,
+    override val kineticMap: PoleMap,
+    override val thermalMap: PoleMap
+) : Cell(ci), SidedKineticMapped<KineticProcessingCell>, SidedThermalMapped<KineticProcessingCell>, ProcessingDevice {
+    override val kineticSize: KineticSize
+        get() = KineticSize.Standard
+
+    override val thermalSize: ThermalSize
+        get() = ThermalSize.Any
+
+    override var isActive = false
+
+    override val processingSpeed: Double
+        get() = kinetic.processingSpeed
+
+    @SimObject
+    val thermalWire = if(options.thermal != null) {
+        ThermalWireObject(
+            this,
+            options.thermal.massDef(),
+            options.thermal.leakageParameters
+        )
+    }
+    else null
+
+    @SimObject
+    val kinetic = KineticProcessingKineticObject(this)
+
+    val kineticState get() = RotatingKineticState(kinetic.node.angle, kinetic.node.angularVelocity)
+
+    @Replicator
+    fun replicator(target: InternalKineticStateConsumer) = InternalKineticReplicatorBehavior(
+        this::kineticState,
+        target
+    )
+
+    @Behavior
+    val thermalBreakdown = if(options.thermal != null) {
+        ThermalBreakdownBehavior.create(
+            options.thermal.destroyTemperature,
+            this,
+            thermalWire!!.thermalBody::temperature
+        )
+    }
+    else null
+
+    @Behavior
+    val kineticBreakdown = KineticBreakdownBehavior.create(options.kinetic.kineticBreakdownVelocity, this, kinetic.node)
+
+    @Behavior
+    val stress = KineticStressBehavior.create(options.kinetic.maxTorque, this, kinetic.node)
+}
+
+
+abstract class KineticProcessingBlock<R, BE> : ProcessingBlock<R, KineticProcessingCell, BE>()
+    where
+        R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>,
+        BE : KineticProcessingBlockEntity<R>
+
+abstract class KineticProcessingBlockEntity<R>(
+    pos: BlockPos,
+    state: BlockState,
+    targetType: BlockEntityType<*>,
+    inventorySize: Int
+) : ProcessingBlockEntity<R, KineticProcessingCell>(pos, state, targetType, inventorySize)
+    where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>
+{
+    @ServerOnly
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        cell.kinetic.subSolvers?.debugInIDE(builder)
+        builder.debugInIDE { "Speed: ${cell.kinetic.processingSpeed.rounded()}" }
+        builder.debugInIDE { "Imp0: ${cell.kinetic.node.e1.impulse.rounded()}, Imp1: ${cell.kinetic.node.e2.impulse.rounded()}" }
+        builder.debugInIDE { "Fric T: ${cell.kinetic.node.frictionTorque.rounded()}"}
 
         if(cell.thermalWire != null) {
             builder.quantity(cell.thermalWire!!.thermalBodyDisplay.temperature)

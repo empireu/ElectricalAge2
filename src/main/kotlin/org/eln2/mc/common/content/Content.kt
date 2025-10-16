@@ -59,7 +59,6 @@ import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.cells.foundation.CellProvider
 import org.eln2.mc.common.cells.foundation.RadiantBodyEmissionDescription
-import org.eln2.mc.common.cells.foundation.TemperatureExplosionBehaviorOptions
 import org.eln2.mc.common.containers.ContainerRegistry.menu
 import org.eln2.mc.common.grids.GridCablePliersItem
 import org.eln2.mc.common.grids.GridMaterial
@@ -92,8 +91,11 @@ import org.eln2.mc.common.recipes.MotorProcessingCellOptions
 import org.eln2.mc.common.content.OscilloscopePart.OscilloscopeScreen
 import org.eln2.mc.common.items.ItemRegistry.itemDefault
 import org.eln2.mc.common.parts.foundation.eln2ReadPartGuiData
+import org.eln2.mc.common.recipes.KineticProcessingCell
+import org.eln2.mc.common.recipes.KineticProcessingCellKineticOptions
+import org.eln2.mc.common.recipes.KineticProcessingCellOptions
 import org.eln2.mc.common.recipes.MotorProcessingCellElectricalOptions
-import org.eln2.mc.common.recipes.MotorProcessingCellThermalOptions
+import org.eln2.mc.common.recipes.ProcessingCellThermalOptions
 import org.eln2.mc.common.recipes.RecipeRegistry.registerCatalyzedRecipe
 import org.eln2.mc.common.recipes.RecipeRegistry.registerDirectRecipe
 import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
@@ -1271,7 +1273,7 @@ object Content {
             motorProcessingElectrical(
                 Quantity(6.0, KILO * WATT)
             ),
-            MotorProcessingCellThermalOptions(
+            ProcessingCellThermalOptions(
                 0.1,
                 ThermalMassDefinition(
                     ChemicalElement.Iron.asMaterial,
@@ -1306,7 +1308,9 @@ object Content {
 
     val EXTRUDING_RECIPE = registerCatalyzedRecipe("extruding")
 
-    val BASIC_EXTRUDER_CELL = cellMemoize("basic_extruder") {
+    val EXTRUDER_SOUND = soundEventVariableRange("extruder")
+
+    val ELECTRIC_EXTRUDER_CELL = cellMemoize("electric_extruder") {
         val options = MotorProcessingCellOptions(
             1.0,
             motorProcessingElectrical(
@@ -1323,11 +1327,46 @@ object Content {
         }
     }
 
-    val EXTRUDER_BLOCK = blockAndItem("extruder", ::ExtruderBlock)
+    val ELECTRIC_EXTRUDER_BLOCK = blockAndItem("electric_extruder", ::ElectricExtruderBlock)
 
-    val EXTRUDER_SOUND = soundEventVariableRange("extruder")
+    val ELECTRIC_EXTRUDER_BLOCK_ENTITY = blockEntityOnly("electric_extruder", ELECTRIC_EXTRUDER_BLOCK.block, ::ElectricExtruderBlockEntity)
 
-    val EXTRUDER_BLOCK_ENTITY = blockEntityOnly("extruder", EXTRUDER_BLOCK.block, ::ExtruderBlockEntity)
+    val KINETIC_EXTRUDER_CELL = cellMemoize("kinetic_extruder") {
+        val inertia = Quantity(0.1251, KILOGRAM_METER2)
+
+        val options = KineticProcessingCellOptions(
+            1.0,
+            KineticProcessingCellKineticOptions(
+                FrictionNodeDescription(
+                    inertia,
+                    0.01,
+                    Quantity(0.1, NEWTON_METER),
+                    Quantity(1.0, NEWTON_METER)
+                ),
+                FrictionNodeDescription(
+                    inertia,
+                    10.0,
+                    Quantity(0.5, NEWTON_METER),
+                    Quantity(1.0, NEWTON_METER)
+                ),
+                Quantity(1.0, REVOLUTION_PER_SECOND),
+                Quantity(25.0, REVOLUTION_PER_SECOND),
+                Quantity(250.0, NEWTON_METER)
+            ),
+            null
+        )
+
+        val kineticMap = directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)
+        val thermalMap = nullPolarMap()
+
+        CellFactory {
+            KineticProcessingCell(it, options, kineticMap, thermalMap)
+        }
+    }
+
+    val KINETIC_EXTRUDER_BLOCK = blockAndItem("kinetic_extruder", ::KineticExtruderBlock)
+
+    val KINETIC_EXTRUDER_BLOCK_ENTITY = blockEntityOnly("kinetic_extruder", KINETIC_EXTRUDER_BLOCK.block, ::KineticExtruderBlockEntity)
 
     val EXTRUDER_MENU = menu("extruder", ::ExtruderMenu)
 

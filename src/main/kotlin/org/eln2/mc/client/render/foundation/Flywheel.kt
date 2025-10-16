@@ -147,8 +147,13 @@ object FlwVisualizerRegistry {
         )
 
         VisualizerRegistry.setVisualizer(
-            Content.EXTRUDER_BLOCK_ENTITY.get(),
-            SimpleBlockEntityVisualizer(::ExtruderBlockEntityVisual) { true }
+            Content.ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::ElectricExtruderBlockEntityVisual) { true }
+        )
+
+        VisualizerRegistry.setVisualizer(
+            Content.KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::KineticExtruderBlockEntityVisual) { true }
         )
     }
 
@@ -1037,7 +1042,7 @@ interface BasicKineticPart {
         val angularAccelerationEstimate: Double
     )
 
-    class RenderStateImpl private constructor(): RenderState {
+    class RenderStateImpl : RenderState {
         override var version = 0
             private set
 

@@ -20,23 +20,14 @@ import org.eln2.mc.common.sounds.foundation.SimpleLoopingPartSoundInstance
 import org.eln2.mc.common.sounds.foundation.SoundInfo
 import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
 import org.eln2.mc.data.MonopoleMap
-import org.eln2.mc.data.Pole
 import org.eln2.mc.data.PoleMap
 import org.eln2.mc.data.anyEvaluates
 import org.eln2.mc.extensions.debugInIDE
+import org.eln2.mc.extensions.loadNbt
+import org.eln2.mc.extensions.saveNbt
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d
-
-private fun saveNodeNbt(node: KineticNode) = CompoundTag().also {
-    it.putDouble("angle", node.angle)
-    it.putDouble("omega", node.angularVelocity)
-}
-
-private fun loadNodeNbt(tag: CompoundTag, node: KineticNode) {
-    node.setExternalAngle(tag.getDouble("angle"))
-    node.angularVelocity = tag.getDouble("omega")
-}
 
 interface JointCell {
     val node: KineticNode
@@ -63,11 +54,7 @@ class DoubleJointObject(cell: DoubleJointCell, friction: FrictionNodeDescription
         builder.add(node)
     }
 
-    override fun offerExtension(remote: KineticObject<*>) = when(cell.map.evaluateOrNull(this.cell, remote.cell)) {
-        Pole.Plus -> node.plus()
-        Pole.Minus -> node.minus()
-        null -> null
-    }
+    override fun offerExtension(remote: KineticObject<*>) = node.chooseExtension(cell.map, remote)
 
     override fun subscribe(subscribers: SubscriberCollection) {
         if(thermalBody != null) {
@@ -77,8 +64,8 @@ class DoubleJointObject(cell: DoubleJointCell, friction: FrictionNodeDescription
         }
     }
 
-    override fun saveObjectNbt() = saveNodeNbt(node)
-    override fun loadObjectNbt(tag: CompoundTag) = loadNodeNbt(tag, node)
+    override fun saveObjectNbt() = node.saveNbt()
+    override fun loadObjectNbt(tag: CompoundTag) = node.loadNbt(tag)
 }
 
 /**
@@ -184,8 +171,8 @@ class TripleJointObject(cell: TripleJointCell, friction: FrictionNodeDescription
         }
     }
 
-    override fun saveObjectNbt() = saveNodeNbt(node)
-    override fun loadObjectNbt(tag: CompoundTag) = loadNodeNbt(tag, node)
+    override fun saveObjectNbt() = node.saveNbt()
+    override fun loadObjectNbt(tag: CompoundTag) = node.loadNbt(tag)
 }
 
 /**

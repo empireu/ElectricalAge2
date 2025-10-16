@@ -154,6 +154,10 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
             return
         }
 
+        if(cellField != null) {
+            DEBUGGER_BREAK()
+        }
+
         // Create the cell based on the provider.
 
         cellField = cellProvider.create(locator, CellEnvironment.evaluate(level, locator))

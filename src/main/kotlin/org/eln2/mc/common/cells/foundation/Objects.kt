@@ -332,6 +332,11 @@ abstract class KineticObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
      * */
     abstract fun offerExtension(remote: KineticObject<*>) : KineticExtension?
 
+    protected fun KineticDouble.chooseExtension(map: PoleMap, remote: KineticObject<*>) = when(map.evaluateOrNull(cell, remote.cell)) {
+        Pole.Plus -> this.plus()
+        Pole.Minus -> this.minus()
+        null -> null
+    }
     /**
      * Implements object-based rules.
      * @param remote The remote kinetic object.
