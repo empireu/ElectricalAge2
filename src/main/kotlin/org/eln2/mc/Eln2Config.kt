@@ -22,7 +22,7 @@ class ClientConfig(builder: Builder) {
             .defineList("unit_overrides", emptyList<String>()) {
                 if(it is String) {
                     val tokens =  it.split(":")
-                    tokens.size == 2 && ELN2_DIMENSION_TYPES.backward.containsKey(tokens[0])
+                    tokens.size == 2 && DIMENSION_TYPES.backward.containsKey(tokens[0])
                 }
                 else {
                     false
@@ -44,7 +44,7 @@ class ClientConfig(builder: Builder) {
         val classifiers = AUXILIARY_CLASSIFIERS[dimensionType]
             ?: return null
 
-        val name = ELN2_DIMENSION_TYPES.forward[dimensionType]!!
+        val name = DIMENSION_TYPES.forward[dimensionType]!!
 
         var override: ScaleRef<*>? = null
 
@@ -68,7 +68,7 @@ class ClientConfig(builder: Builder) {
     }
 
     fun setScaleOverride(dimensionType: Class<*>, override: String) {
-        val name = ELN2_DIMENSION_TYPES.forward[dimensionType]!!
+        val name = DIMENSION_TYPES.forward[dimensionType]!!
         val lines = ArrayList<String>()
         var found = false
 
@@ -98,7 +98,7 @@ class ClientConfig(builder: Builder) {
     }
 
     fun resetScaleOverride(dimensionType: Class<*>) {
-        val name = ELN2_DIMENSION_TYPES.forward[dimensionType]!!
+        val name = DIMENSION_TYPES.forward[dimensionType]!!
         val lines = ArrayList<String>()
 
         unitOverrides.get().forEach {
@@ -159,7 +159,7 @@ object Eln2Config {
         val eln2 = Commands.literal("eln2").then(
             Commands.literal("units").then(
                 Commands.literal("set").also { pSet ->
-                    ELN2_DIMENSION_TYPES.forward.entries.sortedBy { it.value }.forEach { (dimensionType, dimensionName) ->
+                    DIMENSION_TYPES.forward.entries.sortedBy { it.value }.forEach { (dimensionType, dimensionName) ->
                         val auxiliaryUnits = AUXILIARY_CLASSIFIERS[dimensionType]
                             ?: return@forEach
 
@@ -190,7 +190,7 @@ object Eln2Config {
                 }
             ).then(
                 Commands.literal("reset").also { pReset ->
-                    ELN2_DIMENSION_TYPES.forward.entries.sortedBy { it.value }.forEach { (dimensionType, dimensionName) ->
+                    DIMENSION_TYPES.forward.entries.sortedBy { it.value }.forEach { (dimensionType, dimensionName) ->
                         val auxiliaryUnits = AUXILIARY_CLASSIFIERS[dimensionType]
                             ?: return@forEach
 

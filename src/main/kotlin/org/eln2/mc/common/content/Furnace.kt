@@ -43,8 +43,7 @@ import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Simulator
 import org.ageseries.libage.sim.ThermalMass
-import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
-import org.ageseries.libage.sim.electrical.mna.component.updateResistance
+import org.ageseries.libage.sim.electrical.ElectricalSimulation
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
@@ -84,7 +83,7 @@ class FurnaceCell(ci: CellCreateInfo, override val electricalMap: PoleMap) : Cel
         get() = ElectricalSize.Any
 
     @SimObject
-    val resistor = PolarResistorObjectVirtual(this, electricalMap)
+    val resistor = PolarResistorObject(this, electricalMap)
 
     override fun saveCellData() = CompoundTag().also {
         it.putQuantity(TEMPERATURE, resistorThermalMass.temperature)
@@ -96,7 +95,7 @@ class FurnaceCell(ci: CellCreateInfo, override val electricalMap: PoleMap) : Cel
 
     // Move to heating element item or something
     val options = FurnaceOptions(
-        idleResistance = Quantity(LARGE_RESISTANCE),
+        idleResistance = Quantity(ElectricalSimulation.MAX_RESISTANCE),
         runningResistance = Quantity(100.0),
         temperatureThreshold = Quantity(600.0, CELSIUS),
         targetTemperature = Quantity(800.0, CELSIUS),
@@ -104,14 +103,12 @@ class FurnaceCell(ci: CellCreateInfo, override val electricalMap: PoleMap) : Cel
     )
 
     // Move to heating element item or something
-    private var resistorThermalMass = ThermalMass(
+    var resistorThermalMass = ThermalMass(
         ChemicalElement.Iron.asMaterial,
         mass = Quantity(0.5, KILOGRAM)
     ).also {
         environmentData.loadTemperature(it)
     }
-
-    val thermalMassDisplay = displayer.display(resistorThermalMass)
 
     private val environmentSimulator = Simulator().also {
         it.add(resistorThermalMass)
@@ -119,7 +116,7 @@ class FurnaceCell(ci: CellCreateInfo, override val electricalMap: PoleMap) : Cel
         environmentData.connect(it, resistorThermalMass)
     }
 
-    val isHot get() = thermalMassDisplay.temperature >= options.temperatureThreshold
+    val isHot get() = resistorThermalMass.temperature >= options.temperatureThreshold
 
     /**
      * Set this flag from the game thread to indicate if the furnace is active.
@@ -132,10 +129,10 @@ class FurnaceCell(ci: CellCreateInfo, override val electricalMap: PoleMap) : Cel
     }
 
     private fun simulationTick(elapsed: Double, phase: SubscriberPhase) {
-        resistorThermalMass.energy += abs(resistor.power) * elapsed
+        resistorThermalMass.energy += abs(resistor.component.power) * elapsed
         environmentSimulator.step(elapsed)
 
-        resistor.updateResistance(
+        resistor.component.updateResistance(
             !if (isActive && resistorThermalMass.temperature < options.targetTemperature) {
                 options.runningResistance
             } else {
@@ -251,7 +248,7 @@ class FurnaceBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<Fur
     private var recipe: SmeltingRecipe? = null
 
     fun serverTick() {
-        data.resistorTemperature = cell.thermalMassDisplay.temperature.value.toInt()
+        data.resistorTemperature = cell.resistorThermalMass.temperature.value.toInt()
         data.resistorTargetTemperature = cell.options.targetTemperature.value.toInt()
 
         val isHot = cell.isHot
@@ -312,9 +309,8 @@ class FurnaceBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<Fur
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.quantityInput(cell.resistor.resistorDisplay.power)
-        builder.quantity(cell.thermalMassDisplay.temperature)
-        builder.quantity(cell.thermalMassDisplay.temperatureRate)
+        builder.quantityInput(cell.resistor.component.readouts.power)
+        builder.quantity(cell.resistorThermalMass.temperature)
         builder.progress(operationBurnTime / BURN_TIME_TARGET.toDouble())
     }
 }

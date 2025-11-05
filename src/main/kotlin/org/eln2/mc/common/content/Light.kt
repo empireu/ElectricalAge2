@@ -33,11 +33,8 @@ import org.ageseries.libage.data.registerHandler
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
-import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
-import org.ageseries.libage.sim.electrical.mna.NEGATIVE
-import org.ageseries.libage.sim.electrical.mna.POSITIVE
-import org.ageseries.libage.sim.electrical.mna.component.IResistor
-import org.ageseries.libage.sim.electrical.mna.component.updateResistance
+import org.ageseries.libage.sim.electrical.ElectricalSimulation
+import org.ageseries.libage.sim.electrical.Resistor
 import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
@@ -88,9 +85,7 @@ abstract class LightCell(ci: CellCreateInfo, val lightVariantType: LightVariantT
      * Don't worry, it *is* implemented by an electrical object.
      * We just used `by` to redirect the object's resistor to this field.
      * */
-    abstract val resistor : IResistor
-
-    abstract val resistorDisplay: SimulationDisplayer.DisplayResistor
+    abstract val resistor : Resistor
 
     @SimObject
     val thermalWire = ThermalWireObject(self())
@@ -118,11 +113,11 @@ abstract class LightCell(ci: CellCreateInfo, val lightVariantType: LightVariantT
 
     override fun afterConstruct() {
         super.afterConstruct()
-        resistor.resistance = LARGE_RESISTANCE
+        resistor.resistance = ElectricalSimulation.MAX_RESISTANCE
     }
 
     override fun resetValues() {
-        resistor.updateResistance(LARGE_RESISTANCE)
+        resistor.updateResistance(ElectricalSimulation.MAX_RESISTANCE)
         modelTemperature = 0.0
         trackedRenderBrightness = 0.0
         volumeState = 0
@@ -231,12 +226,13 @@ class PolarLightCell(
     override val electricalSize: ElectricalSize?
 ) : LightCell(ci, variantType), SidedElectricalMapped<PolarLightCell> {
     @SimObject
-    override val resistor = PolarResistorObjectVirtual(self(), electricalMap)
+    val resistorObj = PolarResistorObject(self(), electricalMap)
 
-    override val resistorDisplay get() = resistor.resistorDisplay
+    override val resistor: Resistor
+        get() = resistorObj.component
 }
 
-class TerminalLightCell(ci: CellCreateInfo, variantType: LightVariantType, plus: Int = POSITIVE, minus: Int = NEGATIVE) : LightCell(ci, variantType) {
+class TerminalLightCell(ci: CellCreateInfo, variantType: LightVariantType, plus: Int = PLUS, minus: Int = MINUS) : LightCell(ci, variantType) {
     override val isExclusivelyGridConnected: Boolean
         get() = true
     
@@ -244,9 +240,10 @@ class TerminalLightCell(ci: CellCreateInfo, variantType: LightVariantType, plus:
     val grid = GridNode(self())
 
     @SimObject
-    override val resistor = TerminalResistorObjectVirtual(self(), plus, minus)
+    val resistorObj = TerminalResistorObject(self(), plus, minus)
 
-    override val resistorDisplay get() = resistor.resistorDisplay
+    override val resistor: Resistor
+        get() = resistorObj.component
 }
 
 abstract class PoweredLightPart<T : LightCell>(
@@ -372,9 +369,9 @@ abstract class PoweredLightPart<T : LightCell>(
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.quantity(cell.thermalWire.thermalBodyDisplay.temperature)
-        builder.quantity(cell.resistorDisplay.current)
-        builder.quantity(cell.resistorDisplay.power)
+        builder.quantity(cell.thermalWire.thermalBody.temperature)
+        builder.quantity(cell.resistor.readouts.current)
+        builder.quantity(cell.resistor.readouts.power)
         builder.integrity(cell.life)
     }
 }
@@ -869,9 +866,9 @@ class LampPoleBlockEntity(pos: BlockPos, state: BlockState) :
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.quantity(cell.thermalWire.thermalBodyDisplay.temperature)
-        builder.quantity(cell.resistorDisplay.current)
-        builder.quantity(cell.resistorDisplay.power)
+        builder.quantity(cell.thermalWire.thermalBody.temperature)
+        builder.quantity(cell.resistor.readouts.current)
+        builder.quantity(cell.resistor.readouts.power)
         builder.integrity(cell.life)
     }
 }

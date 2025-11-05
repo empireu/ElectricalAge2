@@ -40,6 +40,8 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
+import org.ageseries.libage.mathematics.RotationUpdateProfile2d
+import org.ageseries.libage.mathematics.computeRotationUpdateAccelerationProfileWithAccelerationEstimate
 import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Rotation2d
@@ -49,7 +51,6 @@ import org.ageseries.libage.utils.Stopwatch
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
-import org.eln2.mc.RotationUpdateProfile2d
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.buildDirectionTable
 import org.eln2.mc.client.render.FlwMaterials
@@ -66,7 +67,6 @@ import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.common.specs.foundation.*
 import org.eln2.mc.common.specs.foundation.SpecGeometry
-import org.eln2.mc.computeRotationUpdateAccelerationProfileWithAccelerationEstimate
 import org.eln2.mc.extensions.bind
 import org.eln2.mc.extensions.cast
 import org.eln2.mc.extensions.getListTag

@@ -3,21 +3,31 @@ package org.eln2.mc.common.content
 import kotlinx.serialization.Serializable
 import net.minecraft.nbt.CompoundTag
 import net.minecraftforge.registries.RegistryObject
+import org.ageseries.libage.data.AngularVelocity
 import org.ageseries.libage.data.Inductance
 import org.ageseries.libage.data.JOULE
+import org.ageseries.libage.data.MotorBackEmfConstant
+import org.ageseries.libage.data.MotorTorqueConstant
+import org.ageseries.libage.data.NEWTON_METER
 import org.ageseries.libage.data.Potential
 import org.ageseries.libage.data.Power
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Resistance
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.data.registerHandler
+import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.sim.ConnectionParameters
+import org.ageseries.libage.sim.Pole
 import org.ageseries.libage.sim.ThermalMassDefinition
-import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
-import org.ageseries.libage.sim.electrical.mna.component.Inductor
-import org.ageseries.libage.sim.electrical.mna.component.Resistor
-import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
+import org.ageseries.libage.sim.electrical.ElectricalComponentSet
+import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
+import org.ageseries.libage.sim.electrical.Inductor
+import org.ageseries.libage.sim.electrical.Port
+import org.ageseries.libage.sim.electrical.PotentialSource
+import org.ageseries.libage.sim.electrical.Resistor
+import org.ageseries.libage.sim.kinetic.KineticMono
+import org.ageseries.libage.sim.kinetic.KineticNodeSet
 import org.eln2.mc.*
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
@@ -29,7 +39,6 @@ import org.eln2.mc.common.sounds.foundation.SimpleLoopingPartSoundInstance
 import org.eln2.mc.common.sounds.foundation.SoundInfo
 import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
 import org.eln2.mc.data.MonopoleMap
-import org.eln2.mc.data.Pole
 import org.eln2.mc.data.PoleMap
 import org.eln2.mc.data.evaluate
 import org.eln2.mc.integration.ComponentDisplay
@@ -65,11 +74,7 @@ data class DcMotorOptions(
 class DcMotorElectricalObject(cell: DcMotorCell) : ElectricalObject<DcMotorCell>(cell) {
     val armatureResistor = Resistor()
     val armatureInductor = Inductor()
-    val voltageSource = VoltageSource()
-
-    val resistorDisplay = armatureResistor.display()
-    val inductorDisplay = armatureInductor.display()
-    val voltageSourceDisplay = voltageSource.display()
+    val voltageSource = PotentialSource()
 
     init {
         armatureResistor.resistance = !cell.options.armatureResistance
@@ -87,21 +92,19 @@ class DcMotorElectricalObject(cell: DcMotorCell) : ElectricalObject<DcMotorCell>
      * Offers the positive terminal of the [voltageSource] to plus and the negative terminal of the [armatureResistor] to minus.
      * */
     override fun offerPolar(remote: ElectricalObject<*>) = when(cell.electricalMap.evaluate(this.cell, remote.cell)) {
-        Pole.Plus -> voltageSource.offerPositive()
-        Pole.Minus -> armatureResistor.offerNegative()
+        Pole.Positive -> voltageSource.positive
+        Pole.Negative -> armatureResistor.negative
     }
 
-    override fun build(map: ElectricalConnectivityMap2) {
+    override fun build(map: ElectricalConnectivityMap) {
         super.build(map)
-        map.join(armatureResistor.offerPositive(), armatureInductor.offerNegative())
-        map.join(armatureInductor.offerPositive(), voltageSource.offerNegative())
+        map.join(armatureResistor.positive, armatureInductor.negative)
+        map.join(armatureInductor.positive, voltageSource.negative)
     }
 }
 
 class DcMotorKineticObject(cell: DcMotorCell) : KineticObject<DcMotorCell>(cell), PersistentObject {
     val node = KineticMono()
-
-    val nodeDisplay = node.display()
 
     init {
         cell.options.frictionNodeDescription.applyTo(node)
@@ -197,6 +200,7 @@ class DcMotorCell(
         val rawTorque = electrical.armatureResistor.current * !options.torqueConstant
 
         // Apply relaxation to smooth out the torque:
+        // P.S. I noticed the relaxation is applied backwards. Maybe fix?
         val torqueToApply = lastAppliedTorque * (1.0 - options.relaxation) + rawTorque * options.relaxation
         lastAppliedTorque = torqueToApply
 
@@ -353,15 +357,14 @@ class DcMotorPart(ci: PartCreateInfo, val soundOptions: DcMotorSoundOptions, cel
     private data class SyncPacket(val angularVelocity: Double, val power: Double)
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.debugInIDE { "Back-EMF: ${cell.electrical.voltageSourceDisplay.potential}" }
+        builder.debugInIDE { "Back-EMF: ${cell.electrical.voltageSource.readouts.potential}" }
         builder.debugInIDE { "Flux: ${cell.electrical.armatureInductor.flux}" }
         builder.debugInIDE { "Constraint impulse: ${cell.kinetic.node.extension.impulse}" }
-        builder.quantity(cell.kinetic.nodeDisplay.kineticEnergy)
-        builder.quantity(cell.kinetic.nodeDisplay.angularVelocity)
-        builder.quantity(cell.kinetic.nodeDisplay.angularAcceleration)
-        builder.quantity(cell.electrical.resistorDisplay.current)
-        builder.quantity(cell.electrical.voltageSourceDisplay.power)
+        builder.quantity(cell.kinetic.node.kineticEnergyQuantity)
+        builder.quantity(cell.kinetic.node.angularVelocityQuantity)
+        builder.quantity(cell.electrical.armatureResistor.readouts.current)
+        builder.quantity(cell.electrical.voltageSource.readouts.power)
         builder.quantityOutput(Quantity(cell.lastAppliedTorque, NEWTON_METER))
-        builder.quantity(cell.thermal.thermalBodyDisplay.temperature)
+        builder.quantity(cell.thermal.thermalBody.temperature)
     }
 }

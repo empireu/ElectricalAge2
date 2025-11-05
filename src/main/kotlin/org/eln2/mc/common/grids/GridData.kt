@@ -22,6 +22,7 @@ import org.ageseries.libage.data.MutableMapPairBiMap
 import org.ageseries.libage.data.MutableSetMapMultiMap
 import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.mathematics.map
+import org.ageseries.libage.sim.electrical.ElectricalSimulation
 import org.ageseries.libage.utils.addUnique
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
@@ -55,7 +56,8 @@ data class GridConnection(val netID: Int, val cable: Cable3dA, val material: Gri
     /**
      * Gets the electrical resistance over the entire length of the cable.
      * */
-    val resistance get() = !material.physicalMaterial.electricalResistivity * (cable.arcLength / cable.crossSectionArea)
+    val resistance get() = (!material.physicalMaterial.electricalResistivity * (cable.arcLength / cable.crossSectionArea))
+        .coerceIn(ElectricalSimulation.MIN_RESISTANCE, ElectricalSimulation.MAX_RESISTANCE)
 
     fun toNbt() = CompoundTag().also {
         it.putInt(ID, netID)

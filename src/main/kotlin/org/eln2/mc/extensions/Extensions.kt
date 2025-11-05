@@ -7,10 +7,10 @@ import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.MutableSetMapMultiMap
 import org.ageseries.libage.mathematics.rounded
-import org.eln2.mc.KineticNode
-import org.eln2.mc.KineticSimulation
+import org.ageseries.libage.sim.SubSolverSet
+import org.ageseries.libage.sim.kinetic.KineticNode
+import org.ageseries.libage.sim.kinetic.KineticSimulation
 import org.eln2.mc.LOG
-import org.eln2.mc.SubSolverSet
 import org.eln2.mc.common.network.serverToClient.BlockEntityMessage
 import org.eln2.mc.common.network.serverToClient.BulkMessageHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.BulkMessages

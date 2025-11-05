@@ -38,7 +38,8 @@ import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.*
-import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
+import org.ageseries.libage.sim.electrical.ElectricalComponentSet
+import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
 import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.foundation.*
@@ -73,8 +74,6 @@ class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass, val environmen
     constructor(cell: Cell, definition: ThermalMassDefinition) : this(cell, definition())
 
     private var lastTemperature: Double
-
-    val thermalBodyDisplay = thermalBody.display()
 
     init {
         cell.environmentData.loadTemperature(thermalBody)
@@ -123,7 +122,7 @@ class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass, val environmen
  * */
 class SingleElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
     // Optimization opportunity: make bundle create one resistor when possible. But it isn't that worthwhile because it is virtual.
-    val resistors = resistorVirtualBundle(cell, 0.05)
+    val resistors = ResistorBundle(cell, 0.05)
 
     val totalPowerSimulation get() = resistors.totalPowerSimulation
 
@@ -142,7 +141,7 @@ class SingleElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
 
     override fun addComponents(circuit: ElectricalComponentSet) = resistors.addComponents(connections, circuit)
 
-    override fun build(map: ElectricalConnectivityMap2) {
+    override fun build(map: ElectricalConnectivityMap) {
         // The Wire uses a bundle of 4 resistors. Every resistor's "Internal Pin" is connected to every
         // other resistor's internal pin. "External Pins" are offered to connection candidates:
 
@@ -151,7 +150,7 @@ class SingleElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
         resistors.forEach { a ->
             resistors.forEach { b ->
                 if (a != b) {
-                    map.connect(a, INTERNAL_PIN, b, INTERNAL_PIN)
+                    map.join(a.offerInternal(), b.offerInternal())
                 }
             }
         }
@@ -159,7 +158,7 @@ class SingleElectricalWireObject(cell: Cell) : ElectricalObject<Cell>(cell) {
 
     fun setupDielectricBreakdown(behavior: DielectricBreakdownBehavior, breakdownToEarth: Double) {
         resistors.forEach {
-            behavior.addResistor(it, null, breakdownToEarth)
+            behavior.addPort(it, null, breakdownToEarth)
         }
     }
 }

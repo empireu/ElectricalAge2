@@ -7,8 +7,8 @@ import net.minecraft.core.Direction
 import org.ageseries.libage.data.Locator
 import org.ageseries.libage.data.LocatorDispatcher
 import org.ageseries.libage.mathematics.geometry.Vector3d
-import org.ageseries.libage.sim.electrical.mna.NEGATIVE
-import org.ageseries.libage.sim.electrical.mna.POSITIVE
+import org.ageseries.libage.sim.Pole
+import org.ageseries.libage.sim.electrical.Port
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.ELN2_DEBUG
 import org.eln2.mc.common.cells.foundation.Cell
@@ -16,12 +16,11 @@ import org.eln2.mc.common.cells.foundation.CellLayer
 import org.eln2.mc.common.network.serverToClient.getBlockPos
 import org.eln2.mc.common.network.serverToClient.putBlockPos
 import org.eln2.mc.common.parts.foundation.getPartConnectionOrNull
-import org.eln2.mc.extensions.*
+import org.eln2.mc.extensions.directionTo
 import org.eln2.mc.mathematics.Base6Direction3d
-import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.FacingDirection
 import java.nio.ByteBuffer
-import java.util.UUID
+import java.util.*
 
 class SortedUUIDPair private constructor(val a: UUID, val b: UUID) {
     override fun equals(other: Any?): Boolean {
@@ -197,11 +196,6 @@ fun Locator.findDirActualPart(other: Locator): Base6Direction3d {
     return this.findDirActualPartOrNull(other) ?: error("Failed to get relative rotation direction (part)")
 }
 
-enum class Pole(val conventionalPin: Int) {
-    Plus(POSITIVE),
-    Minus(NEGATIVE)
-}
-
 fun interface PoleMap {
     fun evaluateOrNull(sourceCell: Cell, targetCell: Cell): Pole?
 }
@@ -243,13 +237,13 @@ fun PoleMap.evaluate(sourceCell: Cell, targetCell: Cell): Pole =
 /**
  * Creates a [PoleMap] that maps [plusDir] to plus and [minusDir] to minus.
  * These directions are in the observer's frame. Fused positions are not allowed (like with multiparts)
- * This means that, from the object's perspective, [Pole.Plus] is returned when the other object is towards [plusDir], and [Pole.Minus] is returned when the target is towards [minusDir].
+ * This means that, from the object's perspective, [Pole.Positive] is returned when the other object is towards [plusDir], and [Pole.Negative] is returned when the target is towards [minusDir].
  * */
 fun directionPoleMapPlanar(plusDir: Base6Direction3d = Base6Direction3d.Front, minusDir: Base6Direction3d = Base6Direction3d.Back) =
     PoleMap { c1, c2 ->
         when (c1.locator.findDirActualPlanarOrNull(c2.locator)) {
-            plusDir -> Pole.Plus
-            minusDir -> Pole.Minus
+            plusDir -> Pole.Positive
+            minusDir -> Pole.Negative
             else -> null
         }
     }
@@ -278,13 +272,13 @@ fun nullMonopoleMap() = MonopoleMap { a, b -> false }
 /**
  * Creates a [PoleMap] that maps [plusDir] to plus and [minusDir] to minus.
  * These directions are in the observer's frame.
- * This means that, from the object's perspective, [Pole.Plus] is returned when the other object is towards [plusDir], and [Pole.Minus] is returned when the target is towards [minusDir].
+ * This means that, from the object's perspective, [Pole.Positive] is returned when the other object is towards [plusDir], and [Pole.Negative] is returned when the target is towards [minusDir].
  * */
 fun directionPoleMapPart(plusDir: Base6Direction3d = Base6Direction3d.Front, minusDir: Base6Direction3d = Base6Direction3d.Back) =
     PoleMap { c1, c2 ->
         when (c1.locator.findDirActualPartOrNull(c2.locator)) {
-            plusDir -> Pole.Plus
-            minusDir -> Pole.Minus
+            plusDir -> Pole.Positive
+            minusDir -> Pole.Negative
             else -> null
         }
     }

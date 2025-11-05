@@ -26,12 +26,20 @@ import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.ConnectionParameters
+import org.ageseries.libage.sim.Pole
 import org.ageseries.libage.sim.ThermalMassDefinition
-import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
-import org.ageseries.libage.sim.electrical.mna.component.updateResistance
+import org.ageseries.libage.sim.electrical.ElectricalComponentSet
+import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
+import org.ageseries.libage.sim.electrical.Inductor
+import org.ageseries.libage.sim.electrical.PotentialSource
+import org.ageseries.libage.sim.electrical.Resistor
+import org.ageseries.libage.sim.kinetic.KineticDouble
+import org.ageseries.libage.sim.kinetic.KineticNodeSet
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.CellBlock
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
@@ -50,7 +58,6 @@ import org.eln2.mc.common.recipes.foundation.SimpleProcessingRecipeInventoryHand
 import org.eln2.mc.common.sounds.foundation.SimpleLoopingBlockEntitySoundInstance
 import org.eln2.mc.common.sounds.foundation.SoundInfo
 import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
-import org.eln2.mc.data.Pole
 import org.eln2.mc.data.PoleMap
 import org.eln2.mc.data.evaluate
 import org.eln2.mc.extensions.constructMenuHelper2
@@ -60,23 +67,26 @@ import org.eln2.mc.extensions.saveNbt
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import kotlin.math.abs
-import kotlin.math.absoluteValue
+import kotlin.math.max
+import kotlin.math.min
 
 /**
- * @param nominalPotential The target potential.
- * @param nominalPower The target power. It is delivered in the range of [[potentialThresholdFactor] * [nominalPotential], [maxRatedPotentialFactor] * [nominalPotential]].
- * @param potentialThresholdFactor The device doesn't run if the potential is negative or less than [potentialThresholdFactor] * [nominalPotential].
- * @param maxRatedPotentialFactor The device's efficiency starts to degrade and the power draw starts increasing when the potential is above [maxRatedPotentialFactor] * [nominalPotential].
- *
+ * Simplified electrical motor for machines that use a motor in their operation. See [org.eln2.mc.common.content.DcMotorOptions] for information about the motor-related parameters.
+ * @param idleResistance The armature resistance when not active.
+ * @param dependentFriction Omega-dependent friction, that simulates the load.
+ * @param omegaThreshold If the internal motor's angular velocity is below this, processing speed is 0.
+ * @param omegaNominal At this angular velocity, speed is 1.
  * */
 data class MotorProcessingCellElectricalOptions(
+    val inertia: Quantity<Inertia>,
     val idleResistance: Quantity<Resistance>,
-    val probingResistance: Quantity<Resistance>,
-    val minResistance: Quantity<Resistance>,
-    val nominalPotential: Quantity<Potential>,
-    val nominalPower: Quantity<Power>,
-    val potentialThresholdFactor: Double,
-    val maxRatedPotentialFactor: Double,
+    val armatureResistance: Quantity<Resistance>,
+    val armatureInductance: Quantity<Inductance>,
+    val backEmfConstant: Quantity<MotorBackEmfConstant>,
+    val torqueConstant: Quantity<MotorTorqueConstant>,
+    val dependentFriction: Double,
+    val omegaThreshold: Double,
+    val omegaNominal: Double,
     val dielectricBreakdownPotential: Quantity<Potential>,
     val overPowerThreshold: Quantity<Power>
 )
@@ -91,17 +101,6 @@ data class ProcessingCellThermalOptions(
     val destroyTemperature: Quantity<Temperature>,
 )
 
-/**
- * Crusher model. If active (needs to crush):
- * - The device doesn't start (speed = 0) when the potential is under the threshold, but still draws power (tries to draw [org.eln2.mc.common.recipes.MotorProcessingCellElectricalOptions.nominalPower]).
- * - The device keeps ~[org.eln2.mc.common.recipes.MotorProcessingCellElectricalOptions.nominalPower] when the potential is in the specified range.
- * - Speed is proportional to input power.
- * - The device starts increasing in power draw like a resistor when the potential is over the specified range.
- * - A fraction of the input power is converted into heat, setting a hard cap on the amount of work you can do.
- * - The device is destroyed when it reaches a certain temperature, and also has dielectric breakdown.
- * @param thermal If applicable, the terms dictating the waste heat production of the machine.
- * @param baseSpeedFactor The device's raw speed is [baseSpeedFactor] * (`power` / [MotorProcessingCellElectricalOptions.nominalPower]).
- *  */
 data class MotorProcessingCellOptions(
     val baseSpeedFactor: Double,
     val electrical: MotorProcessingCellElectricalOptions,
@@ -109,102 +108,151 @@ data class MotorProcessingCellOptions(
 )
 
 /**
- * Object emulating the behavior described in [MotorProcessingCellOptions] using a [TheveninEstimatingResistor].
+ * Object emulating the behavior described in [MotorProcessingCellOptions] using a simplified motor, like the [org.eln2.mc.common.content.DcMotorElectricalObject].
  * Uses the Thevenin estimates to select the behavior based on the estimated open-circuit potential, and to create the constant load in the target regions.
  * */
-class MotorProcessingElectricalObject(cell: MotorProcessingCell) : ElectricalObject<MotorProcessingCell>(cell) {
-    val resistor = TheveninEstimatingResistor().also {
-        it.resistance = !cell.options.electrical.idleResistance
-    }
-
-    val resistorDisplay = resistor.display()
-
-    override fun offerPolar(remote: ElectricalObject<*>) = when(cell.electricalMap.evaluate(cell, remote.cell)) {
-        Pole.Plus -> resistor.offerPositive()
-        Pole.Minus -> resistor.offerNegative()
-    }
+class MotorProcessingElectricalObject(cell: MotorProcessingCell) : ElectricalObject<MotorProcessingCell>(cell), PersistentObject {
+    val armatureResistor = Resistor()
+    val armatureInductor = Inductor()
+    val potentialSource = PotentialSource()
 
     /**
-     * The base grinding speed, calculated each tick.
+     * Angular velocity of the simulated motor.
+     * */
+    var angularVelocity = 0.0
+
+    /**
+     * The base grinding speed, calculated in [postTick].
      * */
     var processingSpeed = 0.0
 
-    override fun subscribe(subscribers: SubscriberCollection) {
-        subscribers.addPre(this::tick)
+    init {
+        armatureResistor.resistance = !cell.options.electrical.idleResistance
+        armatureInductor.inductance = !cell.options.electrical.armatureInductance
+        potentialSource.potential = 0.0
+    }
+
+    override fun offerPolar(remote: ElectricalObject<*>) = when(cell.electricalMap.evaluate(cell, remote.cell)) {
+        Pole.Positive -> armatureResistor.positive
+        Pole.Negative -> potentialSource.negative
     }
 
     override fun addComponents(circuit: ElectricalComponentSet) {
-        super.addComponents(circuit)
+        circuit.add(armatureResistor, armatureInductor, potentialSource)
+    }
 
-        circuit.add(resistor)
+    override fun build(map: ElectricalConnectivityMap) {
+        super.build(map)
+
+        map.join(armatureResistor.negative, armatureInductor.positive)
+        map.join(armatureInductor.negative, potentialSource.positive)
+    }
+
+    override fun subscribe(subscribers: SubscriberCollection) {
+        subscribers.addPre(this::tickPre)
+        subscribers.addPost(this::tickPost)
     }
 
     /**
-     * Converts the input power into some thermal power and updates the [processingSpeed].
+     * Applies load friction, sets the armature resistance and Back-EMF.
      * */
-    private fun tick(dt: Double, subscriberPhase: SubscriberPhase) {
-        val options = cell.options
+    private fun tickPre(dt: Double, subscriberPhase: SubscriberPhase) {
+        val options = cell.options.electrical
 
-        if(options.thermal != null) {
-            // Convert fraction of power to heat:
-            if(resistor.potential > 0.0 && resistor.power > 0.0) {
-                val energy = options.thermal.thermalFactor * resistor.power * dt
+        /**
+         * Applies friction (load):
+         * */
+        if(angularVelocity > 0.0) {
+            val torque = options.dependentFriction
 
-                if(!energy.approxEq(0.0)) {
-                    cell.thermalWire!!.thermalBody.energy += Quantity(energy, JOULE)
-                    cell.setChanged()
-                }
+            // Applies friction for both directions, if I want to add backwards motion in the future:
+            var dw = torque / !options.inertia * dt
+
+            // Limit explicit step:
+            dw = if(angularVelocity < 0.0) {
+                max(dw, angularVelocity)
+            } else {
+                min(dw, angularVelocity)
             }
+
+            if(!dw.approxEq(0.0)) {
+                cell.setChanged()
+            }
+
+            angularVelocity -= dw
         }
 
-        fun setLoad(power: Double) {
-            resistor.setLoad(power, !options.electrical.minResistance, !options.electrical.probingResistance)
-        }
-
-        if(!cell.isActive) {
-            processingSpeed = 0.0
-            resistor.resistance = !options.electrical.idleResistance
-            return
-        }
-
-        val potential = resistor.openCircuitPotentialEstimate
-
-        if(potential <= 0.0) {
-            processingSpeed = 0.0
-            setLoad(0.0)
-            return
-        }
-
-        val potentialThreshold = options.electrical.potentialThresholdFactor * !options.electrical.nominalPotential
-
-        val isGrinding: Boolean
-
-        if(potential < potentialThreshold) {
-            // Draw nominal power even if we can't drive the grinding.
-            setLoad(!options.electrical.nominalPower)
-            isGrinding = false
+        /**
+         * On-off switch:
+         * */
+        armatureResistor.resistance = if(cell.isActive) {
+            !options.armatureResistance
         }
         else {
-            val maxPotential = options.electrical.maxRatedPotentialFactor * !options.electrical.nominalPotential
-
-            if(potential > maxPotential) {
-                // Over-potential. Act like a resistor now:
-                val r = ((maxPotential * maxPotential) / !options.electrical.nominalPower).coerceAtLeast(1e-6)
-                resistor.updateResistance(r)
-            }
-            else {
-                // Operating within margin. Consume ~nominalPower:
-                setLoad(!options.electrical.nominalPower)
-            }
-
-            isGrinding = true
+            !options.idleResistance
         }
 
-        processingSpeed = if (isGrinding) {
-            options.baseSpeedFactor * (resistor.power.absoluteValue / !options.electrical.nominalPower)
-        } else {
+        /**
+         * Back-EMF:
+         * */
+        potentialSource.potential = !options.backEmfConstant * angularVelocity
+    }
+
+    /**
+     * Applies the motor torque, and calculates the processing speed.
+     * */
+    private fun tickPost(dt: Double, subscriberPhase: SubscriberPhase) {
+        val options = cell.options
+
+        // Torque for the current across the device:
+        val torque = armatureResistor.current * !options.electrical.torqueConstant
+        val dw =  torque / !options.electrical.inertia * dt
+
+        if(!dw.approxEq(0.0)) {
+            cell.setChanged()
+        }
+
+        angularVelocity += dw
+
+        if(angularVelocity < 0.0) {
+            // In reverse. In the future, we can run the machine "backward", i.e. reverse auto item transfers.
+            // For now, clip and lose energy:
+            angularVelocity = 0.0
+        }
+
+        // Calculate processing speed:
+        processingSpeed = if(angularVelocity < options.electrical.omegaThreshold) {
             0.0
         }
+        else {
+            map(
+                angularVelocity,
+                options.electrical.omegaThreshold, options.electrical.omegaNominal,
+                0.0, 1.0
+            )
+        }
+    }
+
+    override fun saveObjectNbt() : CompoundTag {
+        val tag = CompoundTag()
+
+        tag.put(INDUCTOR, armatureInductor.saveNbt())
+        tag.putDouble(ANGULAR_VELOCITY, angularVelocity)
+        tag.putDouble(PROCESSING_SPEED, processingSpeed)
+
+        return tag
+    }
+
+    override fun loadObjectNbt(tag: CompoundTag) {
+        armatureInductor.loadNbt(tag.getCompound(INDUCTOR))
+        angularVelocity = tag.getDouble(ANGULAR_VELOCITY)
+        processingSpeed = tag.getDouble(PROCESSING_SPEED)
+    }
+
+    companion object {
+        private const val INDUCTOR = "inductor"
+        private const val ANGULAR_VELOCITY = "angularVelocity"
+        private const val PROCESSING_SPEED = "speed"
     }
 }
 
@@ -251,14 +299,14 @@ class MotorProcessingCell(
     @Behavior
     val dielectricBreakdown = DielectricBreakdownBehavior.create(this).also {
         it.addPort(
-            motor.resistor,
+            motor.armatureResistor,
             !options.electrical.dielectricBreakdownPotential,
             !options.electrical.dielectricBreakdownPotential
         )
     }
 
     val overPower = OverPowerBehavior.create(options.electrical.overPowerThreshold, this) {
-        motor.resistor.power
+        motor.armatureResistor.power
     }
 }
 
@@ -515,12 +563,13 @@ abstract class MotorProcessingBlockEntity<R>(
 {
     @ServerOnly
     override fun submitDisplay(builder: ComponentDisplayList) {
+        builder.debugInIDE { "Angular velocity: ${cell.motor.angularVelocity.rounded()}" }
         builder.debugInIDE { "Speed: ${cell.motor.processingSpeed.rounded()}" }
-        builder.debugInIDE { "OC: ${cell.motor.resistorDisplay.openCircuitPotentialEstimate.value.rounded()}" }
-        builder.quantityInput(cell.motor.resistorDisplay.power)
+        builder.debugInIDE { "Back-EMF: ${cell.motor.potentialSource.potential.rounded()}" }
+        builder.debugInIDE { "Resistor power: ${cell.motor.armatureResistor.power.rounded()}"}
 
         if(cell.thermalWire != null) {
-            builder.quantity(cell.thermalWire!!.thermalBodyDisplay.temperature)
+            builder.quantity(cell.thermalWire!!.thermalBody.temperature)
         }
 
         loop.operation?.also {
@@ -698,7 +747,7 @@ abstract class KineticProcessingBlockEntity<R>(
         builder.debugInIDE { "Fric T: ${cell.kinetic.node.frictionTorque.rounded()}"}
 
         if(cell.thermalWire != null) {
-            builder.quantity(cell.thermalWire!!.thermalBodyDisplay.temperature)
+            builder.quantity(cell.thermalWire!!.thermalBody.temperature)
         }
 
         loop.operation?.also {

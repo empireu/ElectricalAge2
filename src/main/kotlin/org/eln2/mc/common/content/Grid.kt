@@ -10,28 +10,28 @@ import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.WATT
 import org.ageseries.libage.data.abs
 import org.ageseries.libage.mathematics.geometry.Vector3d
-import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
-import org.ageseries.libage.sim.electrical.mna.VirtualResistor
-import org.eln2.mc.*
+import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
+import org.ageseries.libage.sim.electrical.Resistor
+import org.eln2.mc.ClientOnly
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.BigBlockRepresentativeBlockEntity
 import org.eln2.mc.common.blocks.foundation.CellBlock
+import org.eln2.mc.common.blocks.foundation.GridCellBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridMaterialCategory
 import org.eln2.mc.common.grids.GridNode
+import org.eln2.mc.common.parts.foundation.GridCellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.common.specs.foundation.CellSpec
-import org.eln2.mc.common.blocks.foundation.GridCellBlockEntity
-import org.eln2.mc.common.parts.foundation.GridCellPart
 import org.eln2.mc.common.specs.foundation.SpecCreateInfo
 import org.eln2.mc.data.UnsafeLazyResettable
 import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.client.render.foundation.MyColor
-import kotlin.collections.HashMap
+import org.eln2.mc.offerExternal
+import org.eln2.mc.offerInternal
 import kotlin.math.abs
 
 class GridPoleBlock(val delegateMap: MultiblockDelegateMap, val attachment: Vector3d, private val cellProvider: RegistryObject<CellProvider<GridAnchorCell>>) : CellBlock<GridAnchorCell>() {
@@ -68,35 +68,31 @@ class GridPoleBlockEntity(private val representativeBlock: GridPoleBlock, pos: B
 }
 
 class GridAnchorElectricalObject(cell: Cell, val anchorResistance: Double) : ElectricalObject<Cell>(cell) {
-    private val anchorResistors = HashMap<GridConnectionCell, Pair<VirtualResistor, SimulationDisplayer.DisplayResistor>>()
+    private val anchorResistors = HashMap<GridConnectionCell, Resistor>()
 
-    val totalPowerDisplay get() = anchorResistors.values.sumOf { !abs(it.second.power) }
-    val totalCurrentDisplay get() = anchorResistors.values.sumOf { !abs(it.second.current) }
+    val totalPowerDisplay get() = anchorResistors.values.sumOf { !abs(it.readouts.power) }
+    val totalCurrentDisplay get() = anchorResistors.values.sumOf { !abs(it.readouts.current) }
 
     override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo) =
         anchorResistors.computeIfAbsent(gc) {
-            val resistor = VirtualResistor()
+            val resistor = Resistor()
             resistor.resistance = anchorResistance
-            Pair(resistor, resistor.display())
-        }.first.offerExternal()
+            resistor
+        }.offerExternal()
 
-    override fun build(map: ElectricalConnectivityMap2) {
+    override fun build(map: ElectricalConnectivityMap) {
         super.build(map)
 
-        anchorResistors.values.forEach { (a, _) ->
-            anchorResistors.values.forEach { (b, _) ->
+        anchorResistors.values.forEach { a ->
+            anchorResistors.values.forEach { b ->
                 if(a != b) {
-                    map.connect(a, INTERNAL_PIN, b, INTERNAL_PIN)
+                    map.join(a.offerInternal(), b.offerInternal())
                 }
             }
         }
     }
 
     override fun clearComponents() {
-        anchorResistors.values.forEach {
-            cell.displayer.remove(it.second)
-        }
-
         anchorResistors.clear()
     }
 }
@@ -129,12 +125,12 @@ class GridAnchorSpec(ci: SpecCreateInfo, terminalSize: Vector3d, categories: Lis
 
 class GridInterfaceObject(cell: GridInterfaceCell, val tapResistance: Double, val anchorResistance: Double) : ElectricalObject<GridInterfaceCell>(cell) {
     private val tapResistor = UnsafeLazyResettable {
-        val resistor = VirtualResistor()
+        val resistor = Resistor()
         resistor.resistance = tapResistance
         resistor
     }
 
-    private val anchorResistors = HashMap<GridConnectionCell, VirtualResistor>()
+    private val anchorResistors = HashMap<GridConnectionCell, Resistor>()
 
     // Is this useful?
     val totalCurrent get() = anchorResistors.values.sumOf { abs(it.current) }
@@ -144,25 +140,25 @@ class GridInterfaceObject(cell: GridInterfaceCell, val tapResistance: Double, va
 
     override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo) =
         anchorResistors.computeIfAbsent(gc) {
-            val resistor = VirtualResistor()
+            val resistor = Resistor()
             resistor.resistance = anchorResistance
             resistor
         }.offerExternal()
 
-    override fun build(map: ElectricalConnectivityMap2) {
+    override fun build(map: ElectricalConnectivityMap) {
         super.build(map)
 
         anchorResistors.values.forEach { a ->
             anchorResistors.values.forEach { b ->
                 if(a !== b) {
-                    map.connect(a, INTERNAL_PIN, b, INTERNAL_PIN)
+                    map.join(a.offerInternal(), b.offerInternal())
                 }
             }
         }
 
         if(tapResistor.isInitialized()) {
             anchorResistors.values.forEach {
-                map.connect(it, INTERNAL_PIN, tapResistor.value, INTERNAL_PIN)
+                map.join(it.offerInternal(), tapResistor.value.offerInternal())
             }
         }
     }

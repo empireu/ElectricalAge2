@@ -903,7 +903,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), PartCellContainer {
             return stack
         }
 
-        private fun spawnDrop(pLevel: ServerLevel, removedSpec: Spec, saveTag: CompoundTag) {
+        fun spawnDrop(pLevel: ServerLevel, removedSpec: Spec, saveTag: CompoundTag) {
             val center = removedSpec.placement.orientedBoundingBoxWorld.center
 
             pLevel.addItem(center.x, center.y, center.z, createSpecDropStack(removedSpec.id, saveTag))
@@ -2117,7 +2117,7 @@ abstract class CellSpec<C : Cell>(ci: SpecCreateInfo, final override val provide
                 .getCellByLocator(locator) as C
         }
 
-        cell.container = placement.multipart
+        cell.container = placement.part// Was set to the multipart before
         cell.onContainerLoaded()
 
         if (this.customSimulationData != null) {

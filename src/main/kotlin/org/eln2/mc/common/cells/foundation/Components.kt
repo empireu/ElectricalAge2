@@ -4,23 +4,18 @@ import org.ageseries.libage.data.AMPERE
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.WATT
 import org.ageseries.libage.data.abs
-import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
-import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
-import org.ageseries.libage.sim.electrical.mna.VirtualResistor
-import org.ageseries.libage.sim.electrical.mna.component.IResistor
-import org.ageseries.libage.sim.electrical.mna.component.Resistor
-import org.ageseries.libage.sim.electrical.mna.component.Term
-import org.eln2.mc.EXTERNAL_PIN
-import org.eln2.mc.SimulationDisplayer
-import org.eln2.mc.TermRef
+import org.ageseries.libage.sim.electrical.ElectricalComponentSet
+import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
+import org.ageseries.libage.sim.electrical.Resistor
+import org.eln2.mc.offerExternal
 import kotlin.math.abs
 
-open class ResistorBundle<T>(val cell: Cell, val factory: () -> T) where T : IResistor, T : Term {
-    constructor(cell: Cell, resistance: Double, factory: () -> T) : this(cell, factory) {
+open class ResistorBundle(val cell: Cell) {
+    constructor(cell: Cell, resistance: Double) : this(cell) {
         this.resistance = resistance
     }
 
-    private val resistors = HashMap<ElectricalObject<*>, Pair<T, SimulationDisplayer.DisplayResistor>>()
+    private val resistors = HashMap<ElectricalObject<*>, Resistor>()
     private var prepared = false
 
     var resistance: Double = 1.0
@@ -28,7 +23,7 @@ open class ResistorBundle<T>(val cell: Cell, val factory: () -> T) where T : IRe
             if(field != value) {
                 field = value
                 resistors.values.forEach {
-                    it.first.resistance = value
+                    it.resistance = value
                 }
             }
         }
@@ -49,7 +44,7 @@ open class ResistorBundle<T>(val cell: Cell, val factory: () -> T) where T : IRe
 
         connections.forEach {
             val resistor = getResistor(it)
-            circuit.add(resistor.first)
+            circuit.add(resistor)
         }
 
         prepared = true
@@ -68,7 +63,7 @@ open class ResistorBundle<T>(val cell: Cell, val factory: () -> T) where T : IRe
             val resistor = getResistor(remoteObj)
             val offered = remoteObj.offerComponent(sender)
                 ?: continue
-            map.connect(resistor.first, EXTERNAL_PIN, offered.component, offered.index)
+            map.join(resistor.offerExternal(), offered)
         }
     }
 
@@ -77,9 +72,9 @@ open class ResistorBundle<T>(val cell: Cell, val factory: () -> T) where T : IRe
             error("Tried to create resistors after bundle was prepared")
         }
 
-        val result = factory()
+        val result = Resistor()
         result.resistance = resistance
-        Pair(result, cell.displayer.display(result))
+        result
     }
 
     /**
@@ -87,16 +82,14 @@ open class ResistorBundle<T>(val cell: Cell, val factory: () -> T) where T : IRe
      * unless *clear* is called.
      * If a resistor is not initialized for *direction*, and the bundle was prepared by *register*, an error will be produced.
      * */
-    fun getOfferedResistor(remote: ElectricalObject<*>): TermRef {
-        return TermRef(getResistor(remote).first, EXTERNAL_PIN)
-    }
+    fun getOfferedResistor(remote: ElectricalObject<*>) = getResistor(remote).offerExternal()
 
     /**
      * Iterates through all the initialized resistors.
      * Keep in mind that a resistor is initialized __after__ *getOfferedResistor* is called.
      * */
-    fun forEach(action: ((T) -> Unit)) {
-        resistors.values.forEach { action(it.first) }
+    fun forEach(action: ((Resistor) -> Unit)) {
+        resistors.values.forEach { action(it) }
     }
 
     /**
@@ -104,20 +97,13 @@ open class ResistorBundle<T>(val cell: Cell, val factory: () -> T) where T : IRe
      * @see ElectricalObject.clear
      * */
     fun clear() {
-        resistors.values.forEach {
-            cell.displayer.remove(it.second)
-        }
-
         resistors.clear()
         prepared = false
     }
 
-    val totalCurrentSimulation get() = resistors.values.sumOf { abs(it.first.current) }
-    val totalPowerSimulation get() = resistors.values.sumOf { abs(it.first.power) }
+    val totalCurrentSimulation get() = resistors.values.sumOf { abs(it.current) }
+    val totalPowerSimulation get() = resistors.values.sumOf { abs(it.power) }
 
-    val totalCurrentDisplay get() = Quantity(resistors.values.sumOf { !abs(it.second.current) }, AMPERE)
-    val totalPowerDisplay get() = Quantity(resistors.values.sumOf { !abs(it.second.power) }, WATT)
+    val totalCurrentDisplay get() = Quantity(resistors.values.sumOf { !abs(it.readouts.current) }, AMPERE)
+    val totalPowerDisplay get() = Quantity(resistors.values.sumOf { !abs(it.readouts.power) }, WATT)
 }
-
-fun resistorBundle(cell: Cell, resistance: Double) = ResistorBundle(cell, resistance) { Resistor() }
-fun resistorVirtualBundle(cell: Cell, resistance: Double) = ResistorBundle(cell, resistance) { VirtualResistor() }

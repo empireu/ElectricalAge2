@@ -13,23 +13,31 @@ import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.AMPERE
 import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.CENTIMETER
+import org.ageseries.libage.data.FARAD
 import org.ageseries.libage.data.G_PER_CM3
 import org.ageseries.libage.data.HENRY
 import org.ageseries.libage.data.KILO
 import org.ageseries.libage.data.KILOGRAM
+import org.ageseries.libage.data.KILOGRAM_METER2
 import org.ageseries.libage.data.METER2
 import org.ageseries.libage.data.MILLI
+import org.ageseries.libage.data.NEWTON_METER
+import org.ageseries.libage.data.NEWTON_METER_PER_AMPERE
+import org.ageseries.libage.data.NEWTON_METER_SECOND
 import org.ageseries.libage.data.OHM
 import org.ageseries.libage.data.OHM_METER
 import org.ageseries.libage.data.Potential
 import org.ageseries.libage.data.Power
 import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.REVOLUTION_PER_SECOND
 import org.ageseries.libage.data.Resistance
 import org.ageseries.libage.data.VOLT
+import org.ageseries.libage.data.VOLT_PER_RADIAN_PER_SECOND
 import org.ageseries.libage.data.WATT
 import org.ageseries.libage.data.WATT_HOUR
 import org.ageseries.libage.data.WATT_PER_KELVIN
 import org.ageseries.libage.data.WATT_PER_METER_KELVIN
+import org.ageseries.libage.data.cylinderResistance
 import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
@@ -37,8 +45,10 @@ import org.ageseries.libage.mathematics.geometry.Vector4d
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Material
+import org.ageseries.libage.sim.Pole
 import org.ageseries.libage.sim.ThermalMassDefinition
-import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
+import org.ageseries.libage.sim.electrical.ElectricalSimulation
+import org.ageseries.libage.sim.electrical.Port
 import org.eln2.mc.FrictionNodeDescription
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.FlwModels
@@ -54,56 +64,33 @@ import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
 import org.eln2.mc.common.blocks.BlockRegistry.defineDelegateMap
 import org.eln2.mc.common.blocks.foundation.BigBlockItem
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
-import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.CellRegistry.cellImmediate
-import org.eln2.mc.common.cells.foundation.CellFactory
-import org.eln2.mc.common.cells.foundation.CellProvider
-import org.eln2.mc.common.cells.foundation.RadiantBodyEmissionDescription
+import org.eln2.mc.common.cells.CellRegistry.cellMemoize
+import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.containers.ContainerRegistry.menu
+import org.eln2.mc.common.content.OscilloscopePart.OscilloscopeScreen
 import org.eln2.mc.common.grids.GridCablePliersItem
 import org.eln2.mc.common.grids.GridMaterial
 import org.eln2.mc.common.grids.GridMaterialCategory
 import org.eln2.mc.common.grids.GridMaterials
 import org.eln2.mc.common.items.CreativeTabRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
+import org.eln2.mc.common.items.ItemRegistry.itemDefault
 import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
 import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
 import org.eln2.mc.common.parts.PartRegistry.partMemoizeBB
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.PartFactory
-import org.eln2.mc.common.parts.foundation.transformPartWorld
-import org.eln2.mc.common.specs.SpecRegistry.specImmediateBB
-import org.eln2.mc.common.specs.SpecRegistry.specMemoizeBB
-import org.eln2.mc.common.specs.foundation.SpecFactory
-import org.eln2.mc.KILOGRAM_METER2
-import org.eln2.mc.data.Locators
-import org.eln2.mc.NEWTON_METER
-import org.eln2.mc.NEWTON_METER_PER_AMPERE
-import org.eln2.mc.NEWTON_METER_SECOND
-import org.eln2.mc.data.Pole
-import org.eln2.mc.REVOLUTION_PER_SECOND
-import org.eln2.mc.VOLT_PER_RADIAN_PER_SECOND
-import org.eln2.mc.common.cells.foundation.ElectricalSize
-import org.eln2.mc.common.cells.foundation.KineticSize
-import org.eln2.mc.common.cells.foundation.ThermalSize
-import org.eln2.mc.common.recipes.MotorProcessingCell
-import org.eln2.mc.common.recipes.MotorProcessingCellOptions
-import org.eln2.mc.common.content.OscilloscopePart.OscilloscopeScreen
-import org.eln2.mc.common.items.ItemRegistry.itemDefault
 import org.eln2.mc.common.parts.foundation.eln2ReadPartGuiData
-import org.eln2.mc.common.recipes.KineticProcessingCell
-import org.eln2.mc.common.recipes.KineticProcessingCellKineticOptions
-import org.eln2.mc.common.recipes.KineticProcessingCellOptions
-import org.eln2.mc.common.recipes.MotorProcessingCellElectricalOptions
-import org.eln2.mc.common.recipes.ProcessingCellThermalOptions
+import org.eln2.mc.common.parts.foundation.transformPartWorld
+import org.eln2.mc.common.recipes.*
 import org.eln2.mc.common.recipes.RecipeRegistry.registerCatalyzedRecipe
 import org.eln2.mc.common.recipes.RecipeRegistry.registerDirectRecipe
 import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
-import org.eln2.mc.cylinderResistance
-import org.eln2.mc.data.directionMonopolarMapPlanar
-import org.eln2.mc.data.directionPoleMapPlanar
-import org.eln2.mc.data.monopolarMapPlanar
-import org.eln2.mc.data.nullPolarMap
+import org.eln2.mc.common.specs.SpecRegistry.specImmediateBB
+import org.eln2.mc.common.specs.SpecRegistry.specMemoizeBB
+import org.eln2.mc.common.specs.foundation.SpecFactory
+import org.eln2.mc.data.*
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.maskXY
@@ -494,16 +481,17 @@ object Content {
 
         val model = PhotovoltaicModel(
             Quantity(32.0, VOLT),
-            7000.0,
-            0.1,
-            0.8,
-            0.35,
+            0.452515661,
+            Quantity(1.0, METER2),
+            Quantity(0.01, OHM),
+            Quantity(0.025),
+            Quantity(261.1519, OHM)
         )
 
         val surface = Quantity(1.0, METER2)
 
         CellFactory {
-            PhotovoltaicGeneratorCell(it, map, surface, model) { cell ->
+            PhotovoltaicGeneratorCell(it, map, model) { cell ->
                 cell.locator.requireLocator(Locators.FACE).vector3d
             }
         }
@@ -748,7 +736,7 @@ object Content {
 
         val thermalMap = directionMonopolarMapPlanar(
             thermalA,
-            Pole.Minus
+            Pole.Negative
         )
 
         val coldSideDefinition = ThermalMassDefinition(
@@ -832,10 +820,12 @@ object Content {
         val model = DcToDcConverterModel(
             Quantity(800.0, WATT),
             0.8,
-            5.0,
+            2.5,
             Quantity(800.0, VOLT),
             Quantity(25.0, MILLI * OHM),
-            Quantity(2.3, VOLT)
+            Quantity(1.0, FARAD),
+            0.35,
+            Quantity(25.0, MILLI * OHM),
         )
 
         CellFactory {
@@ -1042,14 +1032,8 @@ object Content {
     val POWER_GRID_INTERFACE_CELL = cellImmediate("power_grid_interface") {
         GridInterfaceCell(
             it,
-            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
-                L = Quantity(10.0, CENTIMETER),
-                A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
-            ),
-            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
-                L = Quantity(2.5, CENTIMETER),
-                A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
-            ),
+            !Quantity(40.0, MILLI * OHM),
+            !Quantity(30.0, MILLI * OHM),
             ElectricalSize.Standard
         )
     }
@@ -1071,14 +1055,8 @@ object Content {
     val MICRO_GRID_INTERFACE_CELL = cellImmediate("micro_grid_interface") {
         GridInterfaceCell(
             it,
-            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
-                L = Quantity(2.5, CENTIMETER),
-                A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
-            ),
-            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
-                L = Quantity(1.5, CENTIMETER),
-                A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
-            ),
+            !Quantity(50.0, MILLI * OHM),
+            !Quantity(35.0, MILLI * OHM),
             ElectricalSize.Standard
         )
     }
@@ -1086,14 +1064,8 @@ object Content {
     val SIGNAL_GRID_INTERFACE_CELL = cellImmediate("signal_grid_interface") {
         GridInterfaceCell(
             it,
-            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
-                L = Quantity(2.5, CENTIMETER),
-                A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
-            ),
-            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
-                L = Quantity(1.5, CENTIMETER),
-                A = Quantity(PI * Quantity(5.0, CENTIMETER).value.pow(2))
-            ),
+            !Quantity(25.0, MILLI * OHM),
+            !Quantity(15.0, MILLI * OHM),
             ElectricalSize.Signal
         )
     }
@@ -1252,15 +1224,17 @@ object Content {
      * @param power The nominal power.
      * */
     fun motorProcessingElectrical(power: Quantity<Power>) = MotorProcessingCellElectricalOptions(
-        Quantity(LARGE_RESISTANCE, OHM),
-        Quantity(100.0, OHM),
+        Quantity(1.155, KILOGRAM_METER2),
+        Quantity(10.0, KILO * OHM),
         Quantity(1.0, OHM),
-        Quantity(240.0, VOLT),
-        power,
+        Quantity(1.25, MILLI * HENRY),
+        Quantity(2.06, VOLT_PER_RADIAN_PER_SECOND),
+        Quantity(2.05, NEWTON_METER_PER_AMPERE),
+        1.0,
         0.5,
-        1.25,
-        Quantity(700.0, VOLT),
-        power * 2.125
+        3.0,
+        Quantity(800.0, VOLT),
+        Quantity(8155.1598, WATT)
     )
 
     //#region Crusher

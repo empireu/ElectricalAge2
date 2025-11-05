@@ -40,14 +40,16 @@ import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.items.ItemStackHandler
 import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.RotationUpdateProfile2d
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.computeRotationUpdateAccelerationProfileWithAccelerationEstimate
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.nz
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.STANDARD_TEMPERATURE
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.ThermalMassDefinition
-import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
+import org.ageseries.libage.sim.electrical.ElectricalSimulation
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwModels
@@ -490,7 +492,7 @@ class ThermalElectricGenerator(val coldSide: ThermalMass, val hotSide: ThermalMa
      * If used, the maximum of the [targetResistanceSuggestion] and the internal resistance of the source should be used.
      * [LARGE_RESISTANCE] is set if the engine is not spinning.
      * */
-    var targetResistanceSuggestion = Quantity(LARGE_RESISTANCE, OHM)
+    var targetResistanceSuggestion = Quantity(ElectricalSimulation.MAX_RESISTANCE, OHM)
         private set
 
     /**
@@ -547,7 +549,7 @@ class ThermalElectricGenerator(val coldSide: ThermalMass, val hotSide: ThermalMa
         targetResistanceSuggestion = if(availablePower > 0.0 && potentialOpenCircuit > 0.0) {
             Quantity((!potentialOpenCircuit * !potentialOpenCircuit) / (4.0 * !availablePower), OHM)
         } else{
-            Quantity(LARGE_RESISTANCE, OHM)
+            Quantity(ElectricalSimulation.MAX_RESISTANCE, OHM)
         }
     }
 
@@ -630,6 +632,11 @@ class ElectricalHeatEngineCell(
     @SimObject
     val source = PowerVoltageSourceObject(this, electricalMap).also {
         it.resistor.resistance = sourceResistance
+
+        it.generator.setStabilizingResistance(
+            !generatorModel.nominalPotential,
+            !generatorModel.maxDevicePower
+        )
     }
 
     @SimObject
@@ -642,9 +649,6 @@ class ElectricalHeatEngineCell(
 
     val cold by thermalBipole::b1
     val hot by thermalBipole::b2
-
-    val coldDisplay = displayer.display(cold)
-    val hotDisplay = displayer.display(hot)
 
     val generator = ThermalElectricGenerator(cold, hot,  generatorModel)
 
@@ -683,8 +687,8 @@ class ElectricalHeatEngineCell(
 
     private fun preTick(dt: Double, phase: SubscriberPhase) {
         generator.preTick(dt)
-        source.generator.potentialMax = !generator.potentialOpenCircuit
-        source.generator.powerIdeal = !generator.availablePower
+        source.generator.maxPotential = !generator.potentialOpenCircuit
+        source.generator.targetPower = !generator.availablePower
     }
 
     private fun postTick(dt: Double, phase: SubscriberPhase) {
@@ -795,14 +799,14 @@ class ElectricalHeatEnginePart(ci: PartCreateInfo) :
     override fun submitDisplay(builder: ComponentDisplayList) {
         builder.debugInIDE { "Gen availablePower: ${cell.generator.availablePower.classify()} "}
         builder.debugInIDE { "Gen potentialOpenCircuit: ${cell.generator.potentialOpenCircuit.classify()}" }
-        builder.coldTemperature(cell.coldDisplay.temperature)
-        builder.hotTemperature(cell.hotDisplay.temperature)
+        builder.coldTemperature(cell.cold.temperature)
+        builder.hotTemperature(cell.hot.temperature)
         builder.efficiency(cell.generator.etaEngine)
         builder.quantity(cell.generator.angularVelocity)
         builder.quantity(cell.generator.engineTorque)
-        builder.quantityOutput(cell.source.generatorDisplay.potential)
-        builder.quantityOutput(cell.source.generatorDisplay.current)
-        builder.quantityOutput(cell.source.generatorDisplay.power)
+        builder.quantityOutput(cell.source.generator.readouts.potential)
+        builder.quantityOutput(cell.source.generator.readouts.current)
+        builder.quantityOutput(cell.source.generator.readouts.power)
     }
 
     @Serializable

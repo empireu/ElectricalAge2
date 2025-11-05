@@ -13,6 +13,7 @@ import net.minecraftforge.fml.ModLoadingContext
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext
+import org.ageseries.libage.utils.libageUseValidation
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import org.eln2.mc.client.input.KeyMappingRegistry
@@ -53,6 +54,8 @@ const val MODID = "eln2"
 @Mod(MODID)
 class Eln2 {
     init {
+        libageUseValidation(ELN2_DEBUG)
+
         val context = ModLoadingContext.get()
 
         Eln2Config.registerSpecs(context)

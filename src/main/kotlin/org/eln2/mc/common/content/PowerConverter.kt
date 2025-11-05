@@ -4,12 +4,14 @@ import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerPlayer
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
-import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
-import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
-import org.ageseries.libage.sim.electrical.mna.LARGE_RESISTANCE
-import org.ageseries.libage.sim.electrical.mna.component.Resistor
+import org.ageseries.libage.sim.electrical.Capacitor
+import org.ageseries.libage.sim.electrical.ElectricalComponentSet
+import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
+import org.ageseries.libage.sim.electrical.PowerSource
+import org.ageseries.libage.sim.electrical.Resistor
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.cells.foundation.*
@@ -17,23 +19,24 @@ import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.specs.foundation.CellSpec
 import org.eln2.mc.common.specs.foundation.SpecCreateInfo
+import org.eln2.mc.extensions.loadNbt
+import org.eln2.mc.extensions.saveNbt
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import kotlin.math.min
 
 /**
  * @param powerRating The maximum power **output** of the device.
- * The maximum power input is `[powerRating] / [eta] * [inputPowerRateFactor]`, which is used to fill the energy buffer.
  * @param eta The conversion efficiency of the device. `Eout,electrical ≈ Ein,electrical * [eta]`
  * @param energyK Energy buffer capacity multiplier. `Capacity = ([powerRating] / [eta]) * dt * energyK`.
  * This value should always be greater than 1.
  * @param potentialRating The max potential across the device's inputs.
  * This value is used to calculate the initial resistance of the sink resistor, such that the input power is bounded regardless of the source circuit's potential, as long as its open-circuit voltage is, at most, [potentialRating].
- * @param outputResistance Impedance in series with the output circuit. Necessary for stability (currently, the power sources are prone to blowing up unless they have some resistance in series).
- * @param inputThreshold The potential threshold to allow the device to start harnessing energy from the source circuit.
- * @param inputPowerRateFactor Factor for the input power (actual `input power = [powerRating] / [eta] * [inputPowerRateFactor]`).
- * If the device is at 100% load, the power across the buffer would be ~0W, so this factor ensures the buffer is getting filled even at 100% load.
- * @param sourceNetworkDrainFactor The max power drained from the network will be the `max estimated power (from the numerical approximation) * [sourceNetworkDrainFactor]`.
+ * @param inputResistance Impedance in series with the input circuit.
+ * @param inputCharacteristic The capacitance of the input capacitor.
+ * @param inputTransferFactor At most, `[inputTransferFactor] * [Capacitor.virtualEnergy]` is removed from the capacitor.
+ * @param outputResistance Impedance in series with the output circuit.
+ *
  * */
 @Suppress("SpellCheckingInspection")
 data class DcToDcConverterModel(
@@ -41,14 +44,12 @@ data class DcToDcConverterModel(
     val eta: Double,
     val energyK: Double,
     val potentialRating: Quantity<Potential>,
+    val inputResistance: Quantity<Resistance>,
+    val inputCharacteristic: Quantity<Capacitance>,
+    val inputTransferFactor: Double,
     val outputResistance: Quantity<Resistance>,
-    val inputThreshold: Quantity<Potential>,
-    val inputPowerRateFactor: Double = 1.1,
-    val sourceNetworkDrainFactor: Double = 0.9
 ) {
     val bufferCapacity = Quantity((!powerRating / eta) * CellGraph.DT * energyK, JOULE)
-    val initialResistance = Quantity((!potentialRating * !potentialRating) / (!powerRating / eta), OHM)
-    val maxInputPower = powerRating / eta * inputPowerRateFactor
 }
 
 fun interface RejectedEnergyAcceptor {
@@ -56,7 +57,7 @@ fun interface RejectedEnergyAcceptor {
 }
 
 /**
- * DC-DC converter implemented as a power sink + power source with a control loop.
+ * DC-DC converter implemented as a power sink + power source.
  * This can generate 2 sub-solvers.
  * */
 abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConverterModel, val rejectedEnergyAcceptor: RejectedEnergyAcceptor? = null) : ElectricalObject<C>(cell), PersistentObject {
@@ -64,30 +65,55 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
         private set
 
     // Also saved to NBT, for a start as close as possible to the last state
-    private val theveninResistor = TheveninEstimatingResistor().also { it.resistance = !model.initialResistance }
-    private val source = MyPowerVoltageSource()
-    private val outputResistor = Resistor().also { it.resistance = !model.outputResistance }
 
-    // P.S. the nbt saving might screw these for the first tick, meh
-    val inputResistorDisplay = theveninResistor.display()
-    val sourceDisplay = source.display()
+    // Input circuit: resistor in series with a capacitor.
+    // The capacitor is for energy consumption, and the resistor is to get a better bound on the input power.
+    val inputSeriesResistor = Resistor()
+    val inputCapacitor = Capacitor()
+
+    val outputSource = PowerSource()
+    val outputSeriesResistor = Resistor()
+    // Bypass diode might also be necessary!
+
+    init {
+        inputSeriesResistor.resistance = !model.inputResistance
+        inputCapacitor.capacitance = !model.inputCharacteristic
+
+        outputSource.maxPotential = !model.potentialRating
+        outputSource.setStabilizingResistance(
+            !model.potentialRating,
+            !model.powerRating
+        )
+
+        outputSeriesResistor.resistance = !model.outputResistance
+    }
 
     var setpointPotential = Quantity(0.0, VOLT)
 
     override fun addComponents(circuit: ElectricalComponentSet) {
-        circuit.add(theveninResistor)
-        circuit.add(source)
-        circuit.add(outputResistor)
+        circuit.add(
+            inputSeriesResistor, inputCapacitor,
+            outputSource, outputSeriesResistor
+        )
     }
 
-    protected fun offerInputNegative() = theveninResistor.offerNegative()
-    protected fun offerInputPositive() = theveninResistor.offerPositive()
-    protected fun offerOutputNegative() = outputResistor.offerNegative()
-    protected fun offerOutputPositive() = source.offerPositive()
+    protected fun offerInputNegative() = inputSeriesResistor.negative
+    protected fun offerInputPositive() = inputCapacitor.positive
+    protected fun offerOutputNegative() = outputSource.negative
+    protected fun offerOutputPositive() = outputSeriesResistor.positive
 
-    override fun build(map: ElectricalConnectivityMap2) {
+    override fun build(map: ElectricalConnectivityMap) {
         super.build(map)
-        map.join(source.offerNegative(), outputResistor.offerPositive())
+
+        map.join(
+            inputSeriesResistor.positive,
+            inputCapacitor.negative
+        )
+
+        map.join(
+            outputSource.positive,
+            outputSeriesResistor.negative
+        )
     }
 
     override fun subscribe(subscribers: SubscriberCollection) {
@@ -96,106 +122,61 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
     }
 
     /**
-     * Updates the [theveninResistor]'s resistance so the buffer gets filled to max capacity.
+     * Moves energy from the capacitor into the [energyBuffer].
      * */
-    private fun updateInputSink(dt: Double) {
+    private fun transferInputIntoBuffer() {
+        /**
+         * The energy needed to fill up the buffer to maximum capacity:
+         * */
         val missingEnergy = (!model.bufferCapacity - energyBuffer).coerceAtLeast(0.0)
 
-        // Max power the device can accept:
-        val maxInputPower = min((missingEnergy / dt), !model.maxInputPower)
+        /**
+         * Calculates the energy to remove from the capacitor. It is at most, the energy required to fill the buffer, and the following rule is applied:
+         * - always transfer as much of the lost model energy as possible
+         * - as for the variable term, transfer a fraction of the capacitor's internal energy
+         * */
+        val energyToMove = min(
+            missingEnergy,
+            inputCapacitor.lostEnergy + inputCapacitor.internalEnergy * model.inputTransferFactor
+        )
 
-        val sourcePotential = if (theveninResistor.openCircuitPotentialEstimate > !model.inputThreshold){
-            theveninResistor.openCircuitPotentialEstimate
-        }
-        else {
-            0.0
-        }
+        /**
+         * Removes virtual energy from the capacitor.
+         * If the removed energy is non-zero, the capacitor will start acting as a load:
+         * */
+        val extractedEnergy = inputCapacitor.withdrawEnergyTrick(energyToMove)
 
-        val resistanceEps = 1e-6 // Can't realistically be that low
-
-        // Prevents choking the upstream supplier with small resistances.
-        // Max power the network can deliver:
-        val maxNetworkPower = if(theveninResistor.theveninResistanceEstimate > resistanceEps) {
-            (sourcePotential * sourcePotential) / theveninResistor.theveninResistanceEstimate * model.sourceNetworkDrainFactor
-        }
-        else {
-            0.0
-        }
-
-        val desiredInputPower = min(maxInputPower, maxNetworkPower)
-
-        val powerEps = 0.1
-        val sinkResistance = if(desiredInputPower > powerEps && sourcePotential != 0.0) {
-            (sourcePotential * sourcePotential) / desiredInputPower
-        }
-        else {
-            !model.initialResistance
+        if(!extractedEnergy.approxEq(0.0)) {
+            cell.setChanged()
         }
 
-        val previousResistance = theveninResistor.resistance
-        val desiredResistance =  sinkResistance.coerceIn(1e-6, LARGE_RESISTANCE)
-
-        theveninResistor.resistance = desiredResistance
-
-        cell.setChangedIf(!previousResistance.approxEq(desiredResistance))
+        energyBuffer += extractedEnergy
     }
 
     /**
-     * Updates the [source]'s max power, based on the [energyBuffer].
+     * Updates the max power output, based on the [energyBuffer].
      * */
-    private fun updateOutputRate(dt: Double) {
-        val previousPotentialMax = source.potentialMax ?: 0.0
-        val previousPowerIdeal = source.powerIdeal
+    private fun setTargetPowerOutput(dt: Double) {
+        /**
+         * The max energy the buffer can provide (including the efficiency):
+         * */
+        val maxInstantaneousPower = (energyBuffer / dt) * model.eta
 
-        if(energyBuffer <= 0.0) {
-            source.potentialMax = 0.0
-            source.powerIdeal = 0.0
-        }
-        else {
-            val maxInstantaneousPower = (energyBuffer / dt) * model.eta
-
-            source.powerIdeal = min(maxInstantaneousPower, !model.powerRating)
-            source.potentialMax = !setpointPotential
-        }
-
-        cell.setChangedIf(!previousPotentialMax.approxEq(source.potentialMax ?: 0.0))
-        cell.setChangedIf(!previousPowerIdeal.approxEq(source.powerIdeal))
+        outputSource.targetPower = min(maxInstantaneousPower, !model.powerRating)
+        outputSource.maxPotential = !setpointPotential
     }
 
     private fun tickPre(dt: Double, phase: SubscriberPhase) {
-        updateInputSink(dt)
-        updateOutputRate(dt)
+        transferInputIntoBuffer()
+        setTargetPowerOutput(dt)
     }
 
     /**
-     * Collects the energy dissipated by the [theveninResistor] and returns any excess energy (caused, most probably, by numerical inaccuracies).
+     * Calculates the energy transferred by the source and removes it from the buffer.
+     * @return The waste energy due to efficiency.
      * */
-    private fun collectInputEnergy(dt: Double) : Double {
-        var rejectedEnergy = 0.0
-
-        val inputEnergy = theveninResistor.power.coerceAtLeast(0.0) * dt
-
-        // Reverse polarity:
-        if(theveninResistor.potential < 0.0) {
-            rejectedEnergy += inputEnergy
-        }
-        else {
-            energyBuffer += inputEnergy
-
-            if(energyBuffer > !model.bufferCapacity) {
-                rejectedEnergy += (energyBuffer - !model.bufferCapacity)
-                energyBuffer = !model.bufferCapacity
-                cell.setChanged()
-            }
-        }
-
-        cell.setChangedIf(!inputEnergy.approxEq(0.0))
-
-        return rejectedEnergy
-    }
-
     private fun drainOutputtedEnergy(dt: Double) : Double {
-        val deliveredEnergy = source.power * dt
+        val deliveredEnergy = outputSource.power * dt
 
         // Inputting power!
         if(deliveredEnergy < 0.0) {
@@ -221,10 +202,9 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
     }
 
     private fun tickPost(dt: Double, phase: SubscriberPhase) {
-        var rejectedEnergy = 0.0
-
-        rejectedEnergy += collectInputEnergy(dt)
-        rejectedEnergy += drainOutputtedEnergy(dt)
+        var rejectedEnergy = drainOutputtedEnergy(dt)
+        rejectedEnergy += inputSeriesResistor.power * dt
+        rejectedEnergy += outputSeriesResistor.power * dt
 
         rejectedEnergyAcceptor?.accept(Quantity(rejectedEnergy, JOULE))
     }
@@ -232,29 +212,20 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
     override fun saveObjectNbt(): CompoundTag {
         val tag = CompoundTag()
         tag.putDouble(ENERGY_BUFFER, energyBuffer)
-        tag.putDouble(RESISTANCE, theveninResistor.resistance)
-        tag.putDouble(THEVENIN_RESISTANCE_ESTIMATE, theveninResistor.theveninResistanceEstimate)
-        tag.putDouble(OPEN_CIRCUIT_POTENTIAL_ESTIMATE, theveninResistor.openCircuitPotentialEstimate)
-        tag.putDouble(SOURCE_POWER, source.powerIdeal)
+        tag.put(CAPACITOR, inputCapacitor.saveNbt())
         tag.putDouble(SETPOINT, !setpointPotential)
         return tag
     }
 
     override fun loadObjectNbt(tag: CompoundTag) {
         energyBuffer = tag.getDouble(ENERGY_BUFFER)
-        theveninResistor.resistance = tag.getDouble(RESISTANCE)
-        theveninResistor.theveninResistanceEstimate = tag.getDouble(THEVENIN_RESISTANCE_ESTIMATE)
-        theveninResistor.openCircuitPotentialEstimate = tag.getDouble(OPEN_CIRCUIT_POTENTIAL_ESTIMATE)
-        source.powerIdeal = tag.getDouble(SOURCE_POWER)
+        inputCapacitor.loadNbt(tag.getCompound(CAPACITOR))
         setpointPotential = Quantity(tag.getDouble(SETPOINT))
     }
 
     companion object {
         private const val ENERGY_BUFFER = "energyBuffer"
-        private const val RESISTANCE = "sinkResistance"
-        private const val THEVENIN_RESISTANCE_ESTIMATE = "RthEstimate"
-        private const val OPEN_CIRCUIT_POTENTIAL_ESTIMATE = "ocPotentialEstimate"
-        private const val SOURCE_POWER = "sourcePower"
+        private const val CAPACITOR = "capacitor"
         private const val SETPOINT = "setpoint"
     }
 }
@@ -346,17 +317,24 @@ class DcToDcConverterSpec(ci: SpecCreateInfo) :
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.debugInIDE { "Buffer: ${cell.converter.energyBuffer.classifyAs(JOULE)}" }
-        builder.debugInIDE { "In RTh: ${cell.converter.inputResistorDisplay.theveninResistance.classify()}" }
-        builder.debugInIDE { "In OCV: ${cell.converter.inputResistorDisplay.openCircuitPotentialEstimate.classify()}" }
-        builder.debugInIDE { "In sink res: ${cell.converter.inputResistorDisplay.resistance.classify()}" }
-        builder.debugInIDE { "Out powerIdeal: ${cell.converter.sourceDisplay.powerIdeal.classify()}" }
-        builder.debugInIDE { "Out potentialMax: ${cell.converter.sourceDisplay.potentialMax.classify()}" }
+        val inputPower = cell.converter.inputCapacitor.readouts.current.value * cell.converter.inputCapacitor.readouts.potential.value // Not an atomic operation...
 
-        builder.quantity(cell.thermalWire.thermalBodyDisplay.temperature)
-        builder.quantityInput(cell.converter.inputResistorDisplay.power)
-        builder.quantityOutput(cell.converter.sourceDisplay.power)
-        builder.quantityOutput(cell.converter.sourceDisplay.potential)
+        builder.debugInIDE { "Buffer: ${cell.converter.energyBuffer.classifyAs(JOULE)}" }
+        builder.debugInIDE { "Charge: ${cell.converter.inputCapacitor.readouts.charge.classify()}" }
+        builder.debugInIDE { "Input power: ${inputPower.rounded()}" }
+
+        if(cell.converter.outputSource.isInSimulation) {
+            builder.debugInIDE {
+                "Iter: ${cell.converter.outputSource.simulation.lastPowerSourceIterationCount}, " +
+                "res: ${cell.converter.outputSource.simulation.lastPowerSourceMaxResidual}"
+            }
+        }
+
+        builder.quantity(cell.thermalWire.thermalBody.temperature)
+        builder.quantityInput(Quantity(inputPower, WATT))
+        builder.quantityOutput(cell.converter.outputSource.readouts.potential)
+        builder.quantityOutput(cell.converter.outputSource.readouts.current)
+        builder.quantityOutput(cell.converter.outputSource.readouts.power)
         builder.quantitySetpoint(cell.converter.setpointPotential)
     }
 }

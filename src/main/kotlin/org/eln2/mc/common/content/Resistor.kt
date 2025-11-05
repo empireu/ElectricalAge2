@@ -22,23 +22,23 @@ class ResistorCell(ci: CellCreateInfo) : Cell(ci), SidedElectricalBipole<Resisto
         get() = ElectricalSize.Standard
 
     @SimObject
-    val resistor = PolarResistorObjectVirtual(this, directionPoleMapPlanar(side1, side2))
+    val resistor = PolarResistorObject(this, directionPoleMapPlanar(side1, side2))
 
     @SimObject
     val thermalWire = ThermalWireObject(this)
 
     @Behavior
-    val heating = PowerHeatingBehavior(resistor::power, thermalWire.thermalBody)
+    val heating = PowerHeatingBehavior(resistor.component::power, thermalWire.thermalBody)
 }
 
 class ResistorPart(ci: PartCreateInfo) : CellPart<ResistorCell>(ci, Content.RESISTOR_CELL.get()), ComponentDisplay {
     override fun createVisual(ctx: MultipartVisualizationContext) = BasicPartVisual(ctx, this, FlwModels.RESISTOR)
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.quantity(cell.thermalWire.thermalBodyDisplay.temperature)
-        builder.quantity(cell.resistor.resistorDisplay.resistance)
-        builder.quantity(cell.resistor.resistorDisplay.potential)
-        builder.quantity(cell.resistor.resistorDisplay.current)
-        builder.quantity(cell.resistor.resistorDisplay.power)
+        builder.quantity(cell.thermalWire.thermalBody.temperature)
+        builder.quantity(cell.resistor.component.readouts.resistance)
+        builder.quantity(cell.resistor.component.readouts.potential)
+        builder.quantity(cell.resistor.component.readouts.current)
+        builder.quantity(cell.resistor.component.readouts.power)
     }
 }

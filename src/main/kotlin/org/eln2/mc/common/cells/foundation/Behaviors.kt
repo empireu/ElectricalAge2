@@ -1,13 +1,16 @@
 package org.eln2.mc.common.cells.foundation
 
+import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.ThermalMass
-import org.ageseries.libage.sim.electrical.mna.VirtualResistor
-import org.ageseries.libage.sim.electrical.mna.component.Port
+import org.ageseries.libage.sim.electrical.Port
+import org.ageseries.libage.sim.kinetic.KineticDouble
+import org.ageseries.libage.sim.kinetic.KineticNode
+import org.ageseries.libage.sim.kinetic.KineticTriple
 import org.eln2.mc.*
 import org.eln2.mc.common.LightVolume
 import org.eln2.mc.common.LightVolumeInstance
@@ -15,6 +18,9 @@ import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.events.schedulePre
+import org.eln2.mc.common.specs.foundation.CellSpec
+import org.eln2.mc.common.specs.foundation.SpecContainerPart
+import org.eln2.mc.common.specs.foundation.SpecContainerPart.Companion.spawnDrop
 import org.eln2.mc.data.Locators
 import org.eln2.mc.extensions.destroyPart
 import java.util.concurrent.atomic.AtomicReference
@@ -144,51 +150,113 @@ private fun defaultNotifier(cell: Cell) : Boolean {
         )
     }
 
-    if (container is MultipartBlockEntity) {
-        if (container.isRemoved) {
+    when (container) {
+        /**
+         * Cell owned by a part:
+         * */
+        is MultipartBlockEntity -> {
+            if (container.isRemoved) {
+                return true
+            }
+
+            val part = container.getPart(cell.locator.requireLocator(Locators.FACE))
+                ?: return true // Already removed
+
+            val level = part.placement.level as ServerLevel
+
+            level.destroyPart(part, true)
+
+            sound(
+                level,
+                part.placement.position.x + 0.5,
+                part.placement.position.y + 0.5,
+                part.placement.position.z + 0.5
+            )
+
             return true
         }
 
-        val part = container.getPart(cell.locator.requireLocator(Locators.FACE))
-            ?: return true // Already removed
+        /**
+         * Cell owned by a block entity:
+         * */
+        is CellBlockEntity<*> -> {
+            if (container.isRemoved) {
+                return true
+            }
 
-        val level = part.placement.level as ServerLevel
+            val level = container.level as? ServerLevel
+                ?: return false
 
-        level.destroyPart(part, true)
+            val blockPos = container.blockPos
+                ?: return false
 
-        sound(
-            level,
-            part.placement.position.x + 0.5,
-            part.placement.position.y + 0.5,
-            part.placement.position.z + 0.5
-        )
+            level.destroyBlock(blockPos, true)
 
-        return true
-    }
-    else if(container is CellBlockEntity<*>) {
-        if(container.isRemoved) {
+            sound(
+                container.level!!,
+                blockPos.x + 0.5,
+                blockPos.y + 0.5,
+                blockPos.z + 0.5
+            )
+
             return true
         }
 
-        val level = container.level as? ServerLevel
-            ?: return false
+        /**
+         * Cell owned by a spec:
+         * */
+        is SpecContainerPart -> {
+            if(container.isRemoved) {
+                return true
+            }
 
-        val blockPos = container.blockPos
-            ?: return false
+            val spec = container.specs.values.firstOrNull {
+                it is CellSpec<*> && it.hasCell && it.cell == cell
+            }
 
-        level.destroyBlock(blockPos, true)
+            if(spec == null) {
+                return false
+            }
 
-        sound(
-            container.level!!,
-            blockPos.x + 0.5,
-            blockPos.y + 0.5,
-            blockPos.z + 0.5
-        )
+            val specTag = CompoundTag()
 
-        return true
-    }
-    else {
-        error(DEBUGGER_BREAK("Cannot explode $container"))
+            // Removes spec:
+            container.breakSpec(
+                spec,
+                specTag,
+                false // Doesn't destroy the cell otherwise. Don't get fooled
+            )
+
+            // Spawns the spec item:
+            spawnDrop(
+                container.placement.level as ServerLevel,
+                spec,
+                specTag
+            )
+
+            // Destroys the spec container part:
+            if(container.specs.isEmpty()) {
+                container.placement.multipart.breakPart(
+                    container,
+                    null
+                )
+            }
+
+            val bounds = spec.placement.orientedBoundingBoxWorld.center
+
+            sound(
+                container.placement.level,
+                bounds.x,
+                bounds.y,
+                bounds.z
+            )
+
+            return true
+        }
+
+        else -> {
+            error(DEBUGGER_BREAK("Cannot explode $container"))
+        }
     }
 }
 
@@ -382,17 +450,6 @@ class DielectricBreakdownBehavior private constructor(val locator: Locator, val 
         return result
     }
 
-    fun addResistor(virtualResistor: VirtualResistor, breakdownToSelf: Double?, breakdownToEarth: Double?) : ExaminedVirtualResistor {
-        val result = ExaminedVirtualResistor(
-            virtualResistor,
-            addTolerance(breakdownToSelf, i++, locator),
-            addTolerance(breakdownToEarth, i++, locator)
-        )
-
-        examined.add(result)
-        return result
-    }
-
     fun clear() {
         examined.clear()
         i = 0
@@ -430,23 +487,23 @@ class DielectricBreakdownBehavior private constructor(val locator: Locator, val 
      * @param breakdownToEarth If not null, the potential difference to ground will be taken into account.
      * */
     abstract class ExaminedBipole(val breakdownToSelf: Double?, val breakdownToEarth: Double?) : ExaminedNPole {
-        protected abstract fun getPotentialAcross() : Double?
-        protected abstract fun getPotential1() : Double?
-        protected abstract fun getPotential2() : Double?
+        protected abstract fun getPotentialAcross() : Double
+        protected abstract fun getPotential1() : Double
+        protected abstract fun getPotential2() : Double
 
         override fun isBreakingDown(): Boolean {
             if(breakdownToSelf != null) {
-                if(abs(getPotentialAcross() ?: 0.0) > breakdownToSelf) {
+                if(abs(getPotentialAcross()) > breakdownToSelf) {
                     return true
                 }
             }
 
             if(breakdownToEarth != null) {
-                if(abs(getPotential1() ?: 0.0) > breakdownToEarth) {
+                if(abs(getPotential1()) > breakdownToEarth) {
                     return true
                 }
 
-                if(abs(getPotential2() ?: 0.0) > breakdownToEarth) {
+                if(abs(getPotential2()) > breakdownToEarth) {
                     return true
                 }
             }
@@ -457,14 +514,8 @@ class DielectricBreakdownBehavior private constructor(val locator: Locator, val 
 
     class ExaminedPort(val port: Port, breakdownToSelf: Double?, breakdownToEarth: Double?) : ExaminedBipole(breakdownToSelf, breakdownToEarth) {
         override fun getPotentialAcross() = port.potential
-        override fun getPotential1() = port.neg?.potential
-        override fun getPotential2() = port.pos?.potential
-    }
-
-    class ExaminedVirtualResistor(val resistor: VirtualResistor, breakdownToSelf: Double?, breakdownToEarth: Double?) : ExaminedBipole(breakdownToSelf, breakdownToEarth) {
-        override fun getPotentialAcross() = resistor.potential
-        override fun getPotential1() = resistor.part?.negPotential
-        override fun getPotential2() = resistor.part?.posPotential
+        override fun getPotential1() = port.negative.potential
+        override fun getPotential2() = port.positive.potential
     }
 
     companion object {
@@ -573,9 +624,8 @@ class KineticBreakdownBehavior private constructor(
 
         fun create(velocity: Quantity<AngularVelocity>, cell: Cell, node: KineticNode) = create(
             addToleranceQ(velocity, 0, cell.locator),
-            cell,
-            { node.angularVelocity }
-        )
+            cell
+        ) { node.angularVelocity }
     }
 }
 

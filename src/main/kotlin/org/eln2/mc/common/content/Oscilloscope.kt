@@ -38,6 +38,7 @@ import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.SECOND
 import org.ageseries.libage.data.classify
 import org.ageseries.libage.mathematics.CubicHermiteSplineSegment1d
+import org.ageseries.libage.mathematics.FramerateIndependentSmoother2d
 import org.ageseries.libage.mathematics.ListSplineSegmentMap
 import org.ageseries.libage.mathematics.Spline1d
 import org.ageseries.libage.mathematics.approxEq
@@ -48,18 +49,15 @@ import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.mathematics.nz
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.mathematics.snzi
-import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
-import org.ageseries.libage.sim.electrical.mna.NEGATIVE
-import org.ageseries.libage.sim.electrical.mna.component.Resistor
+import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
+import org.ageseries.libage.sim.electrical.ElectricalPin
+import org.ageseries.libage.sim.electrical.Resistor
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.ClientOnly
-import org.eln2.mc.ElectricalConnectivityMap2
-import org.eln2.mc.FramerateIndependentSmoother2d
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.OnClientThread
 import org.eln2.mc.ServerOnly
-import org.eln2.mc.TermRef
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.client.render.foundation.partOffsetTable
 import org.eln2.mc.common.blocks.foundation.AdditionalRenderingPart
@@ -91,7 +89,6 @@ import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.isDigit
 import org.eln2.mc.isLetter
-import org.eln2.mc.offerPositive
 import org.eln2.mc.requireIsOnRenderThread
 import org.eln2.mc.resource
 import java.util.UUID
@@ -375,7 +372,7 @@ class OscilloscopeObject(cell: OscilloscopeCell, val specification: Oscilloscope
     val channelRange = 0 until specification.channelCount
     val resistors = Array<Resistor?>(specification.channelCount) { null }
 
-    override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo): TermRef? {
+    override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo): ElectricalPin? {
         val terminal = m0.terminal
 
         if(!channelRange.contains(terminal)) {
@@ -384,22 +381,22 @@ class OscilloscopeObject(cell: OscilloscopeCell, val specification: Oscilloscope
 
         val storedResistor = resistors[terminal]
         if(storedResistor != null) {
-            return storedResistor.offerPositive()
+            return storedResistor.positive
         }
 
         val resistor = Resistor()
         resistor.resistance = 1e8
         resistors[terminal] = resistor
 
-        return resistor.offerPositive()
+        return resistor.positive
     }
 
-    override fun build(map: ElectricalConnectivityMap2) {
+    override fun build(map: ElectricalConnectivityMap) {
         super.build(map)
 
         resistors.forEach {
             if(it != null) {
-                map.ground(it, NEGATIVE)
+                map.ground(it.negative)
             }
         }
     }

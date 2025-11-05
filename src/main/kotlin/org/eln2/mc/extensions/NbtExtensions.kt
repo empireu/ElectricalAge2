@@ -9,12 +9,38 @@ import org.ageseries.libage.mathematics.geometry.Pose2d
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Vector2d
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.sim.electrical.Capacitor
+import org.ageseries.libage.sim.electrical.Inductor
 import org.eln2.mc.common.parts.foundation.CellPartConnectionMode
 import org.eln2.mc.common.parts.foundation.PartUpdateType
 import org.eln2.mc.common.specs.foundation.SpecUpdateType
 import org.eln2.mc.data.Locators
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.FacingDirection
+
+fun Inductor.saveNbt() : CompoundTag {
+    val tag = CompoundTag()
+    tag.putDouble("flux", this.flux)
+    return tag
+}
+
+fun Inductor.loadNbt(tag: CompoundTag) {
+    this.flux = tag.getDouble("flux")
+}
+
+fun Capacitor.saveNbt() : CompoundTag {
+    val tag = CompoundTag()
+    tag.putDouble("lastPotential", this.lastPotential)
+    tag.putDouble("lastDv", this.lastDv)
+    tag.putDouble("charge", this.charge)
+    return tag
+}
+
+fun Capacitor.loadNbt(tag: CompoundTag) {
+    this.lastPotential = tag.getDouble("lastPotential")
+    this.lastDv = tag.getDouble("lastDv")
+    this.charge = tag.getDouble("charge")
+}
 
 fun CompoundTag.putVector3d(key: String, v: Vector3d) {
     val tag = CompoundTag()

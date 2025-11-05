@@ -185,7 +185,7 @@ private fun unpackComponentList(tag: CompoundTag): List<Component> {
                         .substringAfter(ComponentDisplayList.QUANTITY_SUFFIX)
                         .toDouble()
 
-                    val dimensionClass = checkNotNull(ELN2_DIMENSION_TYPES.backward[dimensionName])
+                    val dimensionClass = checkNotNull(DIMENSION_TYPES.backward[dimensionName])
                     val auxiliaryScale = Eln2Config.clientConfig.getScaleOverride(dimensionClass)
 
                     component.siblings[i] = Component.literal(
@@ -276,7 +276,7 @@ class ComponentDisplayList(private val entries: MutableList<Component>) {
     // mixin (there's no easy place to attach to) so I rather just do it like this
 
     inline fun<reified T> translateQuantityRow(key: String, quantity: Quantity<T>, eps: Double = 1e-6) {
-        val name = ELN2_DIMENSION_TYPES.forward[T::class.java]
+        val name = DIMENSION_TYPES.forward[T::class.java]
 
         checkNotNull(name) {
             "Invalid dimension ${T::class.java}"

@@ -49,8 +49,8 @@ class VoltageSourcePart(ci: PartCreateInfo) : CellPart<VoltageSourceCell>(ci, Co
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         builder.debugInIDE { "crossResistance: ${Quantity(cell.voltageSource.resistors.crossResistance, OHM).classify()}" }
-        builder.quantityOutput(cell.voltageSource.sourceDisplay.potential)
-        builder.quantityOutput(cell.voltageSource.sourceDisplay.current)
-        builder.quantityOutput(cell.voltageSource.sourceDisplay.power)
+        builder.quantityOutput(cell.voltageSource.source.readouts.potential)
+        builder.quantityOutput(cell.voltageSource.source.readouts.current)
+        builder.quantityOutput(cell.voltageSource.source.readouts.power)
     }
 }

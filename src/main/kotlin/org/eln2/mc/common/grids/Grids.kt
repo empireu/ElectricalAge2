@@ -17,10 +17,14 @@ import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.Level
 import org.ageseries.libage.data.*
-import org.ageseries.libage.mathematics.*
-import org.ageseries.libage.sim.*
-import org.ageseries.libage.sim.electrical.mna.VirtualResistor
-import org.eln2.mc.*
+import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.sim.ConnectionParameters
+import org.ageseries.libage.sim.Simulator
+import org.ageseries.libage.sim.ThermalMass
+import org.ageseries.libage.sim.electrical.ElectricalPin
+import org.ageseries.libage.sim.electrical.Resistor
+import org.eln2.mc.DEBUGGER_BREAK
+import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.events.schedulePre
@@ -28,9 +32,12 @@ import org.eln2.mc.data.Locators
 import org.eln2.mc.data.SortedUUIDPair
 import org.eln2.mc.data.plusAssign
 import org.eln2.mc.extensions.*
-import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.randomFloat
 import java.util.*
-import kotlin.math.*
+import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.random.Random
 
 /**
@@ -159,7 +166,7 @@ class GridNode(val cell: Cell) : UniqueCellNode {
 }
 
 class GridConnectionElectricalObject(cell: GridConnectionCell) : ElectricalObject<GridConnectionCell>(cell) {
-    private var resistorInternal : VirtualResistor? = null
+    private var resistorInternal : Resistor? = null
 
     val resistor get() = checkNotNull(this.resistorInternal) {
         "Resistor was not set!"
@@ -170,22 +177,22 @@ class GridConnectionElectricalObject(cell: GridConnectionCell) : ElectricalObjec
             "Re-initialization of electrical grid connection object"
         }
 
-        val resistor = VirtualResistor()
+        val resistor = Resistor()
         resistor.resistance = cell.state.connection.resistance
         this.resistorInternal = resistor
     }
 
-    override fun offerPolar(remote: ElectricalObject<*>): TermRef {
+    override fun offerPolar(remote: ElectricalObject<*>): ElectricalPin {
         val remoteCell = remote.cell
 
         return if(remoteCell === cell.cellA) {
-            resistor.offerPositive()
+            resistor.positive
         }
         else if(remoteCell === cell.cellB) {
-            resistor.offerNegative()
+            resistor.negative
         }
         else {
-            error("Unrecognised remote cell")
+            error(DEBUGGER_BREAK("Unrecognised remote cell"))
         }
     }
 }

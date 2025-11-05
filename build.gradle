@@ -204,7 +204,40 @@ dependencies {
     shade minecraftLibrary("org.jetbrains.kotlinx:kotlinx-serialization-core:${kotlinx_serialization_version}")
     shade minecraftLibrary("org.jetbrains.kotlinx:kotlinx-serialization-cbor:${kotlinx_serialization_version}")
 
-    shade minecraftLibrary("com.github.age-series:LibAge:${libage_version}")
+    shade minecraftLibrary("com.github.age-series:LibAge:${libage_version}") {
+        exclude group: "org.ejml", module: "ejml-all" // Necessary, or it doesn't work
+    }
+
+    // These `transitive = false` are all necessary. It doesn't work otherwise.
+    // Note one of them has `transitive = true`!
+    shade minecraftLibrary("org.ejml:ejml-core:0.44.0") {
+        transitive = false
+    }
+
+    shade minecraftLibrary("org.ejml:ejml-simple:0.44.0") {
+        transitive = false
+    }
+
+    shade minecraftLibrary("org.ejml:ejml-fdense:0.44.0") {
+        transitive = false
+    }
+
+    shade minecraftLibrary("org.ejml:ejml-ddense:0.44.0") {
+        transitive = true // Necessary, or it doesn't work (?)
+    }
+
+    shade minecraftLibrary("org.ejml:ejml-cdense:0.44.0") {
+        transitive = false
+    }
+
+    shade minecraftLibrary("org.ejml:ejml-zdense:0.44.0") {
+        transitive = false
+    }
+
+    shade minecraftLibrary("org.ejml:ejml-dsparse:0.44.0") {
+        transitive = false
+    }
+
     shade minecraftLibrary("org.apache.commons:commons-math3:3.6.1")
     shade minecraftLibrary("com.charleskorn.kaml:kaml:0.50.0")
 
@@ -218,6 +251,19 @@ dependencies {
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
 
     annotationProcessor "org.spongepowered:mixin:${mixin_version}:processor"
+}
+
+// Maybe not necessary (?)
+configurations.all {
+    resolutionStrategy {
+        force "org.ejml:ejml-core:0.44.0"
+        force "org.ejml:ejml-simple:0.44.0"
+        force "org.ejml:ejml-fdense:0.44.0"
+        force "org.ejml:ejml-ddense:0.44.0"
+        force "org.ejml:ejml-cdense:0.44.0"
+        force "org.ejml:ejml-zdense:0.44.0"
+        force "org.ejml:ejml-dsparse:0.44.0"
+    }
 }
 
 jar {
@@ -239,6 +285,8 @@ shadowJar {
     //relocate "org.apache.commons.math3", "${domain}.apache.commons.math3"
     //relocate "com.charleskorn", "${domain}.charleskorn"
     //relocate "org.intellij", "${domain}.intellij"
+
+    relocate "org.ejml", "${domain}.ejml"
 
     finalizedBy("reobfShadowJar")
 }

@@ -6,22 +6,12 @@ import org.ageseries.libage.data.classify
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.mathematics.rounded
-import org.ageseries.libage.sim.electrical.mna.ElectricalComponentSet
-import org.ageseries.libage.sim.electrical.mna.ElectricalConnectivityMap
-import org.ageseries.libage.sim.electrical.mna.component.Resistor
+import org.ageseries.libage.sim.Pole
+import org.ageseries.libage.sim.electrical.*
 import org.eln2.mc.ClientOnly
-import org.eln2.mc.ElectricalConnectivityMap2
 import org.eln2.mc.ServerOnly
-import org.eln2.mc.TermRef
 import org.eln2.mc.client.render.FlwModels
-import org.eln2.mc.client.render.foundation.ConnectedPart
-import org.eln2.mc.client.render.foundation.ConnectedPartRenderState
-import org.eln2.mc.client.render.foundation.ConnectedPartRenderStateImpl
-import org.eln2.mc.client.render.foundation.ConnectedPartWithKnobsVisual
-import org.eln2.mc.client.render.foundation.KnobMap
-import org.eln2.mc.client.render.foundation.MyColor
-import org.eln2.mc.client.render.foundation.PartWithKnobs
-import org.eln2.mc.client.render.foundation.getConnectedPartsFromTag
+import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.grids.GridConnectionCell
@@ -31,13 +21,10 @@ import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.GridCellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.data.MonopoleMap
-import org.eln2.mc.data.Pole
 import org.eln2.mc.data.PoleMap
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d
-import org.eln2.mc.offerNegative
-import org.eln2.mc.offerPositive
 
 /**
  * The bound for signal ([-[MAX_SIGNAL], +[MAX_SIGNAL]]).
@@ -124,12 +111,10 @@ abstract class PassthroughElectricalProbeObject(
      * */
     val internalResistor = Resistor() // P.S. real resistor because the virtual resistor is not signed correctly
 
-    val internalResistorDisplay = internalResistor.display()
-
-    override fun offerPolar(remote: ElectricalObject<*>) : TermRef? {
+    override fun offerPolar(remote: ElectricalObject<*>) : ElectricalPin? {
         when(comparerMap.evaluateOrNull(cell, remote.cell)) {
-            Pole.Plus -> return internalResistor.offerPositive()
-            Pole.Minus -> return internalResistor.offerNegative()
+            Pole.Positive -> return internalResistor.positive
+            Pole.Negative -> return internalResistor.negative
             else -> { /* ignored */ }
         }
 
@@ -147,7 +132,7 @@ abstract class PassthroughElectricalProbeObject(
         circuit.add(internalResistor)
     }
 
-    override fun build(map: ElectricalConnectivityMap2) {
+    override fun build(map: ElectricalConnectivityMap) {
         super.build(map)
         signalSource.build(map)
     }
@@ -218,9 +203,9 @@ class PotentialProbeCell(
 
     fun submitDisplay(builder: ComponentDisplayList) {
         builder.debugInIDE { "In: [${signalMap.inputLow.rounded()}, ${signalMap.inputHigh.rounded()}], Out: [${signalMap.outputLow}, ${signalMap.outputHigh}]" }
-        builder.debugInIDE { "Power: ${probe.internalResistorDisplay.power.classify()}" }
+        builder.debugInIDE { "Power: ${probe.internalResistor.readouts.power.classify()}" }
         builder.signalOutput(probe.signalSource.signal)
-        builder.quantity(probe.internalResistorDisplay.potential)
+        builder.quantity(probe.internalResistor.readouts.potential)
     }
 }
 

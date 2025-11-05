@@ -2,13 +2,22 @@ package org.eln2.mc.common.content
 
 import net.minecraft.nbt.CompoundTag
 import net.minecraftforge.registries.RegistryObject
+import org.ageseries.libage.data.AngularVelocity
 import org.ageseries.libage.data.JOULE
 import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.REVOLUTION_PER_SECOND
+import org.ageseries.libage.data.Torque
 import org.ageseries.libage.data.registerHandler
+import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.ThermalMassDefinition
+import org.ageseries.libage.sim.kinetic.KineticDouble
+import org.ageseries.libage.sim.kinetic.KineticExtension
+import org.ageseries.libage.sim.kinetic.KineticNode
+import org.ageseries.libage.sim.kinetic.KineticNodeSet
+import org.ageseries.libage.sim.kinetic.KineticTriple
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.BasicKineticPart
 import org.eln2.mc.common.cells.foundation.*
@@ -43,7 +52,6 @@ interface JointCell {
  * */
 class DoubleJointObject(cell: DoubleJointCell, friction: FrictionNodeDescription, ratio: Double, val thermalBody: ThermalMass?) : KineticObject<DoubleJointCell>(cell), PersistentObject {
     val node = KineticDouble(ratio == 1.0)
-    val display = node.display()
 
     init {
         friction.applyTo(node)
@@ -136,7 +144,6 @@ class DoubleJointCell(
  * */
 class TripleJointObject(cell: TripleJointCell, friction: FrictionNodeDescription, val thermalBody: ThermalMass?) : KineticObject<TripleJointCell>(cell), PersistentObject {
     val node = KineticTriple()
-    val display = node.display()
 
     init {
         node.e2.ratio *= -1

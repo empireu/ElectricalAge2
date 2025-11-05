@@ -4,19 +4,14 @@ package org.eln2.mc.common.content
 
 import net.minecraft.nbt.CompoundTag
 import org.ageseries.libage.data.*
-import org.ageseries.libage.mathematics.InterpolatorBuilder
-import org.ageseries.libage.mathematics.approxEq
-import org.ageseries.libage.mathematics.kdVectorDOf
-import org.ageseries.libage.mathematics.lerp
-import org.ageseries.libage.mathematics.map
-import org.ageseries.libage.mathematics.rounded
+import org.ageseries.libage.mathematics.*
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.ThermalMass
-import org.ageseries.libage.sim.electrical.mna.component.updateResistance
 import org.eln2.mc.Datasets
 import org.eln2.mc.ItemPersistent
 import org.eln2.mc.ItemPersistentLoadOrder
 import org.eln2.mc.LOG
+import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.grids.GridNode
@@ -29,7 +24,6 @@ import org.eln2.mc.extensions.getQuantity
 import org.eln2.mc.extensions.useSubTagIfPreset
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.client.render.foundation.MyColor
 import kotlin.math.abs
 import kotlin.math.pow
 
@@ -427,9 +421,9 @@ abstract class BatteryCell(
         builder.charge(charge)
         builder.integrity(life)
         builder.quantity(thermalWire.thermalBody.temperature)
-        builder.quantityOutput(generator.sourceDisplay.potential)
-        builder.quantityOutput(generator.sourceDisplay.current)
-        builder.quantityOutput(generator.sourceDisplay.power)
+        builder.quantityOutput(generator.source.readouts.potential)
+        builder.quantityOutput(generator.source.readouts.current)
+        builder.quantityOutput(generator.source.readouts.power)
     }
 }
 

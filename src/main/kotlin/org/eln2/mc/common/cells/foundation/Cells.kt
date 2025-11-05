@@ -16,9 +16,12 @@ import net.minecraftforge.server.ServerLifecycleHooks
 import org.ageseries.libage.data.*
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Simulator
+import org.ageseries.libage.sim.SubSolverSet
 import org.ageseries.libage.sim.ThermalMass
-import org.ageseries.libage.sim.electrical.mna.Circuit
-import org.ageseries.libage.sim.electrical.mna.component.VoltageSource
+import org.ageseries.libage.sim.electrical.ElectricalCircuitForestBuilder
+import org.ageseries.libage.sim.electrical.ElectricalSimulation
+import org.ageseries.libage.sim.kinetic.KineticSimulation
+import org.ageseries.libage.sim.kinetic.KineticSimulationForestBuilder
 import org.ageseries.libage.utils.*
 import org.eln2.mc.*
 import org.eln2.mc.common.cells.CellRegistry
@@ -415,9 +418,6 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     }
 
     constructor(ci: CellCreateInfo) : this(ci.locator, ci.id, ci.environment)
-
-    private val displayerImpl = SimulationDisplayerImpl()
-    val displayer: SimulationDisplayer get() = displayerImpl
 
     // Persistent behaviors are used by cell logic, and live throughout the lifetime of the cell:
     private var persistentPoolInternal: TrackedSubscriberCollection? = null
@@ -1129,10 +1129,6 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
             }
         }
     }
-
-    fun updateDisplayer(dt: Double) {
-        displayerImpl.step(dt)
-    }
 }
 
 fun Cell.self() = this
@@ -1718,7 +1714,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
     // This is because I imagine most builds consist of a power grid that distributes power to some bases or plants, and each plant has:
     //  - a DC-DC converter (transforming the grid to a useful potential). Currently, the DC-DC is implemented as an unconstrained process in the pre-step/post-step loop. So the plant and the grid would be separate sub-solvers.
     //  - some mechanical and thermal devices - those will separate all other simulations so that's more sub-solvers.
-    private val electricalSubSolverSets = ArrayList<SubSolverSet<Circuit>>()
+    private val electricalSubSolverSets = ArrayList<SubSolverSet<ElectricalSimulation>>()
     private val thermalSims = ArrayList<Simulator>()
     private val kineticSubSolverSets = ArrayList<SubSolverSet<KineticSimulation>>()
 
@@ -1881,11 +1877,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
                 val electricalTime = measureDuration {
                     electricalSubSolverSets.forEach {
                         it.solvers.forEach { circuit ->
-                            val success = circuit.step(DT)
-
-                            if (!success && !circuit.isFloating) {
-                                LOG.error(DEBUGGER_BREAK("Failed to update non-floating sub-solver! $circuit"))
-                            }
+                            circuit.step()
                         }
 
                     }
@@ -1911,10 +1903,6 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
             stage = UpdateStep.UpdateSubsPost
             simulationSubscribers.update(DT, SubscriberPhase.Post)
 
-            cells.forEach {
-                it.updateDisplayer(DT)
-            }
-
             updates++
 
         } catch (t: Throwable) {
@@ -1926,6 +1914,12 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
     }
 
     private fun clearElectricalSimulation() {
+        electricalSubSolverSets.forEach {
+            it.solvers.forEach { solver ->
+                solver.destroy()
+            }
+        }
+
         electricalSubSolverSets.clear()
     }
 
@@ -1970,7 +1964,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
          * This means that those graphs will further be processed into sub-solvers. Sub-solvers are the actual final simulations.
          * They are created with the underlying components that are joined/connected with each other.
          * This is done by retaining the connection data before creating the underlying sub-solvers, and then determining the connected nodes with those connections.
-         * This is done by domain-specific wrappers for [SubSolverSystemBuilder].
+         * This is done by domain-specific wrappers for [org.ageseries.libage.sim.SubSolverSystemBuilder].
          * */
 
         val electrical = realizeElectrical()
@@ -2005,7 +1999,9 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
          * */
 
         electrical.objectsByBuilder.keys.forEach { builder ->
-            val subSolvers = builder.build()
+            val subSolvers = builder.build(DT, true, ElectricalSimulation.ConstructionOptions(
+                1e12
+            ))
 
             electrical.objectsByBuilder[builder].forEach { obj ->
                 obj.setSubSolvers(subSolvers)
@@ -2024,12 +2020,6 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
             kineticSubSolverSets.add(subSolvers)
         }
 
-        electricalSubSolverSets.forEach {
-            it.solvers.forEach { circuit ->
-                postProcessCircuit(circuit)
-            }
-        }
-
         cells.forEach { it.onBuildFinished() }
     }
 
@@ -2040,19 +2030,19 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
      * @param objectsByBuilder The builders, mapped to all the electrical objects that have connections between each other.
      * */
     private class ElectricalRealizationData(
-        val builderByObject: Map<ElectricalObject<*>, ElectricalSubSolverSystemBuilder>,
-        val objectsByBuilder: MultiMap<ElectricalSubSolverSystemBuilder, ElectricalObject<*>>
+        val builderByObject: Map<ElectricalObject<*>, ElectricalCircuitForestBuilder>,
+        val objectsByBuilder: MultiMap<ElectricalCircuitForestBuilder, ElectricalObject<*>>
     )
 
     /**
      * Realizes the sub-system builders for all electrical objects.
      * */
     private fun realizeElectrical() : ElectricalRealizationData {
-        val builderByObject = HashMap<ElectricalObject<*>, ElectricalSubSolverSystemBuilder>()
-        val objectsByBuilder = MutableSetMapMultiMap<ElectricalSubSolverSystemBuilder, ElectricalObject<*>>()
+        val builderByObject = HashMap<ElectricalObject<*>, ElectricalCircuitForestBuilder>()
+        val objectsByBuilder = MutableSetMapMultiMap<ElectricalCircuitForestBuilder, ElectricalObject<*>>()
 
         realizeComponents(Electrical, factory = { set ->
-            val builder = ElectricalSubSolverSystemBuilder()
+            val builder = ElectricalCircuitForestBuilder()
 
             set.forEach {
                 val obj = it.objects.electricalObject
@@ -2082,19 +2072,19 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
      * @param objectsByBuilder The builders, mapped to all the kinetic objects that have connections between each other.
      * */
     private class KineticRealizationData(
-        val builderByObject: Map<KineticObject<*>, KineticSubSolverSystemBuilder>,
-        val objectsByBuilder: MultiMap<KineticSubSolverSystemBuilder, KineticObject<*>>
+        val builderByObject: Map<KineticObject<*>, KineticSimulationForestBuilder>,
+        val objectsByBuilder: MultiMap<KineticSimulationForestBuilder, KineticObject<*>>
     )
 
     /**
      * Realizes the sub-system builders for all kinetic objects.
      * */
     private fun realizeKinetic() : KineticRealizationData {
-        val builderByObject = HashMap<KineticObject<*>, KineticSubSolverSystemBuilder>()
-        val objectsByBuilder = MutableSetMapMultiMap<KineticSubSolverSystemBuilder, KineticObject<*>>()
+        val builderByObject = HashMap<KineticObject<*>, KineticSimulationForestBuilder>()
+        val objectsByBuilder = MutableSetMapMultiMap<KineticSimulationForestBuilder, KineticObject<*>>()
 
         realizeComponents(Kinetic, factory = { set ->
-            val builder = KineticSubSolverSystemBuilder()
+            val builder = KineticSimulationForestBuilder()
 
             set.forEach {
                 val obj = it.objects.kineticObject
@@ -2160,26 +2150,6 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
             }
 
             results.add(factory(visited))
-        }
-    }
-
-    private fun postProcessCircuit(circuit: Circuit) {
-        if (circuit.isFloating) {
-            fixFloating(circuit)
-        }
-    }
-
-    private fun fixFloating(circuit: Circuit) {
-        var found = false
-        for (comp in circuit.components) {
-            if (comp is VoltageSource) {
-                comp.ground(1)
-                found = true
-                break
-            }
-        }
-        if (!found) {
-            LOG.warn("Floating circuit and no VSource; the matrix is likely under-constrained.")
         }
     }
 
