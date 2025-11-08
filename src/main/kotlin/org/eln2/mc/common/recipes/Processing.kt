@@ -35,9 +35,10 @@ import org.ageseries.libage.sim.Pole
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
+import org.ageseries.libage.sim.electrical.ElectricalSimulation
 import org.ageseries.libage.sim.electrical.Inductor
+import org.ageseries.libage.sim.electrical.LinearDiode
 import org.ageseries.libage.sim.electrical.PotentialSource
-import org.ageseries.libage.sim.electrical.Resistor
 import org.ageseries.libage.sim.kinetic.KineticDouble
 import org.ageseries.libage.sim.kinetic.KineticNodeSet
 import org.eln2.mc.*
@@ -112,7 +113,7 @@ data class MotorProcessingCellOptions(
  * Uses the Thevenin estimates to select the behavior based on the estimated open-circuit potential, and to create the constant load in the target regions.
  * */
 class MotorProcessingElectricalObject(cell: MotorProcessingCell) : ElectricalObject<MotorProcessingCell>(cell), PersistentObject {
-    val armatureResistor = Resistor()
+    val armatureResistor = LinearDiode()
     val armatureInductor = Inductor()
     val potentialSource = PotentialSource()
 
@@ -122,18 +123,19 @@ class MotorProcessingElectricalObject(cell: MotorProcessingCell) : ElectricalObj
     var angularVelocity = 0.0
 
     /**
-     * The base grinding speed, calculated in [postTick].
+     * The base grinding speed, calculated in [tickPost].
      * */
     var processingSpeed = 0.0
 
     init {
-        armatureResistor.resistance = !cell.options.electrical.idleResistance
+        armatureResistor.forwardResistance = !cell.options.electrical.idleResistance
+        armatureResistor.reverseResistance = ElectricalSimulation.MAX_RESISTANCE
         armatureInductor.inductance = !cell.options.electrical.armatureInductance
         potentialSource.potential = 0.0
     }
 
     override fun offerPolar(remote: ElectricalObject<*>) = when(cell.electricalMap.evaluate(cell, remote.cell)) {
-        Pole.Positive -> armatureResistor.positive
+        Pole.Positive -> armatureResistor.negative
         Pole.Negative -> potentialSource.negative
     }
 
@@ -144,7 +146,7 @@ class MotorProcessingElectricalObject(cell: MotorProcessingCell) : ElectricalObj
     override fun build(map: ElectricalConnectivityMap) {
         super.build(map)
 
-        map.join(armatureResistor.negative, armatureInductor.positive)
+        map.join(armatureResistor.positive, armatureInductor.positive)
         map.join(armatureInductor.negative, potentialSource.positive)
     }
 
@@ -163,7 +165,7 @@ class MotorProcessingElectricalObject(cell: MotorProcessingCell) : ElectricalObj
          * Applies friction (load):
          * */
         if(angularVelocity > 0.0) {
-            val torque = options.dependentFriction
+            val torque = angularVelocity * options.dependentFriction
 
             // Applies friction for both directions, if I want to add backwards motion in the future:
             var dw = torque / !options.inertia * dt
@@ -185,7 +187,7 @@ class MotorProcessingElectricalObject(cell: MotorProcessingCell) : ElectricalObj
         /**
          * On-off switch:
          * */
-        armatureResistor.resistance = if(cell.isActive) {
+        armatureResistor.forwardResistance = if(cell.isActive) {
             !options.armatureResistance
         }
         else {
@@ -236,6 +238,7 @@ class MotorProcessingElectricalObject(cell: MotorProcessingCell) : ElectricalObj
     override fun saveObjectNbt() : CompoundTag {
         val tag = CompoundTag()
 
+        tag.put(ARMATURE_RESISTOR, armatureResistor.saveNbt())
         tag.put(INDUCTOR, armatureInductor.saveNbt())
         tag.putDouble(ANGULAR_VELOCITY, angularVelocity)
         tag.putDouble(PROCESSING_SPEED, processingSpeed)
@@ -244,12 +247,14 @@ class MotorProcessingElectricalObject(cell: MotorProcessingCell) : ElectricalObj
     }
 
     override fun loadObjectNbt(tag: CompoundTag) {
+        armatureResistor.loadNbt(tag.getCompound(ARMATURE_RESISTOR))
         armatureInductor.loadNbt(tag.getCompound(INDUCTOR))
         angularVelocity = tag.getDouble(ANGULAR_VELOCITY)
         processingSpeed = tag.getDouble(PROCESSING_SPEED)
     }
 
     companion object {
+        private const val ARMATURE_RESISTOR = "diode"
         private const val INDUCTOR = "inductor"
         private const val ANGULAR_VELOCITY = "angularVelocity"
         private const val PROCESSING_SPEED = "speed"

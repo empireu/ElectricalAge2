@@ -3,6 +3,7 @@ package org.eln2.mc.common.content
 import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.model.Model
 import dev.engine_room.flywheel.api.visual.DynamicVisual
+import dev.engine_room.flywheel.api.visual.ShaderLightVisual
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
@@ -390,7 +391,7 @@ class KineticExtruderBlockEntityVisual(
     ctx,
     blockEntity,
     partialTick
-) {
+), ShaderLightVisual {
     companion object {
         val shaftCenter = FlwModels.getModelCenter(FlwModels.EXTRUDER_KINETIC_SHAFT)
     }

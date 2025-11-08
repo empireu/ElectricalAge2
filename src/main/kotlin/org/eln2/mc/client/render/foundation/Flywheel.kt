@@ -334,6 +334,14 @@ object FlwVisualizerRegistry {
                 FlwModels.BASIC_DC_MOTOR
             )
         }
+
+        setPartVisualizer<DiodePart>(Content.DIODE_PART.part.get()) { ctx, part ->
+            BasicPartVisual(
+                ctx, part,
+                FlwModels.DIODE,
+                smoothLighting = true
+            )
+        }
     }
 
     fun registerSpecVisualizers() {
@@ -825,9 +833,10 @@ open class BasicPartVisual<P : Part>(
     model: PartialModel,
     scale: Vector3d = Vector3d.one,
     rotation: Double = 0.0,
+    smoothLighting: Boolean = false
 ) : AbstractPartVisual<P>(ctx, part) {
     private val instance = ctx.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
+        .instancer(InstanceTypes.TRANSFORMED, if(smoothLighting) PartialModelHelper.applyMaterial(model, FlwMaterials.SMOOTH_LIT) else Models.partial(model))
         .createInstance()
         .also { it.partTransformation(ctx.parent, part, scale, rotation) }
 

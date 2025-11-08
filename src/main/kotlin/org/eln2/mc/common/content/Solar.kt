@@ -51,11 +51,6 @@ class PhotovoltaicGeneratorObject(cell: PhotovoltaicGeneratorCell) : ElectricalO
 
     init {
         powerSource.maxPotential = !cell.model.openCircuitPotential
-        powerSource.setStabilizingResistance(
-            !cell.model.openCircuitPotential,
-            !LEVEL_INTENSITY * !cell.model.surfaceArea * cell.model.efficiency
-        )
-
         bypassDiode.forwardResistance = !cell.model.bypassResistance
         bypassDiode.reverseResistance = !cell.model.parallelResistance
 

@@ -822,10 +822,10 @@ object Content {
             0.8,
             2.5,
             Quantity(800.0, VOLT),
-            Quantity(25.0, MILLI * OHM),
-            Quantity(1.0, FARAD),
-            0.35,
-            Quantity(25.0, MILLI * OHM),
+            Quantity(0.0006571, OHM),
+            Quantity(0.1027, FARAD),
+            Quantity(0.0001167, OHM),
+            Quantity(0.000891, OHM)
         )
 
         CellFactory {
@@ -981,21 +981,14 @@ object Content {
     val MICRO_GRID_ANCHOR_CELL = cellImmediate("micro_grid_anchor") {
         GridAnchorCell(
             it,
-            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
-                L = Quantity(1.0, CENTIMETER),
-                A = Quantity(PI * Quantity(2.0, CENTIMETER).value.pow(2))
-            )
+            !Quantity(1e-5, OHM)
         )
     }
 
     val SIGNAL_GRID_ANCHOR_CELL = cellImmediate("signal_grid_anchor") {
         GridAnchorCell(
             it,
-            !ChemicalElement.Copper.asMaterial.electricalResistivity.cylinderResistance(
-                // Same thickness as micro grid
-                L = Quantity(1.0, CENTIMETER),
-                A = Quantity(PI * Quantity(2.0, CENTIMETER).value.pow(2))
-            )
+            !Quantity(1e-5, OHM)
         )
     }
 
@@ -1032,8 +1025,8 @@ object Content {
     val POWER_GRID_INTERFACE_CELL = cellImmediate("power_grid_interface") {
         GridInterfaceCell(
             it,
-            !Quantity(40.0, MILLI * OHM),
-            !Quantity(30.0, MILLI * OHM),
+            !Quantity(0.25, MILLI * OHM),
+            !Quantity(0.2, MILLI * OHM),
             ElectricalSize.Standard
         )
     }
@@ -1055,8 +1048,8 @@ object Content {
     val MICRO_GRID_INTERFACE_CELL = cellImmediate("micro_grid_interface") {
         GridInterfaceCell(
             it,
-            !Quantity(50.0, MILLI * OHM),
-            !Quantity(35.0, MILLI * OHM),
+            !Quantity(0.05, MILLI * OHM),
+            !Quantity(0.0156, MILLI * OHM),
             ElectricalSize.Standard
         )
     }
@@ -1064,8 +1057,8 @@ object Content {
     val SIGNAL_GRID_INTERFACE_CELL = cellImmediate("signal_grid_interface") {
         GridInterfaceCell(
             it,
-            !Quantity(25.0, MILLI * OHM),
-            !Quantity(15.0, MILLI * OHM),
+            !Quantity(3.5, MILLI * OHM),
+            !Quantity(6.1, MILLI * OHM),
             ElectricalSize.Signal
         )
     }
@@ -1219,24 +1212,6 @@ object Content {
 
     //#endregion
 
-    /**
-     * Creates a standard [MotorProcessingCellElectricalOptions] (testing tier).
-     * @param power The nominal power.
-     * */
-    fun motorProcessingElectrical(power: Quantity<Power>) = MotorProcessingCellElectricalOptions(
-        Quantity(1.155, KILOGRAM_METER2),
-        Quantity(10.0, KILO * OHM),
-        Quantity(1.0, OHM),
-        Quantity(1.25, MILLI * HENRY),
-        Quantity(2.06, VOLT_PER_RADIAN_PER_SECOND),
-        Quantity(2.05, NEWTON_METER_PER_AMPERE),
-        1.0,
-        0.5,
-        3.0,
-        Quantity(800.0, VOLT),
-        Quantity(8155.1598, WATT)
-    )
-
     //#region Crusher
 
     val CRUSHING_RECIPE = registerDirectRecipe("crushing")
@@ -1244,8 +1219,18 @@ object Content {
     val BASIC_CRUSHER_CELL = cellMemoize("basic_crusher") {
         val options = MotorProcessingCellOptions(
             1.0,
-            motorProcessingElectrical(
-                Quantity(6.0, KILO * WATT)
+            MotorProcessingCellElectricalOptions(
+                Quantity(1.155, KILOGRAM_METER2),
+                Quantity(10.0, KILO * OHM),
+                Quantity(1.0, OHM),
+                Quantity(1.25, MILLI * HENRY),
+                Quantity(9.501, VOLT_PER_RADIAN_PER_SECOND),
+                Quantity(2.05, NEWTON_METER_PER_AMPERE),
+                50.0,
+                0.124,
+                3.0,
+                Quantity(800.0, VOLT),
+                Quantity(8155.1598, WATT)
             ),
             ProcessingCellThermalOptions(
                 0.1,
@@ -1287,8 +1272,18 @@ object Content {
     val ELECTRIC_EXTRUDER_CELL = cellMemoize("electric_extruder") {
         val options = MotorProcessingCellOptions(
             1.0,
-            motorProcessingElectrical(
-                Quantity(812.5, WATT)
+            MotorProcessingCellElectricalOptions(
+                Quantity(1.155, KILOGRAM_METER2),
+                Quantity(10.0, KILO * OHM),
+                Quantity(41.561, OHM),
+                Quantity(1.25, MILLI * HENRY),
+                Quantity(2.06, VOLT_PER_RADIAN_PER_SECOND),
+                Quantity(2.05, NEWTON_METER_PER_AMPERE),
+                10.0,
+                0.5,
+                1.15,
+                Quantity(800.0, VOLT),
+                Quantity(8155.1598, WATT)
             ),
             null
         )
@@ -1403,5 +1398,37 @@ object Content {
         }
     }
     
+    //#endregion
+
+    //#region Diode
+
+    val DIODE_CELL = cellMemoize("diode") {
+        val poleMap = directionPoleMapPlanar(
+            Base6Direction3d.Back,
+            Base6Direction3d.Front
+        )
+
+        val model = DiodeOptions(
+            Quantity(0.001, OHM),
+            Quantity(10.0, KILO * OHM),
+            ThermalMassDefinition(
+                ChemicalElement.Iron.asMaterial,
+                mass = Quantity(1.691, KILOGRAM)
+            ),
+            Quantity(148.61, CELSIUS),
+            Quantity(800.0, VOLT)
+        )
+
+        val leakage = ConnectionParameters.DEFAULT
+
+        CellFactory {
+            DiodeCell(it, poleMap, model, leakage)
+        }
+    }
+
+    val DIODE_PART = partImmediateBB("diode", 3.0, 2.275, 16.0) {
+        DiodePart(it)
+    }
+
     //#endregion
 }

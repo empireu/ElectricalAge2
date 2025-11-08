@@ -133,8 +133,8 @@ class GridInterfaceObject(cell: GridInterfaceCell, val tapResistance: Double, va
     private val anchorResistors = HashMap<GridConnectionCell, Resistor>()
 
     // Is this useful?
-    val totalCurrent get() = anchorResistors.values.sumOf { abs(it.current) }
-    val totalPower get() = anchorResistors.values.sumOf { abs(it.power) }
+    val totalCurrent get() = anchorResistors.values.sumOf { abs(it.current) } + if(tapResistor.isInitialized()) abs(!tapResistor.value.readouts.current) else 0.0
+    val totalPower get() = anchorResistors.values.sumOf { abs(it.power) } + if(tapResistor.isInitialized()) abs(!tapResistor.value.readouts.power) else 0.0
 
     override fun offerPolar(remote: ElectricalObject<*>) = tapResistor.value.offerExternal()
 

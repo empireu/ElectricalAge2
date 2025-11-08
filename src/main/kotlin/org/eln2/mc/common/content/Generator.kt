@@ -632,11 +632,6 @@ class ElectricalHeatEngineCell(
     @SimObject
     val source = PowerVoltageSourceObject(this, electricalMap).also {
         it.resistor.resistance = sourceResistance
-
-        it.generator.setStabilizingResistance(
-            !generatorModel.nominalPotential,
-            !generatorModel.maxDevicePower
-        )
     }
 
     @SimObject

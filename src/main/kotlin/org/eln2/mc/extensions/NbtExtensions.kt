@@ -11,6 +11,7 @@ import org.ageseries.libage.mathematics.geometry.Vector2d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.electrical.Capacitor
 import org.ageseries.libage.sim.electrical.Inductor
+import org.ageseries.libage.sim.electrical.LinearDiode
 import org.eln2.mc.common.parts.foundation.CellPartConnectionMode
 import org.eln2.mc.common.parts.foundation.PartUpdateType
 import org.eln2.mc.common.specs.foundation.SpecUpdateType
@@ -26,6 +27,18 @@ fun Inductor.saveNbt() : CompoundTag {
 
 fun Inductor.loadNbt(tag: CompoundTag) {
     this.flux = tag.getDouble("flux")
+}
+
+fun LinearDiode.saveNbt() : CompoundTag {
+    val tag = CompoundTag()
+    tag.putBoolean("isConducting", this.isConducting)
+    tag.putDouble("resistance", this.resistance)
+    return tag
+}
+
+fun LinearDiode.loadNbt(tag: CompoundTag) {
+    this.isConducting = tag.getBoolean("isConducting")
+    this.resistance = tag.getDouble("resistance")
 }
 
 fun Capacitor.saveNbt() : CompoundTag {

@@ -166,6 +166,8 @@ object FlwModels {
 
     //#endregion
 
+    val DIODE = partialBlock("diode/diode")
+
     private fun partial(path: String): PartialModel = PartialModel.of(resource(path))
     fun partialBlock(path: String): PartialModel = PartialModel.of(resource("block/$path"))
     fun polarBlock(path: String): PolarModel = PolarModel(resource("block/$path"))

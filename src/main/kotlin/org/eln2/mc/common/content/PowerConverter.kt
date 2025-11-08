@@ -10,6 +10,7 @@ import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.Capacitor
 import org.ageseries.libage.sim.electrical.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
+import org.ageseries.libage.sim.electrical.PowerConsumer
 import org.ageseries.libage.sim.electrical.PowerSource
 import org.ageseries.libage.sim.electrical.Resistor
 import org.eln2.mc.*
@@ -32,10 +33,9 @@ import kotlin.math.min
  * This value should always be greater than 1.
  * @param potentialRating The max potential across the device's inputs.
  * This value is used to calculate the initial resistance of the sink resistor, such that the input power is bounded regardless of the source circuit's potential, as long as its open-circuit voltage is, at most, [potentialRating].
- * @param inputResistance Impedance in series with the input circuit.
- * @param inputCharacteristic The capacitance of the input capacitor.
- * @param inputTransferFactor At most, `[inputTransferFactor] * [Capacitor.virtualEnergy]` is removed from the capacitor.
- * @param outputResistance Impedance in series with the output circuit.
+ * @param inputSeriesResistance Impedance in series with the input circuit.
+ * @param inputSmoothingCapacitance Capacitance in parallel with the input circuit.
+ * @param outputSeriesResistance Impedance in series with the output circuit.
  *
  * */
 @Suppress("SpellCheckingInspection")
@@ -44,10 +44,10 @@ data class DcToDcConverterModel(
     val eta: Double,
     val energyK: Double,
     val potentialRating: Quantity<Potential>,
-    val inputResistance: Quantity<Resistance>,
-    val inputCharacteristic: Quantity<Capacitance>,
-    val inputTransferFactor: Double,
-    val outputResistance: Quantity<Resistance>,
+    val inputSeriesResistance: Quantity<Resistance>,
+    val inputSmoothingCapacitance: Quantity<Capacitance>,
+    val inputEquivalentResistance: Quantity<Resistance>,
+    val outputSeriesResistance: Quantity<Resistance>,
 ) {
     val bufferCapacity = Quantity((!powerRating / eta) * CellGraph.DT * energyK, JOULE)
 }
@@ -61,44 +61,45 @@ fun interface RejectedEnergyAcceptor {
  * This can generate 2 sub-solvers.
  * */
 abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConverterModel, val rejectedEnergyAcceptor: RejectedEnergyAcceptor? = null) : ElectricalObject<C>(cell), PersistentObject {
+    /**
+     * The internal energy in the device.
+     * This value bounds the maximum output power and the maximum input power.
+     * */
     var energyBuffer = 0.0
         private set
 
-    // Also saved to NBT, for a start as close as possible to the last state
+    /**
+     * Changed externally. This is the target open-circuit potential.
+     * */
+    var setpointPotential = Quantity(0.0, VOLT)
 
-    // Input circuit: resistor in series with a capacitor.
-    // The capacitor is for energy consumption, and the resistor is to get a better bound on the input power.
     val inputSeriesResistor = Resistor()
-    val inputCapacitor = Capacitor()
+    val inputParallelCapacitor = Capacitor()
+    val inputConsumer = PowerConsumer()
 
     val outputSource = PowerSource()
     val outputSeriesResistor = Resistor()
     // Bypass diode might also be necessary!
 
     init {
-        inputSeriesResistor.resistance = !model.inputResistance
-        inputCapacitor.capacitance = !model.inputCharacteristic
+        inputSeriesResistor.resistance = !model.inputSeriesResistance
+        inputParallelCapacitor.capacitance = !model.inputSmoothingCapacitance
+        inputConsumer.minEquivalentResistance = !model.inputEquivalentResistance
 
         outputSource.maxPotential = !model.potentialRating
-        outputSource.setStabilizingResistance(
-            !model.potentialRating,
-            !model.powerRating
-        )
 
-        outputSeriesResistor.resistance = !model.outputResistance
+        outputSeriesResistor.resistance = !model.outputSeriesResistance
     }
-
-    var setpointPotential = Quantity(0.0, VOLT)
 
     override fun addComponents(circuit: ElectricalComponentSet) {
         circuit.add(
-            inputSeriesResistor, inputCapacitor,
+            inputSeriesResistor, inputParallelCapacitor, inputConsumer,
             outputSource, outputSeriesResistor
         )
     }
 
-    protected fun offerInputNegative() = inputSeriesResistor.negative
-    protected fun offerInputPositive() = inputCapacitor.positive
+    protected fun offerInputNegative() = inputParallelCapacitor.negative
+    protected fun offerInputPositive() = inputSeriesResistor.positive
     protected fun offerOutputNegative() = outputSource.negative
     protected fun offerOutputPositive() = outputSeriesResistor.positive
 
@@ -106,8 +107,18 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
         super.build(map)
 
         map.join(
-            inputSeriesResistor.positive,
-            inputCapacitor.negative
+            inputSeriesResistor.negative,
+            inputParallelCapacitor.positive
+        )
+
+        map.join(
+            inputParallelCapacitor.positive,
+            inputConsumer.positive
+        )
+
+        map.join(
+            inputParallelCapacitor.negative,
+            inputConsumer.negative
         )
 
         map.join(
@@ -122,41 +133,24 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
     }
 
     /**
-     * Moves energy from the capacitor into the [energyBuffer].
+     * Updates the max power input, based on the [energyBuffer].
      * */
-    private fun transferInputIntoBuffer() {
+    private fun setTargetPowerInput(dt: Double) {
         /**
          * The energy needed to fill up the buffer to maximum capacity:
          * */
         val missingEnergy = (!model.bufferCapacity - energyBuffer).coerceAtLeast(0.0)
 
         /**
-         * Calculates the energy to remove from the capacitor. It is at most, the energy required to fill the buffer, and the following rule is applied:
-         * - always transfer as much of the lost model energy as possible
-         * - as for the variable term, transfer a fraction of the capacitor's internal energy
+         * Sets the desired input rate:
          * */
-        val energyToMove = min(
-            missingEnergy,
-            inputCapacitor.lostEnergy + inputCapacitor.internalEnergy * model.inputTransferFactor
-        )
-
-        /**
-         * Removes virtual energy from the capacitor.
-         * If the removed energy is non-zero, the capacitor will start acting as a load:
-         * */
-        val extractedEnergy = inputCapacitor.withdrawEnergyTrick(energyToMove)
-
-        if(!extractedEnergy.approxEq(0.0)) {
-            cell.setChanged()
-        }
-
-        energyBuffer += extractedEnergy
+        inputConsumer.targetPower = missingEnergy / dt
     }
 
     /**
      * Updates the max power output, based on the [energyBuffer].
      * */
-    private fun setTargetPowerOutput(dt: Double) {
+    private fun setTargetOutput(dt: Double) {
         /**
          * The max energy the buffer can provide (including the efficiency):
          * */
@@ -167,20 +161,38 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
     }
 
     private fun tickPre(dt: Double, phase: SubscriberPhase) {
-        transferInputIntoBuffer()
-        setTargetPowerOutput(dt)
+        setTargetPowerInput(dt)
+        setTargetOutput(dt)
+    }
+
+    /**
+     * Calculates the energy absorbed by the consumer and adds it to the buffer.
+     * */
+    private fun acceptInputEnergy(dt: Double) {
+        val inputPower = inputConsumer.power.coerceAtLeast(0.0 /* Specified in the docs: numerical instability */)
+        val energy = inputPower * dt
+
+        energyBuffer += energy
+
+        if(energyBuffer > !model.bufferCapacity) {
+            energyBuffer = !model.bufferCapacity
+            cell.setChanged()
+        }
+        else {
+            cell.setChangedIf(!energy.approxEq(0.0))
+        }
     }
 
     /**
      * Calculates the energy transferred by the source and removes it from the buffer.
      * @return The waste energy due to efficiency.
      * */
-    private fun drainOutputtedEnergy(dt: Double) : Double {
+    private fun drainDeliveredEnergy(dt: Double) : Double {
         val deliveredEnergy = outputSource.power * dt
 
         // Inputting power!
         if(deliveredEnergy < 0.0) {
-            return -deliveredEnergy // waste it away
+            return -deliveredEnergy // waste it away, diode?
         }
 
         val consumedFromBuffer = deliveredEnergy / model.eta
@@ -188,7 +200,7 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
         energyBuffer -= consumedFromBuffer
 
         if(energyBuffer < 0.0) {
-            if(energyBuffer < -1e-6) {
+            if(energyBuffer < -1e-3) {
                 LOG.debug("Outputted more energy ($consumedFromBuffer) than possible which left buffer at $energyBuffer")
             }
 
@@ -202,7 +214,9 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
     }
 
     private fun tickPost(dt: Double, phase: SubscriberPhase) {
-        var rejectedEnergy = drainOutputtedEnergy(dt)
+        acceptInputEnergy(dt)
+
+        var rejectedEnergy = drainDeliveredEnergy(dt)
         rejectedEnergy += inputSeriesResistor.power * dt
         rejectedEnergy += outputSeriesResistor.power * dt
 
@@ -212,14 +226,14 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
     override fun saveObjectNbt(): CompoundTag {
         val tag = CompoundTag()
         tag.putDouble(ENERGY_BUFFER, energyBuffer)
-        tag.put(CAPACITOR, inputCapacitor.saveNbt())
+        tag.put(CAPACITOR, inputParallelCapacitor.saveNbt())
         tag.putDouble(SETPOINT, !setpointPotential)
         return tag
     }
 
     override fun loadObjectNbt(tag: CompoundTag) {
         energyBuffer = tag.getDouble(ENERGY_BUFFER)
-        inputCapacitor.loadNbt(tag.getCompound(CAPACITOR))
+        inputParallelCapacitor.loadNbt(tag.getCompound(CAPACITOR))
         setpointPotential = Quantity(tag.getDouble(SETPOINT))
     }
 
@@ -317,21 +331,24 @@ class DcToDcConverterSpec(ci: SpecCreateInfo) :
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        val inputPower = cell.converter.inputCapacitor.readouts.current.value * cell.converter.inputCapacitor.readouts.potential.value // Not an atomic operation...
+        var inputPower = cell.converter.inputConsumer.readouts.power // Let the negative value exist, for out debug log
 
         builder.debugInIDE { "Buffer: ${cell.converter.energyBuffer.classifyAs(JOULE)}" }
-        builder.debugInIDE { "Charge: ${cell.converter.inputCapacitor.readouts.charge.classify()}" }
-        builder.debugInIDE { "Input power: ${inputPower.rounded()}" }
+        builder.debugInIDE { "Charge: ${cell.converter.inputParallelCapacitor.readouts.charge.classify()}" }
+        builder.debugInIDE { "Input power: ${inputPower.classify()}" }
 
         if(cell.converter.outputSource.isInSimulation) {
             builder.debugInIDE {
-                "Iter: ${cell.converter.outputSource.simulation.lastPowerSourceIterationCount}, " +
-                "res: ${cell.converter.outputSource.simulation.lastPowerSourceMaxResidual}"
+                "SRC Iter: ${cell.converter.outputSource.simulation.lastPowerSourceIterationCount}, " +
+                "SRC Res: ${cell.converter.outputSource.simulation.lastPowerSourceMaxResidual}"
             }
         }
 
+        // Clean up the numerical error for player readout:
+        inputPower = max(inputPower, Quantity(0.0, WATT))
+
         builder.quantity(cell.thermalWire.thermalBody.temperature)
-        builder.quantityInput(Quantity(inputPower, WATT))
+        builder.quantityInput(inputPower)
         builder.quantityOutput(cell.converter.outputSource.readouts.potential)
         builder.quantityOutput(cell.converter.outputSource.readouts.current)
         builder.quantityOutput(cell.converter.outputSource.readouts.power)

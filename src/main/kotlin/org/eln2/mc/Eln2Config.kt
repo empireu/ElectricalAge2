@@ -13,22 +13,18 @@ import net.minecraftforge.fml.config.ModConfig
 import org.ageseries.libage.data.*
 
 class ClientConfig(builder: Builder) {
-    private val unitOverrides : ConfigValue<List<String>>
-
-    init {
-        unitOverrides = builder
-            .comment("Unit Overrides")
-            .comment("Specify e.g. Temperature:Rk")
-            .defineList("unit_overrides", emptyList<String>()) {
-                if(it is String) {
-                    val tokens =  it.split(":")
-                    tokens.size == 2 && DIMENSION_TYPES.backward.containsKey(tokens[0])
-                }
-                else {
-                    false
-                }
+    private val unitOverrides : ConfigValue<List<String>> = builder
+        .comment("Unit Overrides")
+        .comment("Specify e.g. Temperature:Rk")
+        .defineList("unit_overrides", emptyList<String>()) {
+            if(it is String) {
+                val tokens =  it.split(":")
+                tokens.size == 2 && DIMENSION_TYPES.backward.containsKey(tokens[0])
             }
-    }
+            else {
+                false
+            }
+        }
 
     private fun unitOverridesValidateTokens(entry: String) : Pair<String, String> {
         val tokens = entry.split(":")

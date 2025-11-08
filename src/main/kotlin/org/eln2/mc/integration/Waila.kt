@@ -271,6 +271,24 @@ class ComponentDisplayList(private val entries: MutableList<Component>) {
         )
     }
 
+    fun translateBoolean(key: String, value: Boolean) {
+        add(
+            Component.translatable(translationKey(key)).apply {
+                append(": ")
+                append(
+                    Component.translatable(
+                        if(value) {
+                            translationKey("boolean_true")
+                        }
+                        else {
+                            translationKey("boolean_false")
+                        }
+                    )
+                )
+            }
+        )
+    }
+
     // Not sure how to do it with Component in a cleaner way -- Component hard-codes
     // serialization for contents, so we can't just make QuantityContents or something like that without some involved
     // mixin (there's no easy place to attach to) so I rather just do it like this
