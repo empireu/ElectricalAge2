@@ -64,16 +64,19 @@ import org.eln2.mc.common.blocks.foundation.AdditionalRenderingPart
 import org.eln2.mc.common.cells.foundation.Cell
 import org.eln2.mc.common.cells.foundation.CellCreateInfo
 import org.eln2.mc.common.cells.foundation.CellGraph
+import org.eln2.mc.common.cells.foundation.CellProvider
 import org.eln2.mc.common.cells.foundation.ElectricalObject
+import org.eln2.mc.common.cells.foundation.ElectricalSize
 import org.eln2.mc.common.cells.foundation.Node
+import org.eln2.mc.common.cells.foundation.SidedElectricalMonoMapped
 import org.eln2.mc.common.cells.foundation.SimObject
 import org.eln2.mc.common.cells.foundation.SubscriberCollection
 import org.eln2.mc.common.cells.foundation.SubscriberPhase
 import org.eln2.mc.common.cells.foundation.addPost
 import org.eln2.mc.common.containers.MyAbstractContainerScreen
 import org.eln2.mc.common.grids.GridConnectionCell
-import org.eln2.mc.common.grids.GridMaterialCategory
 import org.eln2.mc.common.grids.GridNode
+import org.eln2.mc.common.grids.GridTerminal
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.ServerSidePacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.GridCellPart
@@ -81,6 +84,7 @@ import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.common.parts.foundation.PartUseInfo
 import org.eln2.mc.common.parts.foundation.stillValid
 import org.eln2.mc.common.parts.foundation.eln2WritePartGuiData
+import org.eln2.mc.data.MonopoleMap
 import org.eln2.mc.extensions.getListTag
 import org.eln2.mc.extensions.mulPose
 import org.eln2.mc.extensions.preserve
@@ -92,6 +96,7 @@ import org.eln2.mc.isLetter
 import org.eln2.mc.requireIsOnRenderThread
 import org.eln2.mc.resource
 import java.util.UUID
+import java.util.function.Supplier
 import kotlin.math.PI
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -372,9 +377,7 @@ class OscilloscopeObject(cell: OscilloscopeCell, val specification: Oscilloscope
     val channelRange = 0 until specification.channelCount
     val resistors = Array<Resistor?>(specification.channelCount) { null }
 
-    override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo): ElectricalPin? {
-        val terminal = m0.terminal
-
+    private fun getResistorForTerminal(terminal: Int) : ElectricalPin? {
         if(!channelRange.contains(terminal)) {
             return null
         }
@@ -390,6 +393,17 @@ class OscilloscopeObject(cell: OscilloscopeCell, val specification: Oscilloscope
 
         return resistor.positive
     }
+
+    override fun offerPolar(remote: ElectricalObject<*>) =
+        if(cell.electricalMap.evaluates(cell, remote.cell)) {
+            getResistorForTerminal(0)
+        }
+        else {
+            null
+        }
+
+    override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo) =
+        getResistorForTerminal(m0.terminal)
 
     override fun build(map: ElectricalConnectivityMap) {
         super.build(map)
@@ -425,7 +439,10 @@ fun interface OscilloscopeSampleConsumer {
     fun consume(samples: FloatArray, timestamp: Double)
 }
 
-class OscilloscopeCell(ci: CellCreateInfo, specification: OscilloscopeSpecification) : Cell(ci) {
+class OscilloscopeCell(ci: CellCreateInfo, override val electricalMap: MonopoleMap, specification: OscilloscopeSpecification) : Cell(ci), SidedElectricalMonoMapped<OscilloscopeCell> {
+    override val electricalSize: ElectricalSize
+        get() = ElectricalSize.Signal
+
     @SimObject
     val oscilloscope = OscilloscopeObject(this, specification)
 
@@ -921,25 +938,39 @@ object OscilloscopeCopyManager {
     }
 }
 
-class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecification) :
-    GridCellPart<OscilloscopeCell>(ci, Content.BASIC_TWO_CHANNEL_OSCILLOSCOPE_CELL.get()),
+fun interface OscilloscopeGridTerminalFactory {
+    fun create(part: OscilloscopePart) : Supplier<GridTerminal>
+}
+
+class OscilloscopeChannelGenerators(val factories: List<OscilloscopeGridTerminalFactory>) {
+    companion object {
+        class Builder {
+            val factories = ArrayList<OscilloscopeGridTerminalFactory>()
+
+            fun withGridTerminal(block: OscilloscopePart.() -> Supplier<GridTerminal>) {
+                factories.add {
+                    block.invoke(it)
+                }
+            }
+        }
+
+        fun create(action: Builder.() -> Unit) : OscilloscopeChannelGenerators {
+            val builder = Builder()
+            action(builder)
+            return OscilloscopeChannelGenerators(builder.factories.toList())
+        }
+    }
+}
+
+class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecification, generators: OscilloscopeChannelGenerators, cellProvider: CellProvider<OscilloscopeCell>) :
+    GridCellPart<OscilloscopeCell>(ci, cellProvider),
     AdditionalRenderingPart,
     ComponentDisplay,
     MenuProvider
 {
-    val channel0 = defineCellBoxTerminalBB(
-        0.375, 0.1, 6.0,
-        0.625, 0.5, 0.5,
-        highlightColor = specification.palette.colorsInt[0],
-        categories = listOf(GridMaterialCategory.SignalGrid)
-    )
-
-    val channel1 = defineCellBoxTerminalBB(
-        0.375, 0.1, 9.475,
-        0.625, 0.5, 0.5,
-        highlightColor = specification.palette.colorsInt[1],
-        categories = listOf(GridMaterialCategory.SignalGrid)
-    )
+    val channels = generators.factories.map { factory ->
+        factory.create(this)
+    }
 
     @ServerOnly // Saved in disk NBT, sent over the bulk packet. Changes received from the GUI container and applied.
     private var serverParameters = if(!placement.level.isClientSide) OscilloscopeParameters(specification) else null

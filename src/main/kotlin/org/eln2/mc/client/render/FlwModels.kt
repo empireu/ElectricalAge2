@@ -128,6 +128,8 @@ object FlwModels {
 
     val FLAT_OSCILLOSCOPE_PART = partialBlock("oscilloscopes/flat_oscilloscope_part")
 
+    val BASIC_SINGLE_CHANNEL_OSCILLOSCOPE_PART = partialBlock("oscilloscopes/flat_oscilloscope_part_single_channel")
+
     //#region Probes
 
     val POTENTIAL_PROBE_BODY = partialBlock("probes/potential/body")

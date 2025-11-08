@@ -1274,7 +1274,7 @@ abstract class GridCellPart<C : Cell>(
     ) = defineCellBoxTerminal(boundingBox(x, y, z, sizeX, sizeY, sizeZ, orientation), attachment, highlightColor, categories)
 
     // BB = BlockBench
-    protected fun defineCellBoxTerminalBB(
+    fun defineCellBoxTerminalBB(
         x: Double, y: Double, z: Double,
         sizeX: Double, sizeY: Double, sizeZ: Double,
         orientation: Rotation2d = Rotation2d.identity,

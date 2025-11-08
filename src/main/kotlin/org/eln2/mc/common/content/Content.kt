@@ -12,7 +12,6 @@ import net.minecraft.world.phys.AABB
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.AMPERE
 import org.ageseries.libage.data.CELSIUS
-import org.ageseries.libage.data.CENTIMETER
 import org.ageseries.libage.data.FARAD
 import org.ageseries.libage.data.G_PER_CM3
 import org.ageseries.libage.data.HENRY
@@ -37,7 +36,6 @@ import org.ageseries.libage.data.WATT
 import org.ageseries.libage.data.WATT_HOUR
 import org.ageseries.libage.data.WATT_PER_KELVIN
 import org.ageseries.libage.data.WATT_PER_METER_KELVIN
-import org.ageseries.libage.data.cylinderResistance
 import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
@@ -47,8 +45,6 @@ import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.Pole
 import org.ageseries.libage.sim.ThermalMassDefinition
-import org.ageseries.libage.sim.electrical.ElectricalSimulation
-import org.ageseries.libage.sim.electrical.Port
 import org.eln2.mc.FrictionNodeDescription
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.FlwModels
@@ -1149,8 +1145,6 @@ object Content {
 
     //#endregion
 
-    //#region Signal (devices only; wires are in the Wires section).
-
     //#region Probes
 
     // All probe models should be made like this, and all cells use these directions.
@@ -1197,18 +1191,71 @@ object Content {
     )
 
     val BASIC_TWO_CHANNEL_OSCILLOSCOPE_CELL = cellImmediate("basic_two_channel_oscilloscope") {
-        OscilloscopeCell(it, BASIC_TWO_CHANNEL_OSCILLOSCOPE_SPECIFICATION)
+        OscilloscopeCell(it, nullMonopoleMap(), BASIC_TWO_CHANNEL_OSCILLOSCOPE_SPECIFICATION)
     }
 
     val FLAT_OSCILLOSCOPE_MENU = menu("basic_two_channel_oscilloscope_menu") { i, inv, buf ->
         OscilloscopePart.OscilloscopeMenu(i, buf.eln2ReadPartGuiData<OscilloscopePart>(inv))
     }
 
-    val FLAT_OSCILLOSCOPE_PART = partImmediateBB("basic_two_channel_oscilloscope", 15.2, 0.75, 10.0) {
-        OscilloscopePart(it, BASIC_TWO_CHANNEL_OSCILLOSCOPE_SPECIFICATION)
+    val FLAT_OSCILLOSCOPE_PART = partMemoizeBB("basic_two_channel_oscilloscope", 15.2, 0.75, 10.0) {
+        val generators = OscilloscopeChannelGenerators.create {
+            withGridTerminal {
+                defineCellBoxTerminalBB(
+                    0.375, 0.1, 6.0,
+                    0.625, 0.5, 0.5,
+                    highlightColor = specification.palette.colorsInt[0],
+                    categories = listOf(GridMaterialCategory.SignalGrid)
+                )
+            }
+
+            withGridTerminal {
+                defineCellBoxTerminalBB(
+                    0.375, 0.1, 9.475,
+                    0.625, 0.5, 0.5,
+                    highlightColor = specification.palette.colorsInt[1],
+                    categories = listOf(GridMaterialCategory.SignalGrid)
+                )
+            }
+        }
+
+        PartFactory {
+            OscilloscopePart(it, BASIC_TWO_CHANNEL_OSCILLOSCOPE_SPECIFICATION, generators, BASIC_TWO_CHANNEL_OSCILLOSCOPE_CELL.get())
+        }
     }
 
-    //#endregion
+    val BASIC_SINGLE_CHANNEL_OSCILLOSCOPE_SPECIFICATION = OscilloscopeSpecification(
+        1,
+        10,
+        4096,
+        OscilloscopePalette.DEFAULT,
+        0.02f,
+        0.0075f,
+        Vector4d(0.8, 0.8, 1.0, 0.2),
+        11,
+        0.5f
+    )
+
+    val BASIC_SINGLE_CHANNEL_OSCILLOSCOPE_CELL = cellImmediate("basic_single_channel_oscilloscope") {
+        OscilloscopeCell(it, monopolarMapPlanar(Base6Direction3d.Left), BASIC_SINGLE_CHANNEL_OSCILLOSCOPE_SPECIFICATION)
+    }
+
+    val BASIC_SINGLE_CHANNEL_OSCILLOSCOPE_PART = partMemoizeBB("basic_single_channel_oscilloscope", 15.2, 0.75, 10.0) {
+        val generators = OscilloscopeChannelGenerators.create {
+            withGridTerminal {
+                defineCellBoxTerminalBB(
+                    0.0, 0.0, 7.75,
+                    1.0, 0.4, 0.5,
+                    highlightColor = specification.palette.colorsInt[0],
+                    categories = listOf(GridMaterialCategory.SignalGrid)
+                )
+            }
+        }
+
+        PartFactory {
+            OscilloscopePart(it, BASIC_SINGLE_CHANNEL_OSCILLOSCOPE_SPECIFICATION, generators, BASIC_SINGLE_CHANNEL_OSCILLOSCOPE_CELL.get())
+        }
+    }
 
     //#endregion
 

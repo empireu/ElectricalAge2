@@ -328,6 +328,14 @@ object FlwVisualizerRegistry {
             )
         }
 
+        setPartVisualizer<OscilloscopePart>(Content.BASIC_SINGLE_CHANNEL_OSCILLOSCOPE_PART.part.get()) { ctx, part ->
+            BasicPartVisual(
+                ctx, part,
+                FlwModels.BASIC_SINGLE_CHANNEL_OSCILLOSCOPE_PART,
+                smoothLighting = true
+            )
+        }
+
         setPartVisualizer<DcMotorPart>(Content.BASIC_DC_MOTOR_PART.part.get()) { ctx, part ->
             BasicPartVisual(
                 ctx, part,
