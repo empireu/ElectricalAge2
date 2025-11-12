@@ -255,13 +255,19 @@ object Content {
 
     val JOINT_SOUND = soundEventVariableRange("shaft")
 
+    val STANDARD_IRON_DOUBLE_JOINT_CELL_PLUS = Base6Direction3d.Front
+    val STANDARD_IRON_DOUBLE_JOINT_CELL_MINUS = Base6Direction3d.Back
+
     val STANDARD_IRON_DOUBLE_JOINT_CELL = cellMemoize("standard_iron_double_joint") {
         val thermal = ThermalMassDefinition(
             ChemicalElement.Iron.asMaterial,
             mass = Quantity(60.25, KILOGRAM)
         )
 
-        val map = directionPoleMapPlanar(Base6Direction3d.Front, Base6Direction3d.Back)
+        val map = directionPoleMapPlanar(
+            STANDARD_IRON_DOUBLE_JOINT_CELL_PLUS,
+            STANDARD_IRON_DOUBLE_JOINT_CELL_MINUS
+        )
 
         val friction = FrictionNodeDescription(
             Quantity(0.0770, KILOGRAM_METER2),
@@ -282,13 +288,19 @@ object Content {
         }
     }
 
+    val STANDARD_IRON_DOUBLE_JOINT_90DEG_CELL_PLUS = Base6Direction3d.Front
+    val STANDARD_IRON_DOUBLE_JOINT_90DEG_CELL_MINUS = Base6Direction3d.Left
+
     val STANDARD_IRON_DOUBLE_JOINT_90DEG_CELL = cellMemoize("standard_iron_double_joint_90deg") {
         val thermal = ThermalMassDefinition(
             ChemicalElement.Iron.asMaterial,
             mass = Quantity(60.25, KILOGRAM)
         )
 
-        val map = directionPoleMapPlanar(Base6Direction3d.Front, Base6Direction3d.Left)
+        val map = directionPoleMapPlanar(
+            STANDARD_IRON_DOUBLE_JOINT_90DEG_CELL_PLUS,
+            STANDARD_IRON_DOUBLE_JOINT_90DEG_CELL_MINUS
+        )
 
         val friction = FrictionNodeDescription(
             Quantity(0.11025, KILOGRAM_METER2),
@@ -309,13 +321,20 @@ object Content {
         }
     }
 
+    val STANDARD_IRON_DOUBLE_JOINT_90DEG_2X_CELL_PLUS = Base6Direction3d.Front
+    val STANDARD_IRON_DOUBLE_JOINT_90DEG_2X_CELL_MINUS = Base6Direction3d.Left
+
+
     val STANDARD_IRON_DOUBLE_JOINT_90DEG_2X_CELL = cellMemoize("standard_iron_double_joint_90deg_2x") {
         val thermal = ThermalMassDefinition(
             ChemicalElement.Iron.asMaterial,
             mass = Quantity(60.25, KILOGRAM)
         )
 
-        val map = directionPoleMapPlanar(Base6Direction3d.Front, Base6Direction3d.Left)
+        val map = directionPoleMapPlanar(
+            STANDARD_IRON_DOUBLE_JOINT_90DEG_2X_CELL_PLUS,
+            STANDARD_IRON_DOUBLE_JOINT_90DEG_2X_CELL_MINUS
+        )
 
         val friction = FrictionNodeDescription(
             Quantity(0.11025, KILOGRAM_METER2),
@@ -336,15 +355,19 @@ object Content {
         }
     }
 
+    val STANDARD_IRON_TRIPLE_JOINT_CELL_E1 = Base6Direction3d.Front
+    val STANDARD_IRON_TRIPLE_JOINT_CELL_E2 = Base6Direction3d.Left
+    val STANDARD_IRON_TRIPLE_JOINT_CELL_E3 = Base6Direction3d.Right
+
     val STANDARD_IRON_TRIPLE_JOINT_CELL = cellMemoize("standard_iron_triple_joint") {
         val thermal = ThermalMassDefinition(
             ChemicalElement.Iron.asMaterial,
             mass = Quantity(90.25, KILOGRAM)
         )
 
-        val map1 = monopolarMapPlanar(Base6Direction3d.Front)
-        val map2 = monopolarMapPlanar(Base6Direction3d.Left)
-        val map3 = monopolarMapPlanar(Base6Direction3d.Right)
+        val map1 = monopolarMapPlanar(STANDARD_IRON_TRIPLE_JOINT_CELL_E1)
+        val map2 = monopolarMapPlanar(STANDARD_IRON_TRIPLE_JOINT_CELL_E2)
+        val map3 = monopolarMapPlanar(STANDARD_IRON_TRIPLE_JOINT_CELL_E3)
 
         val friction = FrictionNodeDescription(
             Quantity(0.13025, KILOGRAM_METER2),
@@ -367,19 +390,34 @@ object Content {
     }
 
     val STANDARD_IRON_DOUBLE_JOINT_PART = partImmediateBB("standard_iron_double_joint", 6.0, 10.0, 16.0) {
-        JointPart(it, STANDARD_IRON_DOUBLE_JOINT_CELL)
+        JointPart(
+            it,
+            STANDARD_IRON_DOUBLE_JOINT_CELL,
+            STANDARD_IRON_DOUBLE_JOINT_CELL_PLUS + STANDARD_IRON_DOUBLE_JOINT_CELL_MINUS
+        )
     }
 
     val STANDARD_IRON_DOUBLE_JOINT_90DEG_PART = partImmediateBB("standard_iron_double_joint_90deg", 16.0, 10.0, 16.0) {
-        JointPart(it, STANDARD_IRON_DOUBLE_JOINT_90DEG_CELL)
+        JointPart(
+            it,
+            STANDARD_IRON_DOUBLE_JOINT_90DEG_CELL,
+            STANDARD_IRON_DOUBLE_JOINT_90DEG_CELL_PLUS + STANDARD_IRON_DOUBLE_JOINT_90DEG_CELL_MINUS
+        )
     }
 
     val STANDARD_IRON_DOUBLE_JOINT_90DEG_2X_PART = partImmediateBB("standard_iron_double_joint_90deg_2x", 16.0, 10.0, 16.0) {
-        JointPart(it, STANDARD_IRON_DOUBLE_JOINT_90DEG_2X_CELL)
+        JointPart(
+            it,
+            STANDARD_IRON_DOUBLE_JOINT_90DEG_2X_CELL,
+            STANDARD_IRON_DOUBLE_JOINT_90DEG_2X_CELL_PLUS + STANDARD_IRON_DOUBLE_JOINT_90DEG_2X_CELL_MINUS)
     }
 
     val STANDARD_IRON_TRIPLE_T_JOINT_PART = partImmediateBB("standard_iron_triple_t_joint", 16.0, 10.0, 16.0) {
-        JointPart(it, STANDARD_IRON_TRIPLE_JOINT_CELL)
+        JointPart(
+            it,
+            STANDARD_IRON_TRIPLE_JOINT_CELL,
+            STANDARD_IRON_TRIPLE_JOINT_CELL_E1 + STANDARD_IRON_TRIPLE_JOINT_CELL_E2 + STANDARD_IRON_TRIPLE_JOINT_CELL_E3
+        )
     }
 
     //#endregion

@@ -142,13 +142,13 @@ value class Base6Direction3dMask(val value: Int) {
          * Gets a Direction Mask with all 6 directions in it.
          * */
         val FULL = Base6Direction3dMask(
-            Direction.values()
+            Direction.entries
                 .map { getBit(it) }
                 .reduce { acc, b -> acc or b }
         )
 
         // This cache maps single directions to masks.
-        private val perDirection = Direction.values()
+        private val perDirection = Direction.entries
             .sortedBy { it.get3DDataValue() }
             .map { Base6Direction3dMask(getBit(it)) }
             .toTypedArray()
@@ -231,11 +231,11 @@ value class Base6Direction3dMask(val value: Int) {
         val VERTICALS = UP + DOWN
 
         // This cache maps single directions to masks with the 4 perpendicular directions.
-        private val perpendiculars = Direction.values()
+        private val perpendiculars = Direction.entries
             .map { direction ->
                 var result = 0
 
-                Direction.values()
+                Direction.entries
                     .sortedBy { it.get3DDataValue() }
                     .filter { it != direction && it != direction.opposite }
                     .forEach { perpendicular ->
@@ -353,8 +353,8 @@ value class Base6Direction3dMask(val value: Int) {
     /**
      * Calls a consumer function for every direction in this mask.
      * */
-    inline fun process(action: (Direction) -> Unit) {
-        Direction.values().forEach { direction ->
+    inline fun forEach(action: (Direction) -> Unit) {
+        Direction.entries.forEach { direction ->
             if (hasFlag(direction)) {
                 action(direction)
             }
@@ -471,7 +471,7 @@ value class Base6Direction3dMask(val value: Int) {
      * Populates the specified list with the directions in this mask.
      * */
     fun toList(results: MutableList<Direction>) {
-        this.process {
+        this.forEach {
             results.add(it)
         }
     }

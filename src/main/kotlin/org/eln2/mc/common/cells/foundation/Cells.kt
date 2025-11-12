@@ -1571,6 +1571,37 @@ inline fun planarCellScan(level: Level, actualCell: Cell, searchDirection: Direc
         }
 }
 
+inline fun pipelikeCellScan(level: Level, actualCell: Cell, consumer: ((CellAndContainerHandle) -> Unit)) {
+    val actualPosWorld = actualCell.locator.requireLocator(Locators.BLOCK) {
+        DEBUGGER_BREAK("Shaftlike Scan requires a block position")
+    }
+
+    val actualMaskWorld = actualCell.locator.requireLocator(Locators.PIPELIKE_MASK) {
+        DEBUGGER_BREAK("Shaftlike Scan requires a mask")
+    }
+
+    actualMaskWorld.forEach { directionWorld ->
+        val remoteContainer = level.getBlockEntity(actualPosWorld + directionWorld) as? CellContainer
+            ?: return@forEach
+
+        remoteContainer
+            .getCells()
+            .filter {
+                it.locator.has(Locators.BLOCK) &&
+                    it.locator.has(Locators.PIPELIKE_MASK)
+            }
+            .forEach { targetCell ->
+                val targetMaskWorld = targetCell.locator.requireLocator(Locators.PIPELIKE_MASK)
+
+                if(targetMaskWorld.has(directionWorld.opposite)) {
+                    if (isConnectionAcceptedByGameObjectProximity(actualCell, targetCell)) {
+                        consumer(CellAndContainerHandle.captureInScope(targetCell))
+                    }
+                }
+            }
+    }
+}
+
 /*
 * There is a little bug that makes connections possible around the corner of a block, even if there's a block adjacent diagonally.
 * I kind of like this, do we want to fix it?

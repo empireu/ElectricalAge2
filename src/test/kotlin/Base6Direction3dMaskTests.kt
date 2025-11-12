@@ -138,7 +138,7 @@ class Base6Direction3dMaskTests {
 
             list.clear()
 
-            mask.process { list.add(it) }
+            mask.forEach { list.add(it) }
 
             assert(list == mask.directionList)
         }

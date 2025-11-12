@@ -902,13 +902,12 @@ class WirePart<C : WireCell>(
 
 @JvmInline
 value class PartConnectionRenderInfo(val value: Int) {
-    val mode get() = CellPartConnectionMode.byId[(value and 3)]
-    val directionPart get() = Base6Direction3d.entries[(value shr 2) and 7]
-    val flag get() = (value and 32) != 0
+    val mode get() = CellPartConnectionMode.byId[(value and 7)]
+    val directionPart get() = Base6Direction3d.entries[(value shr 3) and 7]
+    val flag get() = (value and 64) != 0
 
-    constructor(mode: CellPartConnectionMode, directionPart: Base6Direction3d, flag: Boolean) : this(mode.index or (directionPart.id shl 2) or (if(flag) 32 else 0))
-
-    val partConnectionDirection get() = PartConnectionDirection(mode, directionPart)
+    constructor(mode: CellPartConnectionMode, directionPart: Base6Direction3d, flag: Boolean) : this(
+        mode.index or (directionPart.id shl 3) or (if(flag) 64 else 0))
 
     fun toNbt(): CompoundTag {
         val tag = CompoundTag()

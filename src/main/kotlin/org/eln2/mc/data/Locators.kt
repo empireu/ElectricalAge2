@@ -18,6 +18,7 @@ import org.eln2.mc.common.network.serverToClient.putBlockPos
 import org.eln2.mc.common.parts.foundation.getPartConnectionOrNull
 import org.eln2.mc.extensions.directionTo
 import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.FacingDirection
 import java.nio.ByteBuffer
 import java.util.*
@@ -74,56 +75,65 @@ class SortedUUIDPair private constructor(val a: UUID, val b: UUID) {
     }
 }
 
+@Suppress("NOTHING_TO_INLINE")
 object Locators : LocatorDispatcher<Locators>() {
-    private fun writeInt(int: Int, buffer: ByteBuffer) { buffer.putInt(int) }
+    //#region Serializers
 
-    private fun readInt(buffer: ByteBuffer) = buffer.getInt()
+    private inline fun writeInt(int: Int, buffer: ByteBuffer) { buffer.putInt(int) }
 
-    private fun readCellLayer(buffer: ByteBuffer) = CellLayer.fromId(buffer.get())
+    private inline fun readInt(buffer: ByteBuffer) = buffer.getInt()
 
-    private fun writeCellLayer(layer: CellLayer, buffer: ByteBuffer) = buffer.put(layer.id)
+    private inline fun readCellLayer(buffer: ByteBuffer) = CellLayer.fromId(buffer.get())
 
-    private fun writeBlockPos(blockPos: BlockPos, buffer: ByteBuffer) {
+    private inline fun writeCellLayer(layer: CellLayer, buffer: ByteBuffer) = buffer.put(layer.id)
+
+    private inline fun writeBlockPos(blockPos: BlockPos, buffer: ByteBuffer) {
         buffer.putInt(blockPos.x)
         buffer.putInt(blockPos.y)
         buffer.putInt(blockPos.z)
     }
 
-    private fun readBlockPos(buffer: ByteBuffer) = BlockPos(
+    private inline fun readBlockPos(buffer: ByteBuffer) = BlockPos(
         buffer.getInt(),
         buffer.getInt(),
         buffer.getInt()
     )
 
-    private fun writeDirection(direction: Direction, buffer: ByteBuffer) { buffer.put(direction.get3DDataValue().toByte()) }
+    private inline fun writeDirection(direction: Direction, buffer: ByteBuffer) { buffer.put(direction.get3DDataValue().toByte()) }
 
-    private fun readDirection(buffer: ByteBuffer) = Direction.from3DDataValue(buffer.get().toInt())
+    private inline fun readDirection(buffer: ByteBuffer) = Direction.from3DDataValue(buffer.get().toInt())
 
-    private fun writeFacingDirection(direction: FacingDirection, buffer: ByteBuffer) { buffer.put(direction.index.toByte()) }
+    private inline fun writeFacingDirection(direction: FacingDirection, buffer: ByteBuffer) { buffer.put(direction.index.toByte()) }
 
-    private fun readFacingDirection(buffer: ByteBuffer) = FacingDirection.byIndex(buffer.get().toInt())
+    private inline fun readFacingDirection(buffer: ByteBuffer) = FacingDirection.byIndex(buffer.get().toInt())
 
-    private fun writeVector3d(vector3d: Vector3d, buffer: ByteBuffer) {
+    private inline fun writeVector3d(vector3d: Vector3d, buffer: ByteBuffer) {
         buffer.putDouble(vector3d.x)
         buffer.putDouble(vector3d.y)
         buffer.putDouble(vector3d.z)
     }
 
-    private fun writeBlockPair(pair: Pair<BlockPos, BlockPos>, buffer: ByteBuffer) {
+    private inline fun writeBlockPair(pair: Pair<BlockPos, BlockPos>, buffer: ByteBuffer) {
         buffer.putBlockPos(pair.first)
         buffer.putBlockPos(pair.second)
     }
 
-    private fun readBlockPair(buffer: ByteBuffer) = Pair(
+    private inline fun readBlockPair(buffer: ByteBuffer) = Pair(
         buffer.getBlockPos(),
         buffer.getBlockPos()
     )
 
-    private fun readVector3d(buffer: ByteBuffer) = Vector3d(
+    private inline fun readVector3d(buffer: ByteBuffer) = Vector3d(
         buffer.getDouble(),
         buffer.getDouble(),
         buffer.getDouble()
     )
+
+    private inline fun writeDirectionMask(mask: Base6Direction3dMask, buffer: ByteBuffer) { buffer.put(mask.value.toByte()) }
+
+    private inline fun readDirectionMask(buffer: ByteBuffer) = Base6Direction3dMask(buffer.get().toInt())
+
+    //#endregion
 
     val CELL_LAYER = register<CellLayer>(
         ::writeCellLayer,
@@ -173,6 +183,8 @@ object Locators : LocatorDispatcher<Locators>() {
         24
     )
 }
+
+fun Locator.hasLocalFrame() = this.has(Locators.SUBSTRATE_FACE) && this.has(Locators.CONVENTIONAL_FACING)
 
 fun Locator.findDirActualPlanarOrNull(other: Locator): Base6Direction3d? {
     val a = this.get(Locators.BLOCK) ?: return null

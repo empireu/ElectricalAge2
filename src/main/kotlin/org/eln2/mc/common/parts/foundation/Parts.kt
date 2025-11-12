@@ -162,7 +162,7 @@ data class PartPlacementInfo(
 
     val mountingPointWorld = position.toVector3d() + Vector3d(0.5) - face.vector3d * 0.5
 
-    fun createLocator() = Locators.buildLocator {
+    fun createLocator(pipelikePartMaskPart: Base6Direction3dMask) = Locators.buildLocator {
         val layer = if(provider == PartRegistry.SPEC_CONTAINER_PART.part.get()) {
             CellLayer.Spec
         }
@@ -645,7 +645,10 @@ fun interface PartFactory {
  * The basic part provider uses a functional interface as part factory.
  * Often, the part's constructor can be passed in as factory.
  * */
-open class BasicPartProvider(final override val placementCollisionSize: Vector3d, val factory: PartFactory, ) : PartProvider() {
+open class BasicPartProvider(
+    final override val placementCollisionSize: Vector3d,
+    val factory: PartFactory
+) : PartProvider() {
     override fun createCore(context: PartPlacementInfo) = factory(PartCreateInfo(id, context))
 
     companion object {
@@ -752,6 +755,7 @@ interface PartCellContainer : CellContainer {
 abstract class CellPart<C: Cell>(
     ci: PartCreateInfo,
     final override val provider: CellProvider<C>,
+    val pipelikeMaskPart: Base6Direction3dMask = Base6Direction3dMask.EMPTY
 ) : Part(ci), PartWithCell<C> {
     companion object {
         private const val GRAPH_ID = "GraphID"

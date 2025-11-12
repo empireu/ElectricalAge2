@@ -61,6 +61,7 @@ import org.eln2.mc.extensions.plus
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.mathematics.Base6Direction3dMask
 import java.nio.ByteBuffer
 import java.util.function.Consumer
 import kotlin.math.absoluteValue
@@ -421,7 +422,7 @@ class SolarLightPart(
     val model: SolarLightModel,
     normalSupplier: ((SolarLightPart) -> Vector3d)? = null,
 ) : Part(ci), TickablePart, ComponentDisplay, LightFixtureGameObject {
-    val volume = model.volumeProvider.getVolume(placement.createLocator())
+    val volume = model.volumeProvider.getVolume(placement.createLocator(Base6Direction3dMask.EMPTY))
     val normal = if(normalSupplier == null) placement.face.vector3d else normalSupplier(this)
 
     private val lightVolume = serverOnlyHolder {

@@ -37,6 +37,7 @@ import org.eln2.mc.extensions.saveNbt
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.mathematics.Base6Direction3dMask
 
 interface JointCell {
     val node: KineticNode
@@ -253,8 +254,12 @@ class TripleJointCell(
  * Implements replication of the kinetic state (the state of the single node).
  * The rendered direction of rotation is left to the visual to deal with.
  * */
-class JointPart<C>(ci: PartCreateInfo, cellProvider: RegistryObject<CellProvider<C>>) :
-    CellPart<C>(ci, cellProvider.get()),
+class JointPart<C>(
+    ci: PartCreateInfo,
+    cellProvider: RegistryObject<CellProvider<C>>,
+    pipelikeConnectionMaskPart: Base6Direction3dMask
+) :
+    CellPart<C>(ci, cellProvider.get(), pipelikeConnectionMaskPart),
     BasicKineticPart,
     InternalKineticStateConsumer,
     TickablePart,
