@@ -5,10 +5,8 @@ import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
-import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.context.BlockPlaceContext
-import net.minecraft.world.level.Explosion
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.EntityBlock
@@ -17,52 +15,77 @@ import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.StateDefinition
-import net.minecraft.world.level.material.FluidState
+import net.minecraft.world.level.block.state.properties.DirectionProperty
+import org.ageseries.libage.data.LocatorBuilder
 import org.ageseries.libage.data.put
+import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
+import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity.Companion.getHorizontalFacing
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.grids.CellTerminal
-import org.eln2.mc.common.grids.GridMaterialCategory
-import org.eln2.mc.common.grids.GridNode
-import org.eln2.mc.common.grids.GridTerminal
-import org.eln2.mc.common.grids.GridTerminalClient
-import org.eln2.mc.common.grids.GridTerminalContainer
-import org.eln2.mc.common.grids.GridTerminalSystem
-import org.eln2.mc.common.grids.TerminalFactories
+import org.eln2.mc.common.grids.*
 import org.eln2.mc.common.specs.foundation.SpecGeometry
 import org.eln2.mc.data.Locators
 import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
-import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.mathematics.toHorizontalFacing
 import java.util.*
 
-abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirectionalBlock(p ?: Properties.of().noOcclusion()), EntityBlock {
-    init {
-        @Suppress("LeakingThis")
-        registerDefaultState(getStateDefinition().any().setValue(FACING, Direction.NORTH))
-    }
+/**
+ * Base class for the cell block. Doesn't have any block state, like placement direction.
+ * */
+abstract class CellBlock<C : Cell>(p : Properties? = null) : Block(p ?: Properties.of().noOcclusion()), EntityBlock {
+    abstract fun getCellProvider(): CellProvider<C>
 
-    override fun getStateForPlacement(pContext: BlockPlaceContext): BlockState? {
-        return super.defaultBlockState().setValue(FACING, pContext.horizontalDirection.opposite)
-    }
-
-    override fun createBlockStateDefinition(pBuilder: StateDefinition.Builder<Block, BlockState>) {
-        super.createBlockStateDefinition(pBuilder)
-        pBuilder.add(FACING)
-    }
+    /**
+     * Appends the custom block state data to the locator builder.
+     * Should append any placement information, except the block position (it is implicitly appended).
+     * */
+    abstract fun appendLocatorData(state: BlockState, builder: LocatorBuilder)
 
     @Suppress("UNCHECKED_CAST")
-    override fun setPlacedBy(level: Level, blockPos: BlockPos, blockState: BlockState, entity: LivingEntity?, itemStack: ItemStack) {
+    final override fun setPlacedBy(level: Level, blockPos: BlockPos, blockState: BlockState, entity: LivingEntity?, itemStack: ItemStack) {
         val cellEntity = level.getBlockEntity(blockPos)!! as CellBlockEntity<C>
         cellEntity.setPlacedBy(level, getCellProvider())
     }
+
+    /**
+     * Called when the block state **changes**. This doesn't mean our block was removed (set to air).
+     * We will check if our block state just changed, but the block stays.
+     * */
+    @Suppress("OVERRIDE_DEPRECATION")
+    final override fun onRemove(
+        pState: BlockState,
+        pLevel: Level,
+        pPos: BlockPos,
+        pNewState: BlockState,
+        pMovedByPiston: Boolean,
+    ) {
+        if(!pState.`is`(pNewState.block)) {
+            markCellDestroyed(pLevel, pPos)
+        }
+
+        super.onRemove(pState, pLevel, pPos, pNewState, pMovedByPiston)
+    }
+
+    fun markCellDestroyed(level: Level, blockPos: BlockPos) {
+        if (!level.isClientSide) {
+            val cellEntity = level.getBlockEntity(blockPos)!! as? CellBlockEntity<*>
+            cellEntity?.setDestroyed()
+        }
+    }
+
+    /**
+     * Implements the default spatial neighbor scan. Called by the default implementation of [CellBlockEntity.spatialNeighborScan].
+     * This scan is spatial, meaning the search is algorithm uses the custom block state.
+     * */
+    abstract fun spatialNeighborScan(level: Level, results: HashSet<CellAndContainerHandle>, cell: Cell)
 
     /**
      * Replaced by [onRemove].
@@ -86,44 +109,76 @@ abstract class CellBlock<C : Cell>(p : Properties? = null) : HorizontalDirection
         return super.onDestroyedByPlayer(blockState, level, blockPos, player, willHarvest, fluidState)
     }
     */
-
-    /**
-     * Called when the block state **changes**. This doesn't mean our block was removed (set to air).
-     * We will check if our block state just changed, but the block stays.
-     * */
-    @Suppress("OVERRIDE_DEPRECATION")
-    override fun onRemove(
-        pState: BlockState,
-        pLevel: Level,
-        pPos: BlockPos,
-        pNewState: BlockState,
-        pMovedByPiston: Boolean
-    ) {
-        if(!pState.`is`(pNewState.block)) {
-            markCellDestroyed(pLevel, pPos)
-        }
-
-        super.onRemove(pState, pLevel, pPos, pNewState, pMovedByPiston)
-    }
-
-    fun markCellDestroyed(level: Level, blockPos: BlockPos) {
-        if (!level.isClientSide) {
-            val cellEntity = level.getBlockEntity(blockPos)!! as? CellBlockEntity<*>
-            cellEntity?.setDestroyed()
-        }
-    }
-
-    abstract fun getCellProvider(): CellProvider<C>
 }
 
-open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetType: BlockEntityType<*>) : BlockEntity(targetType, pos, state), CellContainer {
-    open val cellFace = Direction.UP
+/**
+ * Cell block that is always facing west, east, north, or south, and its normal is always up.
+ * This is the preferred machine block because it simplifies everything.
+ *
+ * This means only the horizontal facing is stored.
+ * */
+abstract class UpfacingHorizontalDirectionCellBlock<C : Cell>(p : Properties? = null) : CellBlock<C>(p) {
+    init {
+        @Suppress("LeakingThis")
+        registerDefaultState(getStateDefinition().any().setValue(
+            HorizontalDirectionalBlock.FACING,
+            Direction.NORTH
+        ))
+    }
 
+    override fun getStateForPlacement(pContext: BlockPlaceContext): BlockState? {
+        return super.defaultBlockState().setValue(
+            HorizontalDirectionalBlock.FACING,
+            pContext.horizontalDirection.opposite
+        )
+    }
+
+    override fun createBlockStateDefinition(pBuilder: StateDefinition.Builder<Block, BlockState>) {
+        super.createBlockStateDefinition(pBuilder)
+        pBuilder.add(HorizontalDirectionalBlock.FACING)
+    }
+
+    override fun appendLocatorData(state: BlockState, builder: LocatorBuilder) {
+        /**
+         * By definition, the normal is always up.
+         * */
+        builder.put(Locators.SUBSTRATE_FACE, Direction.UP)
+        /**
+         * This is the only data that changes:
+         * */
+        builder.put(Locators.CONVENTIONAL_FACING, state.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing())
+    }
+
+    /**
+     * Specific scan for this block type.
+     * Scans the 4 horizontal directions with a planar cell scan.
+     * */
+    override fun spatialNeighborScan(level: Level, results: HashSet<CellAndContainerHandle>, cell: Cell) {
+        Base6Direction3dMask.HORIZONTALS.directionList.forEach { searchDir ->
+            planarCellScan(level, cell, searchDir) {
+                check(results.add(it)) {
+                    DEBUGGER_BREAK("Duplicate planar cell scan $it")
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A block entity that has a cell. It contains normal block entity logic, as well as connection logic.
+ * It can be owned by various implementations of the [CellBlock]. The connection logic needs to take that into account ([spatialNeighborScan]).
+ * The default implementation is the simple case for [UpfacingHorizontalDirectionCellBlock].
+ * */
+open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetType: BlockEntityType<*>) : BlockEntity(targetType, pos, state), CellContainer {
+    /**
+     * Builds the locator, by appending known information (the [CellLayer.Block] and the [blockPos]), and then appending custom data via [CellBlock.appendLocatorData]).
+     * */
     val locator = Locators.buildLocator {
         it.put(CELL_LAYER, CellLayer.Block)
         it.put(BLOCK, blockPos)
-        it.put(FACE, cellFace)
-        it.put(FACING, blockState.getValue(HorizontalDirectionalBlock.FACING).toHorizontalFacing())
+
+        val block = state.block as CellBlock<*>
+        block.appendLocatorData(blockState, it)
     }
 
     private lateinit var graphManager: CellGraphManager
@@ -274,24 +329,37 @@ open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetTyp
         return arrayListOf(cell)
     }
 
+    /**
+     * Finds all possible simulation neighbors, by both a spatial scan, and extra cases (e.g. grid connections).
+     * */
     override fun neighborScan(actualCell: Cell): List<CellAndContainerHandle> {
         val level = this.level ?: error("Level is null in queryNeighbors")
-
         val results = HashSet<CellAndContainerHandle>()
 
-        Base6Direction3dMask.HORIZONTALS.directionList.forEach { searchDir ->
-            planarCellScan(level, cell, searchDir) {
-                check(results.add(it)) {
-                    "Duplicate planar cell scan $it"
-                }
-            }
-        }
-
+        spatialNeighborScan(level, results, actualCell)
         addExtraConnections(results)
 
         return results.toList()
     }
 
+    /**
+     * Does a search for simulation neighbors.
+     * By default, it delegates to the cell block implementation's [CellBlock.spatialNeighborScan].
+     * */
+    protected open fun spatialNeighborScan(level: Level, results: HashSet<CellAndContainerHandle>, actualCell: Cell) {
+        // I don't remember what actualCell meant...
+        check(actualCell == cellField) {
+            DEBUGGER_BREAK("Actual cell is not equal to the cell owned by the cell block entity")
+        }
+
+        val block = blockState.block as CellBlock<*>
+
+        block.spatialNeighborScan(level, results, actualCell)
+    }
+
+    /**
+     * Adds special simulation neighbors (e.g. grid-connected neighbors).
+     * */
     protected open fun addExtraConnections(results: MutableSet<CellAndContainerHandle>) { }
 
     override fun onCellConnected(actualCell: Cell, remoteCell: Cell) {
@@ -352,12 +420,16 @@ abstract class GridCellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, t
         Direction.UP
     )
 
-    protected fun defineCellBoxTerminal(box3d: OrientedBoundingBox3d, attachment: Vector3d? = null, highlightColor : MyColor? = MyColor(
-        0.8f,
-        1f,
-        0.58f,
-        0.44f
-    ), categories: List<GridMaterialCategory>) = gridTerminalSystem.defineTerminal<GridTerminal>(
+    protected fun defineCellBoxTerminal(
+        box3d: OrientedBoundingBox3d, attachment: Vector3d? = null,
+        highlightColor: MyColor? = MyColor(
+            0.8f,
+            1f,
+            0.58f,
+            0.44f
+        ),
+        categories: List<GridMaterialCategory>,
+    ) = gridTerminalSystem.defineTerminal<GridTerminal>(
         TerminalFactories(
             { ci ->
                 CellTerminal(ci, locator, attachment ?: box3d.center, box3d) { this.cell }.also {

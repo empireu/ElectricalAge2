@@ -1552,16 +1552,34 @@ object CellConnections {
     }
 }
 
+/**
+ * Cell scan with the following conditions:
+ * - Both cells must have a [Locators.BLOCK]
+ * - Both cells must have a [Locators.SUBSTRATE_FACE]
+ * - The substrate faces (normals) must be equal
+ * - The distance must be one block
+ *
+ * [Reference Image - Connection Rejection](https://media.discordapp.net/attachments/945750566066343956/1437791655393493094/iUCmbmZSUj.png?ex=69148753&is=691335d3&hm=906cf6dce7ba343c6abf5dc807fad79feb38fd07f2446b59c1cf50db5b295975&=&format=webp&quality=lossless)
+ * */
 inline fun planarCellScan(level: Level, actualCell: Cell, searchDirection: Direction, consumer: ((CellAndContainerHandle) -> Unit)) {
-    val actualPosWorld = actualCell.locator.requireLocator(Locators.BLOCK) { "Planar Scan requires a block position" }
-    val actualFaceTarget = actualCell.locator.requireLocator(Locators.FACE) { "Planar Scan requires a face" }
+    val actualPosWorld = actualCell.locator.requireLocator(Locators.BLOCK) {
+        DEBUGGER_BREAK("Planar Scan requires a block position")
+    }
+
+    val actualFaceTarget = actualCell.locator.requireLocator(Locators.SUBSTRATE_FACE) {
+        DEBUGGER_BREAK("Planar Scan requires a face")
+    }
+
     val remoteContainer = level.getBlockEntity(actualPosWorld + searchDirection) as? CellContainer ?: return
 
     remoteContainer
         .getCells()
-        .filter { it.locator.has(Locators.BLOCK) && it.locator.has(Locators.FACE) }
+        .filter {
+            it.locator.has(Locators.BLOCK) &&
+            it.locator.has(Locators.SUBSTRATE_FACE)
+        }
         .forEach { targetCell ->
-            val targetFaceTarget = targetCell.locator.requireLocator(Locators.FACE)
+            val targetFaceTarget = targetCell.locator.requireLocator(Locators.SUBSTRATE_FACE)
 
             if (targetFaceTarget == actualFaceTarget) {
                 if (isConnectionAcceptedByGameObjectProximity(actualCell, targetCell)) {
@@ -1616,7 +1634,7 @@ inline fun wrappedCellScan(
     consumer: ((CellAndContainerHandle) -> Unit),
 ) {
     val actualPosWorld = actualCell.locator.requireLocator(Locators.BLOCK) { "Wrapped Scan requires a block position" }
-    val actualFaceWorld = actualCell.locator.requireLocator(Locators.FACE) { "Wrapped Scan requires a face" }
+    val actualFaceWorld = actualCell.locator.requireLocator(Locators.SUBSTRATE_FACE) { "Wrapped Scan requires a face" }
     val wrapDirection = actualFaceWorld.opposite
 
     @Suppress("KotlinConstantConditions")
@@ -1631,9 +1649,9 @@ inline fun wrappedCellScan(
 
     remoteContainer
         .getCells()
-        .filter { it.locator.has(Locators.BLOCK) && it.locator.has(Locators.FACE) }
+        .filter { it.locator.has(Locators.BLOCK) && it.locator.has(Locators.SUBSTRATE_FACE) }
         .forEach { targetCell ->
-            val targetFaceTarget = targetCell.locator.requireLocator(Locators.FACE)
+            val targetFaceTarget = targetCell.locator.requireLocator(Locators.SUBSTRATE_FACE)
 
             if (targetFaceTarget == searchDirection) {
                 if (isConnectionAcceptedByGameObjectProximity(actualCell, targetCell)) {
@@ -2620,7 +2638,7 @@ class BasicCellProvider<T : Cell>(val factory: CellFactory<T>) : CellProvider<T>
 /**
  * Connection filtering based on "connection sizes".
  * If none of the two cells is [Interface], the connection isn't rejected (no filtering).
- * Otherwise, if any of the two cells can't evaluate a direction in the local frame towards the remote cell, the connection is rejected.
+ * Otherwise, if any of the two cells can't evaluate a direction in the specific frame towards the remote cell, the connection is rejected.
  * Otherwise, if one of the cells isn't [Interface], the connection is rejected.
  * Finally, both cells are [Interface]. [accessor] is called to get the [SizeEnum] on the connection sides of both cells. The connection is rejected if the sizes aren't compatible.
  *
@@ -2635,8 +2653,8 @@ private inline fun<reified Interface, SizeEnum : Indexed> connectionSizeRejectio
         return false // No filtering to be done
     }
 
-    val directionInSourceFrame = sourceCell.locator.findDirActualPartOrNull(targetCell.locator)
-    val directionInTargetFrame = targetCell.locator.findDirActualPartOrNull(sourceCell.locator)
+    val directionInSourceFrame = sourceCell.locator.findDirActualSpecificFrameOrNull(targetCell.locator)
+    val directionInTargetFrame = targetCell.locator.findDirActualSpecificFrameOrNull(sourceCell.locator)
 
     // We reject implicitly if we can't get the local directions for both cells.
     if(directionInSourceFrame == null || directionInTargetFrame == null) {

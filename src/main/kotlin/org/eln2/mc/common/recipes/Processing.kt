@@ -42,7 +42,7 @@ import org.ageseries.libage.sim.electrical.PotentialSource
 import org.ageseries.libage.sim.kinetic.KineticDouble
 import org.ageseries.libage.sim.kinetic.KineticNodeSet
 import org.eln2.mc.*
-import org.eln2.mc.common.blocks.foundation.CellBlock
+import org.eln2.mc.common.blocks.foundation.UpfacingHorizontalDirectionCellBlock
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.cells.foundation.Cell
@@ -315,7 +315,7 @@ class MotorProcessingCell(
     }
 }
 
-abstract class ProcessingBlock<R, C, BE> : CellBlock<C>()
+abstract class ProcessingBlock<R, C, BE> : UpfacingHorizontalDirectionCellBlock<C>()
     where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>,
           C : Cell, C : ProcessingDevice,
           BE : ProcessingBlockEntity<R, C>

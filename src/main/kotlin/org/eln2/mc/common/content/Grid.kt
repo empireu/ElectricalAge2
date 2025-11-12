@@ -15,7 +15,7 @@ import org.ageseries.libage.sim.electrical.Resistor
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.BigBlockRepresentativeBlockEntity
-import org.eln2.mc.common.blocks.foundation.CellBlock
+import org.eln2.mc.common.blocks.foundation.UpfacingHorizontalDirectionCellBlock
 import org.eln2.mc.common.blocks.foundation.GridCellBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
 import org.eln2.mc.common.cells.foundation.*
@@ -34,7 +34,7 @@ import org.eln2.mc.offerExternal
 import org.eln2.mc.offerInternal
 import kotlin.math.abs
 
-class GridPoleBlock(val delegateMap: MultiblockDelegateMap, val attachment: Vector3d, private val cellProvider: RegistryObject<CellProvider<GridAnchorCell>>) : CellBlock<GridAnchorCell>() {
+class GridPoleBlock(val delegateMap: MultiblockDelegateMap, val attachment: Vector3d, private val cellProvider: RegistryObject<CellProvider<GridAnchorCell>>) : UpfacingHorizontalDirectionCellBlock<GridAnchorCell>() {
     @Suppress("OVERRIDE_DEPRECATION")
     override fun skipRendering(pState: BlockState, pAdjacentState: BlockState, pDirection: Direction): Boolean {
         return true

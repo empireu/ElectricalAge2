@@ -837,7 +837,7 @@ private inline fun rayOcclusionAnalyzer(voxel: Int, predicate: (Int) -> Boolean)
  * */
 class FaceOrientedLightVolumeProvider(val volumesByFace: Map<Direction, LightVolume>) : LocatorLightVolumeProvider {
     override fun getVolume(locatorSet: Locator): LightVolume {
-        val face = locatorSet.requireLocator(Locators.FACE) {
+        val face = locatorSet.requireLocator(Locators.SUBSTRATE_FACE) {
             "Face-oriented lights require a face locator"
         }
 

@@ -427,7 +427,7 @@ open class WireCell(ci: CellCreateInfo, val connectionCrossSection: Double) : Ce
         val solution = getPartConnectionOrNull(this.locator, remote.locator)
             ?: return true
 
-        return !blacklist.contains(solution.directionPart)
+        return !blacklist.contains(solution.directionSpecificFrame)
     }
 }
 
@@ -623,7 +623,7 @@ class WirePart<C : WireCell>(
         incrementFromForwardUp(
             placement.facing,
             placement.face,
-            PartConnectionDirection(connectionInfo).directionPart
+            PartConnectionDirection(connectionInfo).directionSpecificFrame
         )
     )
 
@@ -664,7 +664,7 @@ class WirePart<C : WireCell>(
         val target = clipScene(context.player!!, { it.first }, boxes)
 
         if(target != null) {
-            if(cell.addToBlacklist(PartConnectionDirection(target.second).directionPart)) {
+            if(cell.addToBlacklist(PartConnectionDirection(target.second).directionSpecificFrame)) {
                 CellConnections.retopologize(cell, placement.multipart)
                 setSyncDirty()
                 return InteractionResult.SUCCESS
@@ -924,7 +924,7 @@ value class PartConnectionRenderInfo(val value: Int) {
         private const val DIR = "dir"
         private const val FLAG = "flag"
 
-        fun cast(from: PartConnectionDirection) = PartConnectionRenderInfo(from.mode, from.directionPart, false)
+        fun cast(from: PartConnectionDirection) = PartConnectionRenderInfo(from.mode, from.directionSpecificFrame, false)
 
         fun fromNbt(tag: CompoundTag) = PartConnectionRenderInfo(
             tag.getConnectionMode(MODE),
@@ -950,7 +950,7 @@ fun getPartConnectionAsContactSectionConnectionOrNull(cell: Cell, remoteCell: Ce
 
     return PartConnectionRenderInfo(
         partSolution.mode,
-        partSolution.directionPart,
+        partSolution.directionSpecificFrame,
         flag
     )
 }
@@ -958,13 +958,13 @@ fun getPartConnectionAsContactSectionConnectionOrNull(cell: Cell, remoteCell: Ce
 private fun getIsFilledVariant(connections: IntArray) = if (connections.size == 2) {
     val c1 = PartConnectionDirection(connections[0])
     val c2 = PartConnectionDirection(connections[1])
-    c1.directionPart == c2.directionPart.opposite
+    c1.directionSpecificFrame == c2.directionSpecificFrame.opposite
 } else false
 
 private fun getIsFilledVariant(connections: List<Int>) = if (connections.size == 2) {
     val c1 = PartConnectionDirection(connections[0])
     val c2 = PartConnectionDirection(connections[1])
-    c1.directionPart == c2.directionPart.opposite
+    c1.directionSpecificFrame == c2.directionSpecificFrame.opposite
 } else false
 
 data class WireConnectionModelPartial(val planar: PolarModel, val inner: PolarModel, val wrapped: PolarModel) {
@@ -1051,12 +1051,12 @@ abstract class WirePartVisual<H : TransformedInstance, C : TransformedInstance>(
         this.partTransformation(
             visualizationContext.parent,
             part,
-            yRotation = when (info.directionPart) {
+            yRotation = when (info.directionSpecificFrame) {
                 Base6Direction3d.Front -> 0.0
                 Base6Direction3d.Back -> PI
                 Base6Direction3d.Left -> PI / 2.0
                 Base6Direction3d.Right -> -PI / 2.0
-                else -> error("Invalid wire direction ${info.directionPart}")
+                else -> error("Invalid wire direction ${info.directionSpecificFrame}")
             }
         )
 }
@@ -1152,7 +1152,7 @@ class InsulatedWirePartVisual(
     }
 
     private fun setExteriorPoleColor(instance: TransformedPolarInstance, coreColor: MyColor, remoteInfo: Int) {
-        val remotePositionWorld = part.placement.position + PartConnectionDirection(remoteInfo).getIncrement(
+        val remotePositionWorld = part.placement.position + PartConnectionDirection(remoteInfo).getIncrementInWorldFrame(
             part.placement.facing,
             part.placement.face
         )
@@ -1333,7 +1333,7 @@ class IncandescentWirePartVisual(
      * It's not correct if the remote object is not an incandescent wire, but, later down the line, we can also export a flag from the server that tells us if we should apply the average or not.
      * */
     private fun setExteriorPoleColor(instance: TransformedPolarInstance, coreColor: MyColor, remoteTemperature: Double, remoteInfo: Int) {
-        val remotePositionWorld = part.placement.position + PartConnectionDirection(remoteInfo).getIncrement(
+        val remotePositionWorld = part.placement.position + PartConnectionDirection(remoteInfo).getIncrementInWorldFrame(
             part.placement.facing,
             part.placement.face
         )

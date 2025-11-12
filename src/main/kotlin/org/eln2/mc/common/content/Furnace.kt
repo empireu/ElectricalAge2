@@ -48,7 +48,7 @@ import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.client.render.foundation.MyColor
-import org.eln2.mc.common.blocks.foundation.CellBlock
+import org.eln2.mc.common.blocks.foundation.UpfacingHorizontalDirectionCellBlock
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.containers.ContainerHelper
@@ -438,7 +438,7 @@ class FurnaceScreen(menu: FurnaceMenu, playerInventory: Inventory, title: Compon
     }
 }
 
-class FurnaceBlock : CellBlock<FurnaceCell>() {
+class FurnaceBlock : UpfacingHorizontalDirectionCellBlock<FurnaceCell>() {
     init {
         registerDefaultState(defaultBlockState().setValue(AbstractFurnaceBlock.LIT, false))
     }

@@ -65,7 +65,6 @@ import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.common.specs.SpecRegistry
 import org.eln2.mc.data.Locators
 import org.eln2.mc.extensions.*
-import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.mathematics.FacingDirection
 import org.eln2.mc.mathematics.maskXY
@@ -170,9 +169,9 @@ data class SpecPlacementInfo(
     fun createLocator() = Locators.buildLocator {
         it.put(CELL_LAYER, CellLayer.Spec)
         it.put(BLOCK, blockPos)
-        it.put(FACE, face)
-        it.put(MOUNTING_POINT, mountingPointWorld)
-        it.put(PLACEMENT_ID, placementId)
+        it.put(SUBSTRATE_FACE, face)
+        it.put(SPEC_MOUNTING_POINT, mountingPointWorld)
+        it.put(SPEC_PLACEMENT_ID, placementId)
     }
 }
 
@@ -967,7 +966,7 @@ class SpecContainerPart(ci: PartCreateInfo) : Part(ci), PartCellContainer {
     }
 
     private fun getCellSpec(actualCell: Cell): SpecWithCell<*> {
-        val placementId = actualCell.locator.requireLocator(Locators.PLACEMENT_ID) {
+        val placementId = actualCell.locator.requireLocator(Locators.SPEC_PLACEMENT_ID) {
             "actual cell did not have placement ID!"
         }
 

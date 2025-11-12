@@ -1268,15 +1268,19 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     }
 
     override fun neighborScan(actualCell: Cell): List<CellAndContainerHandle> {
-        val partFace = actualCell.locator.requireLocator(Locators.FACE)
+        val partFace = actualCell.locator.requireLocator(Locators.SUBSTRATE_FACE)
 
         val results = when (val part = partsInternal[partFace]!!) {
             is PartWithCell<*> -> {
                 val values = LinkedHashSet<CellAndContainerHandle>()
 
-                val level = this.level ?: error("Level null in queryNeighbors")
+                val level = this.level
+                    ?: error(DEBUGGER_BREAK("Level null in queryNeighbors"))
 
-                Base6Direction3dMask.perpendicular(partFace).process { searchDirection ->
+                /**
+                 * Planar, inner and wrapped scans:
+                 * */
+                Base6Direction3dMask.perpendicular(partFace).forEach { searchDirection ->
                     fun innerCellScan() {
                         // Inner scan does not make sense outside multiparts, so I did not move it to CellScanner
 
@@ -1325,6 +1329,13 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
                     }
                 }
 
+                /**
+                 * Pipelike scans:
+                 * */
+                if(part.cell.locator.has(Locators.PIPELIKE_MASK)) {
+                    pipelikeCellScan(level, part.cell, values::add)
+                }
+
                 part.addExtraConnections(values)
 
                 values.toList()
@@ -1343,7 +1354,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     }
 
     override fun onCellConnected(actualCell: Cell, remoteCell: Cell) {
-        val innerFace = actualCell.locator.requireLocator(Locators.FACE)
+        val innerFace = actualCell.locator.requireLocator(Locators.SUBSTRATE_FACE)
 
         when(val part = partsInternal[innerFace]) {
             is PartWithCell<*> -> {
@@ -1363,7 +1374,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
     }
 
     override fun onCellDisconnected(actualCell: Cell, remoteCell: Cell) {
-        when(val part = partsInternal[actualCell.locator.requireLocator(Locators.FACE)]) {
+        when(val part = partsInternal[actualCell.locator.requireLocator(Locators.SUBSTRATE_FACE)]) {
             is PartWithCell<*> -> {
                 part.onDisconnected(remoteCell)
                 if (part.hasCell && !part.cell.isBeingRemoved) {

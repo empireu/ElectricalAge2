@@ -54,7 +54,7 @@ import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.*
-import org.eln2.mc.common.blocks.foundation.CellBlock
+import org.eln2.mc.common.blocks.foundation.UpfacingHorizontalDirectionCellBlock
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.*
@@ -353,7 +353,7 @@ class HeatGeneratorScreen(menu: HeatGeneratorMenu, playerInventory: Inventory, t
     }
 }
 
-class HeatGeneratorBlock : CellBlock<HeatGeneratorCell>() {
+class HeatGeneratorBlock : UpfacingHorizontalDirectionCellBlock<HeatGeneratorCell>() {
     init {
         registerDefaultState(defaultBlockState().setValue(AbstractFurnaceBlock.LIT, false))
     }

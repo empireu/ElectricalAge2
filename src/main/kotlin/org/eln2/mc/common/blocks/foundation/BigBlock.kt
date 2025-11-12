@@ -521,9 +521,9 @@ class MultiblockDelegateBlockEntity(pPos: BlockPos, pBlockState: BlockState) : B
     }
 }
 
-class BigBlockItem(val definition: MultiblockDelegateMap, representative: HorizontalDirectionalBlock) : BlockItem(representative, Properties()) {
+class BigBlockItem(val definition: MultiblockDelegateMap, representative: Block) : BlockItem(representative, Properties()) {
     override fun place(pContext: BlockPlaceContext): InteractionResult {
-        val facing = checkNotNull((block as HorizontalDirectionalBlock).getStateForPlacement(pContext)) {
+        val facing = checkNotNull(block.getStateForPlacement(pContext)) {
             "Expected default state $block"
         }.getValue(HorizontalDirectionalBlock.FACING)
 

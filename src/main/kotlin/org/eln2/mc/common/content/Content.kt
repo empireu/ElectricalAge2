@@ -526,7 +526,7 @@ object Content {
 
         CellFactory {
             PhotovoltaicGeneratorCell(it, map, model) { cell ->
-                cell.locator.requireLocator(Locators.FACE).vector3d
+                cell.locator.requireLocator(Locators.SUBSTRATE_FACE).vector3d
             }
         }
     }

@@ -625,7 +625,7 @@ class LightFixturePartVisual<P>(
     }
 }
 
-class LampPoleBlock(private val cellProvider: RegistryObject<CellProvider<PolarLightCell>>, val lightOffset: BlockPos) : CellBlock<PolarLightCell>() {
+class LampPoleBlock(private val cellProvider: RegistryObject<CellProvider<PolarLightCell>>, val lightOffset: BlockPos) : UpfacingHorizontalDirectionCellBlock<PolarLightCell>() {
     override fun initializeClient(consumer: Consumer<IClientBlockExtensions?>) {
         consumer.accept(ReplaceVanillaParticlesBlockExtension)
     }

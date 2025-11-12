@@ -8,11 +8,13 @@ import org.ageseries.libage.data.Locator
 import org.ageseries.libage.data.LocatorDispatcher
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.Pole
-import org.ageseries.libage.sim.electrical.Port
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.ELN2_DEBUG
 import org.eln2.mc.common.cells.foundation.Cell
 import org.eln2.mc.common.cells.foundation.CellLayer
+import org.eln2.mc.common.cells.foundation.CellLayer.Block
+import org.eln2.mc.common.cells.foundation.CellLayer.Part
+import org.eln2.mc.common.cells.foundation.CellLayer.Spec
 import org.eln2.mc.common.network.serverToClient.getBlockPos
 import org.eln2.mc.common.network.serverToClient.putBlockPos
 import org.eln2.mc.common.parts.foundation.getPartConnectionOrNull
@@ -135,48 +137,86 @@ object Locators : LocatorDispatcher<Locators>() {
 
     //#endregion
 
+    /**
+     * Indicates the container of the cell. It is used for implicit connection filtering, during placement:
+     * - [Block] can connect to [Block] and [Part]
+     * - [Part] can connect to [Part] and [Block]
+     * - [Spec] doesn't connect on placement
+     * */
     val CELL_LAYER = register<CellLayer>(
         ::writeCellLayer,
         ::readCellLayer,
         1
     )
 
+    /**
+     * Standard for all physical machines: the block position where the block entity actually lives (it can either be a dedicated block entity for the machine, or the multipart block entity's position for the part or spec).
+     * */
     val BLOCK = register<BlockPos>(
         ::writeBlockPos,
         ::readBlockPos,
         12
     )
 
-    val FACE = register<Direction>(
+    /**
+     * Normal of the substrate plane where this device is mounted.
+     * Only makes sense for parts and specs (this is a fundamental property).
+     * */
+    val SUBSTRATE_FACE = register<Direction>(
         ::writeDirection,
         ::readDirection,
         1
     )
 
-    val FACING = register<FacingDirection>(
+    /**
+     * Conventional facing direction inside a local frame of the mounting plane.
+     * */
+    val CONVENTIONAL_FACING = register<FacingDirection>(
         ::writeFacingDirection,
         ::readFacingDirection,
         1
     )
 
-    val MOUNTING_POINT = register<Vector3d>(
+    /**
+     * Directions in the world frame where the game object extends connections to other game objects.
+     * */
+    val PIPELIKE_MASK = register<Base6Direction3dMask>(
+        ::writeDirectionMask,
+        ::readDirectionMask,
+        1
+    )
+
+    /**
+     * The exact in-world position of a spec.
+     * */
+    val SPEC_MOUNTING_POINT = register<Vector3d>(
         ::writeVector3d,
         ::readVector3d,
         24
     )
 
-    val PLACEMENT_ID = register<Int>(
+    /**
+     * The unique (in its spec container) ID of a spec.
+     * */
+    val SPEC_PLACEMENT_ID = register<Int>(
         ::writeInt,
         ::readInt,
         4
     )
 
+    /**
+     * The unique (in the entire level) sorted pair of grid terminals. Used by the grid connection cells which don't have a physical location.
+     * */
     val GRID_ENDPOINT_PAIR = register<SortedUUIDPair>(
         SortedUUIDPair::write,
         SortedUUIDPair::read,
         32
     )
 
+    /**
+     * Special, not-yet-used but implemented locator that the cell environment calculation takes into consideration.
+     * If the cell's machine spans more than one block, the cell environment evaluation will take averages (e.g. if the block is on the border between two biomes).
+     * */
     val BLOCK_RANGE = register<Pair<BlockPos, BlockPos>>(
         ::writeBlockPair,
         ::readBlockPair,
@@ -188,16 +228,16 @@ fun Locator.hasLocalFrame() = this.has(Locators.SUBSTRATE_FACE) && this.has(Loca
 
 fun Locator.findDirActualPlanarOrNull(other: Locator): Base6Direction3d? {
     val a = this.get(Locators.BLOCK) ?: return null
-    val b = this.get(Locators.FACING) ?: return null
-    val c = this.get(Locators.FACE) ?: return null
+    val b = this.get(Locators.CONVENTIONAL_FACING) ?: return null
+    val c = this.get(Locators.SUBSTRATE_FACE) ?: return null
     val d = other.get(Locators.BLOCK) ?: return null
     val dir = a.directionTo(d) ?: return null
 
     return Base6Direction3d.fromForwardUp(b, c, dir)
 }
 
-fun Locator.findDirActualPartOrNull(other: Locator): Base6Direction3d? {
-    return getPartConnectionOrNull(this, other)?.directionPart
+fun Locator.findDirActualSpecificFrameOrNull(other: Locator): Base6Direction3d? {
+    return getPartConnectionOrNull(this, other)?.directionSpecificFrame
 }
 
 fun Locator.findDirActualPlanar(other: Locator): Base6Direction3d {
@@ -205,7 +245,7 @@ fun Locator.findDirActualPlanar(other: Locator): Base6Direction3d {
 }
 
 fun Locator.findDirActualPart(other: Locator): Base6Direction3d {
-    return this.findDirActualPartOrNull(other) ?: error("Failed to get relative rotation direction (part)")
+    return this.findDirActualSpecificFrameOrNull(other) ?: error("Failed to get relative rotation direction (part)")
 }
 
 fun interface PoleMap {
@@ -288,7 +328,7 @@ fun nullMonopoleMap() = MonopoleMap { a, b -> false }
  * */
 fun directionPoleMapPart(plusDir: Base6Direction3d = Base6Direction3d.Front, minusDir: Base6Direction3d = Base6Direction3d.Back) =
     PoleMap { c1, c2 ->
-        when (c1.locator.findDirActualPartOrNull(c2.locator)) {
+        when (c1.locator.findDirActualSpecificFrameOrNull(c2.locator)) {
             plusDir -> Pole.Positive
             minusDir -> Pole.Negative
             else -> null

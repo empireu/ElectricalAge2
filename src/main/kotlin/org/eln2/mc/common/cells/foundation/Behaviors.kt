@@ -159,7 +159,7 @@ private fun defaultNotifier(cell: Cell) : Boolean {
                 return true
             }
 
-            val part = container.getPart(cell.locator.requireLocator(Locators.FACE))
+            val part = container.getPart(cell.locator.requireLocator(Locators.SUBSTRATE_FACE))
                 ?: return true // Already removed
 
             val level = part.placement.level as ServerLevel

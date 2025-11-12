@@ -76,6 +76,11 @@ import org.eln2.mc.common.network.serverToClient.DimensionMessageToServerPart
 import org.eln2.mc.common.network.serverToClient.ServerSidePacketHandler
 import org.eln2.mc.common.network.serverToClient.ServerSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.id
+import org.eln2.mc.data.hasLocalFrame
+import org.eln2.mc.extensions.directionTo
+import org.eln2.mc.extensions.minus
+import org.eln2.mc.extensions.plus
+import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.maskXY
 import org.eln2.mc.requireIsOnRenderThread
 import org.eln2.mc.requireIsOnServerThread
@@ -160,6 +165,8 @@ data class PartPlacementInfo(
     val positiveY = incrementFromForwardUp(facing, face, Direction.UP)
     val positiveZ = incrementFromForwardUp(facing, face, Direction.SOUTH)
 
+    val facingWorld get() = positiveZ
+
     val mountingPointWorld = position.toVector3d() + Vector3d(0.5) - face.vector3d * 0.5
 
     fun createLocator(pipelikePartMaskPart: Base6Direction3dMask) = Locators.buildLocator {
@@ -172,8 +179,14 @@ data class PartPlacementInfo(
 
         it.put(CELL_LAYER, layer)
         it.put(BLOCK, position)
-        it.put(FACING, facing)
-        it.put(FACE, face)
+        it.put(CONVENTIONAL_FACING, facing)
+        it.put(SUBSTRATE_FACE, face)
+
+        if(pipelikePartMaskPart.isNotEmpty) {
+            it.put(PIPELIKE_MASK, pipelikePartMaskPart.transformed { directionPart ->
+                incrementFromForwardUp(facing, face, directionPart)
+            })
+        }
     }
 }
 
@@ -741,7 +754,7 @@ interface PartWithCell<C : Cell> {
  * Represents a part that is a fully featured cell container.
  * Some lifecycle hooks are provided for consistency with [PartWithCell].
  *
- * **Cells must have [Locators.FACE] to resolve the part properly.**
+ * **Cells must have [Locators.SUBSTRATE_FACE] to resolve the part properly.**
  * */
 interface PartCellContainer : CellContainer {
     fun cellUnbindAndDestroySuggested()
@@ -781,7 +794,7 @@ abstract class CellPart<C: Cell>(
     final override val hasCell: Boolean
         get() = cellField != null
 
-    val locator = placement.createLocator()
+    val locator = placement.createLocator(pipelikeMaskPart)
 
     /**
      * Used by the loading procedures.
@@ -913,12 +926,10 @@ abstract class CellPart<C: Cell>(
     open fun onCellAcquired() {}
     open fun onCellReleased() {}
 
-    override val allowPlanarConnections = true
-    override val allowInnerConnections = true
-    override val allowWrappedConnections = true
+    override val allowPlanarConnections get() = true
+    override val allowInnerConnections get() = true
+    override val allowWrappedConnections get() = true
 }
-
-open class BasicCellPart<C: Cell>(ci: PartCreateInfo, provider: CellProvider<C>) : CellPart<C>(ci, provider)
 
 /**
  * A connection mode represents the way two cells may be connected.
@@ -943,7 +954,12 @@ enum class CellPartConnectionMode(val index: Int) {
      * Wrapped connections are connections between units placed on perpendicular faces of the same block.
      * Akin to a connection wrapping around the corner of the substrate block.
      * */
-    Wrapped(3);
+    Wrapped(3),
+
+    /**
+     * Pipelike connections are the simplest connection types. The connections are similar to the connections between pipes from other mods.
+     * */
+    Pipelike(4);
 
     companion object {
         val byId = entries.toList()
@@ -992,45 +1008,59 @@ fun incrementFromForwardUp(facing: FacingDirection, face: Direction, direction: 
 fun incrementFromForwardUp(facing: FacingDirection, face: Direction, direction: Base6Direction3d) = incrementFromForwardUp(facing, face, direction.alias)
 
 fun Locator.transformPartWorld(directionPart: Base6Direction3d) : Direction {
-    val facing = this.requireLocator(Locators.FACING) { "Part -> World requires facing" }
-    val face = this.requireLocator(Locators.FACE) { "Part -> World requires face" }
+    val facing = this.requireLocator(Locators.CONVENTIONAL_FACING) { "Part -> World requires facing" }
+    val face = this.requireLocator(Locators.SUBSTRATE_FACE) { "Part -> World requires face" }
 
     return incrementFromForwardUp(facing, face, directionPart)
 }
 
 @JvmInline
 value class PartConnectionDirection(val value: Int) {
-    val mode get() = CellPartConnectionMode.byId[(value and 3)]
-    val directionPart get() = Base6Direction3d.entries[(value shr 2) and 7]
+    val mode get() = CellPartConnectionMode.byId[(value and 7)] // 3 bits for the 5 modes
 
-    constructor(mode: CellPartConnectionMode, directionPart: Base6Direction3d) : this(mode.index or (directionPart.id shl 2))
+    /**
+     * If it's a part or spec or the locator simply has a local frame ([Locator.hasLocalFrame]), this direction will be in the local frame.
+     * Otherwise, it will be in the world frame.
+     * */
+    val directionSpecificFrame get() = Base6Direction3d.entries[(value shr 3) and 7] // 3 bits for the 6 directions
+
+    constructor(mode: CellPartConnectionMode, directionPart: Base6Direction3d) :
+        this(mode.index or (directionPart.id shl 3))
 
     fun toNbt(): CompoundTag {
         val tag = CompoundTag()
 
-        tag.putBase6Direction3d(DIR, directionPart)
+        tag.putBase6Direction3d(DIR, directionSpecificFrame)
         tag.putConnectionMode(MODE, mode)
 
         return tag
     }
 
-    fun getIncrement(facing: FacingDirection, faceWorld: Direction): Vec3i = when(mode) {
+    // For parts only
+    fun getIncrementInWorldFrame(facing: FacingDirection, faceWorld: Direction): Vec3i = when(mode) {
         CellPartConnectionMode.Unknown -> {
-            error("Undefined part connection")
+            error(DEBUGGER_BREAK("Undefined part connection"))
         }
+
         CellPartConnectionMode.Planar -> {
-            incrementFromForwardUp(facing, faceWorld, directionPart).normal
+            incrementFromForwardUp(facing, faceWorld, directionSpecificFrame).normal
         }
+
         CellPartConnectionMode.Inner -> {
             Vec3i.ZERO
         }
-        CellPartConnectionMode.Wrapped ->{
-            val trWorld = incrementFromForwardUp(facing, faceWorld, directionPart)
+
+        CellPartConnectionMode.Wrapped -> {
+            val trWorld = incrementFromForwardUp(facing, faceWorld, directionSpecificFrame)
             Vec3i(
                 trWorld.stepX - faceWorld.stepX,
                 trWorld.stepY - faceWorld.stepY,
                 trWorld.stepZ - faceWorld.stepZ
             )
+        }
+
+        CellPartConnectionMode.Pipelike -> {
+            incrementFromForwardUp(facing, faceWorld, directionSpecificFrame).normal
         }
     }
 
@@ -1045,55 +1075,67 @@ value class PartConnectionDirection(val value: Int) {
     }
 }
 
-fun getPartConnection(actualCell: Cell, remoteCell: Cell): PartConnectionDirection {
-    return getPartConnection(actualCell.locator, remoteCell.locator)
-}
-
-fun getPartConnection(actualCell: Locator, remoteCell: Locator): PartConnectionDirection {
-    val actualPosWorld = actualCell.requireLocator(Locators.BLOCK)
-    val remotePosWorld = remoteCell.requireLocator(Locators.BLOCK)
-    val actualFaceWorld = actualCell.requireLocator(Locators.FACE)
-    val remoteFaceWorld = remoteCell.requireLocator(Locators.FACE)
-    val actualFacingWorld = actualCell.requireLocator(Locators.FACING)
-
-    return getPartConnection(actualPosWorld, remotePosWorld, actualFaceWorld, remoteFaceWorld, actualFacingWorld)
-}
-
 fun getPartConnectionOrNull(actualCell: Locator, remoteCell: Locator): PartConnectionDirection? {
+    // Required states. No connections can be done without them:
     val actualPosWorld = actualCell.get(Locators.BLOCK) ?: return null
     val remotePosWorld = remoteCell.get(Locators.BLOCK) ?: return null
-    val actualFaceWorld = actualCell.get(Locators.FACE) ?: return null
-    val remoteFaceWorld = remoteCell.get(Locators.FACE) ?: return null
-    val remoteFacingWorld = actualCell.get(Locators.FACING) ?: return null
+
+    // Check for pipelike.
+    // If it does exist, then it takes precedence over planar.
+    val actualPipelikeMask = actualCell.get(Locators.PIPELIKE_MASK) // Both are in the world frame
+    val remotePipelikeMask = remoteCell.get(Locators.PIPELIKE_MASK)
+
+    // The connection can only happen if both objects have that mask:
+    if(actualPipelikeMask != null && remotePipelikeMask != null) {
+        // Get direction from the actual cell to the target cell.
+        // If it does exist, then we are guaranteed the other cell is in the Von Neumann neighborhood:
+        val direction = actualPosWorld.directionTo(remotePosWorld)
+
+        if(direction != null) {
+            // The conditions are now:
+            // 1. The actual cell has this direction in its mask.
+            // 2. The remote cell has the opposite of this direction in its mask.
+            if(actualPipelikeMask.has(direction) && remotePipelikeMask.has(direction.opposite)) {
+                return if(actualCell.hasLocalFrame()) {
+                    // If it's possible to determine a direction in the local frame, then we will:
+                    PartConnectionDirection(
+                        CellPartConnectionMode.Pipelike,
+                        Base6Direction3d.fromForwardUp(
+                            actualCell.requireLocator(Locators.CONVENTIONAL_FACING),
+                            actualCell.requireLocator(Locators.SUBSTRATE_FACE),
+                            direction
+                        )
+                    )
+                }
+                else {
+                    // Otherwise, we will return it in the world frame:
+                    PartConnectionDirection(
+                        CellPartConnectionMode.Pipelike,
+                        direction.alias
+                    )
+                }
+            }
+        }
+    }
+
+    // If the connection isn't pipelike, we need all of these to determine a connection:
+    val actualFaceWorld = actualCell.get(Locators.SUBSTRATE_FACE) ?: return null
+    val remoteFaceWorld = remoteCell.get(Locators.SUBSTRATE_FACE) ?: return null
+    val remoteFacingWorld = actualCell.get(Locators.CONVENTIONAL_FACING) ?: return null
 
     if (actualPosWorld == remotePosWorld) {
         if (actualFaceWorld == remoteFaceWorld) {
-            // This is a very weird case, break here
+            // This is a very weird case, break here.
+            // It's like we have two parts on the same face.
+            DEBUGGER_BREAK()
             return null
         }
     }
 
-    return getPartConnection(
-        actualPosWorld,
-        remotePosWorld,
-        actualFaceWorld,
-        remoteFaceWorld,
-        remoteFacingWorld
-    )
-}
-
-fun getPartConnection(
-    actualPosWorld: BlockPos,
-    remotePosWorld: BlockPos,
-    actualFaceWorld: Direction,
-    remoteFaceWorld: Direction,
-    actualFacingWorld: FacingDirection
-) : PartConnectionDirection {
     val mode: CellPartConnectionMode
-
     val dir = if (actualPosWorld == remotePosWorld) {
         if (actualFaceWorld == remoteFaceWorld) {
-            error("Invalid configuration") // Cannot have multiple parts in same face, something is super wrong up the chain
+            error(DEBUGGER_BREAK("Invalid configuration")) // Cannot have multiple parts in same face, something is super wrong up the chain
         }
 
         // The only mode that uses this is the Inner mode.
@@ -1138,7 +1180,7 @@ fun getPartConnection(
     return PartConnectionDirection(
         mode,
         Base6Direction3d.fromForwardUp(
-            actualFacingWorld,
+            remoteFacingWorld, // what?
             actualFaceWorld,
             dir
         )
