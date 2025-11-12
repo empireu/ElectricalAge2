@@ -263,11 +263,19 @@ class JointPart<C>(
     BasicKineticPart,
     InternalKineticStateConsumer,
     TickablePart,
-    ComponentDisplay
+    ComponentDisplay,
+    WrenchRotatable
     where C : Cell, C : JointCell
 {
     companion object {
         private val NOMINAL_SPEED = Quantity(25.0, REVOLUTION_PER_SECOND)
+    }
+
+    /**
+     * Lets the shaft float.
+     * */
+    override fun breaksOnSubstrateBroken(): Boolean {
+        return false
     }
 
     @ClientOnly

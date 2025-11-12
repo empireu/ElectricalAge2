@@ -297,7 +297,17 @@ class MultipartBlock : BaseEntityBlock(
 
         if(multipart != null) {
             if(multipart.isEmpty) {
-                LOG.error("Multipart is already empty!")
+                LOG.error(DEBUGGER_BREAK("Multipart is already empty!"))
+            }
+
+            // Call for both client and server, so the client can update some rendering:
+            run {
+                val direction = pFromPos.directionTo(pPos)
+
+                if(direction != null) {
+                    val part = multipart.parts[direction]
+                    part?.onSubstrateChanged(pFromPos)
+                }
             }
 
             if(!pLevel.isClientSide) {
@@ -815,6 +825,10 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         val part = partsInternal[direction]
 
         if (part != null) {
+            if(!part.breaksOnSubstrateBroken()) {
+                return null
+            }
+
             breakPart(part, saveTag)
         }
 
