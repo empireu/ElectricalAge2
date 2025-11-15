@@ -1,5 +1,6 @@
 package org.eln2.mc.common
 
+import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraftforge.client.event.EntityRenderersEvent
@@ -23,6 +24,7 @@ import org.eln2.mc.common.cells.foundation.CellGraph
 import org.eln2.mc.common.cells.foundation.CellGraphManager
 import org.eln2.mc.common.content.Content
 import org.eln2.mc.common.content.ScrewdriverItem
+import org.eln2.mc.common.content.WindTurbineManager
 import org.eln2.mc.common.events.schedulePost
 import org.eln2.mc.common.grids.GridCollisions
 import org.eln2.mc.common.grids.GridConnectionManagerClient
@@ -147,28 +149,28 @@ object ForgeEvents {
         }
 
         GhostLightServer.clear()
+        WindTurbineManager.clear()
 
         GridConnectionManagerServer.clear()
         SpecPlacementOverlayServer.clear()
     }
 
-    private fun scheduleGhostEvent(event: BlockEvent) {
-        if(event.level.isClientSide) {
+    private fun scheduleWorldTrackingEventServer(event: BlockEvent, handler: (ServerLevel, BlockPos) -> Unit) {
+        if(event.level.isClientSide || event.isCanceled) {
             return
         }
 
         schedulePost(0) {
             if(!event.isCanceled) {
-                GhostLightServer.handleBlockEvent(event.level as ServerLevel, event.pos)
+                handler(event.level as ServerLevel, event.pos)
             }
         }
     }
 
     @SubscribeEvent @JvmStatic
     fun onBlockBreakEvent(event: BlockEvent.BreakEvent) {
-        if(!event.isCanceled) {
-            scheduleGhostEvent(event)
-        }
+        scheduleWorldTrackingEventServer(event, GhostLightServer::handleBlockEvent)
+        scheduleWorldTrackingEventServer(event, WindTurbineManager::handleBlockEvent)
     }
 
     @SubscribeEvent @JvmStatic
@@ -177,9 +179,8 @@ object ForgeEvents {
             event.isCanceled = true
         }
 
-        if(!event.isCanceled) {
-            scheduleGhostEvent(event)
-        }
+        scheduleWorldTrackingEventServer(event, GhostLightServer::handleBlockEvent)
+        scheduleWorldTrackingEventServer(event, WindTurbineManager::handleBlockEvent)
     }
 
     @SubscribeEvent @JvmStatic

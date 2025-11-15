@@ -4,14 +4,15 @@ package org.eln2.mc.mathematics
 
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
-import org.ageseries.libage.mathematics.*
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Rotation3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.geometry.Vector3di
 import org.joml.Quaternionf
 import org.joml.Quaternionfc
-import kotlin.math.*
+import kotlin.math.PI
+import kotlin.math.ceil
+import kotlin.math.floor
 
 val maskXY = Vector3d(1.0, 0.0, 1.0)
 
