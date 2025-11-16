@@ -64,6 +64,11 @@ object ModEvents {
             Content.KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
+
+        event.registerBlockEntityRenderer(
+            Content.WIND_TURBINE_BLOCK_ENTITY.get(),
+            DummyBlockEntityRendererProvider()
+        )
     }
 
     @SubscribeEvent @JvmStatic

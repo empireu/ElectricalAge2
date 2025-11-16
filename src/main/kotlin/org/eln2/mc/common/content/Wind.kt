@@ -1,7 +1,18 @@
 package org.eln2.mc.common.content
 
+import dev.engine_room.flywheel.api.instance.Instance
+import dev.engine_room.flywheel.api.visual.SectionTrackedVisual
+import dev.engine_room.flywheel.api.visual.ShaderLightVisual
+import dev.engine_room.flywheel.api.visualization.VisualizationContext
+import dev.engine_room.flywheel.lib.instance.InstanceTypes
+import dev.engine_room.flywheel.lib.instance.TransformedInstance
+import dev.engine_room.flywheel.lib.model.baked.PartialModel
+import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
+import net.minecraft.core.SectionPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.state.BlockState
@@ -14,10 +25,13 @@ import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.utils.addUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.DebugVisualizer
+import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.client.render.foundation.PartialModelHelper
 import org.eln2.mc.common.blocks.foundation.BigBlockRepresentativeBlockEntity
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
+import org.eln2.mc.common.blocks.foundation.MultiblockTransformations
 import org.eln2.mc.common.blocks.foundation.UpfacingHorizontalDirectionCellBlock
 import org.eln2.mc.common.cells.foundation.Cell
 import org.eln2.mc.common.cells.foundation.CellCreateInfo
@@ -32,6 +46,7 @@ import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.BlockPosInt
 import org.eln2.mc.mathematics.floorBlockPos
 import java.util.*
+import java.util.function.Consumer
 import kotlin.math.*
 
 private const val WIND_TURBINE_DEBUG_DRAW = true
@@ -420,6 +435,7 @@ object WindTurbineManager {
             findIntersections(volumeOfInfluenceWorld) { other ->
                 // Add intersection pair:
                 other.turbinesInVolume.addUnique(result)
+                result.turbinesInVolume.addUnique(other)
 
                 // Recompute obstruction for remote turbine:
                 other.recomputeTurbineObstruction()
@@ -574,10 +590,21 @@ class WindTurbineCell(ci: CellCreateInfo, val options: WindTurbineOptions) : Cel
     }
 }
 
+data class WindTurbine3dModel(
+    val baseModel: PartialModel,
+    val rotorMode: PartialModel
+)
+
 class WindTurbineBlock(
     private val cellProvider: RegistryObject<CellProvider<WindTurbineCell>>,
-    val delegateMap: MultiblockDelegateMap
+    val delegateMap: MultiblockDelegateMap,
+    val model: WindTurbine3dModel
 ) : UpfacingHorizontalDirectionCellBlock<WindTurbineCell>() {
+    @Deprecated("Deprecated in Java", ReplaceWith("true"))
+    override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction): Boolean {
+        return true
+    }
+
     override fun getCellProvider() = cellProvider.get()
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = WindTurbineBlockEntity(pPos, pState)
@@ -600,5 +627,74 @@ class WindTurbineBlockEntity(pos: BlockPos, state: BlockState) :
         else {
             builder.debugInIDE { "Factor: ${h.clearanceFactor}" }
         }
+    }
+}
+
+class WindTurbineBlockEntityVisual(
+    ctx: VisualizationContext,
+    blockEntity: WindTurbineBlockEntity,
+    partialTick: Float
+) : AbstractBlockEntityVisual<WindTurbineBlockEntity>(ctx, blockEntity, partialTick), ShaderLightVisual {
+    val models = (blockState.block as WindTurbineBlock).model
+
+    val base: TransformedInstance = ctx.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(models.baseModel, FlwMaterials.SMOOTH_LIT))
+        .createInstance()
+        .also {
+            it.translate(visualPosition)
+            it.translate(0.5f, 0.0f, 0.5f)
+            it.rotateToFace(blockEntity.representativeFacing.clockWise)
+        }
+
+    val rotor: TransformedInstance = ctx.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(models.rotorMode, FlwMaterials.SMOOTH_LIT))
+        .createInstance()
+
+    private var rotation = Rotation2d.exp(PI / 5.0)
+
+    private fun poseRotor() {
+        rotor.setIdentityTransform()
+        rotor.translate(visualPosition)
+        rotor.translate(0.5f, 0.0f, 0.5f)
+        rotor.rotateY(rotation.ln().toFloat())
+        rotor.rotateToFace(blockEntity.representativeFacing.clockWise)
+    }
+
+    init {
+        poseRotor()
+    }
+
+    override fun setSectionCollector(sectionCollector: SectionTrackedVisual.SectionCollector?) {
+        this.lightSections = sectionCollector
+
+        val block = blockState.block as WindTurbineBlock
+
+        val set = LongOpenHashSet()
+        set.add(SectionPos.asLong(blockEntity.representativePos))
+        block.delegateMap.delegates.keys.forEach { delegatePosId ->
+            val delegatePosWorld = MultiblockTransformations.transformMultiblockWorld(
+                blockEntity.representativeFacing,
+                blockEntity.representativePos,
+                delegatePosId
+            )
+
+            set.add(SectionPos.asLong(delegatePosWorld))
+        }
+
+        lightSections.sections(set)
+    }
+
+    override fun collectCrumblingInstances(p0: Consumer<Instance?>) {
+        p0.accept(base)
+        p0.accept(rotor)
+    }
+
+    override fun updateLight(p0: Float) {
+        // NOOP
+    }
+
+    override fun _delete() {
+        base.delete()
+        rotor.delete()
     }
 }

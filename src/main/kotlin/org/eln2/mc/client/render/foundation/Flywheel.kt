@@ -155,6 +155,11 @@ object FlwVisualizerRegistry {
             Content.KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::KineticExtruderBlockEntityVisual) { true }
         )
+
+        VisualizerRegistry.setVisualizer(
+            Content.WIND_TURBINE_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::WindTurbineBlockEntityVisual) { true }
+        )
     }
 
     fun registerPartVisualizers() {

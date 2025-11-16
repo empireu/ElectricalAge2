@@ -1526,8 +1526,14 @@ object Content {
 
     val BASIC_WIND_TURBINE_CELL = cellMemoize("basic_wind_turbine") {
         val options = WindTurbineOptions(
-            BoundingBox3d.fromCenterSize(Vector3d.zero, 16.0),
-            BoundingBox3d.fromCenterSize(Vector3d.zero, 3.0)
+            BoundingBox3d.fromCenterSize(
+                Vector3d.zero,
+                16.0
+            ),
+            BoundingBox3d.fromCenterSize(
+                Vector3d.zero,
+                Vector3d(36.0 / 16.0, 77.0 / 16.0, 36.0 / 16.0)
+            )
         )
 
         CellFactory {
@@ -1537,13 +1543,43 @@ object Content {
     }
 
     val BASIC_WIND_TURBINE_DELEGATE_MAP = defineDelegateMap("basic_wind_turbine") {
+        val fullBlock = registerDelegateOf(
+            AABB(
+                0.0, 0.0, 0.0,
+                1.0, 1.0, 1.0
+            )
+        )
 
+        fun defineSlab(y: Int) {
+            for(x in -1..1) {
+                for(z in -1..1) {
+                    principal(x, y, z, fullBlock)
+                }
+            }
+        }
+
+        defineSlab(1)
+        defineSlab(2)
+        defineSlab(3)
+        defineSlab(4)
+        defineSlab(5)
     }
 
-    val BASIC_WIND_TURBINE_BLOCK = blockAndItem("basic_wind_turbine") {
+    val BASIC_WIND_TURBINE_BLOCK = blockOnly("basic_wind_turbine") {
         WindTurbineBlock(
             BASIC_WIND_TURBINE_CELL,
-            BASIC_WIND_TURBINE_DELEGATE_MAP.value
+            BASIC_WIND_TURBINE_DELEGATE_MAP.value,
+            WindTurbine3dModel(
+                FlwModels.BASIC_WIND_TURBINE_BASE,
+                FlwModels.BASIC_WIND_TURBINE_ROTOR
+            )
+        )
+    }
+    
+    val BASIC_WIND_TURBINE_BLOCK_ITEM = blockItemOnly("basic_wind_turbine") {
+        BigBlockItem(
+            BASIC_WIND_TURBINE_DELEGATE_MAP.value,
+            BASIC_WIND_TURBINE_BLOCK.get()
         )
     }
 

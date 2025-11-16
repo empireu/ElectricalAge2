@@ -1,0 +1,5 @@
+{
+    "loader": "forge:obj",
+    "model": "eln2:models/block/wind_turbine/basic/inventory.obj",
+    "flip_v": true
+}

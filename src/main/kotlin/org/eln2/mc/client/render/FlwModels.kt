@@ -170,6 +170,13 @@ object FlwModels {
 
     val DIODE = partialBlock("diode/diode")
 
+    //#region Wind Turbines
+
+    val BASIC_WIND_TURBINE_BASE = partialBlock("wind_turbine/basic/base")
+    val BASIC_WIND_TURBINE_ROTOR = partialBlock("wind_turbine/basic/rotor")
+
+    //#endregion
+
     private fun partial(path: String): PartialModel = PartialModel.of(resource(path))
     fun partialBlock(path: String): PartialModel = PartialModel.of(resource("block/$path"))
     fun polarBlock(path: String): PolarModel = PolarModel(resource("block/$path"))
