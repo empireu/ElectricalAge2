@@ -45,8 +45,10 @@ import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.Pole
 import org.ageseries.libage.sim.ThermalMassDefinition
+import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.FrictionNodeDescription
 import org.eln2.mc.LOG
+import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.ThermalTint
 import org.eln2.mc.common.LightBulbItem
@@ -87,11 +89,14 @@ import org.eln2.mc.common.specs.SpecRegistry.specImmediateBB
 import org.eln2.mc.common.specs.SpecRegistry.specMemoizeBB
 import org.eln2.mc.common.specs.foundation.SpecFactory
 import org.eln2.mc.data.*
+import org.eln2.mc.extensions.cast
+import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.maskXY
 import org.eln2.mc.requireIsOnRenderThread
 import kotlin.math.PI
+import kotlin.math.min
 import kotlin.math.pow
 
 /**
@@ -1514,6 +1519,40 @@ object Content {
     val DIODE_PART = partImmediateBB("diode", 3.0, 2.275, 16.0) {
         DiodePart(it)
     }
+
+    //#endregion
+
+    //#region Wind Turbine
+
+    val BASIC_WIND_TURBINE_CELL = cellMemoize("basic_wind_turbine") {
+        val options = WindTurbineOptions(
+            BoundingBox3d.fromCenterSize(Vector3d.zero, 16.0),
+            BoundingBox3d.fromCenterSize(Vector3d.zero, 3.0)
+        )
+
+        CellFactory {
+            WindTurbineCell(it, options)
+        }
+
+    }
+
+    val BASIC_WIND_TURBINE_DELEGATE_MAP = defineDelegateMap("basic_wind_turbine") {
+
+    }
+
+    val BASIC_WIND_TURBINE_BLOCK = blockAndItem("basic_wind_turbine") {
+        WindTurbineBlock(
+            BASIC_WIND_TURBINE_CELL,
+            BASIC_WIND_TURBINE_DELEGATE_MAP.value
+        )
+    }
+
+    // Single block entity for all turbines (implement new turbines by adding only a new block)
+    val WIND_TURBINE_BLOCK_ENTITY = blockEntityOnly(
+        "wind_turbine",
+        BASIC_WIND_TURBINE_BLOCK,
+        ::WindTurbineBlockEntity
+    )
 
     //#endregion
 }

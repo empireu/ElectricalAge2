@@ -1,25 +1,45 @@
 package org.eln2.mc.common.content
 
-import it.unimi.dsi.fastutil.ints.Int2DoubleOpenHashMap
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
-import net.minecraftforge.event.TickEvent
+import net.minecraft.world.level.block.state.BlockState
+import net.minecraftforge.event.TickEvent.Phase
+import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.BoundingBoxTree3d
-import org.ageseries.libage.mathematics.approxEq
-import org.ageseries.libage.mathematics.geometry.BoundingBox3d
-import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.data.requireLocator
+import org.ageseries.libage.mathematics.geometry.*
+import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.utils.addUnique
-import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
+import org.eln2.mc.client.render.DebugVisualizer
+import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.common.blocks.foundation.BigBlockRepresentativeBlockEntity
+import org.eln2.mc.common.blocks.foundation.CellBlockEntity
+import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
+import org.eln2.mc.common.blocks.foundation.UpfacingHorizontalDirectionCellBlock
+import org.eln2.mc.common.cells.foundation.Cell
+import org.eln2.mc.common.cells.foundation.CellCreateInfo
+import org.eln2.mc.common.cells.foundation.CellProvider
 import org.eln2.mc.common.events.Scheduler
+import org.eln2.mc.data.Locators
 import org.eln2.mc.extensions.cast
 import org.eln2.mc.extensions.minus
 import org.eln2.mc.extensions.toVector3d
+import org.eln2.mc.integration.ComponentDisplay
+import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.BlockPosInt
 import org.eln2.mc.mathematics.floorBlockPos
 import java.util.*
+import kotlin.math.*
 
+private const val WIND_TURBINE_DEBUG_DRAW = true
+
+/**
+ * We hold the turbine handles in the cells.
+ * This allows turbines which are not chunk-loaded to keep functioning.
+ * */
 @ServerOnly @CrossThreadAccess
 object WindTurbineManager {
     private val levels = HashMap<ServerLevel, LevelWindData>()
@@ -52,10 +72,10 @@ object WindTurbineManager {
      * Creates a wind turbine with the specified area of influence.
      * */
     @CrossThreadAccess
-    fun createHandle(level: ServerLevel, bounds: BoundingBox3d) : WindTurbineHandle {
+    fun createHandle(level: ServerLevel, volumeOfInfluenceWorld: BoundingBox3d, deviceBoundsWorld: BoundingBox3d) : WindTurbineHandle {
         synchronized(obj) {
             val data = getLevelDataNonSynchronized(level)
-            return data.createTurbine(bounds)
+            return data.createTurbine(volumeOfInfluenceWorld, deviceBoundsWorld)
         }
     }
 
@@ -78,6 +98,9 @@ object WindTurbineManager {
         }
     }
 
+    /**
+     * Wind turbine volume, that has its [clearanceFactor] updated by the manager.
+     * */
     interface WindTurbineHandle {
         /**
          * The level of the cell that created this handle.
@@ -90,9 +113,14 @@ object WindTurbineManager {
         val id: UUID
 
         /**
-         * The volume of influence of this turbine.
+         * The volume of influence of this turbine (includes the [deviceBounds]).
          * */
-        val influenceBounds: BoundingBox3d
+        val volumeOfInfluence: BoundingBox3d
+
+        /**
+         * The volume of the device itself.
+         * */
+        val deviceBounds: BoundingBox3d
 
         /**
          * Gets the clearance of this wind turbine. If the turbine is all clear, the factor is `1`.
@@ -103,33 +131,19 @@ object WindTurbineManager {
         val clearanceFactor: Double
     }
 
-    private class WindTurbineVolumeImpl(override val id: UUID, override val influenceBounds: BoundingBox3d, val owner: LevelWindData) : WindTurbineHandle {
+    private class WindTurbineVolumeImpl(
+        override val id: UUID,
+        override val volumeOfInfluence: BoundingBox3d,
+        override val deviceBounds: BoundingBox3d,
+        val owner: LevelWindData
+    ) : WindTurbineHandle {
         override val level: ServerLevel
             get() = owner.level
 
         /**
-         * The number of voxels in [influenceBounds], as per [BlockPos.betweenClosedStream].
-         * */
-        private val volumeVoxels = run {
-            val (minX, minY, minZ) = influenceBounds.min.floor()
-            val (maxX, maxY, maxZ) = influenceBounds.max.floor()
-
-            val width = (maxX - minX).toInt()
-            val height = (maxY - minY).toInt()
-            val depth = (maxZ - minZ).toInt()
-
-            width * height * depth
-        }
-
-        /**
-         * Sum of obstruction strengths. Independent of the number of blocks.
-         * This score is always lower than or equal to [volumeVoxels].
-         * */
-        private var blockObstructionScore = 0.0
-
-        /**
          * The clearance, taking into account only blocks in the vicinity.
          * Initially set to `0` because we cannot access the blocks from the caller's thread.
+         * See [serverThreadInitialization].
          * */
         var blockClearanceFactor = 0.0
 
@@ -142,19 +156,30 @@ object WindTurbineManager {
         /**
          * A relative block pos for storing packed coordinates.
          * */
-        val referencePosition = influenceBounds.center.floorBlockPos()
+        val referencePosition = volumeOfInfluence.min.floorBlockPos()
 
         /**
-         * Blocks that intersect the [influenceBounds].
+         * Blocks that intersect the [volumeOfInfluence].
          * Stored as [org.eln2.mc.mathematics.BlockPosInt] relative to the [referencePosition].
-         * The value is the obstruction score that was included in the [blockObstructionScore].
          * */
-        val blocksInVolume = Int2DoubleOpenHashMap().also {
-            it.defaultReturnValue(Double.NaN)
-        }
+        val blocksInVolume = IntOpenHashSet()
 
         /**
-         * Other turbines whose bounds intersect the [influenceBounds].
+         * SVO kept up-to-date with [blocksInVolume]. Used for raycasting against the (likely) sparse block grid.
+         * */
+        val blockSVO = BitSparseVoxelOctree(
+            ceil(
+                log2(
+                    maxOf(
+                        volumeOfInfluence.width,
+                        volumeOfInfluence.height,
+                        volumeOfInfluence.depth)
+                )
+            ).toInt()
+        )
+
+        /**
+         * Other turbines whose bounds intersect the [volumeOfInfluence].
          * */
         val turbinesInVolume = HashSet<WindTurbineVolumeImpl>()
 
@@ -164,117 +189,181 @@ object WindTurbineManager {
         override val clearanceFactor get() = blockClearanceFactor * turbineClearanceFactor
 
         /**
+         * Set by [blockEvent]. Basically, when a recompute is needed, a task is scheduled to run and the flag is set.
+         * But if multiple block events happen sequentially, this flag is checked so multiple tasks are not created.
+         * */
+        private var recomputeScheduled = false
+
+        /**
          * Gets the block position as a packed position relative to [referencePosition] for [blocksInVolume].
          * */
-        private fun getBlockKey(blockPosWorld: BlockPos) = BlockPosInt.of(blockPosWorld - referencePosition).value
+        private fun getBlockKey(blockPosWorld: BlockPos) = BlockPosInt.of(blockPosWorld - referencePosition)
+
+        /**
+         * Checks if the block at the specified position is a solid block that occludes the wind.
+         * */
+        private fun isOccluding(blockPosWorld: BlockPos) =  !owner.level.getBlockState(blockPosWorld).isAir
 
         /**
          * Executed on the server thread once this turbine has been created.
          * */
-        @ServerOnly
+        @OnServerThread
         fun serverThreadInitialization() {
             requireIsOnServerThread()
 
             // Guard against some stray events firing before this:
-            blockObstructionScore = 0.0
+            blocksInVolume.clear()
+            blockSVO.clear()
 
-            /**
-             * Records all blocks in volume and calculates score:
-             * */
-            BlockPos.betweenClosedStream(influenceBounds.cast()).forEach { blockPosWorld ->
-                evaluateBlockInWorld(blockPosWorld)
-            }
-        }
-
-        /**
-         * Calculates the [blockClearanceFactor] based on the [blockObstructionScore].
-         * */
-        fun setBlockClearanceFactor() {
-            var result = (volumeVoxels - blockObstructionScore) / volumeVoxels
-
-            if(result < 0.0) {
-                DEBUGGER_BREAK {
-                    "blockClearanceFactor went negative"
+            BlockPos.betweenClosedStream(volumeOfInfluence.cast()).forEach { blockPosWorld ->
+                if(!deviceBounds.contains(Vector3d(blockPosWorld.x + 0.5, blockPosWorld.y + 0.5, blockPosWorld.z + 0.5))) {
+                    if(isOccluding(blockPosWorld)) {
+                        val key = getBlockKey(blockPosWorld)
+                        blocksInVolume.addUnique(key.value)
+                        check(blockSVO.insert(key.x, key.y, key.z))
+                    }
                 }
-
-                result = 0.0
             }
 
-            blockClearanceFactor = result
-        }
-
-        @OnServerThread
-        private fun getObstructionScoreForBlockState(blockPos: BlockPos) : Double {
-            val blockState = owner.level.getBlockState(blockPos)
-
-            if(blockState.isAir) {
-                return 0.0
-            }
-
-            // Why the FRAK do you need the LEVEL to get shape information, you son of a bitch!
-
-            val level = owner.level
-
-            if (blockState.isCollisionShapeFullBlock(level, blockPos)) {
-                return 1.0
-            }
-
-            val shape = blockState.getCollisionShape(level, blockPos)
-
-            if (shape.isEmpty) {
-                return 0.0
-            }
-
-            var volume = 0.0
-            shape.forAllBoxes { minX, minY, minZ, maxX, maxY, maxZ ->
-                val width = maxX - minX
-                val height = maxY - minY
-                val depth = maxZ - minZ
-
-                volume += width * height * depth
-            }
-
-            return volume.coerceIn(0.0, 1.0)
+            recomputeBlockOcclusion()
         }
 
         /**
          * Called when a block has changed in the world, that is inside the volume.
          * This either inserts or remove a block obstruction.
+         * The block occlusion is then re-calculated.
          * */
         @OnServerThread
-        fun evaluateBlockInWorld(blockPosWorld: BlockPos) {
+        fun blockEvent(blockPosWorld: BlockPos) {
             requireIsOnServerThread()
 
+            if(deviceBounds.contains(Vector3d(blockPosWorld.x + 0.5, blockPosWorld.y + 0.5, blockPosWorld.z + 0.5))) {
+                return
+            }
+
+            val isOccluding = !owner.level.getBlockState(blockPosWorld).isAir
             val key = getBlockKey(blockPosWorld)
-            val existingScore = blocksInVolume.get(key)
-            val newScore = getObstructionScoreForBlockState(blockPosWorld)
 
-            /**
-             * Replaces a block that was previously recorded:
-             * */
-            if(existingScore != blocksInVolume.defaultReturnValue()) {
-                if(existingScore != newScore) {
-                    // Replace previous score:
-                    blocksInVolume.remove(key)
-                    blockObstructionScore -= existingScore
-
-                    // Add new contribution:
-                    blocksInVolume.putUnique(key, newScore)
-                    blockObstructionScore += newScore
-                    setBlockClearanceFactor()
+            fun scheduleRecompute() {
+                if(!recomputeScheduled) {
+                    recomputeScheduled = true
+                    Scheduler.scheduleWork(0, {
+                        recomputeBlockOcclusion()
+                        recomputeScheduled = false
+                    }, Phase.END)
                 }
             }
-            /**
-             * Inserts a new block:
-             * */
+
+            if(isOccluding) {
+                if(blocksInVolume.add(key.value)) {
+                    check(blockSVO.insert(key.x, key.y, key.z))
+                    scheduleRecompute()
+                }
+            }
             else {
-                if(newScore.approxEq(0.0)) {
-                    return // Air or too small
+                if(blocksInVolume.remove(key.value)) {
+                    check(blockSVO.remove(key.x, key.y, key.z))
+                    scheduleRecompute()
+                }
+            }
+        }
+
+        /**
+         * Recomputes [blockClearanceFactor] from scratch using the [blockSVO].
+         * */
+        private fun recomputeBlockOcclusion() {
+            val minY = floor(deviceBounds.min.y).toInt()
+            val maxY = floor(deviceBounds.max.y).toInt()
+
+            val radius = ceil(sqrt(volumeOfInfluence.width * volumeOfInfluence.width + volumeOfInfluence.depth * volumeOfInfluence.depth) / 2.0 + 1.0)
+
+            val rayX = deviceBounds.center.x - referencePosition.x
+            val rayZ = deviceBounds.center.z - referencePosition.z
+
+            var hitRays = 0
+            var totalRays = 0
+
+            val samplesPerSlice = 256
+
+            for (ySlice in minY..maxY) {
+                val rayY = ySlice.toDouble() - referencePosition.y + 0.5
+
+                repeat(samplesPerSlice) { angleIdx ->
+                    val angle = map(
+                        angleIdx.toDouble(),
+                        0.0, samplesPerSlice.toDouble(), // Correct (so we don't get two identical samples)
+                        0.0,  2.0 * PI
+                    )
+
+                    val ray = Ray3d(
+                        Vector3d(rayX, rayY, rayZ),
+                        Vector3d(cos(angle), 0.0, sin(angle))
+                    )
+
+                    val rayHit = blockSVO.raycastIntersectsOrderedDepthFirst(ray, Double.MAX_VALUE)
+
+                    if(WIND_TURBINE_DEBUG_DRAW) {
+                        val version = blockSVO.version
+
+                        DebugVisualizer
+                            .lineCylinder(
+                                Cylinder3d(
+                                    Line3d.fromStartEnd(
+                                        (ray.origin + referencePosition.toVector3d()),
+                                        (ray.origin + referencePosition.toVector3d()) + ray.direction * radius
+                                    ),
+                                    0.025
+                                ),
+                                color = if(rayHit) MyColor.RED else MyColor.GREEN
+                            )
+                            .removeAfter(5.0)
+                            .withRemover { blockSVO.version != version }
+                    }
+
+                    if(rayHit) {
+                        hitRays++
+                    }
+
+                    totalRays++
+                }
+            }
+
+            val blockOcclusion = hitRays.toDouble() / totalRays
+
+            blockClearanceFactor = 1.0 - blockOcclusion
+
+            if(WIND_TURBINE_DEBUG_DRAW) {
+                val version = blockSVO.version
+
+                val composite = DebugVisualizer.CompositeRenderElement()
+
+                blockSVO.traverseNodes { node, lc, posSVO, log ->
+                    val min = Vector3d(
+                        posSVO.x + referencePosition.x,
+                        posSVO.y + referencePosition.y,
+                        posSVO.z + referencePosition.z
+                    )
+
+                    val max = min + (1 shl log).toDouble()
+
+                    val color = if(BitSparseVoxelOctree.getIsFilled(node) || log == 0) {
+                        MyColor(255, 255, 255, 0)
+                    }
+                    else {
+                        MyColor.WHITE
+                    }
+
+                    composite.with(
+                        DebugVisualizer.createLineBox(
+                            BoundingBox3d(min, max), color = color
+                        )
+                    )
                 }
 
-                blocksInVolume.putUnique(key, newScore)
-                blockObstructionScore += newScore
-                setBlockClearanceFactor()
+                DebugVisualizer.add(composite
+                    .removeAfter(10.0)
+                    .withRemover { blockSVO.version != version }
+                )
             }
         }
 
@@ -283,10 +372,10 @@ object WindTurbineManager {
          * */
         fun recomputeTurbineObstruction() {
             var result = 1.0
-            val turbineVolume = influenceBounds.width * influenceBounds.height * influenceBounds.depth
+            val turbineVolume = volumeOfInfluence.width * volumeOfInfluence.height * volumeOfInfluence.depth
 
             turbinesInVolume.forEach { other ->
-                val intersection = other.influenceBounds intersectionWith influenceBounds
+                val intersection = other.volumeOfInfluence intersectionWith volumeOfInfluence
                 val intersectedVolume = intersection.width * intersection.height * intersection.depth
 
                 result *= 1.0 - (intersectedVolume / turbineVolume)
@@ -298,7 +387,7 @@ object WindTurbineManager {
 
     private class LevelWindData(val level: ServerLevel) {
         /**
-         * BVH built on the [WindTurbineVolumeImpl.influenceBounds].
+         * BVH built on the [WindTurbineVolumeImpl.volumeOfInfluence].
          * */
         val influenceHierarchy = BoundingBoxTree3d<WindTurbineVolumeImpl>()
         val turbines = HashSet<WindTurbineVolumeImpl>()
@@ -317,16 +406,20 @@ object WindTurbineManager {
          *
          * Then, a task is scheduled to run on the server thread to find all blocks in intersection. Only then, the block clearance is calculated, which results in a nonzero final clearance.
          * */
-        fun createTurbine(influenceBounds: BoundingBox3d) : WindTurbineHandle {
-            val result = WindTurbineVolumeImpl(UUID.randomUUID(), influenceBounds, this)
+        fun createTurbine(volumeOfInfluenceWorld: BoundingBox3d, deviceBoundsWorld: BoundingBox3d) : WindTurbineHandle {
+            val result = WindTurbineVolumeImpl(
+                UUID.randomUUID(),
+                volumeOfInfluenceWorld,
+                deviceBoundsWorld,
+                this
+            )
 
             /**
              * Finds all intersections between turbines and records them.
              * */
-            findIntersections(influenceBounds) { other ->
+            findIntersections(volumeOfInfluenceWorld) { other ->
                 // Add intersection pair:
                 other.turbinesInVolume.addUnique(result)
-                result.turbinesInVolume.addUnique(result)
 
                 // Recompute obstruction for remote turbine:
                 other.recomputeTurbineObstruction()
@@ -335,7 +428,7 @@ object WindTurbineManager {
             // Recompute obstruction for new turbine:
             result.recomputeTurbineObstruction()
 
-            influenceHierarchy.insert(result, influenceBounds)
+            influenceHierarchy.insert(result, volumeOfInfluenceWorld)
             turbines.addUnique(result)
 
             /**
@@ -344,7 +437,7 @@ object WindTurbineManager {
             Scheduler.scheduleWork(
                 0,
                 result::serverThreadInitialization,
-                TickEvent.Phase.END
+                Phase.END
             )
 
             return result
@@ -362,10 +455,12 @@ object WindTurbineManager {
                 return
             }
 
+            influenceHierarchy.remove(impl)
+
             /**
              * Removes the intersection pairs and recomputes the turbine clearance:
              * */
-            findIntersections(impl.influenceBounds) { other ->
+            findIntersections(impl.volumeOfInfluence) { other ->
                 check(other.turbinesInVolume.remove(impl)) {
                     DEBUGGER_BREAK("Other turbine did not have removed turbine recorded")
                 }
@@ -386,9 +481,124 @@ object WindTurbineManager {
              * Updates scores for each turbine volume that intersects the block:
              * */
             findIntersections(bounds) { turbine ->
-                turbine.evaluateBlockInWorld(blockPos)
+                turbine.blockEvent(blockPos)
             }
         }
     }
 }
 
+/**
+ * All simulation data used by the wind turbine.
+ * @param volumeOfInfluence The volume that needs to be 100% clear for the turbine to be operating at nominal output. Expected centered at `0`.
+ * @param deviceBounds The bounds of the turbine itself (the wind receiver). Expected centered at `0`.
+ * */
+data class WindTurbineOptions(
+    val volumeOfInfluence: BoundingBox3d,
+    val deviceBounds: BoundingBox3d
+) {
+    init {
+        require(volumeOfInfluence.center.approxEq(Vector3d.zero)) {
+            "Expected volume of influence definition to be centered at 0"
+        }
+
+        require(deviceBounds.center.approxEq(Vector3d.zero)) {
+            "Expected device bounds definition to be centered at 0"
+        }
+    }
+}
+
+class WindTurbineCell(ci: CellCreateInfo, val options: WindTurbineOptions) : Cell(ci) {
+    val volumeOfInfluenceWorld: BoundingBox3d
+    val deviceBoundsWorld: BoundingBox3d
+
+    init {
+        val baseOffset = locator.requireLocator(Locators.BLOCK).toVector3d() +
+            Vector3d(0.5, 1.0, 0.5)
+
+        val volumeOfInfluenceOffset = Vector3d(0.0, options.volumeOfInfluence.height / 2.0, 0.0)
+        val deviceBoundsOffset = Vector3d(0.0, options.deviceBounds.height / 2.0, 0.0)
+
+        volumeOfInfluenceWorld = BoundingBox3d(
+            options.volumeOfInfluence.min + baseOffset + volumeOfInfluenceOffset,
+            options.volumeOfInfluence.max + baseOffset + volumeOfInfluenceOffset
+        )
+
+        deviceBoundsWorld = BoundingBox3d(
+            options.deviceBounds.min + baseOffset + deviceBoundsOffset,
+            options.deviceBounds.max + baseOffset + deviceBoundsOffset
+        )
+
+        if(WIND_TURBINE_DEBUG_DRAW) {
+            DebugVisualizer
+                .lineBox(volumeOfInfluenceWorld, color = MyColor.BLUE)
+                .withinScopeOf(this)
+
+            DebugVisualizer
+                .lineBox(deviceBoundsWorld, color = MyColor.WHITE)
+                .withinScopeOf(this)
+        }
+    }
+
+    var handle: WindTurbineManager.WindTurbineHandle? = null
+
+    /**
+     * Creates the handle for the turbine.
+     * */
+    override fun onBuildFinished() {
+        val level = graph.level
+        val handle = handle
+
+        if(handle == null || handle.level != level) {
+            this.handle = WindTurbineManager.createHandle(
+                level,
+                volumeOfInfluenceWorld,
+                deviceBoundsWorld
+            )
+        }
+
+        super.onBuildFinished()
+    }
+
+    /**
+     * Destroys the handle for the turbine.
+     * */
+    override fun onDestroyed() {
+        val handle = handle
+
+        if(handle != null) {
+            WindTurbineManager.destroyHandle(handle)
+            this.handle = null
+        }
+
+        super.onDestroyed()
+    }
+}
+
+class WindTurbineBlock(
+    private val cellProvider: RegistryObject<CellProvider<WindTurbineCell>>,
+    val delegateMap: MultiblockDelegateMap
+) : UpfacingHorizontalDirectionCellBlock<WindTurbineCell>() {
+    override fun getCellProvider() = cellProvider.get()
+
+    override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = WindTurbineBlockEntity(pPos, pState)
+}
+
+class WindTurbineBlockEntity(pos: BlockPos, state: BlockState) :
+    CellBlockEntity<WindTurbineCell>(pos, state, Content.WIND_TURBINE_BLOCK_ENTITY.get()),
+    BigBlockRepresentativeBlockEntity<LampPoleBlockEntity>,
+    ComponentDisplay
+{
+    override val delegateMap: MultiblockDelegateMap
+        get() = (blockState.block as WindTurbineBlock).delegateMap
+
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        val h = cell.handle
+
+        if(h == null) {
+            builder.debugInIDE { "NULL" }
+        }
+        else {
+            builder.debugInIDE { "Factor: ${h.clearanceFactor}" }
+        }
+    }
+}

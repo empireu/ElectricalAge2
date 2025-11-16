@@ -18,6 +18,7 @@ import org.eln2.mc.ClientOnly
 import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.extensions.*
 import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.common.cells.foundation.Cell
 import kotlin.math.PI
 
 @ClientOnly
@@ -84,9 +85,11 @@ object DebugVisualizer {
         open fun removeAfterFrame() = withRemover { renderedOnce }
 
         open fun withinScopeOf(part: Part) = withRemover(part::isRemoved)
+
+        open fun withinScopeOf(cell: Cell) = withRemover(cell::isBeingRemoved)
     }
 
-    private class CompositeRenderElement : RenderElement() {
+    class CompositeRenderElement : RenderElement() {
         private val children = ArrayList<RenderElement>()
 
         fun with(child: RenderElement) : CompositeRenderElement {
@@ -127,7 +130,7 @@ object DebugVisualizer {
 
     }
 
-    private class LineAABB(val aabb: AABB, val color: MyColor) : RenderElement() {
+    class LineAABB(val aabb: AABB, val color: MyColor) : RenderElement() {
         override fun render(
             pPoseStack: PoseStack,
             pBufferSource: MultiBufferSource.BufferSource,
@@ -150,7 +153,7 @@ object DebugVisualizer {
         }
     }
 
-    private class LineOBB(val obb: OrientedBoundingBox3d, val color: MyColor) : RenderElement() {
+    class LineOBB(val obb: OrientedBoundingBox3d, val color: MyColor) : RenderElement() {
         override fun render(
             pPoseStack: PoseStack,
             pBufferSource: MultiBufferSource.BufferSource,
@@ -185,7 +188,7 @@ object DebugVisualizer {
 
     }
 
-    private class LineCylinder(val cylinder: Cylinder3d, val color: MyColor) : RenderElement() {
+    class LineCylinder(val cylinder: Cylinder3d, val color: MyColor) : RenderElement() {
         companion object {
             private const val LINES = 16
         }
@@ -319,7 +322,7 @@ object DebugVisualizer {
         }
     }
 
-    private fun add(element: RenderElement) : RenderElement {
+    fun add(element: RenderElement) : RenderElement {
         synchronized(obj) {
             check(elements.add(element))
         }
