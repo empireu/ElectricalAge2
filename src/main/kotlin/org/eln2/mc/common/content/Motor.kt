@@ -23,7 +23,6 @@ import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
 import org.ageseries.libage.sim.electrical.Inductor
-import org.ageseries.libage.sim.electrical.Port
 import org.ageseries.libage.sim.electrical.PotentialSource
 import org.ageseries.libage.sim.electrical.Resistor
 import org.ageseries.libage.sim.kinetic.KineticMono
@@ -43,6 +42,7 @@ import org.eln2.mc.data.PoleMap
 import org.eln2.mc.data.evaluate
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.mathematics.Base6Direction3dMask
 import kotlin.math.abs
 
 /**
@@ -170,8 +170,8 @@ class DcMotorCell(
         thermal.thermalBody.temperature
     }
 
-    @org.eln2.mc.common.cells.foundation.Replicator
-    fun replicator(target: DcMotorPart) = Replicator(5, target, kinetic, electrical)
+    @Replicator
+    fun replicator(target: DcMotorPart) = MotorReplicator(5, target, kinetic, electrical)
 
     /**
      * Last applied torque, used for relaxation.
@@ -233,7 +233,7 @@ class DcMotorCell(
         lastAppliedTorque = tag.getDouble(LAST_APPLIED_TORQUE)
     }
 
-    class Replicator(
+    class MotorReplicator(
         val interval: Int,
         val part: DcMotorPart,
         val kinetic: DcMotorKineticObject,
@@ -273,8 +273,13 @@ data class DcMotorSoundOptions(
     val nominalPower: Quantity<Power>
 )
 
-class DcMotorPart(ci: PartCreateInfo, val soundOptions: DcMotorSoundOptions, cellProvider: RegistryObject<CellProvider<DcMotorCell>>) :
-    CellPart<DcMotorCell>(ci, cellProvider.get()),
+class DcMotorPart(
+    ci: PartCreateInfo,
+    val soundOptions: DcMotorSoundOptions,
+    cellProvider: RegistryObject<CellProvider<DcMotorCell>>,
+    pipelikeMask: Base6Direction3dMask
+) :
+    CellPart<DcMotorCell>(ci, cellProvider.get(), pipelikeMask),
     TickablePart,
     ComponentDisplay
 {

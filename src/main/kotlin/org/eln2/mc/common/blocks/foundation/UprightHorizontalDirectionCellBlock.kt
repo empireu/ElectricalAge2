@@ -15,10 +15,8 @@ import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.StateDefinition
-import net.minecraft.world.level.block.state.properties.DirectionProperty
 import org.ageseries.libage.data.LocatorBuilder
 import org.ageseries.libage.data.put
-import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Vector3d
@@ -26,7 +24,6 @@ import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.client.render.foundation.MyColor
-import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity.Companion.getHorizontalFacing
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.grids.*
@@ -117,7 +114,7 @@ abstract class CellBlock<C : Cell>(p : Properties? = null) : Block(p ?: Properti
  *
  * This means only the horizontal facing is stored.
  * */
-abstract class UpfacingHorizontalDirectionCellBlock<C : Cell>(p : Properties? = null) : CellBlock<C>(p) {
+abstract class UprightHorizontalDirectionCellBlock<C : Cell>(p : Properties? = null) : CellBlock<C>(p) {
     init {
         @Suppress("LeakingThis")
         registerDefaultState(getStateDefinition().any().setValue(
@@ -167,7 +164,7 @@ abstract class UpfacingHorizontalDirectionCellBlock<C : Cell>(p : Properties? = 
 /**
  * A block entity that has a cell. It contains normal block entity logic, as well as connection logic.
  * It can be owned by various implementations of the [CellBlock]. The connection logic needs to take that into account ([spatialNeighborScan]).
- * The default implementation is the simple case for [UpfacingHorizontalDirectionCellBlock].
+ * The default implementation is the simple case for [UprightHorizontalDirectionCellBlock].
  * */
 open class CellBlockEntity<C : Cell>(pos: BlockPos, state: BlockState, targetType: BlockEntityType<*>) : BlockEntity(targetType, pos, state), CellContainer {
     /**

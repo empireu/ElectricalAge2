@@ -18,6 +18,7 @@ import org.ageseries.libage.data.HENRY
 import org.ageseries.libage.data.KILO
 import org.ageseries.libage.data.KILOGRAM
 import org.ageseries.libage.data.KILOGRAM_METER2
+import org.ageseries.libage.data.METER
 import org.ageseries.libage.data.METER2
 import org.ageseries.libage.data.MILLI
 import org.ageseries.libage.data.NEWTON_METER
@@ -93,6 +94,7 @@ import org.eln2.mc.extensions.cast
 import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.maskXY
 import org.eln2.mc.requireIsOnRenderThread
 import kotlin.math.PI
@@ -1436,9 +1438,11 @@ object Content {
     val MOTOR_KINETIC_SOUND = soundEventVariableRange("motor.kinetic")
     val MOTOR_ELECTROMAGNETIC_SOUND = soundEventVariableRange("motor.electromagnetic")
 
+    val BASIC_DC_MOTOR_CELL_DIRECTION = Base6Direction3d.Front
+
     val BASIC_DC_MOTOR_CELL = cellMemoize("basic_dc_motor") {
         val electricalMap = directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)
-        val kineticMap = monopolarMapPlanar(Base6Direction3d.Front)
+        val kineticMap = monopolarMapPlanar(BASIC_DC_MOTOR_CELL_DIRECTION)
 
         val electricalSize = ElectricalSize.Standard
         val kineticSize = KineticSize.Standard
@@ -1484,7 +1488,12 @@ object Content {
         )
 
         PartFactory {
-            DcMotorPart(it, soundOptions, BASIC_DC_MOTOR_CELL)
+            DcMotorPart(
+                it,
+                soundOptions,
+                BASIC_DC_MOTOR_CELL,
+                Base6Direction3dMask.ofRelative(BASIC_DC_MOTOR_CELL_DIRECTION)
+            )
         }
     }
     
@@ -1533,7 +1542,15 @@ object Content {
             BoundingBox3d.fromCenterSize(
                 Vector3d.zero,
                 Vector3d(36.0 / 16.0, 77.0 / 16.0, 36.0 / 16.0)
-            )
+            ),
+            FrictionNodeDescription(
+                Quantity(12.5, KILOGRAM_METER2),
+                1.251,
+                Quantity(0.01),
+                Quantity(0.1)
+            ),
+            Quantity(1.5, METER),
+            0.89159015861095
         )
 
         CellFactory {

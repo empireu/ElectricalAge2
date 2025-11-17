@@ -24,7 +24,7 @@ import org.eln2.mc.common.cells.foundation.CellGraph
 import org.eln2.mc.common.cells.foundation.CellGraphManager
 import org.eln2.mc.common.content.Content
 import org.eln2.mc.common.content.ScrewdriverItem
-import org.eln2.mc.common.content.WindTurbineManager
+import org.eln2.mc.common.content.WindSystem
 import org.eln2.mc.common.events.schedulePost
 import org.eln2.mc.common.grids.GridCollisions
 import org.eln2.mc.common.grids.GridConnectionManagerClient
@@ -129,6 +129,7 @@ object ForgeEvents {
 
             GhostLightServer.applyChanges()
             ScrewdriverItem.Scroll.tickCooldowns()
+            WindSystem.update()
 
             lastTickStopwatch.resetTotal()
         }
@@ -154,7 +155,7 @@ object ForgeEvents {
         }
 
         GhostLightServer.clear()
-        WindTurbineManager.clear()
+        WindSystem.clear()
 
         GridConnectionManagerServer.clear()
         SpecPlacementOverlayServer.clear()
@@ -175,7 +176,7 @@ object ForgeEvents {
     @SubscribeEvent @JvmStatic
     fun onBlockBreakEvent(event: BlockEvent.BreakEvent) {
         scheduleWorldTrackingEventServer(event, GhostLightServer::handleBlockEvent)
-        scheduleWorldTrackingEventServer(event, WindTurbineManager::handleBlockEvent)
+        scheduleWorldTrackingEventServer(event, WindSystem::handleBlockEvent)
     }
 
     @SubscribeEvent @JvmStatic
@@ -185,7 +186,7 @@ object ForgeEvents {
         }
 
         scheduleWorldTrackingEventServer(event, GhostLightServer::handleBlockEvent)
-        scheduleWorldTrackingEventServer(event, WindTurbineManager::handleBlockEvent)
+        scheduleWorldTrackingEventServer(event, WindSystem::handleBlockEvent)
     }
 
     @SubscribeEvent @JvmStatic

@@ -42,7 +42,7 @@ import org.ageseries.libage.sim.electrical.PotentialSource
 import org.ageseries.libage.sim.kinetic.KineticDouble
 import org.ageseries.libage.sim.kinetic.KineticNodeSet
 import org.eln2.mc.*
-import org.eln2.mc.common.blocks.foundation.UpfacingHorizontalDirectionCellBlock
+import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.cells.foundation.Cell
@@ -315,7 +315,7 @@ class MotorProcessingCell(
     }
 }
 
-abstract class ProcessingBlock<R, C, BE> : UpfacingHorizontalDirectionCellBlock<C>()
+abstract class ProcessingBlock<R, C, BE> : UprightHorizontalDirectionCellBlock<C>()
     where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>,
           C : Cell, C : ProcessingDevice,
           BE : ProcessingBlockEntity<R, C>
@@ -705,11 +705,9 @@ class KineticProcessingCell(
     @SimObject
     val kinetic = KineticProcessingKineticObject(this)
 
-    val kineticState get() = RotatingKineticState(kinetic.node.angle, kinetic.node.angularVelocity)
-
     @Replicator
     fun replicator(target: InternalKineticStateConsumer) = InternalKineticReplicatorBehavior(
-        this::kineticState,
+        RotatingKineticState.accessor(kinetic.node),
         target
     )
 

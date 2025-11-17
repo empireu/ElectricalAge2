@@ -6,6 +6,7 @@ import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.sim.ThermalMass
+import org.ageseries.libage.sim.kinetic.KineticNode
 import org.ageseries.libage.utils.Stopwatch
 import java.util.concurrent.ConcurrentHashMap
 import java.util.function.Supplier
@@ -193,7 +194,16 @@ class ExternalTemperatureReplicatorBehavior(val cell: Cell, val consumer: Extern
     }
 }
 
-data class RotatingKineticState(val angle: Double, val angularVelocity: Double)
+data class RotatingKineticState(val angle: Double, val angularVelocity: Double) {
+    companion object {
+        fun accessor(node: KineticNode) : Supplier<RotatingKineticState> = Supplier {
+            RotatingKineticState(
+                node.angle,
+                node.angularVelocity
+            )
+        }
+    }
+}
 
 fun interface InternalKineticStateConsumer {
     /**

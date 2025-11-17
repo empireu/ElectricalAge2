@@ -1,6 +1,7 @@
 package org.eln2.mc.common.content
 
 import dev.engine_room.flywheel.api.instance.Instance
+import dev.engine_room.flywheel.api.visual.DynamicVisual
 import dev.engine_room.flywheel.api.visual.SectionTrackedVisual
 import dev.engine_room.flywheel.api.visual.ShaderLightVisual
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
@@ -8,55 +9,93 @@ import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
+import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.SectionPos
+import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraftforge.event.TickEvent.Phase
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.BoundingBoxTree3d
+import org.ageseries.libage.data.Distance
+import org.ageseries.libage.data.LocatorBuilder
+import org.ageseries.libage.data.NEWTON_METER
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.classify
+import org.ageseries.libage.data.put
 import org.ageseries.libage.data.requireLocator
+import org.ageseries.libage.mathematics.RotationUpdateProfile2d
+import org.ageseries.libage.mathematics.computeRotationUpdateAccelerationProfileWithAccelerationEstimate
 import org.ageseries.libage.mathematics.geometry.*
+import org.ageseries.libage.mathematics.lerp
 import org.ageseries.libage.mathematics.map
+import org.ageseries.libage.mathematics.rounded
+import org.ageseries.libage.sim.kinetic.KineticMono
+import org.ageseries.libage.sim.kinetic.KineticNodeSet
+import org.ageseries.libage.utils.Stopwatch
 import org.ageseries.libage.utils.addUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.FlwMaterials
+import org.eln2.mc.client.render.foundation.BasicKineticPart
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.client.render.foundation.PartialModelHelper
 import org.eln2.mc.common.blocks.foundation.BigBlockRepresentativeBlockEntity
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
 import org.eln2.mc.common.blocks.foundation.MultiblockTransformations
-import org.eln2.mc.common.blocks.foundation.UpfacingHorizontalDirectionCellBlock
+import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
 import org.eln2.mc.common.cells.foundation.Cell
+import org.eln2.mc.common.cells.foundation.CellAndContainerHandle
 import org.eln2.mc.common.cells.foundation.CellCreateInfo
 import org.eln2.mc.common.cells.foundation.CellProvider
+import org.eln2.mc.common.cells.foundation.InternalKineticReplicatorBehavior
+import org.eln2.mc.common.cells.foundation.InternalKineticStateConsumer
+import org.eln2.mc.common.cells.foundation.KineticObject
+import org.eln2.mc.common.cells.foundation.KineticSize
+import org.eln2.mc.common.cells.foundation.PersistentObject
+import org.eln2.mc.common.cells.foundation.Replicator
+import org.eln2.mc.common.cells.foundation.RotatingKineticState
+import org.eln2.mc.common.cells.foundation.SidedKinetic
+import org.eln2.mc.common.cells.foundation.SimObject
+import org.eln2.mc.common.cells.foundation.SubscriberCollection
+import org.eln2.mc.common.cells.foundation.SubscriberPhase
+import org.eln2.mc.common.cells.foundation.addPre
+import org.eln2.mc.common.cells.foundation.pipelikeCellScan
 import org.eln2.mc.common.events.Scheduler
+import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
+import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
+import org.eln2.mc.common.network.serverToClient.sendBulkPacket
 import org.eln2.mc.data.Locators
 import org.eln2.mc.extensions.cast
+import org.eln2.mc.extensions.loadNbt
 import org.eln2.mc.extensions.minus
+import org.eln2.mc.extensions.saveNbt
 import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.BlockPosInt
 import org.eln2.mc.mathematics.floorBlockPos
+import org.joml.SimplexNoise
 import java.util.*
 import java.util.function.Consumer
 import kotlin.math.*
 
-private const val WIND_TURBINE_DEBUG_DRAW = true
+private const val WIND_TURBINE_DEBUG_DRAW = false
 
 /**
  * We hold the turbine handles in the cells.
  * This allows turbines which are not chunk-loaded to keep functioning.
  * */
 @ServerOnly @CrossThreadAccess
-object WindTurbineManager {
+object WindSystem {
     private val levels = HashMap<ServerLevel, LevelWindData>()
     private val obj = Any()
 
@@ -79,7 +118,17 @@ object WindTurbineManager {
         val serverLevel = validateLevel(level)
 
         return levels.computeIfAbsent(serverLevel) {
-            LevelWindData(serverLevel)
+            LevelWindData(serverLevel,
+                WindParameters(
+                    5e-5,
+                    7e-4,
+                    0.3,
+                    0.45,
+                    0.9,
+                    1.12,
+                    24.0
+                )
+            )
         }
     }
 
@@ -87,7 +136,7 @@ object WindTurbineManager {
      * Creates a wind turbine with the specified area of influence.
      * */
     @CrossThreadAccess
-    fun createHandle(level: ServerLevel, volumeOfInfluenceWorld: BoundingBox3d, deviceBoundsWorld: BoundingBox3d) : WindTurbineHandle {
+    fun createWindTurbineHandle(level: ServerLevel, volumeOfInfluenceWorld: BoundingBox3d, deviceBoundsWorld: BoundingBox3d) : WindTurbineHandle {
         synchronized(obj) {
             val data = getLevelDataNonSynchronized(level)
             return data.createTurbine(volumeOfInfluenceWorld, deviceBoundsWorld)
@@ -98,7 +147,7 @@ object WindTurbineManager {
      * Destroys the wind turbine.
      * */
     @CrossThreadAccess
-    fun destroyHandle(handle: WindTurbineHandle) {
+    fun destroyWindTurbineHandle(handle: WindTurbineHandle) {
         synchronized(obj) {
             val data = getLevelDataNonSynchronized(handle.level)
             data.destroyTurbine(handle)
@@ -110,6 +159,15 @@ object WindTurbineManager {
         synchronized(obj) {
             val data = getLevelDataNonSynchronized(level)
             data.handleBlockEvent(blockPos)
+        }
+    }
+
+    @OnServerThread
+    fun update() {
+        synchronized(obj) {
+            levels.values.forEach {
+                it.update()
+            }
         }
     }
 
@@ -144,6 +202,11 @@ object WindTurbineManager {
          * When the wind turbine is created initially (possibly on the simulation thread), the factor is `0`.
          * */
         val clearanceFactor: Double
+
+        /**
+         * Gets the wind speed at the turbine, based on the [clearanceFactor] and the level's wind speed.
+         * */
+        val windSpeed: Double
     }
 
     private class WindTurbineVolumeImpl(
@@ -202,6 +265,8 @@ object WindTurbineManager {
          * The final clearance factor.
          * */
         override val clearanceFactor get() = blockClearanceFactor * turbineClearanceFactor
+
+        override val windSpeed get() = clearanceFactor * owner.windSpeed
 
         /**
          * Set by [blockEvent]. Basically, when a recompute is needed, a task is scheduled to run and the flag is set.
@@ -400,12 +465,28 @@ object WindTurbineManager {
         }
     }
 
-    private class LevelWindData(val level: ServerLevel) {
+    data class WindParameters(
+        val calmTimeScale: Double,
+        val stormTimeScale: Double,
+        val minCalmWind: Double,
+        val maxCalmWind: Double,
+        val minStormWind: Double,
+        val maxStormWind: Double,
+        val windSpeedScale: Double
+    )
+
+    private class LevelWindData(val level: ServerLevel, val parameters: WindParameters) {
         /**
          * BVH built on the [WindTurbineVolumeImpl.volumeOfInfluence].
          * */
         val influenceHierarchy = BoundingBoxTree3d<WindTurbineVolumeImpl>()
         val turbines = HashSet<WindTurbineVolumeImpl>()
+
+        /**
+         * The wind speed of this entire level.
+         * */
+        var windSpeed = 0.0
+            private set
 
         private inline fun findIntersections(bounds: BoundingBox3d, consumer: (WindTurbineVolumeImpl) -> Unit) {
             influenceHierarchy.queryIntersecting({ bounds intersectsWith it.box }) { leaf ->
@@ -500,6 +581,50 @@ object WindTurbineManager {
                 turbine.blockEvent(blockPos)
             }
         }
+
+        @OnServerThread
+        fun update() {
+            val rain = level.getRainLevel(1.0f).toDouble()
+            val thunder = level.getThunderLevel(1.0f).toDouble()
+            val weatherIntensity = max(rain, thunder)
+
+            val gameTime = level.gameTime.toDouble()
+
+            fun noise(input: Double): Double {
+                val noise = SimplexNoise
+                    .noise(input.toFloat(), 1.0f / 137.0f).toDouble()
+                    .coerceIn(-1.0, 1.0)
+
+                return map(
+                    noise,
+                    -1.0, 1.0,
+                    0.0, 1.0
+                )
+            }
+
+            val calmNoise = noise(gameTime * parameters.calmTimeScale)
+            val stormNoise = noise(gameTime * parameters.stormTimeScale)
+
+            val calmWindFactor = lerp(
+                parameters.minCalmWind,
+                parameters.maxCalmWind,
+                calmNoise
+            )
+
+            val stormWindFactor = lerp(
+                parameters.minStormWind,
+                parameters.maxStormWind,
+                stormNoise
+            )
+
+            val finalWindFactor = lerp(
+                calmWindFactor,
+                stormWindFactor,
+                weatherIntensity
+            )
+
+            windSpeed = finalWindFactor * parameters.windSpeedScale
+        }
     }
 }
 
@@ -507,10 +632,15 @@ object WindTurbineManager {
  * All simulation data used by the wind turbine.
  * @param volumeOfInfluence The volume that needs to be 100% clear for the turbine to be operating at nominal output. Expected centered at `0`.
  * @param deviceBounds The bounds of the turbine itself (the wind receiver). Expected centered at `0`.
+ * @param effectiveRadius The approximate average distance from the center of rotation to the wind-catching surface.
+ * @param windEffectivenessFactor Factor that includes the device's surface area, air density, and the aerodynamic efficiency. A higher value means the wind applies more force (the turbine is better).
  * */
 data class WindTurbineOptions(
     val volumeOfInfluence: BoundingBox3d,
-    val deviceBounds: BoundingBox3d
+    val deviceBounds: BoundingBox3d,
+    val kineticDescription: FrictionNodeDescription,
+    val effectiveRadius: Quantity<Distance>,
+    val windEffectivenessFactor: Double
 ) {
     init {
         require(volumeOfInfluence.center.approxEq(Vector3d.zero)) {
@@ -523,7 +653,24 @@ data class WindTurbineOptions(
     }
 }
 
-class WindTurbineCell(ci: CellCreateInfo, val options: WindTurbineOptions) : Cell(ci) {
+class WindTurbineObject(cell: WindTurbineCell) : KineticObject<WindTurbineCell>(cell), PersistentObject {
+    val node = KineticMono()
+
+    init {
+        cell.options.kineticDescription.applyTo(node)
+        node.extension.ratio *= -1.0
+    }
+
+    override fun addNodes(builder: KineticNodeSet) { builder.add(node) }
+
+    override fun offerExtension(remote: KineticObject<*>) = node.extension
+
+    override fun saveObjectNbt() = node.saveNbt()
+
+    override fun loadObjectNbt(tag: CompoundTag) { node.loadNbt(tag) }
+}
+
+class WindTurbineCell(ci: CellCreateInfo, val options: WindTurbineOptions) : Cell(ci), SidedKinetic<WindTurbineCell> {
     val volumeOfInfluenceWorld: BoundingBox3d
     val deviceBoundsWorld: BoundingBox3d
 
@@ -555,7 +702,27 @@ class WindTurbineCell(ci: CellCreateInfo, val options: WindTurbineOptions) : Cel
         }
     }
 
-    var handle: WindTurbineManager.WindTurbineHandle? = null
+    var handle: WindSystem.WindTurbineHandle? = null
+
+    @SimObject
+    val kinetic = WindTurbineObject(this)
+
+    /**
+     * Gets the last applied torque generated by the wind.
+     * */
+    var lastWindTorque = 0.0
+        private set
+
+    @Replicator
+    fun replicator(target: InternalKineticStateConsumer) = InternalKineticReplicatorBehavior(
+        RotatingKineticState.accessor(kinetic.node),
+        target
+    )
+
+    override fun getKineticSizeOnSide(side: Base6Direction3d, targetCell: Cell) = when(side) {
+        Base6Direction3d.Down -> KineticSize.Standard
+        else -> null
+    }
 
     /**
      * Creates the handle for the turbine.
@@ -565,7 +732,7 @@ class WindTurbineCell(ci: CellCreateInfo, val options: WindTurbineOptions) : Cel
         val handle = handle
 
         if(handle == null || handle.level != level) {
-            this.handle = WindTurbineManager.createHandle(
+            this.handle = WindSystem.createWindTurbineHandle(
                 level,
                 volumeOfInfluenceWorld,
                 deviceBoundsWorld
@@ -576,17 +743,33 @@ class WindTurbineCell(ci: CellCreateInfo, val options: WindTurbineOptions) : Cel
     }
 
     /**
-     * Destroys the handle for the turbine.
+     * Destroys the handle.
      * */
     override fun onDestroyed() {
         val handle = handle
 
         if(handle != null) {
-            WindTurbineManager.destroyHandle(handle)
+            WindSystem.destroyWindTurbineHandle(handle)
             this.handle = null
         }
 
         super.onDestroyed()
+    }
+
+    override fun subscribe(subscribers: SubscriberCollection) {
+        subscribers.addPre(this::tick)
+    }
+
+    private fun tick(dt: Double, phase: SubscriberPhase) {
+        val handle = handle
+            ?: return
+
+        val windSpeed = handle.windSpeed
+
+        val bladeSpeed = kinetic.node.angularVelocity * !options.effectiveRadius
+        lastWindTorque = options.windEffectivenessFactor * !options.effectiveRadius * windSpeed * (windSpeed - bladeSpeed)
+
+        kinetic.node.externalTorque += lastWindTorque
     }
 }
 
@@ -599,34 +782,78 @@ class WindTurbineBlock(
     private val cellProvider: RegistryObject<CellProvider<WindTurbineCell>>,
     val delegateMap: MultiblockDelegateMap,
     val model: WindTurbine3dModel
-) : UpfacingHorizontalDirectionCellBlock<WindTurbineCell>() {
+) : UprightHorizontalDirectionCellBlock<WindTurbineCell>() {
     @Deprecated("Deprecated in Java", ReplaceWith("true"))
-    override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction): Boolean {
-        return true
-    }
+    override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction): Boolean = true
 
     override fun getCellProvider() = cellProvider.get()
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = WindTurbineBlockEntity(pPos, pState)
+
+    override fun appendLocatorData(state: BlockState, builder: LocatorBuilder) {
+        super.appendLocatorData(state, builder)
+
+        builder.put(Locators.PIPELIKE_MASK, Base6Direction3dMask.DOWN)
+    }
+
+    override fun spatialNeighborScan(level: Level, results: HashSet<CellAndContainerHandle>, cell: Cell) {
+        pipelikeCellScan(level, cell, results::add)
+    }
 }
 
 class WindTurbineBlockEntity(pos: BlockPos, state: BlockState) :
     CellBlockEntity<WindTurbineCell>(pos, state, Content.WIND_TURBINE_BLOCK_ENTITY.get()),
     BigBlockRepresentativeBlockEntity<LampPoleBlockEntity>,
+    InternalKineticStateConsumer,
+    BulkPacketHandlerBlockEntity,
     ComponentDisplay
 {
+    @ClientOnly
+    var renderState: BasicKineticPart.RenderStateImpl? = null
+
+    override val clientSidePacketHandlerLazy = createClientSideHandler()
+
     override val delegateMap: MultiblockDelegateMap
         get() = (blockState.block as WindTurbineBlock).delegateMap
 
-    override fun submitDisplay(builder: ComponentDisplayList) {
-        val h = cell.handle
+    override fun setLevel(pLevel: Level) {
+        super.setLevel(pLevel)
 
-        if(h == null) {
+        if(pLevel.isClientSide) {
+            renderState = BasicKineticPart.RenderStateImpl()
+        }
+    }
+
+    @ClientOnly
+    override fun setupPacketsOnClient(handler: ClientSidePacketHandlerBuilder) {
+        handler.withHandler<BasicKineticPart.RotationSyncPacket> {
+            renderState?.load(it)
+        }
+    }
+
+    @ServerOnly
+    override fun onKineticStateChanged(state: RotatingKineticState, angularAccelerationEstimate: Double, ) {
+        sendBulkPacket(BasicKineticPart.RotationSyncPacket(
+            state.angle,
+            state.angularVelocity,
+            angularAccelerationEstimate
+        ))
+    }
+
+    @ServerOnly
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        val handle = cell.handle
+
+        if(handle == null) {
             builder.debugInIDE { "NULL" }
         }
         else {
-            builder.debugInIDE { "Factor: ${h.clearanceFactor}" }
+            builder.debugInIDE { "Factor: ${handle.clearanceFactor.rounded(4)}" }
+            builder.debugInIDE { "Wind speed: ${handle.windSpeed.rounded(4)}" }
         }
+
+        builder.quantity(cell.kinetic.node.angularVelocityQuantity)
+        builder.quantityOutput(Quantity(cell.lastWindTorque, NEWTON_METER))
     }
 }
 
@@ -634,7 +861,16 @@ class WindTurbineBlockEntityVisual(
     ctx: VisualizationContext,
     blockEntity: WindTurbineBlockEntity,
     partialTick: Float
-) : AbstractBlockEntityVisual<WindTurbineBlockEntity>(ctx, blockEntity, partialTick), ShaderLightVisual {
+) : AbstractBlockEntityVisual<WindTurbineBlockEntity>(ctx, blockEntity, partialTick),
+    ShaderLightVisual,
+    SimpleDynamicVisual
+{
+    var version = 0
+    var rotation = Rotation2d.identity
+    var velocity = 0.0
+    var interpolationState: RotationUpdateProfile2d? = null
+    val frameTimer = Stopwatch()
+
     val models = (blockState.block as WindTurbineBlock).model
 
     val base: TransformedInstance = ctx.instancerProvider()
@@ -650,14 +886,13 @@ class WindTurbineBlockEntityVisual(
         .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(models.rotorMode, FlwMaterials.SMOOTH_LIT))
         .createInstance()
 
-    private var rotation = Rotation2d.exp(PI / 5.0)
-
     private fun poseRotor() {
         rotor.setIdentityTransform()
         rotor.translate(visualPosition)
         rotor.translate(0.5f, 0.0f, 0.5f)
         rotor.rotateY(rotation.ln().toFloat())
         rotor.rotateToFace(blockEntity.representativeFacing.clockWise)
+        rotor.setChanged()
     }
 
     init {
@@ -682,6 +917,41 @@ class WindTurbineBlockEntityVisual(
         }
 
         lightSections.sections(set)
+    }
+
+    override fun beginFrame(p0: DynamicVisual.Context?) {
+        val renderState = blockEntity.renderState
+            ?: return
+
+        val targetVersion = renderState.version
+        if(version != targetVersion) {
+            version = targetVersion
+
+            interpolationState = computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
+                renderState.angularAccelerationEstimate,
+                Rotation2d.exp(renderState.angle), renderState.angularVelocity,
+                rotation, velocity
+            )
+        }
+
+        val dt = !frameTimer.sample()
+
+        if(interpolationState == null) {
+            rotation += velocity * dt
+        }
+        else {
+            val state = interpolationState!!
+            state.currentTime += dt
+            state.sampleTrajectory()
+            rotation = state.sampleP
+            velocity = state.sampleV
+
+            if(state.timeRemaining == 0.0) {
+                interpolationState = null
+            }
+        }
+
+        poseRotor()
     }
 
     override fun collectCrumblingInstances(p0: Consumer<Instance?>) {

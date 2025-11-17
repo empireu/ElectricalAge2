@@ -119,11 +119,9 @@ class DoubleJointCell(
     @Behavior
     val stress = KineticStressBehavior.create(maxTorque, this, kinetic.node)
 
-    val kineticState get() = RotatingKineticState(kinetic.node.angle, kinetic.node.angularVelocity)
-
     @Replicator
     fun kineticReplicator(target: InternalKineticStateConsumer) = InternalKineticReplicatorBehavior(
-        this::kineticState,
+        RotatingKineticState.accessor(kinetic.node),
         target
     )
 
@@ -231,11 +229,9 @@ class TripleJointCell(
     @Behavior
     val stress = KineticStressBehavior.create(maxTorque, this, kinetic.node)
 
-    val kineticState get() = RotatingKineticState(kinetic.node.angle, kinetic.node.angularVelocity)
-
     @Replicator
     fun kineticReplicator(target: InternalKineticStateConsumer) = InternalKineticReplicatorBehavior(
-        this::kineticState,
+        RotatingKineticState.accessor(kinetic.node),
         target
     )
 

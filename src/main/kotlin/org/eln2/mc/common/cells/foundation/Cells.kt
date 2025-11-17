@@ -2903,7 +2903,7 @@ interface SidedThermalMapped<C> : SidedThermal<C> where C : Cell, C : SidedTherm
 interface SidedKinetic<C> where C : Cell, C : SidedKinetic<C> {
     /**
      * Gets the size of the kinetic shaft on that side.
-     * @param side The side, pre-calculated, in the cell's local frame.
+     * @param side The side, pre-calculated, in the cell's specific frame.
      * @param targetCell The remote cell, useful if a locator map is used instead of raw directions in the connection code.
      * */
     fun getKineticSizeOnSide(side: Base6Direction3d, targetCell: Cell) : KineticSize?
