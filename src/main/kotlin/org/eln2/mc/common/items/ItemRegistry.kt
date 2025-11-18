@@ -25,4 +25,8 @@ object ItemRegistry {
     fun itemDefault(name: String) = item(name) {
         Item(Item.Properties())
     }
+
+    fun itemNoStack(name: String) = item(name) {
+        Item(Item.Properties().stacksTo(1))
+    }
 }

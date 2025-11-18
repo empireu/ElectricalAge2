@@ -177,6 +177,9 @@ object FlwModels {
 
     //#endregion
 
+    val RUBBER_TAP = partialBlock("rubber_tap/rubber_tap")
+    val RUBBER_TAP_LATEX = partialBlock("rubber_tap/latex")
+
     private fun partial(path: String): PartialModel = PartialModel.of(resource(path))
     fun partialBlock(path: String): PartialModel = PartialModel.of(resource("block/$path"))
     fun polarBlock(path: String): PolarModel = PolarModel(resource("block/$path"))

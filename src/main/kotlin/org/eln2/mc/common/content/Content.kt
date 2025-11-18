@@ -7,6 +7,7 @@ package org.eln2.mc.common.content
 import net.minecraft.client.gui.screens.MenuScreens
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.world.item.Item
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.phys.AABB
 import net.minecraftforge.registries.RegistryObject
@@ -75,6 +76,7 @@ import org.eln2.mc.common.grids.GridMaterials
 import org.eln2.mc.common.items.CreativeTabRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.items.ItemRegistry.itemDefault
+import org.eln2.mc.common.items.ItemRegistry.itemNoStack
 import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
 import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
 import org.eln2.mc.common.parts.PartRegistry.partMemoizeBB
@@ -144,7 +146,7 @@ object Content {
 
     val HOT_COPPER_INGOT = itemDefault("hot_copper_ingot")
 
-    val EXTRUDER_ROD_DIE = itemDefault("extruder_rod_die")
+    val EXTRUDER_ROD_DIE = itemNoStack("extruder_rod_die")
 
     val COPPER_ROD = itemDefault("copper_rod")
 
@@ -1606,6 +1608,14 @@ object Content {
         BASIC_WIND_TURBINE_BLOCK,
         ::WindTurbineBlockEntity
     )
+
+    //#endregion
+
+    //#region Rubber
+
+    val LATEX_ITEM = itemDefault("raw_latex")
+
+    val RUBBER_TAP_PART = partAndItemWithProvider("rubber_tap", RubberTapPartProvider())
 
     //#endregion
 }

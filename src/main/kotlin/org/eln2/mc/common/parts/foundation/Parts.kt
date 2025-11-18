@@ -1416,7 +1416,7 @@ open class PartItem(val partProvider: Lazy<PartProvider>) : BlockItem(BlockRegis
             face,
             partProvider.value,
             player
-        )
+        ) && partProvider.value.canPlace(level, substratePos, face)
 
         if(!flag) {
             return InteractionResult.FAIL

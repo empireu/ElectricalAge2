@@ -1,0 +1,49 @@
+{
+	"format_version": "1.21.6",
+	"credit": "Made with Blockbench",
+	"texture_size": [64, 64],
+	"textures": {
+		"0": "eln2:block/rubber_tap/rubber_tap",
+		"particle": "eln2:block/rubber_tap/rubber_tap"
+	},
+	"elements": [
+		{
+			"name": "fluid_surface",
+			"from": [4.5, 0.5, 0.5],
+			"to": [11.5, 0.6, 4.5],
+			"rotation": {"angle": 0, "axis": "y", "origin": [8, 2.34867, 2.5]},
+			"faces": {
+				"up": {"uv": [7.5, 2, 12, 9.5], "rotation": 90, "texture": "#0"}
+			}
+		}
+	],
+	"display": {
+		"thirdperson_righthand": {
+			"translation": [0, 4, 3.75],
+			"scale": [0.5, 0.5, 0.5]
+		},
+		"thirdperson_lefthand": {
+			"translation": [0, 4, 3.75],
+			"scale": [0.5, 0.5, 0.5]
+		},
+		"firstperson_righthand": {
+			"translation": [0, 2.5, 0]
+		},
+		"firstperson_lefthand": {
+			"translation": [0, 2.5, 0]
+		},
+		"ground": {
+			"translation": [0, 5.25, 0]
+		},
+		"gui": {
+			"rotation": [32.5, 32.5, 0],
+			"translation": [3.25, 0, 0]
+		},
+		"fixed": {
+			"translation": [0, 0, 4]
+		},
+		"on_shelf": {
+			"translation": [0, 0, 4.25]
+		}
+	}
+}
