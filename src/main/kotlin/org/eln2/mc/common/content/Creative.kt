@@ -8,6 +8,7 @@ import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.BasicPartVisual
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.content.modules.Eln2BasicComponents
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.common.parts.foundation.PartUseInfo
@@ -27,7 +28,7 @@ class VoltageSourceCell(
     }
 }
 
-class VoltageSourcePart(ci: PartCreateInfo) : CellPart<VoltageSourceCell>(ci, Content.VOLTAGE_SOURCE_CELL.get()), ComponentDisplay, WrenchRotatable {
+class VoltageSourcePart(ci: PartCreateInfo) : CellPart<VoltageSourceCell>(ci, Eln2BasicComponents.VOLTAGE_SOURCE_CELL.get()), ComponentDisplay, WrenchRotatable {
     override fun createVisual(ctx: MultipartVisualizationContext) = BasicPartVisual(ctx, this, FlwModels.VOLTAGE_SOURCE)
 
     override fun onUsedBy(context: PartUseInfo): InteractionResult {

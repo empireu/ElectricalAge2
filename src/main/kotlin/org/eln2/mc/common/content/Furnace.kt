@@ -54,6 +54,7 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.containers.ContainerHelper
 import org.eln2.mc.common.containers.MyAbstractContainerScreen
 import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
+import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.data.PoleMap
 import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
 import org.eln2.mc.common.recipes.foundation.OUTPUT_SLOT
@@ -142,7 +143,7 @@ class FurnaceCell(ci: CellCreateInfo, override val electricalMap: PoleMap) : Cel
     }
 }
 
-class FurnaceBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<FurnaceCell>(pos, state, Content.FURNACE_BLOCK_ENTITY.get()), ComponentDisplay {
+class FurnaceBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<FurnaceCell>(pos, state, Eln2Processing.FURNACE_BLOCK_ENTITY.get()), ComponentDisplay {
     companion object {
         private const val BURN_TIME_TARGET = 40
 
@@ -322,7 +323,7 @@ class FurnaceMenu(
     val containerData: FurnaceBlockEntity.FurnaceData,
     val access: ContainerLevelAccess,
     val level: Level
-) : AbstractContainerMenu(Content.FURNACE_MENU.get(), pContainerId) {
+) : AbstractContainerMenu(Eln2Processing.FURNACE_MENU.get(), pContainerId) {
     @ServerOnly
     constructor(entity: FurnaceBlockEntity, id: Int, inventory: Inventory): this(
         id,
@@ -361,7 +362,7 @@ class FurnaceMenu(
         ContainerHelper.addPlayerGrid(playerInventory, this::addSlot)
     }
 
-    override fun stillValid(pPlayer: Player) = stillValid(access, pPlayer, Content.FURNACE_BLOCK.block.get())
+    override fun stillValid(pPlayer: Player) = stillValid(access, pPlayer, Eln2Processing.FURNACE_BLOCK.block.get())
 
     override fun quickMoveStack(pPlayer: Player, pIndex: Int) = ContainerHelper.quickMove(slots, pPlayer, pIndex)
 }
@@ -449,7 +450,7 @@ class FurnaceBlock : UprightHorizontalDirectionCellBlock<FurnaceCell>() {
     }
 
     override fun getCellProvider(): CellProvider<FurnaceCell> {
-        return Content.FURNACE_CELL.get()
+        return Eln2Processing.FURNACE_CELL.get()
     }
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState): BlockEntity {

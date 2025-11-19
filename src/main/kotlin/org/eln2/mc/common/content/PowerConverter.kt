@@ -16,6 +16,7 @@ import org.ageseries.libage.sim.electrical.Resistor
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.content.modules.Eln2PowerDevices
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.specs.foundation.CellSpec
@@ -288,7 +289,7 @@ class TerminalDcToDcConverterCell(
 }
 
 class DcToDcConverterSpec(ci: SpecCreateInfo) :
-    CellSpec<TerminalDcToDcConverterCell>(ci, Content.TERMINAL_DC_TO_DC_CONVERTER_CELL_800W.get()),
+    CellSpec<TerminalDcToDcConverterCell>(ci, Eln2PowerDevices.TERMINAL_DC_TO_DC_CONVERTER_CELL_800W.get()),
     ScrewdriverScrollable,
     ComponentDisplay
 {

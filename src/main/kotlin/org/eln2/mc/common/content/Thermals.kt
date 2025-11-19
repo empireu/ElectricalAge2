@@ -21,6 +21,7 @@ import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.common.content.modules.Eln2Wires
 
 /**
  * Represents a game object that is rendered with a [RadiantBodyPartVisual].
@@ -39,7 +40,7 @@ class RadiatorPart(
         coldTint = MyColor(0.0f, 1f, 1f, 1f)
         hotTint = MyColor( 0.4f, 1f, 0.1f, 0.1f)
     }.build()
-) : CellPart<ThermalWireCell>(ci, Content.THERMAL_RADIATOR_CELL.get()), InternalTemperatureConsumer, RadiantMonopoleGameObject, ComponentDisplay {
+) : CellPart<ThermalWireCell>(ci, Eln2Wires.THERMAL_RADIATOR_CELL.get()), InternalTemperatureConsumer, RadiantMonopoleGameObject, ComponentDisplay {
     override var renderTemperature: Quantity<Temperature> = STANDARD_TEMPERATURE
         private set
 

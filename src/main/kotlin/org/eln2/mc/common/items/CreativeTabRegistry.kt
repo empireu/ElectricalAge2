@@ -17,6 +17,7 @@ import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.content.Content
+import org.eln2.mc.common.content.modules.Eln2BasicComponents
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.SpecRegistry
 import java.util.function.Supplier
@@ -55,7 +56,7 @@ object CreativeTabRegistry {
     val ELN2_ALL: RegistryObject<CreativeModeTab> = REGISTRY.register("eln2") {
         CreativeModeTab.builder()
             .title(Component.translatable("item_group.${MODID}.all"))
-            .icon { ItemStack(Content.VOLTAGE_SOURCE_PART.item.get()) }
+            .icon { ItemStack(Eln2BasicComponents.VOLTAGE_SOURCE_PART.item.get()) }
             .displayItems { _: ItemDisplayParameters?, output: CreativeModeTab.Output ->
                 realized = true
 

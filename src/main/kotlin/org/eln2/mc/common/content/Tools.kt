@@ -18,6 +18,7 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
+import org.eln2.mc.common.content.modules.Eln2Tools
 import org.eln2.mc.common.getPlayerPOVHitResult
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
@@ -233,7 +234,7 @@ class ScrewdriverItem : Item(Properties().stacksTo(1)) {
             val player = Minecraft.getInstance().player
                 ?: return
 
-            if(player.mainHandItem.item != Content.SCREWDRIVER.get()) {
+            if(player.mainHandItem.item != Eln2Tools.SCREWDRIVER.get()) {
                 return
             }
 

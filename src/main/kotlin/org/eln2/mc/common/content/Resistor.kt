@@ -4,6 +4,7 @@ import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.BasicPartVisual
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.content.modules.Eln2BasicComponents
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.data.directionPoleMapPlanar
@@ -31,7 +32,7 @@ class ResistorCell(ci: CellCreateInfo) : Cell(ci), SidedElectricalBipole<Resisto
     val heating = PowerHeatingBehavior(resistor.component::power, thermalWire.thermalBody)
 }
 
-class ResistorPart(ci: PartCreateInfo) : CellPart<ResistorCell>(ci, Content.RESISTOR_CELL.get()), ComponentDisplay {
+class ResistorPart(ci: PartCreateInfo) : CellPart<ResistorCell>(ci, Eln2BasicComponents.RESISTOR_CELL.get()), ComponentDisplay {
     override fun createVisual(ctx: MultipartVisualizationContext) = BasicPartVisual(ctx, this, FlwModels.RESISTOR)
 
     override fun submitDisplay(builder: ComponentDisplayList) {

@@ -94,7 +94,7 @@ class Eln2 {
                 FlwVisualizerRegistry.registerBlockEntityVisualizers()
                 FlwVisualizerRegistry.registerPartVisualizers()
                 FlwVisualizerRegistry.registerSpecVisualizers()
-                Content.clientSetup()
+                Content.setupScreens()
             }
         }
 

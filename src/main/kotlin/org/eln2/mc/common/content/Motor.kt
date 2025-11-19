@@ -29,6 +29,7 @@ import org.ageseries.libage.sim.kinetic.KineticMono
 import org.ageseries.libage.sim.kinetic.KineticNodeSet
 import org.eln2.mc.*
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.content.modules.Eln2Kinetic
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
@@ -316,7 +317,7 @@ class DcMotorPart(
         val state = renderState!!
 
         if(state.kineticSound == null) {
-            state.kineticSound = SimpleLoopingPartSoundInstance(this, Content.MOTOR_KINETIC_SOUND.get()).also {
+            state.kineticSound = SimpleLoopingPartSoundInstance(this, Eln2Kinetic.MOTOR_KINETIC_SOUND.get()).also {
                 it.events.registerHandler<SoundInstanceTickEvent> { e ->
                     // Treat as the standard processing speed for machines, using a nominal speed as a baseline:
                     state.angularVelocityInterpolator.update(state.targetAngularVelocity)
@@ -331,7 +332,7 @@ class DcMotorPart(
         }
 
         if(state.electromagneticSound == null) {
-            state.electromagneticSound = SimpleLoopingPartSoundInstance(this, Content.MOTOR_ELECTROMAGNETIC_SOUND.get()).also {
+            state.electromagneticSound = SimpleLoopingPartSoundInstance(this, Eln2Kinetic.MOTOR_ELECTROMAGNETIC_SOUND.get()).also {
                 it.events.registerHandler<SoundInstanceTickEvent> { e ->
                     // Treat as the standard processing speed for machines, using a nominal speed as a baseline:
                     state.powerInterpolator.update(state.targetPower)

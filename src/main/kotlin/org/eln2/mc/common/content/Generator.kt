@@ -62,6 +62,8 @@ import org.eln2.mc.common.containers.ContainerHelper
 import org.eln2.mc.common.containers.MyAbstractContainerScreen
 import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
 import org.eln2.mc.common.content.FuelBurnState.Companion.canBurn
+import org.eln2.mc.common.content.modules.Eln2HeatGenerators
+import org.eln2.mc.common.content.modules.Eln2Thermodynamics
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.AbstractPartVisual
@@ -227,7 +229,7 @@ class HeatGeneratorCell(ci: CellCreateInfo, thermalDef: ThermalMassDefinition, l
     override fun getContactTemperature(other: Cell) = thermalWire.thermalBody.temperature
 }
 
-class HeatGeneratorBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<HeatGeneratorCell>(pos, state, Content.HEAT_GENERATOR_BLOCK_ENTITY.get()), ComponentDisplay {
+class HeatGeneratorBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<HeatGeneratorCell>(pos, state, Eln2HeatGenerators.HEAT_GENERATOR_BLOCK_ENTITY.get()), ComponentDisplay {
     companion object {
         const val FUEL_SLOT = 0
 
@@ -315,7 +317,7 @@ class HeatGeneratorBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEnti
 
 // FRAK YOU MINECRAFT!!
 
-class HeatGeneratorMenu(pContainerId: Int, playerInventory: Inventory, handler: ItemStackHandler, private val access: ContainerLevelAccess) : AbstractContainerMenu(Content.HEAT_GENERATOR_MENU.get(), pContainerId) {
+class HeatGeneratorMenu(pContainerId: Int, playerInventory: Inventory, handler: ItemStackHandler, private val access: ContainerLevelAccess) : AbstractContainerMenu(Eln2HeatGenerators.HEAT_GENERATOR_MENU.get(), pContainerId) {
     @ServerOnly
     constructor(pBlockEntity: HeatGeneratorBlockEntity, pContainerId: Int, pPlayerInventory: Inventory) : this(
         pContainerId,
@@ -344,7 +346,7 @@ class HeatGeneratorMenu(pContainerId: Int, playerInventory: Inventory, handler: 
 
     override fun quickMoveStack(pPlayer: Player, pIndex: Int) = ContainerHelper.quickMove(slots, pPlayer, pIndex)
 
-    override fun stillValid(pPlayer: Player) = stillValid(access, pPlayer, Content.HEAT_GENERATOR_BLOCK.block.get())
+    override fun stillValid(pPlayer: Player) = stillValid(access, pPlayer, Eln2HeatGenerators.HEAT_GENERATOR_BLOCK.block.get())
 }
 
 class HeatGeneratorScreen(menu: HeatGeneratorMenu, playerInventory: Inventory, title: Component) : MyAbstractContainerScreen<HeatGeneratorMenu>(menu, playerInventory, title) {
@@ -363,7 +365,7 @@ class HeatGeneratorBlock : UprightHorizontalDirectionCellBlock<HeatGeneratorCell
         pBuilder.add(AbstractFurnaceBlock.LIT)
     }
 
-    override fun getCellProvider() = Content.HEAT_GENERATOR_CELL.get()
+    override fun getCellProvider() = Eln2HeatGenerators.HEAT_GENERATOR_CELL.get()
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState): BlockEntity {
         return HeatGeneratorBlockEntity(pPos, pState)
@@ -718,7 +720,7 @@ class ElectricalHeatEngineCell(
 }
 
 class ElectricalHeatEnginePart(ci: PartCreateInfo) :
-    CellPart<ElectricalHeatEngineCell>(ci, Content.ELECTRICAL_HEAT_ENGINE_CELL.get()),
+    CellPart<ElectricalHeatEngineCell>(ci, Eln2Thermodynamics.ELECTRICAL_HEAT_ENGINE_CELL.get()),
     InternalTemperatureConsumer,
     InternalKineticStateConsumer,
     ComponentDisplay

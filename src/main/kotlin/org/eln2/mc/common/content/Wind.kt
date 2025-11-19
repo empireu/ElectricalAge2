@@ -67,6 +67,7 @@ import org.eln2.mc.common.cells.foundation.SubscriberCollection
 import org.eln2.mc.common.cells.foundation.SubscriberPhase
 import org.eln2.mc.common.cells.foundation.addPre
 import org.eln2.mc.common.cells.foundation.pipelikeCellScan
+import org.eln2.mc.common.content.modules.Eln2Kinetic
 import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
@@ -802,7 +803,7 @@ class WindTurbineBlock(
 }
 
 class WindTurbineBlockEntity(pos: BlockPos, state: BlockState) :
-    CellBlockEntity<WindTurbineCell>(pos, state, Content.WIND_TURBINE_BLOCK_ENTITY.get()),
+    CellBlockEntity<WindTurbineCell>(pos, state, Eln2Kinetic.WIND_TURBINE_BLOCK_ENTITY.get()),
     BigBlockRepresentativeBlockEntity<LampPoleBlockEntity>,
     InternalKineticStateConsumer,
     BulkPacketHandlerBlockEntity,

@@ -33,6 +33,7 @@ import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.PartialModelHelper
 import org.eln2.mc.common.containers.*
+import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.recipes.MotorProcessingBlock
 import org.eln2.mc.common.recipes.MotorProcessingBlockEntity
 import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipe
@@ -54,7 +55,7 @@ class CrusherBlock : MotorProcessingBlock<DirectSimpleProcessingRecipe, CrusherB
         pPlayerInventory: Inventory,
     ) = CrusherMenu(pBlockEntity, pContainerId, pPlayerInventory)
 
-    override fun getCellProvider() = Content.BASIC_CRUSHER_CELL.get()
+    override fun getCellProvider() = Eln2Processing.BASIC_CRUSHER_CELL.get()
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = CrusherBlockEntity(pPos, pState)
 
@@ -119,10 +120,10 @@ class CrusherBlock : MotorProcessingBlock<DirectSimpleProcessingRecipe, CrusherB
     }
 }
 
-class CrusherBlockEntity(pos: BlockPos, state: BlockState) : MotorProcessingBlockEntity<DirectSimpleProcessingRecipe>(pos, state, Content.CRUSHER_BLOCK_ENTITY.get(), 2) {
-    override fun getRecipe() = Content.CRUSHING_RECIPE
+class CrusherBlockEntity(pos: BlockPos, state: BlockState) : MotorProcessingBlockEntity<DirectSimpleProcessingRecipe>(pos, state, Eln2Processing.CRUSHER_BLOCK_ENTITY.get(), 2) {
+    override fun getRecipe() = Eln2Processing.CRUSHING_RECIPE
 
-    override fun getSound() = Content.CRUSHER_SOUND_ROCK
+    override fun getSound() = Eln2Processing.CRUSHER_SOUND_ROCK
 
     override fun animateClientTick(dt: Double, speed: Double, level: Level, blockPos: BlockPos) {
         val random = level.getRandom()
@@ -237,7 +238,7 @@ class CrusherMenu(
     val containerData: ProgressContainerData,
     val access: ContainerLevelAccess,
     val level: Level,
-) : AbstractContainerMenu(Content.CRUSHER_MENU.get(), pContainerId) {
+) : AbstractContainerMenu(Eln2Processing.CRUSHER_MENU.get(), pContainerId) {
     @ServerOnly
     constructor(entity: CrusherBlockEntity, id: Int, inventory: Inventory): this(
         id,
@@ -261,7 +262,7 @@ class CrusherMenu(
     init {
         addSlot(
             SlotItemHandlerWithPlacePredicateAndSkipPickupCheck(handler, INPUT_SLOT, 34, 35) {
-                level.recipeExists(Content.CRUSHING_RECIPE, it)
+                level.recipeExists(Eln2Processing.CRUSHING_RECIPE, it)
             }
         )
 
@@ -276,7 +277,7 @@ class CrusherMenu(
         ContainerHelper.addPlayerGrid(playerInventory, this::addSlot)
     }
 
-    override fun stillValid(pPlayer: Player) = stillValid(access, pPlayer, Content.CRUSHER_BLOCK.block.get())
+    override fun stillValid(pPlayer: Player) = stillValid(access, pPlayer, Eln2Processing.CRUSHER_BLOCK.block.get())
 
     override fun quickMoveStack(pPlayer: Player, pIndex: Int) = ContainerHelper.quickMove(slots, pPlayer, pIndex)
 }

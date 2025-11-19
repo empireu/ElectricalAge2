@@ -74,6 +74,7 @@ import org.eln2.mc.common.cells.foundation.SubscriberCollection
 import org.eln2.mc.common.cells.foundation.SubscriberPhase
 import org.eln2.mc.common.cells.foundation.addPost
 import org.eln2.mc.common.containers.MyAbstractContainerScreen
+import org.eln2.mc.common.content.modules.Eln2Signal
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.grids.GridTerminal
@@ -1149,7 +1150,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
 
     override fun getDisplayName(): Component = TITLE
 
-    class OscilloscopeMenu(pContainerId: Int, val part: OscilloscopePart) : AbstractContainerMenu(Content.FLAT_OSCILLOSCOPE_MENU.get(), pContainerId) {
+    class OscilloscopeMenu(pContainerId: Int, val part: OscilloscopePart) : AbstractContainerMenu(Eln2Signal.FLAT_OSCILLOSCOPE_MENU.get(), pContainerId) {
         override fun quickMoveStack(pPlayer: Player, pIndex: Int): ItemStack = ItemStack.EMPTY
         override fun stillValid(pPlayer: Player) = part.stillValid(pPlayer)
     }

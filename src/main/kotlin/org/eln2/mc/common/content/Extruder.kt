@@ -51,6 +51,7 @@ import org.eln2.mc.common.cells.foundation.InternalKineticReplicatorBehavior
 import org.eln2.mc.common.cells.foundation.InternalKineticStateConsumer
 import org.eln2.mc.common.cells.foundation.RotatingKineticState
 import org.eln2.mc.common.containers.*
+import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.sendBulkPacket
 import org.eln2.mc.common.recipes.KineticProcessingBlock
@@ -205,7 +206,7 @@ class ElectricExtruderBlock : MotorProcessingBlock<CatalyzedSimpleProcessingReci
         pPlayerInventory: Inventory,
     ) = ExtruderMenu(pBlockEntity, pContainerId, pPlayerInventory)
 
-    override fun getCellProvider() = Content.ELECTRIC_EXTRUDER_CELL.get()
+    override fun getCellProvider() = Eln2Processing.ELECTRIC_EXTRUDER_CELL.get()
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = ElectricExtruderBlockEntity(pPos, pState)
 
@@ -238,10 +239,10 @@ class ElectricExtruderBlock : MotorProcessingBlock<CatalyzedSimpleProcessingReci
     //#endregion
 }
 
-class ElectricExtruderBlockEntity(pos: BlockPos, state: BlockState) : MotorProcessingBlockEntity<CatalyzedSimpleProcessingRecipe>(pos, state, Content.ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(), 3) {
-    override fun getRecipe() = Content.EXTRUDING_RECIPE
+class ElectricExtruderBlockEntity(pos: BlockPos, state: BlockState) : MotorProcessingBlockEntity<CatalyzedSimpleProcessingRecipe>(pos, state, Eln2Processing.ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(), 3) {
+    override fun getRecipe() = Eln2Processing.EXTRUDING_RECIPE
 
-    override fun getSound() = Content.EXTRUDER_SOUND
+    override fun getSound() = Eln2Processing.EXTRUDER_SOUND
 
     override fun getInputSlots() = intArrayOf(INPUT_SLOT, CATALYST_SLOT)
 
@@ -295,7 +296,7 @@ class KineticExtruderBlock : KineticProcessingBlock<CatalyzedSimpleProcessingRec
         pPlayerInventory: Inventory,
     ) = ExtruderMenu(pBlockEntity, pContainerId, pPlayerInventory)
 
-    override fun getCellProvider() = Content.KINETIC_EXTRUDER_CELL.get()
+    override fun getCellProvider() = Eln2Processing.KINETIC_EXTRUDER_CELL.get()
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = KineticExtruderBlockEntity(pPos, pState)
 
@@ -329,7 +330,7 @@ class KineticExtruderBlock : KineticProcessingBlock<CatalyzedSimpleProcessingRec
 }
 
 class KineticExtruderBlockEntity(pos: BlockPos, state: BlockState) :
-    KineticProcessingBlockEntity<CatalyzedSimpleProcessingRecipe>(pos, state, Content.KINETIC_EXTRUDER_BLOCK_ENTITY.get(), 3),
+    KineticProcessingBlockEntity<CatalyzedSimpleProcessingRecipe>(pos, state, Eln2Processing.KINETIC_EXTRUDER_BLOCK_ENTITY.get(), 3),
     InternalKineticStateConsumer
 {
     var renderState: BasicKineticPart.RenderStateImpl? = null
@@ -343,9 +344,9 @@ class KineticExtruderBlockEntity(pos: BlockPos, state: BlockState) :
         }
     }
 
-    override fun getRecipe() = Content.EXTRUDING_RECIPE
+    override fun getRecipe() = Eln2Processing.EXTRUDING_RECIPE
 
-    override fun getSound() = Content.EXTRUDER_SOUND
+    override fun getSound() = Eln2Processing.EXTRUDER_SOUND
 
     override fun getInputSlots() = intArrayOf(INPUT_SLOT, CATALYST_SLOT)
 
@@ -463,7 +464,7 @@ class ExtruderMenu(
     val containerData: ProgressContainerData,
     val access: ContainerLevelAccess,
     val level: Level
-) : AbstractContainerMenu(Content.EXTRUDER_MENU.get(), pContainerId) {
+) : AbstractContainerMenu(Eln2Processing.EXTRUDER_MENU.get(), pContainerId) {
     @ServerOnly
     constructor(entity: ElectricExtruderBlockEntity, id: Int, inventory: Inventory): this(
         id,
@@ -501,7 +502,7 @@ class ExtruderMenu(
                 container.setItem(INPUT_SLOT, it)
                 container.setItem(CATALYST_SLOT, handler.getStackInSlot(CATALYST_SLOT))
 
-                level.recipeExists(Content.EXTRUDING_RECIPE, container)
+                level.recipeExists(Eln2Processing.EXTRUDING_RECIPE, container)
             }
         )
 
@@ -521,8 +522,8 @@ class ExtruderMenu(
     }
 
     override fun stillValid(pPlayer: Player) =
-        stillValid(access, pPlayer, Content.ELECTRIC_EXTRUDER_BLOCK.block.get()) ||
-        stillValid(access, pPlayer, Content.KINETIC_EXTRUDER_BLOCK.block.get())
+        stillValid(access, pPlayer, Eln2Processing.ELECTRIC_EXTRUDER_BLOCK.block.get()) ||
+        stillValid(access, pPlayer, Eln2Processing.KINETIC_EXTRUDER_BLOCK.block.get())
 
     override fun quickMoveStack(pPlayer: Player, pIndex: Int) = ContainerHelper.quickMove(slots, pPlayer, pIndex)
 }

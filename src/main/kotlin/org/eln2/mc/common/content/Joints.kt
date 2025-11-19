@@ -21,6 +21,7 @@ import org.ageseries.libage.sim.kinetic.KineticTriple
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.BasicKineticPart
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.content.modules.Eln2Kinetic
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
@@ -314,7 +315,7 @@ class JointPart<C>(
             return
         }
 
-        soundInstance = SimpleLoopingPartSoundInstance(this, Content.JOINT_SOUND.get()).also {
+        soundInstance = SimpleLoopingPartSoundInstance(this, Eln2Kinetic.JOINT_SOUND.get()).also {
             it.events.registerHandler<SoundInstanceTickEvent> { e ->
                 // Treat as the standard processing speed for machines, using a nominal speed as a baseline:
                 clientTickSpeedSmoother.update(renderState!!.angularVelocity)

@@ -19,6 +19,7 @@ import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
 import org.eln2.mc.common.blocks.foundation.GridCellBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.content.modules.Eln2Grid
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridMaterialCategory
 import org.eln2.mc.common.grids.GridNode
@@ -46,7 +47,7 @@ class GridPoleBlock(val delegateMap: MultiblockDelegateMap, val attachment: Vect
 }
 
 class GridPoleBlockEntity(private val representativeBlock: GridPoleBlock, pos: BlockPos, state: BlockState) :
-    GridCellBlockEntity<GridAnchorCell>(pos, state, Content.GRID_PASS_THROUGH_POLE_BLOCK_ENTITY.get()),
+    GridCellBlockEntity<GridAnchorCell>(pos, state, Eln2Grid.GRID_PASS_THROUGH_POLE_BLOCK_ENTITY.get()),
     BigBlockRepresentativeBlockEntity<GridPoleBlockEntity>
 {
     override fun createTerminals() {
@@ -108,7 +109,7 @@ class GridAnchorCell(ci: CellCreateInfo, crossResistance: Double) : Cell(ci) {
     val electricalAnchor = GridAnchorElectricalObject(this, crossResistance)
 }
 
-class GridAnchorSpec(ci: SpecCreateInfo, terminalSize: Vector3d, categories: List<GridMaterialCategory>) : CellSpec<GridAnchorCell>(ci, Content.MICRO_GRID_ANCHOR_CELL.get()),
+class GridAnchorSpec(ci: SpecCreateInfo, terminalSize: Vector3d, categories: List<GridMaterialCategory>) : CellSpec<GridAnchorCell>(ci, Eln2Grid.MICRO_GRID_ANCHOR_CELL.get()),
     ComponentDisplay {
     val terminal = defineCellBoxTerminal(
         0.0, 0.0, 0.0,

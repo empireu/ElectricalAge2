@@ -46,6 +46,7 @@ import org.eln2.mc.client.render.foundation.partTransformation
 import org.eln2.mc.common.*
 import org.eln2.mc.common.blocks.foundation.*
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.content.modules.Eln2Lights
 import org.eln2.mc.common.events.EventListener
 import org.eln2.mc.common.events.EventQueue
 import org.eln2.mc.common.events.Scheduler
@@ -732,7 +733,7 @@ class LampPoleBlockEntityVisual(
 }
 
 class LampPoleBlockEntity(pos: BlockPos, state: BlockState) :
-    CellBlockEntity<PolarLightCell>(pos, state, Content.LAMP_POLE_BLOCK_ENTITY.get()),
+    CellBlockEntity<PolarLightCell>(pos, state, Eln2Lights.LAMP_POLE_BLOCK_ENTITY.get()),
     BigBlockRepresentativeBlockEntity<LampPoleBlockEntity>,
     EventListener,
     ComponentDisplay,
@@ -754,7 +755,7 @@ class LampPoleBlockEntity(pos: BlockPos, state: BlockState) :
     }
 
     override val delegateMap: MultiblockDelegateMap
-        get() = Content.LAMP_POLE_BLOCK_DELEGATE_MAP.value
+        get() = Eln2Lights.LAMP_POLE_BLOCK_DELEGATE_MAP.value
 
     override fun setDestroyed() {
         destroyDelegates()

@@ -7,6 +7,7 @@ import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.BasicPartVisual
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.content.modules.Eln2BasicComponents
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.parts.foundation.GridCellPart
@@ -36,7 +37,7 @@ class GroundCell(ci: CellCreateInfo) : Cell(ci), SidedElectricalFLBR<GroundCell>
     }
 }
 
-class GroundPart(ci: PartCreateInfo) : GridCellPart<GroundCell>(ci, Content.GROUND_CELL.get()), WrenchRotatable, ComponentDisplay {
+class GroundPart(ci: PartCreateInfo) : GridCellPart<GroundCell>(ci, Eln2BasicComponents.GROUND_CELL.get()), WrenchRotatable, ComponentDisplay {
     val terminal = defineCellBoxTerminal(
         0.0, 0.0, 0.0,
         placement.provider.placementCollisionSize.x,
@@ -49,7 +50,7 @@ class GroundPart(ci: PartCreateInfo) : GridCellPart<GroundCell>(ci, Content.GROU
     override fun submitDisplay(builder: ComponentDisplayList) = cell.submitDisplay(builder)
 }
 
-class GroundSpec(ci: SpecCreateInfo) : CellSpec<GroundCell>(ci, Content.GROUND_CELL.get()), ComponentDisplay {
+class GroundSpec(ci: SpecCreateInfo) : CellSpec<GroundCell>(ci, Eln2BasicComponents.GROUND_CELL.get()), ComponentDisplay {
     val terminal = defineCellBoxTerminal(
         0.0, 0.0, 0.0,
         placement.provider.placementCollisionSize.x,

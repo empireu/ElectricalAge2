@@ -14,6 +14,7 @@ import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.content.modules.Eln2Signal
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridMaterialCategory
 import org.eln2.mc.common.grids.GridNode
@@ -210,7 +211,7 @@ class PotentialProbeCell(
 }
 
 class PotentialProbePart(ci: PartCreateInfo, val models: Map<Base6Direction3d, WireConnectionModelPartial>) :
-    GridCellPart<PotentialProbeCell>(ci, Content.POTENTIAL_PROBE_CELL.get()),
+    GridCellPart<PotentialProbeCell>(ci, Eln2Signal.POTENTIAL_PROBE_CELL.get()),
     ComponentDisplay,
     PartWithKnobs,
     ScrewdriverScrollable,

@@ -8,6 +8,7 @@ import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.LinearDiode
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.content.modules.Eln2BasicComponents
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.data.PoleMap
@@ -85,7 +86,7 @@ class DiodeCell(
     }
 }
 
-class DiodePart(ci: PartCreateInfo) : CellPart<DiodeCell>(ci, Content.DIODE_CELL.get()), ComponentDisplay {
+class DiodePart(ci: PartCreateInfo) : CellPart<DiodeCell>(ci, Eln2BasicComponents.DIODE_CELL.get()), ComponentDisplay {
     override fun submitDisplay(builder: ComponentDisplayList) {
         builder.translateBoolean("diode_conducting", cell.electrical.diode.isConducting)
         builder.quantity(cell.thermal.thermalBody.temperature)

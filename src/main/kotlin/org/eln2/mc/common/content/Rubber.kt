@@ -14,17 +14,14 @@ import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Blocks
-import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.shapes.Shapes
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.OnServerThread
-import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.partTransformation
-import org.eln2.mc.common.blocks.BlockRegistry
-import org.eln2.mc.common.blocks.foundation.MultipartBlock
-import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
+import org.eln2.mc.common.content.modules.Eln2Ingredients
+import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.extensions.addItem
 import org.eln2.mc.extensions.minus
@@ -224,7 +221,7 @@ class RubberTapPart(ci: PartCreateInfo) : Part(ci), TickablePart, ComponentDispl
 
         val (x, y, z) = placement.mountingPointWorld + placement.face.vector3d * 0.4
 
-        level.addItem(x, y, z, ItemStack(Content.LATEX_ITEM.get(), 1))
+        level.addItem(x, y, z, ItemStack(Eln2Ingredients.LATEX_ITEM.get(), 1))
 
         progress = 0.0
 

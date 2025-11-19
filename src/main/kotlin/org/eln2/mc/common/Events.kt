@@ -25,6 +25,9 @@ import org.eln2.mc.common.cells.foundation.CellGraphManager
 import org.eln2.mc.common.content.Content
 import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.content.WindSystem
+import org.eln2.mc.common.content.modules.Eln2Kinetic
+import org.eln2.mc.common.content.modules.Eln2Lights
+import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.events.schedulePost
 import org.eln2.mc.common.grids.GridCollisions
 import org.eln2.mc.common.grids.GridConnectionManagerClient
@@ -46,27 +49,27 @@ object ModEvents {
         )
 
         event.registerBlockEntityRenderer(
-            Content.LAMP_POLE_BLOCK_ENTITY.get(),
+            Eln2Lights.LAMP_POLE_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
 
         event.registerBlockEntityRenderer(
-            Content.CRUSHER_BLOCK_ENTITY.get(),
+            Eln2Processing.CRUSHER_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
 
         event.registerBlockEntityRenderer(
-            Content.ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(),
+            Eln2Processing.ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
 
         event.registerBlockEntityRenderer(
-            Content.KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
+            Eln2Processing.KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
 
         event.registerBlockEntityRenderer(
-            Content.WIND_TURBINE_BLOCK_ENTITY.get(),
+            Eln2Kinetic.WIND_TURBINE_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
     }
