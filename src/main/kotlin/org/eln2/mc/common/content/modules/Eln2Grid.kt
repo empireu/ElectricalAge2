@@ -2,6 +2,8 @@
 
 package org.eln2.mc.common.content.modules
 
+import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
+import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.phys.AABB
 import net.minecraftforge.registries.RegistryObject
@@ -14,6 +16,11 @@ import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.ChemicalElement
 import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.BasicSpecVisual
+import org.eln2.mc.client.render.foundation.ConnectedPartVisual
+import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setPartVisualizer
+import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setSpecVisualizer
+import org.eln2.mc.client.render.foundation.TestBlockEntityVisual
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
@@ -23,7 +30,6 @@ import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
 import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.foundation.CellProvider
 import org.eln2.mc.common.cells.foundation.ElectricalSize
-import org.eln2.mc.common.content.ContentModule
 import org.eln2.mc.common.content.GridAnchorCell
 import org.eln2.mc.common.content.GridAnchorSpec
 import org.eln2.mc.common.content.GridInterfaceCell
@@ -42,6 +48,59 @@ import org.eln2.mc.common.specs.foundation.SpecFactory
 import kotlin.math.PI
 
 object Eln2Grid : ContentModule() {
+    override fun registerBlockEntityVisualizers() {
+        VisualizerRegistry.setVisualizer(
+            GRID_PASS_THROUGH_POLE_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer({ ctx, blockEntity, partialTick ->
+                TestBlockEntityVisual(ctx, blockEntity, partialTick,FlwModels.POLE_TEMPORARY) { instance, renderer ->
+                    instance.translate(renderer.visualPosition)
+                }
+            }) { true }
+        )
+    }
+
+    override fun registerPartVisualizers() {
+        setPartVisualizer<GridInterfacePart>(POWER_GRID_INTERFACE_PART.part.get()) { ctx, part ->
+            ConnectedPartVisual(
+                ctx, part,
+                FlwModels.POWER_GRID_INTERFACE,
+                FlwModels.STANDARD_CONNECTION
+            )
+        }
+
+        setPartVisualizer<GridInterfacePart>(MICRO_GRID_INTERFACE_PART.part.get()) { ctx, part ->
+            ConnectedPartVisual(
+                ctx, part,
+                FlwModels.MICRO_GRID_INTERFACE,
+                FlwModels.STANDARD_CONNECTION
+            )
+        }
+
+        setPartVisualizer<GridInterfacePart>(SIGNAL_GRID_INTERFACE_PART.part.get()) { ctx, part ->
+            ConnectedPartVisual(
+                ctx, part,
+                FlwModels.SIGNAL_GRID_INTERFACE,
+                FlwModels.SIGNAL_WIRE_CONNECTION.hub
+            )
+        }
+    }
+
+    override fun registerSpecVisualizers() {
+        setSpecVisualizer<GridAnchorSpec>(Eln2Grid.MICRO_GRID_ANCHOR_SPEC.spec.get()) { ctx, spec ->
+            BasicSpecVisual(
+                ctx, spec,
+                FlwModels.MICRO_GRID_ANCHOR
+            )
+        }
+
+        setSpecVisualizer<GridAnchorSpec>(Eln2Grid.SIGNAL_GRID_ANCHOR_SPEC.spec.get()) { ctx, spec ->
+            BasicSpecVisual(
+                ctx, spec,
+                FlwModels.SIGNAL_GRID_ANCHOR
+            )
+        }
+    }
+
     val GRID_CABLE_PLIERS = item("grid_cable_pliers", ::GridCablePliersItem)
 
     // PS. this is a supplier, it's fine on the server side.

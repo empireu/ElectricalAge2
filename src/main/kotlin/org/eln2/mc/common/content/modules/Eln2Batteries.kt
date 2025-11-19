@@ -10,21 +10,44 @@ import org.ageseries.libage.data.OHM
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.WATT_HOUR
 import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.BasicPartVisual
+import org.eln2.mc.client.render.foundation.BasicSpecVisual
+import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setPartVisualizer
+import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setSpecVisualizer
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.cells.foundation.ElectricalSize
 import org.eln2.mc.common.content.BatteryModels
 import org.eln2.mc.common.content.BatteryPart
 import org.eln2.mc.common.content.BatterySpec
-import org.eln2.mc.common.content.ContentModule
 import org.eln2.mc.common.content.PolarBatteryCell
 import org.eln2.mc.common.content.TerminalBatteryCell
 import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
 import org.eln2.mc.common.specs.SpecRegistry.specImmediateBB
 import org.eln2.mc.data.directionPoleMapPlanar
 import org.eln2.mc.mathematics.Base6Direction3d
+import kotlin.math.PI
 
 object Eln2Batteries : ContentModule() {
+    override fun registerPartVisualizers() {
+        setPartVisualizer<BatteryPart>(BATTERY_PART_12V.part.get()) { ctx, part ->
+            BasicPartVisual(
+                ctx, part,
+                FlwModels.LEAD_ACID_BATTERY,
+                rotation = PI
+            )
+        }
+    }
+
+    override fun registerSpecVisualizers() {
+        setSpecVisualizer<BatterySpec>(BATTERY_SPEC_12V.spec.get()) { ctx, spec ->
+            BasicSpecVisual(
+                ctx, spec,
+                FlwModels.SPEC_LEAD_ACID_BATTERY
+            )
+        }
+    }
+
     val LEAD_ACID_BATTERY_CELL_12V_840Wh = cellMemoize("lead_acid_battery_12v_840wh") {
         val model = BatteryModels.leadAcid12v(
             Quantity(840.0, WATT_HOUR),

@@ -5,10 +5,11 @@ package org.eln2.mc.common.content.modules
 import net.minecraft.client.gui.screens.MenuScreens
 import org.ageseries.libage.mathematics.geometry.Vector4d
 import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.BasicPartVisual
+import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setPartVisualizer
 import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.foundation.ElectricalSize
 import org.eln2.mc.common.containers.ContainerRegistry.menu
-import org.eln2.mc.common.content.ContentModule
 import org.eln2.mc.common.content.OscilloscopeCell
 import org.eln2.mc.common.content.OscilloscopeChannelGenerators
 import org.eln2.mc.common.content.OscilloscopePalette
@@ -28,6 +29,23 @@ import org.eln2.mc.data.nullMonopoleMap
 import org.eln2.mc.mathematics.Base6Direction3d
 
 object Eln2Signal : ContentModule() {
+    override fun registerPartVisualizers() {
+        setPartVisualizer<OscilloscopePart>(FLAT_OSCILLOSCOPE_PART.part.get()) { ctx, part ->
+            BasicPartVisual(
+                ctx, part,
+                FlwModels.FLAT_OSCILLOSCOPE_PART
+            )
+        }
+
+        setPartVisualizer<OscilloscopePart>(BASIC_SINGLE_CHANNEL_OSCILLOSCOPE_PART.part.get()) { ctx, part ->
+            BasicPartVisual(
+                ctx, part,
+                FlwModels.BASIC_SINGLE_CHANNEL_OSCILLOSCOPE_PART,
+                smoothLighting = true
+            )
+        }
+    }
+
     override fun setupScreens() {
         MenuScreens.register(FLAT_OSCILLOSCOPE_MENU.get(), ::OscilloscopeScreen)
     }

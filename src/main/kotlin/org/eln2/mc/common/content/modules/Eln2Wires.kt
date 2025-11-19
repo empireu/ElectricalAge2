@@ -19,7 +19,6 @@ import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.cells.foundation.ElectricalSize
 import org.eln2.mc.common.cells.foundation.RadiantBodyEmissionDescription
 import org.eln2.mc.common.cells.foundation.ThermalSize
-import org.eln2.mc.common.content.ContentModule
 import org.eln2.mc.common.content.ElectricalWireBuilder
 import org.eln2.mc.common.content.RadiatorPart
 import org.eln2.mc.common.content.ThermalWireBuilder

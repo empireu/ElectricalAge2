@@ -2,8 +2,11 @@
 
 package org.eln2.mc.common.content.modules
 
+import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
+import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.minecraft.core.BlockPos
 import net.minecraft.world.phys.AABB
+import net.minecraftforge.client.event.EntityRenderersEvent
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.OHM
 import org.ageseries.libage.data.Potential
@@ -14,6 +17,10 @@ import org.ageseries.libage.data.VOLT
 import org.ageseries.libage.data.WATT
 import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.BasicPartVisual
+import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
+import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setPartVisualizer
 import org.eln2.mc.common.LightBulbItem
 import org.eln2.mc.common.LightFieldPrimitives
 import org.eln2.mc.common.LightModel
@@ -25,9 +32,10 @@ import org.eln2.mc.common.blocks.BlockRegistry.defineDelegateMap
 import org.eln2.mc.common.blocks.foundation.BigBlockItem
 import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.foundation.ElectricalSize
-import org.eln2.mc.common.content.ContentModule
 import org.eln2.mc.common.content.LampPoleBlock
 import org.eln2.mc.common.content.LampPoleBlockEntity
+import org.eln2.mc.common.content.LampPoleBlockEntityVisual
+import org.eln2.mc.common.content.LightFixturePartVisual
 import org.eln2.mc.common.content.PolarLightCell
 import org.eln2.mc.common.content.PolarPoweredLightPart
 import org.eln2.mc.common.content.SolarLightModel
@@ -49,6 +57,54 @@ import kotlin.math.PI
 import kotlin.math.pow
 
 object Eln2Lights : ContentModule() {
+    override fun registerBlockEntityVisualizers() {
+        VisualizerRegistry.setVisualizer(
+            LAMP_POLE_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::LampPoleBlockEntityVisual) { true }
+        )
+    }
+
+    override fun registerPartVisualizers() {
+        setPartVisualizer<SolarLightPart>(SMALL_GARDEN_LIGHT.part.get()) { ctx, part ->
+            BasicPartVisual(
+                ctx,
+                part,
+                FlwModels.SMALL_GARDEN_LIGHT
+            )
+        }
+
+        setPartVisualizer<SolarLightPart>(TALL_GARDEN_LIGHT.part.get()) { ctx, part ->
+            LightFixturePartVisual(
+                ctx, part,
+                FlwModels.TALL_GARDEN_LIGHT_CAGE,
+                FlwModels.TALL_GARDEN_LIGHT_EMITTER
+            )
+        }
+
+        setPartVisualizer<PolarPoweredLightPart>(LIGHT_PART.part.get()) { ctx, part ->
+            LightFixturePartVisual(
+                ctx, part,
+                FlwModels.SMALL_WALL_LAMP_CAGE,
+                FlwModels.SMALL_WALL_LAMP_EMITTER
+            )
+        }
+
+        setPartVisualizer<TerminalPoweredLightPart>(LIGHT_PART_MICRO_GRID.part.get()) { ctx, part ->
+            LightFixturePartVisual(
+                ctx, part,
+                FlwModels.SMALL_WALL_LAMP_CAGE_MICRO_GRID,
+                FlwModels.SMALL_WALL_LAMP_EMITTER
+            )
+        }
+    }
+
+    override fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
+        event.registerBlockEntityRenderer(
+            LAMP_POLE_BLOCK_ENTITY.get(),
+            DummyBlockEntityRendererProvider()
+        )
+    }
+
     val POLAR_LIGHT_CELL_CONE_45DEG = cellImmediate("polar_light_45deg") {
         PolarLightCell(
             it,

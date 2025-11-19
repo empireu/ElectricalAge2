@@ -17,17 +17,13 @@ import net.minecraftforge.server.ServerLifecycleHooks
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.DebugVisualizer
-import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityLevelRendererProvider
 import org.eln2.mc.common.cells.foundation.CellGraph
 import org.eln2.mc.common.cells.foundation.CellGraphManager
-import org.eln2.mc.common.content.Content
+import org.eln2.mc.common.content.modules.ContentModuleManager
 import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.content.WindSystem
-import org.eln2.mc.common.content.modules.Eln2Kinetic
-import org.eln2.mc.common.content.modules.Eln2Lights
-import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.events.schedulePost
 import org.eln2.mc.common.grids.GridCollisions
 import org.eln2.mc.common.grids.GridConnectionManagerClient
@@ -48,30 +44,7 @@ object ModEvents {
             MultipartBlockEntityLevelRendererProvider()
         )
 
-        event.registerBlockEntityRenderer(
-            Eln2Lights.LAMP_POLE_BLOCK_ENTITY.get(),
-            DummyBlockEntityRendererProvider()
-        )
-
-        event.registerBlockEntityRenderer(
-            Eln2Processing.CRUSHER_BLOCK_ENTITY.get(),
-            DummyBlockEntityRendererProvider()
-        )
-
-        event.registerBlockEntityRenderer(
-            Eln2Processing.ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(),
-            DummyBlockEntityRendererProvider()
-        )
-
-        event.registerBlockEntityRenderer(
-            Eln2Processing.KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
-            DummyBlockEntityRendererProvider()
-        )
-
-        event.registerBlockEntityRenderer(
-            Eln2Kinetic.WIND_TURBINE_BLOCK_ENTITY.get(),
-            DummyBlockEntityRendererProvider()
-        )
+        ContentModuleManager.registerBlockEntityRenderers(event)
     }
 
     @SubscribeEvent @JvmStatic

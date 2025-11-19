@@ -2,7 +2,10 @@
 
 package org.eln2.mc.common.content.modules
 
+import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
+import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.minecraft.client.gui.screens.MenuScreens
+import net.minecraftforge.client.event.EntityRenderersEvent
 import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.HENRY
 import org.ageseries.libage.data.KILO
@@ -22,18 +25,20 @@ import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.FrictionNodeDescription
+import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
 import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.containers.ContainerRegistry.menu
-import org.eln2.mc.common.content.ContentModule
 import org.eln2.mc.common.content.CrusherBlock
 import org.eln2.mc.common.content.CrusherBlockEntity
+import org.eln2.mc.common.content.CrusherBlockEntityVisual
 import org.eln2.mc.common.content.CrusherMenu
 import org.eln2.mc.common.content.CrusherScreen
 import org.eln2.mc.common.content.ElectricExtruderBlock
 import org.eln2.mc.common.content.ElectricExtruderBlockEntity
+import org.eln2.mc.common.content.ElectricExtruderBlockEntityVisual
 import org.eln2.mc.common.content.ExtruderMenu
 import org.eln2.mc.common.content.ExtruderScreen
 import org.eln2.mc.common.content.FurnaceBlock
@@ -43,6 +48,7 @@ import org.eln2.mc.common.content.FurnaceMenu
 import org.eln2.mc.common.content.FurnaceScreen
 import org.eln2.mc.common.content.KineticExtruderBlock
 import org.eln2.mc.common.content.KineticExtruderBlockEntity
+import org.eln2.mc.common.content.KineticExtruderBlockEntityVisual
 import org.eln2.mc.common.content.RubberTapPartProvider
 import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
 import org.eln2.mc.common.recipes.KineticProcessingCell
@@ -60,6 +66,40 @@ import org.eln2.mc.data.nullPolarMap
 import org.eln2.mc.mathematics.Base6Direction3d
 
 object Eln2Processing : ContentModule() {
+    override fun registerBlockEntityVisualizers() {
+        VisualizerRegistry.setVisualizer(
+            CRUSHER_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::CrusherBlockEntityVisual) { true }
+        )
+
+        VisualizerRegistry.setVisualizer(
+            ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::ElectricExtruderBlockEntityVisual) { true }
+        )
+
+        VisualizerRegistry.setVisualizer(
+            KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::KineticExtruderBlockEntityVisual) { true }
+        )
+    }
+
+    override fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
+        event.registerBlockEntityRenderer(
+            CRUSHER_BLOCK_ENTITY.get(),
+            DummyBlockEntityRendererProvider()
+        )
+
+        event.registerBlockEntityRenderer(
+            ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(),
+            DummyBlockEntityRendererProvider()
+        )
+
+        event.registerBlockEntityRenderer(
+            KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
+            DummyBlockEntityRendererProvider()
+        )
+    }
+
     override fun setupScreens() {
         MenuScreens.register(FURNACE_MENU.get(), ::FurnaceScreen)
         MenuScreens.register(CRUSHER_MENU.get(), ::CrusherScreen)

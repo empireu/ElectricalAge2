@@ -50,7 +50,6 @@ import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.mathematics.geometry.*
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
-import org.eln2.mc.common.content.Content
 import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.joml.Quaternionf

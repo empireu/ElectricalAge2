@@ -2,7 +2,10 @@
 
 package org.eln2.mc.common.content.modules
 
+import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
+import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.minecraft.world.phys.AABB
+import net.minecraftforge.client.event.EntityRenderersEvent
 import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.HENRY
 import org.ageseries.libage.data.KILO
@@ -25,6 +28,13 @@ import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.FrictionNodeDescription
 import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.BasicKineticPartVisual
+import org.eln2.mc.client.render.foundation.BasicPartVisual
+import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
+import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setPartVisualizer
+import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setPartVisualizerMemoized
+import org.eln2.mc.client.render.foundation.ShaftDescription
+import org.eln2.mc.client.render.foundation.SingleNodeMultiShaftKineticPartVisual
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
@@ -34,7 +44,6 @@ import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.cells.foundation.ElectricalSize
 import org.eln2.mc.common.cells.foundation.KineticSize
-import org.eln2.mc.common.content.ContentModule
 import org.eln2.mc.common.content.DcMotorCell
 import org.eln2.mc.common.content.DcMotorOptions
 import org.eln2.mc.common.content.DcMotorPart
@@ -45,18 +54,126 @@ import org.eln2.mc.common.content.TripleJointCell
 import org.eln2.mc.common.content.WindTurbine3dModel
 import org.eln2.mc.common.content.WindTurbineBlock
 import org.eln2.mc.common.content.WindTurbineBlockEntity
+import org.eln2.mc.common.content.WindTurbineBlockEntityVisual
 import org.eln2.mc.common.content.WindTurbineCell
 import org.eln2.mc.common.content.WindTurbineOptions
 import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
 import org.eln2.mc.common.parts.PartRegistry.partMemoizeBB
 import org.eln2.mc.common.parts.foundation.PartFactory
+import org.eln2.mc.common.parts.foundation.PartVisualizer
 import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
 import org.eln2.mc.data.directionPoleMapPlanar
 import org.eln2.mc.data.monopolarMapPlanar
+import org.eln2.mc.mathematics.Axis3d
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 
 object Eln2Kinetic : ContentModule() {
+    override fun registerBlockEntityVisualizers() {
+        VisualizerRegistry.setVisualizer(
+            WIND_TURBINE_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::WindTurbineBlockEntityVisual) { true }
+        )
+    }
+
+    override fun registerPartVisualizers() {
+        setPartVisualizer<JointPart<DoubleJointCell>>(STANDARD_IRON_DOUBLE_JOINT_PART.part.get()) { ctx, part ->
+            BasicKineticPartVisual(
+                ctx, part,
+                FlwModels.STANDARD_IRON_DOUBLE_JOINT_BODY,
+                FlwModels.STANDARD_IRON_DOUBLE_JOINT_SHAFT
+            )
+        }
+
+        setPartVisualizerMemoized<JointPart<DoubleJointCell>>(STANDARD_IRON_DOUBLE_JOINT_90DEG_PART.part.get()) {
+            val descriptions = listOf(
+                ShaftDescription(
+                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_SHAFT1,
+                    Axis3d.X,
+                    -1.0
+                ),
+                ShaftDescription(
+                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_SHAFT2,
+                    Axis3d.Z,
+                    1.0
+                )
+            )
+
+            PartVisualizer { ctx, part ->
+                SingleNodeMultiShaftKineticPartVisual(
+                    ctx, part,
+                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_BODY,
+                    descriptions
+                )
+            }
+        }
+
+        setPartVisualizerMemoized<JointPart<DoubleJointCell>>(STANDARD_IRON_DOUBLE_JOINT_90DEG_2X_PART.part.get()) {
+            val descriptions = listOf(
+                ShaftDescription(
+                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_SHAFT1,
+                    Axis3d.X,
+                    -1.0
+                ),
+                ShaftDescription(
+                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_SHAFT2,
+                    Axis3d.Z,
+                    2.0
+                )
+            )
+
+            PartVisualizer { ctx, part ->
+                SingleNodeMultiShaftKineticPartVisual(
+                    ctx, part,
+                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_BODY,
+                    descriptions
+                )
+            }
+        }
+
+        setPartVisualizerMemoized<JointPart<TripleJointCell>>(STANDARD_IRON_TRIPLE_T_JOINT_PART.part.get()) {
+            val descriptions = listOf(
+                ShaftDescription(
+                    FlwModels.STANDARD_IRON_TRIPLE_T_JOINT_SHAFT1,
+                    Axis3d.Z,
+                    -1.0
+                ),
+                ShaftDescription(
+                    FlwModels.STANDARD_IRON_TRIPLE_T_JOINT_SHAFT2,
+                    Axis3d.X,
+                    -1.0
+                ),
+                ShaftDescription(
+                    FlwModels.STANDARD_IRON_TRIPLE_T_JOINT_SHAFT3,
+                    Axis3d.X,
+                    1.0
+                )
+            )
+
+            PartVisualizer { ctx, part ->
+                SingleNodeMultiShaftKineticPartVisual(
+                    ctx, part,
+                    FlwModels.STANDARD_IRON_TRIPLE_T_JOINT_BODY,
+                    descriptions
+                )
+            }
+        }
+
+        setPartVisualizer<DcMotorPart>(BASIC_DC_MOTOR_PART.part.get()) { ctx, part ->
+            BasicPartVisual(
+                ctx, part,
+                FlwModels.BASIC_DC_MOTOR
+            )
+        }
+    }
+
+    override fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
+        event.registerBlockEntityRenderer(
+            Eln2Kinetic.WIND_TURBINE_BLOCK_ENTITY.get(),
+            DummyBlockEntityRendererProvider()
+        )
+    }
+
     //#region Joints
 
     val JOINT_SOUND = soundEventVariableRange("shaft")

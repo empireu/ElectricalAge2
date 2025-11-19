@@ -12,15 +12,25 @@ import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.BasicSpecVisual
+import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setSpecVisualizer
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
-import org.eln2.mc.common.content.ContentModule
 import org.eln2.mc.common.content.DcToDcConverterModel
 import org.eln2.mc.common.content.DcToDcConverterSpec
 import org.eln2.mc.common.content.TerminalDcToDcConverterCell
 import org.eln2.mc.common.specs.SpecRegistry.specImmediateBB
 
 object Eln2PowerDevices : ContentModule() {
+    override fun registerSpecVisualizers() {
+        setSpecVisualizer<DcToDcConverterSpec>(Eln2PowerDevices.DC_TO_DC_CONVERTER_SPEC.spec.get()) { ctx, spec ->
+            BasicSpecVisual(
+                ctx, spec,
+                FlwModels.SMALL_DC_TO_DC_CONVERTER
+            )
+        }
+    }
+
     val TERMINAL_DC_TO_DC_CONVERTER_CELL_800W = cellMemoize("terminal_dc_to_dc_converter_800w") {
         val thermalDef = ThermalMassDefinition(
             ChemicalElement.Iron.asMaterial,

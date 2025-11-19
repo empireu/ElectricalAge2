@@ -16,7 +16,6 @@ import org.ageseries.libage.data.MutableSetMapMultiMap
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.common.blocks.BlockRegistry
-import org.eln2.mc.common.content.Content
 import org.eln2.mc.common.content.modules.Eln2BasicComponents
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.SpecRegistry

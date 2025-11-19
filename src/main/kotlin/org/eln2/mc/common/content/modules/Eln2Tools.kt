@@ -2,7 +2,6 @@
 
 package org.eln2.mc.common.content.modules
 
-import org.eln2.mc.common.content.ContentModule
 import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.content.WrenchItem
 import org.eln2.mc.common.items.ItemRegistry.item

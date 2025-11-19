@@ -63,7 +63,7 @@ import org.eln2.mc.common.containers.MyAbstractContainerScreen
 import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
 import org.eln2.mc.common.content.FuelBurnState.Companion.canBurn
 import org.eln2.mc.common.content.modules.Eln2HeatGenerators
-import org.eln2.mc.common.content.modules.Eln2Thermodynamics
+import org.eln2.mc.common.content.modules.Eln2Thermal
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.AbstractPartVisual
@@ -720,7 +720,7 @@ class ElectricalHeatEngineCell(
 }
 
 class ElectricalHeatEnginePart(ci: PartCreateInfo) :
-    CellPart<ElectricalHeatEngineCell>(ci, Eln2Thermodynamics.ELECTRICAL_HEAT_ENGINE_CELL.get()),
+    CellPart<ElectricalHeatEngineCell>(ci, Eln2Thermal.ELECTRICAL_HEAT_ENGINE_CELL.get()),
     InternalTemperatureConsumer,
     InternalKineticStateConsumer,
     ComponentDisplay

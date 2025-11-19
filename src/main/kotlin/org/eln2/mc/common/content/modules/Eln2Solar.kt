@@ -7,9 +7,11 @@ import org.ageseries.libage.data.OHM
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.VOLT
 import org.ageseries.libage.data.requireLocator
+import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.BasicPartVisual
+import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setPartVisualizer
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
-import org.eln2.mc.common.content.ContentModule
 import org.eln2.mc.common.content.PhotovoltaicGeneratorCell
 import org.eln2.mc.common.content.PhotovoltaicModel
 import org.eln2.mc.common.content.PhotovoltaicPanelPart
@@ -19,6 +21,15 @@ import org.eln2.mc.data.directionPoleMapPlanar
 import org.eln2.mc.extensions.vector3d
 
 object Eln2Solar : ContentModule() {
+    override fun registerPartVisualizers() {
+        setPartVisualizer<PhotovoltaicPanelPart>(PHOTOVOLTAIC_PANEL_PART.part.get()) { ctx, part ->
+            BasicPartVisual(
+                ctx, part,
+                FlwModels.SOLAR_PANEL_ONE_BLOCK
+            )
+        }
+    }
+
     val PHOTOVOLTAIC_GENERATOR_CELL = cellMemoize("photovoltaic_generator") {
         val map = directionPoleMapPlanar()
 

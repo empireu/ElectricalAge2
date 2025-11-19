@@ -50,6 +50,7 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.utils.Stopwatch
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.ClientOnly
+import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.buildDirectionTable
@@ -72,7 +73,7 @@ import org.eln2.mc.common.content.modules.Eln2PowerDevices
 import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.content.modules.Eln2Signal
 import org.eln2.mc.common.content.modules.Eln2Solar
-import org.eln2.mc.common.content.modules.Eln2Thermodynamics
+import org.eln2.mc.common.content.modules.Eln2Thermal
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.common.specs.foundation.*
@@ -98,7 +99,7 @@ import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
 import kotlin.math.PI
 
-private fun interface PartVisualizerSupplier<P : Part> {
+fun interface PartVisualizerSupplier<P : Part> {
     fun get() : PartVisualizer<P>
 }
 
@@ -106,7 +107,7 @@ object FlwVisualizerRegistry {
     private val partVisualizerRegistry = HashMap<PartProvider, PartVisualizer<*>>()
     private val specVisualizerRegistry = HashMap<SpecProvider, SpecVisualizer<*>>()
 
-    private fun <P : Part> setPartVisualizer(partProvider: PartProvider, visualizer: PartVisualizer<P>) {
+    fun <P : Part> setPartVisualizer(partProvider: PartProvider, visualizer: PartVisualizer<P>) {
         if(partVisualizerRegistry.contains(partProvider)) {
             error("Duplicate register part visualizer ${partProvider.id}")
         }
@@ -114,10 +115,10 @@ object FlwVisualizerRegistry {
         partVisualizerRegistry[partProvider] = visualizer
     }
 
-    private fun <P : Part> setPartVisualizerMemoized(partProvider: PartProvider, memoizer: PartVisualizerSupplier<P>) =
+    fun <P : Part> setPartVisualizerMemoized(partProvider: PartProvider, memoizer: PartVisualizerSupplier<P>) =
         setPartVisualizer(partProvider, memoizer.get())
 
-    private fun <S : Spec> setSpecVisualizer(specProvider: SpecProvider, visualizer: SpecVisualizer<S>) {
+    fun <S : Spec> setSpecVisualizer(specProvider: SpecProvider, visualizer: SpecVisualizer<S>) {
         if(specVisualizerRegistry.contains(specProvider)) {
             error("Duplicate register spec visualizer ${specProvider.id}")
         }
@@ -126,282 +127,16 @@ object FlwVisualizerRegistry {
     }
 
     fun getPartVisualizer(provider: PartProvider) = partVisualizerRegistry[provider]
-        ?: error("Visualizer for part $provider not registered")
+        ?: error(DEBUGGER_BREAK("Visualizer for part $provider not registered"))
 
     fun getSpecVisualizer(provider: SpecProvider) = specVisualizerRegistry[provider]
-        ?: error("Visualizer for spec $provider not registered")
+        ?: error(DEBUGGER_BREAK("Visualizer for spec $provider not registered"))
 
-    fun registerBlockEntityVisualizers() {
+    fun registerFoundationalVisualizers() {
         VisualizerRegistry.setVisualizer(
             BlockRegistry.MULTIPART_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::MultipartBlockEntityVisual) { false /* ADDITIONAL RENDERER */ }
         )
-
-        VisualizerRegistry.setVisualizer(
-            Eln2Grid.GRID_PASS_THROUGH_POLE_BLOCK_ENTITY.get(),
-            SimpleBlockEntityVisualizer({ ctx, blockEntity, partialTick ->
-                TestBlockEntityVisual(ctx, blockEntity, partialTick,FlwModels.POLE_TEMPORARY) { instance, renderer ->
-                    instance.translate(renderer.visualPosition)
-                }
-            }) { true }
-        )
-
-        VisualizerRegistry.setVisualizer(
-            Eln2Lights.LAMP_POLE_BLOCK_ENTITY.get(),
-            SimpleBlockEntityVisualizer(::LampPoleBlockEntityVisual) { true }
-        )
-
-        VisualizerRegistry.setVisualizer(
-            Eln2Processing.CRUSHER_BLOCK_ENTITY.get(),
-            SimpleBlockEntityVisualizer(::CrusherBlockEntityVisual) { true }
-        )
-
-        VisualizerRegistry.setVisualizer(
-            Eln2Processing.ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(),
-            SimpleBlockEntityVisualizer(::ElectricExtruderBlockEntityVisual) { true }
-        )
-
-        VisualizerRegistry.setVisualizer(
-            Eln2Processing.KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
-            SimpleBlockEntityVisualizer(::KineticExtruderBlockEntityVisual) { true }
-        )
-
-        VisualizerRegistry.setVisualizer(
-            Eln2Kinetic.WIND_TURBINE_BLOCK_ENTITY.get(),
-            SimpleBlockEntityVisualizer(::WindTurbineBlockEntityVisual) { true }
-        )
-    }
-
-    fun registerPartVisualizers() {
-        //#region Joints
-
-        setPartVisualizer<JointPart<DoubleJointCell>>(Eln2Kinetic.STANDARD_IRON_DOUBLE_JOINT_PART.part.get()) { ctx, part ->
-            BasicKineticPartVisual(
-                ctx, part,
-                FlwModels.STANDARD_IRON_DOUBLE_JOINT_BODY,
-                FlwModels.STANDARD_IRON_DOUBLE_JOINT_SHAFT
-            )
-        }
-
-        setPartVisualizerMemoized<JointPart<DoubleJointCell>>(Eln2Kinetic.STANDARD_IRON_DOUBLE_JOINT_90DEG_PART.part.get()) {
-            val descriptions = listOf(
-                ShaftDescription(
-                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_SHAFT1,
-                    Axis3d.X,
-                    -1.0
-                ),
-                ShaftDescription(
-                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_SHAFT2,
-                    Axis3d.Z,
-                    1.0
-                )
-            )
-
-            PartVisualizer { ctx, part ->
-                SingleNodeMultiShaftKineticPartVisual(
-                    ctx, part,
-                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_BODY,
-                    descriptions
-                )
-            }
-        }
-
-        setPartVisualizerMemoized<JointPart<DoubleJointCell>>(Eln2Kinetic.STANDARD_IRON_DOUBLE_JOINT_90DEG_2X_PART.part.get()) {
-            val descriptions = listOf(
-                ShaftDescription(
-                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_SHAFT1,
-                    Axis3d.X,
-                    -1.0
-                ),
-                ShaftDescription(
-                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_SHAFT2,
-                    Axis3d.Z,
-                    2.0
-                )
-            )
-
-            PartVisualizer { ctx, part ->
-                SingleNodeMultiShaftKineticPartVisual(
-                    ctx, part,
-                    FlwModels.STANDARD_IRON_DOUBLE_JOINT_90DEG_BODY,
-                    descriptions
-                )
-            }
-        }
-
-        setPartVisualizerMemoized<JointPart<TripleJointCell>>(Eln2Kinetic.STANDARD_IRON_TRIPLE_T_JOINT_PART.part.get()) {
-            val descriptions = listOf(
-                ShaftDescription(
-                    FlwModels.STANDARD_IRON_TRIPLE_T_JOINT_SHAFT1,
-                    Axis3d.Z,
-                    -1.0
-                ),
-                ShaftDescription(
-                    FlwModels.STANDARD_IRON_TRIPLE_T_JOINT_SHAFT2,
-                    Axis3d.X,
-                    -1.0
-                ),
-                ShaftDescription(
-                    FlwModels.STANDARD_IRON_TRIPLE_T_JOINT_SHAFT3,
-                    Axis3d.X,
-                    1.0
-                )
-            )
-
-            PartVisualizer { ctx, part ->
-                SingleNodeMultiShaftKineticPartVisual(
-                    ctx, part,
-                    FlwModels.STANDARD_IRON_TRIPLE_T_JOINT_BODY,
-                    descriptions
-                )
-            }
-        }
-
-        setPartVisualizer<SolarLightPart>(Eln2Lights.SMALL_GARDEN_LIGHT.part.get()) { ctx, part ->
-            BasicPartVisual(
-                ctx,
-                part,
-                FlwModels.SMALL_GARDEN_LIGHT
-            )
-        }
-
-        //#endregion
-
-        setPartVisualizer<SolarLightPart>(Eln2Lights.TALL_GARDEN_LIGHT.part.get()) { ctx, part ->
-            LightFixturePartVisual(
-                ctx, part,
-                FlwModels.TALL_GARDEN_LIGHT_CAGE,
-                FlwModels.TALL_GARDEN_LIGHT_EMITTER
-            )
-        }
-
-        setPartVisualizer<PolarPoweredLightPart>(Eln2Lights.LIGHT_PART.part.get()) { ctx, part ->
-            LightFixturePartVisual(
-                ctx, part,
-                FlwModels.SMALL_WALL_LAMP_CAGE,
-                FlwModels.SMALL_WALL_LAMP_EMITTER
-            )
-        }
-
-        setPartVisualizer<TerminalPoweredLightPart>(Eln2Lights.LIGHT_PART_MICRO_GRID.part.get()) { ctx, part ->
-            LightFixturePartVisual(
-                ctx, part,
-                FlwModels.SMALL_WALL_LAMP_CAGE_MICRO_GRID,
-                FlwModels.SMALL_WALL_LAMP_EMITTER
-            )
-        }
-
-        setPartVisualizer<ElectricalHeatEnginePart>(Eln2Thermodynamics.ELECTRICAL_HEAT_ENGINE_PART.part.get()) { ctx, part ->
-            ElectricalHeatEnginePartVisual(
-                ctx, part
-            )
-        }
-
-        setPartVisualizer<GridInterfacePart>(Eln2Grid.POWER_GRID_INTERFACE_PART.part.get()) { ctx, part ->
-            ConnectedPartVisual(
-                ctx, part,
-                FlwModels.POWER_GRID_INTERFACE,
-                FlwModels.STANDARD_CONNECTION
-            )
-        }
-
-        setPartVisualizer<GridInterfacePart>(Eln2Grid.MICRO_GRID_INTERFACE_PART.part.get()) { ctx, part ->
-            ConnectedPartVisual(
-                ctx, part,
-                FlwModels.MICRO_GRID_INTERFACE,
-                FlwModels.STANDARD_CONNECTION
-            )
-        }
-
-        setPartVisualizer<GridInterfacePart>(Eln2Grid.SIGNAL_GRID_INTERFACE_PART.part.get()) { ctx, part ->
-            ConnectedPartVisual(
-                ctx, part,
-                FlwModels.SIGNAL_GRID_INTERFACE,
-                FlwModels.SIGNAL_WIRE_CONNECTION.hub
-            )
-        }
-
-        setPartVisualizer<PhotovoltaicPanelPart>(Eln2Solar.PHOTOVOLTAIC_PANEL_PART.part.get()) { ctx, part ->
-            BasicPartVisual(
-                ctx, part,
-                FlwModels.SOLAR_PANEL_ONE_BLOCK
-            )
-        }
-
-        setPartVisualizer<BatteryPart>(Eln2Batteries.BATTERY_PART_12V.part.get()) { ctx, part ->
-            BasicPartVisual(
-                ctx, part,
-                FlwModels.LEAD_ACID_BATTERY,
-                rotation = PI
-            )
-        }
-
-        setPartVisualizer<OscilloscopePart>(Eln2Signal.FLAT_OSCILLOSCOPE_PART.part.get()) { ctx, part ->
-            BasicPartVisual(
-                ctx, part,
-                FlwModels.FLAT_OSCILLOSCOPE_PART
-            )
-        }
-
-        setPartVisualizer<OscilloscopePart>(Eln2Signal.BASIC_SINGLE_CHANNEL_OSCILLOSCOPE_PART.part.get()) { ctx, part ->
-            BasicPartVisual(
-                ctx, part,
-                FlwModels.BASIC_SINGLE_CHANNEL_OSCILLOSCOPE_PART,
-                smoothLighting = true
-            )
-        }
-
-        setPartVisualizer<DcMotorPart>(Eln2Kinetic.BASIC_DC_MOTOR_PART.part.get()) { ctx, part ->
-            BasicPartVisual(
-                ctx, part,
-                FlwModels.BASIC_DC_MOTOR
-            )
-        }
-
-        setPartVisualizer<DiodePart>(Eln2BasicComponents.DIODE_PART.part.get()) { ctx, part ->
-            BasicPartVisual(
-                ctx, part,
-                FlwModels.DIODE,
-                smoothLighting = true
-            )
-        }
-    }
-
-    fun registerSpecVisualizers() {
-        setSpecVisualizer<GroundSpec>(Eln2BasicComponents.GROUND_SPEC.spec.get()) { ctx, spec ->
-            BasicSpecVisual(
-                ctx, spec,
-                FlwModels.GROUND_MICRO_GRID
-            )
-        }
-
-        setSpecVisualizer<GridAnchorSpec>(Eln2Grid.MICRO_GRID_ANCHOR_SPEC.spec.get()) { ctx, spec ->
-            BasicSpecVisual(
-                ctx, spec,
-                FlwModels.MICRO_GRID_ANCHOR
-            )
-        }
-
-        setSpecVisualizer<GridAnchorSpec>(Eln2Grid.SIGNAL_GRID_ANCHOR_SPEC.spec.get()) { ctx, spec ->
-            BasicSpecVisual(
-                ctx, spec,
-                FlwModels.SIGNAL_GRID_ANCHOR
-            )
-        }
-
-        setSpecVisualizer<BatterySpec>(Eln2Batteries.BATTERY_SPEC_12V.spec.get()) { ctx, spec ->
-            BasicSpecVisual(
-                ctx, spec,
-                FlwModels.SPEC_LEAD_ACID_BATTERY
-            )
-        }
-
-        setSpecVisualizer<DcToDcConverterSpec>(Eln2PowerDevices.DC_TO_DC_CONVERTER_SPEC.spec.get()) { ctx, spec ->
-            BasicSpecVisual(
-                ctx, spec,
-                FlwModels.SMALL_DC_TO_DC_CONVERTER
-            )
-        }
     }
 }
 
@@ -490,7 +225,7 @@ class SpecialVisualStorage<V : Visual> {
     fun add(visual: V) {
         // Done once so no performance issues
         if(!visuals.add(visual)){
-            error("Duplicate add visual $visual")
+            error(DEBUGGER_BREAK("Duplicate add visual $visual"))
         }
 
         if(visual is DynamicVisual) {

@@ -16,7 +16,6 @@ import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.containers.ContainerRegistry.menu
-import org.eln2.mc.common.content.ContentModule
 import org.eln2.mc.common.content.HeatGeneratorBlock
 import org.eln2.mc.common.content.HeatGeneratorBlockEntity
 import org.eln2.mc.common.content.HeatGeneratorCell

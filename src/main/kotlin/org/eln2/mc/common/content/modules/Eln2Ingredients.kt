@@ -2,11 +2,8 @@
 
 package org.eln2.mc.common.content.modules
 
-import org.eln2.mc.common.content.ContentModule
-import org.eln2.mc.common.content.RubberTapPartProvider
 import org.eln2.mc.common.items.ItemRegistry.itemDefault
 import org.eln2.mc.common.items.ItemRegistry.itemNoStack
-import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
 
 object Eln2Ingredients : ContentModule() {
     val CRUSHED_IRON_ORE = itemDefault("crushed_iron_ore")

@@ -12,11 +12,14 @@ import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.BasicPartVisual
+import org.eln2.mc.client.render.foundation.BasicSpecVisual
+import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setPartVisualizer
+import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setSpecVisualizer
 import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.cells.foundation.ElectricalSize
-import org.eln2.mc.common.content.ContentModule
 import org.eln2.mc.common.content.DiodeCell
 import org.eln2.mc.common.content.DiodeOptions
 import org.eln2.mc.common.content.DiodePart
@@ -34,6 +37,25 @@ import org.eln2.mc.data.monopolarMapPlanar
 import org.eln2.mc.mathematics.Base6Direction3d
 
 object Eln2BasicComponents : ContentModule() {
+    override fun registerPartVisualizers() {
+        setPartVisualizer<DiodePart>(DIODE_PART.part.get()) { ctx, part ->
+            BasicPartVisual(
+                ctx, part,
+                FlwModels.DIODE,
+                smoothLighting = true
+            )
+        }
+    }
+
+    override fun registerSpecVisualizers() {
+        setSpecVisualizer<GroundSpec>(Eln2BasicComponents.GROUND_SPEC.spec.get()) { ctx, spec ->
+            BasicSpecVisual(
+                ctx, spec,
+                FlwModels.GROUND_MICRO_GRID
+            )
+        }
+    }
+
     val VOLTAGE_SOURCE_CELL = cellMemoize("voltage_source") {
         val map = monopolarMapPlanar(Base6Direction3d.Front)
         val size = ElectricalSize.Standard

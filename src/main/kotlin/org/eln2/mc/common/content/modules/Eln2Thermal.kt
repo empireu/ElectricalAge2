@@ -16,15 +16,16 @@ import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Pole
 import org.ageseries.libage.sim.ThermalMassDefinition
+import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setPartVisualizer
 import org.eln2.mc.common.LightFieldPrimitives
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.cells.foundation.ElectricalSize
 import org.eln2.mc.common.cells.foundation.RadiantBodyEmissionDescription
 import org.eln2.mc.common.cells.foundation.ThermalSize
-import org.eln2.mc.common.content.ContentModule
 import org.eln2.mc.common.content.ElectricalHeatEngineCell
 import org.eln2.mc.common.content.ElectricalHeatEnginePart
+import org.eln2.mc.common.content.ElectricalHeatEnginePartVisual
 import org.eln2.mc.common.content.ThermalElectricGeneratorModel
 import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
 import org.eln2.mc.common.parts.foundation.transformPartWorld
@@ -32,7 +33,15 @@ import org.eln2.mc.data.directionMonopolarMapPlanar
 import org.eln2.mc.data.directionPoleMapPlanar
 import org.eln2.mc.mathematics.Base6Direction3d
 
-object Eln2Thermodynamics : ContentModule() {
+object Eln2Thermal : ContentModule() {
+    override fun registerPartVisualizers() {
+        setPartVisualizer<ElectricalHeatEnginePart>(Eln2Thermal.ELECTRICAL_HEAT_ENGINE_PART.part.get()) { ctx, part ->
+            ElectricalHeatEnginePartVisual(
+                ctx, part
+            )
+        }
+    }
+
     val ELECTRICAL_HEAT_ENGINE_CELL = cellMemoize("electrical_heat_engine") {
         // The electrical plus and minus:
         val electricalA = Base6Direction3d.Left
