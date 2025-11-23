@@ -1,0 +1,64 @@
+{
+	"format_version": "1.9.0",
+	"credit": "Made with Blockbench",
+	"texture_size": [64, 64],
+	"textures": {
+		"0": "eln2:block/primitive_coal_burner/primitive_coal_burner",
+		"particle": "eln2:block/primitive_coal_burner/primitive_coal_burner"
+	},
+	"elements": [
+		{
+			"name": "airflow_door",
+			"from": [6.2, 1.375, 1.7],
+			"to": [12.4, 2.375, 2],
+			"rotation": {"angle": 0, "axis": "y", "origin": [8, 7, 8]},
+			"faces": {
+				"north": {"uv": [8.75, 8.25, 10, 16], "rotation": 270, "texture": "#0"},
+				"east": {"uv": [8.75, 8.25, 10, 9], "rotation": 270, "texture": "#0"},
+				"west": {"uv": [8.75, 15.25, 10, 16], "rotation": 270, "texture": "#0"}
+			}
+		},
+		{
+			"name": "airflow_door_handle",
+			"from": [11.8, 1.6, 1.4],
+			"to": [12.1, 2.2, 1.7],
+			"rotation": {"angle": 0, "axis": "y", "origin": [9.1, 1, 8.1]},
+			"faces": {
+				"north": {"uv": [1.5, 0.5, 2, 2], "texture": "#0"},
+				"east": {"uv": [1.5, 0.5, 2, 2], "texture": "#0"},
+				"west": {"uv": [1.5, 0.5, 2, 2], "texture": "#0"},
+				"up": {"uv": [1.5, 0.5, 2, 1], "rotation": 270, "texture": "#0"},
+				"down": {"uv": [1.5, 0.5, 2, 1], "rotation": 90, "texture": "#0"}
+			}
+		}
+	],
+	"display": {
+		"thirdperson_righthand": {
+			"scale": [0.25, 0.25, 0.25]
+		},
+		"thirdperson_lefthand": {
+			"scale": [0.25, 0.25, 0.25]
+		},
+		"ground": {
+			"translation": [0, 1, 0],
+			"scale": [0.25, 0.25, 0.25]
+		},
+		"gui": {
+			"rotation": [-157.44, -24.61, -178.41],
+			"translation": [0, 0.5, 0],
+			"scale": [0.75, 0.75, 0.75]
+		},
+		"fixed": {
+			"translation": [0, 0, -2.25],
+			"scale": [0.5, 0.5, 0.5]
+		}
+	},
+	"groups": [
+		{
+			"name": "airflow_system",
+			"origin": [8, 7, 8],
+			"color": 0,
+			"children": [0, 1]
+		}
+	]
+}

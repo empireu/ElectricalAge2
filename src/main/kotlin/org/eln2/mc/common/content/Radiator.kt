@@ -163,9 +163,5 @@ class RadiantBipolePartVisual<P>(
         instance1.delete()
         instance2.delete()
     }
-
-    companion object {
-
-    }
 }
 

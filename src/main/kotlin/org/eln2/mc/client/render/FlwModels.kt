@@ -74,10 +74,6 @@ object FlwModels {
     val GROUND = partialBlock("ground_pin")
     val GROUND_MICRO_GRID = partialBlock("ground_pin_micro_grid")
 
-    val PELTIER_BODY = partialBlock("peltier/body")
-    val PELTIER_LEFT = partialBlock("peltier/left")
-    val PELTIER_RIGHT = partialBlock("peltier/right")
-
     val RADIATOR = partialBlock("radiator")
 
     val SOLAR_PANEL_ONE_BLOCK = partialBlock("solar_panel_one_block")
@@ -179,6 +175,15 @@ object FlwModels {
 
     val RUBBER_TAP = partialBlock("rubber_tap/rubber_tap")
     val RUBBER_TAP_LATEX = partialBlock("rubber_tap/latex")
+
+    //#region Primitive Coal Burner
+
+    val PRIMITIVE_COAL_BURNER_BODY = partialBlock("primitive_coal_burner/body")
+    val PRIMITIVE_COAL_BURNER_HULL = partialBlock("primitive_coal_burner/hull_tintable")
+    val PRIMITIVE_COAL_BURNER_CONDUIT = partialBlock("primitive_coal_burner/conduit")
+    val PRIMITIVE_COAL_BURNER_DOOR = partialBlock("primitive_coal_burner/airflow_door")
+
+    //#endregion
 
     private fun partial(path: String): PartialModel = PartialModel.of(resource(path))
     fun partialBlock(path: String): PartialModel = PartialModel.of(resource("block/$path"))

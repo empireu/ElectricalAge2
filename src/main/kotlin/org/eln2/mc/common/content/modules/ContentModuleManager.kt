@@ -168,10 +168,6 @@ abstract class ContentModule {
     }
 
     protected open fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) { }
-
-    fun finalizeModule() {
-
-    }
 }
 
 /**

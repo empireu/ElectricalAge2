@@ -1343,9 +1343,11 @@ class IncandescentWirePartVisual(
             remotePositionWorld
         )
 
+        val remoteColor = model.tintColor.evaluateRGBL(Quantity(remoteTemperature), remoteLightLevel.toDouble())
+
         instance.color1 = MyColor.lerp(
             coreColor,
-            model.tintColor.evaluateRGBL(Quantity(remoteTemperature), remoteLightLevel.toDouble()),
+            remoteColor,
             0.5f
         )
     }

@@ -2896,6 +2896,25 @@ interface SidedThermalMapped<C> : SidedThermal<C> where C : Cell, C : SidedTherm
 }
 
 /**
+ * Thermal size provider, based on a monopolar map.
+ * */
+interface SidedThermalMonoMapped<C> : SidedThermal<C> where C : Cell, C : SidedThermalMonoMapped<C> {
+    val thermalMap : MonopoleMap
+
+    /**
+     * The thermal size. It will be supplied to all sides the [thermalMap] covers.
+     * */
+    val thermalSize: ThermalSize?
+
+    /**
+     * Returns the [thermalSize] if the [thermalMap] covers this connection.
+     * */
+    override fun getThermalSizeOnSide(side: Base6Direction3d, targetCell: Cell): ThermalSize? {
+        return if(thermalMap.evaluates(this as Cell, targetCell)) thermalSize else null
+    }
+}
+
+/**
  * Supplies the [KineticSize] for a side of the cell, in the local frame.
  * If the returned size is null, the connection is rejected immediately. If the returned size is not equal to the other cell's size on its respective side, the connection is also rejected.
  * The connection is accepted if both cells report the same size on their respective sides.

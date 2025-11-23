@@ -1,5 +1,6 @@
 package org.eln2.mc.client.render
 
+import dev.engine_room.flywheel.api.material.CardinalLightingMode
 import dev.engine_room.flywheel.api.material.Transparency
 import dev.engine_room.flywheel.lib.material.LightShaders
 import dev.engine_room.flywheel.lib.material.SimpleMaterial

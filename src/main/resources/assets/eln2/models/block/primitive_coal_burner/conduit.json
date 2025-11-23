@@ -1,0 +1,53 @@
+{
+	"format_version": "1.9.0",
+	"credit": "Made with Blockbench",
+	"texture_size": [64, 64],
+	"textures": {
+		"0": "eln2:block/primitive_coal_burner/primitive_coal_burner",
+		"particle": "eln2:block/primitive_coal_burner/primitive_coal_burner"
+	},
+	"elements": [
+		{
+			"name": "heat_conduit",
+			"from": [7, 0, 15],
+			"to": [9, 1.5, 16],
+			"rotation": {"angle": 0, "axis": "y", "origin": [8, 7, 7]},
+			"faces": {
+				"east": {"uv": [14.25, 3.25, 15, 3.5], "rotation": 90, "texture": "#0"},
+				"south": {"uv": [13.25, 3.5, 15.25, 5], "texture": "#0"},
+				"west": {"uv": [14.25, 3.25, 15, 3.5], "rotation": 90, "texture": "#0"},
+				"up": {"uv": [13.25, 3.25, 14.25, 3.5], "texture": "#0"},
+				"down": {"uv": [15, 3.25, 15.25, 3.5], "rotation": 90, "texture": "#0"}
+			}
+		}
+	],
+	"display": {
+		"thirdperson_righthand": {
+			"scale": [0.25, 0.25, 0.25]
+		},
+		"thirdperson_lefthand": {
+			"scale": [0.25, 0.25, 0.25]
+		},
+		"ground": {
+			"translation": [0, 1, 0],
+			"scale": [0.25, 0.25, 0.25]
+		},
+		"gui": {
+			"rotation": [-157.44, -24.61, -178.41],
+			"translation": [0, 0.5, 0],
+			"scale": [0.75, 0.75, 0.75]
+		},
+		"fixed": {
+			"translation": [0, 0, -2.25],
+			"scale": [0.5, 0.5, 0.5]
+		}
+	},
+	"groups": [
+		{
+			"name": "thermal_system",
+			"origin": [8, 7, 8],
+			"color": 0,
+			"children": [0]
+		}
+	]
+}

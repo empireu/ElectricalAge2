@@ -69,7 +69,7 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     var simulation: Simulator? = null
         private set
 
-    protected val connections = ArrayList<ThermalObject<*>>()
+    val connections = ArrayList<ThermalObject<*>>()
 
     final override val type = SimulationObjectType.Thermal
 
