@@ -57,7 +57,7 @@ abstract class CellBlock<C : Cell>(p : Properties? = null) : Block(p ?: Properti
      * We will check if our block state just changed, but the block stays.
      * */
     @Suppress("OVERRIDE_DEPRECATION")
-    final override fun onRemove(
+    override fun onRemove(
         pState: BlockState,
         pLevel: Level,
         pPos: BlockPos,

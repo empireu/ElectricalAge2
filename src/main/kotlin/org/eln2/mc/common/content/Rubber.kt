@@ -1,8 +1,13 @@
 package org.eln2.mc.common.content
 
+import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.visual.DynamicVisual
+import dev.engine_room.flywheel.api.visual.ShaderLightVisual
+import dev.engine_room.flywheel.api.visualization.VisualizationContext
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
+import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.model.Models
+import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet
 import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue
@@ -14,15 +19,23 @@ import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.shapes.Shapes
+import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.OnServerThread
+import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.PartialModelHelper
 import org.eln2.mc.client.render.foundation.partTransformation
-import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
+import org.eln2.mc.common.blocks.foundation.*
+import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.content.modules.Eln2Ingredients
 import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.parts.foundation.*
+import org.eln2.mc.data.Locators
+import org.eln2.mc.data.MonopoleMap
 import org.eln2.mc.extensions.addItem
 import org.eln2.mc.extensions.minus
 import org.eln2.mc.extensions.vector3d
@@ -30,8 +43,11 @@ import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.BlockPosInt
+import java.util.function.Consumer
 import kotlin.math.PI
 import kotlin.random.Random
+
+//#region Rubber Tap
 
 class RubberTapPartProvider : PartProvider() {
     override fun createCore(context: PartPlacementInfo) = RubberTapPart(
@@ -299,3 +315,151 @@ class RubberTapPartVisual(visualizationContext: MultipartVisualizationContext, p
         latex.delete()
     }
 }
+
+//#endregion
+
+/**
+ * Multi-block, Multi-cell device.
+ * There still is a representative block with its cell, that has the main logic: [VulcanizingAutoclaveMainCell], [VulcanizingAutoclaveMainBlock], [VulcanizingAutoclaveMainBlockEntity].
+ * The main cell doesn't have simulation objects and doesn't create connections with the exterior.
+ * It creates a connection with the [VulcanizingAutoclaveThermalPortCell].
+ *
+ * The [VulcanizingAutoclaveThermalPortCell], [VulcanizingAutoclaveThermalPortBlock], [VulcanizingAutoclaveThermalPortBlockEntity] has a cell and a thermal simulation object.
+ * It forms a connection to any wire that is hooked up to it, and it connects to the [VulcanizingAutoclaveMainCell].
+ * It doesn't have any logic.
+ * */
+//#region Vulcanizing Autoclave
+
+class VulcanizingAutoclaveThermalPortCell(
+    ci: CellCreateInfo,
+    override val thermalMap: MonopoleMap,
+    override val thermalSize: ThermalSize
+) : Cell(ci), SidedThermalMonoMapped<VulcanizingAutoclaveThermalPortCell> {
+    @SimObject
+    val thermalWire = ThermalWireObject(this)
+}
+
+class VulcanizingAutoclaveThermalPortBlock : MultiblockDelegateUprightHorizontalDirectionCellBlock<VulcanizingAutoclaveThermalPortCell>() {
+    @Deprecated("Deprecated in Java")
+    override fun skipRendering(pState: BlockState, pAdjacentState: BlockState, pDirection: Direction) = true
+
+    override fun getCellProvider() = Eln2Processing.VULCANIZING_AUTOCLAVE_THERMAL_PORT_CELL.get()
+
+    override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = VulcanizingAutoclaveThermalPortBlockEntity(pPos, pState)
+
+    override fun spatialNeighborScan(level: Level, results: HashSet<CellAndContainerHandle>, cell: Cell) {
+        val blockEntity = level.getBlockEntity(cell.locator.requireLocator(Locators.BLOCK)) as VulcanizingAutoclaveThermalPortBlockEntity
+
+        val representative = getRepresentativeFromDelegateBlockEntity<VulcanizingAutoclaveMainBlockEntity?>(blockEntity, blockEntity.representativePos)
+            ?: return
+
+        /**
+         * Scans the port itself:
+         * */
+        planarCellScan(
+            level,
+            cell,
+            cell.locator.requireLocator(Locators.CONVENTIONAL_FACING).direction.opposite,
+            results::add
+        )
+
+        /**
+         * Links up the main:
+         * */
+        results.add(CellAndContainerHandle.captureInScope(representative.cell))
+    }
+}
+
+class VulcanizingAutoclaveThermalPortBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
+    MultiblockDelegateCellBlockEntity<VulcanizingAutoclaveThermalPortCell>(pPos, pBlockState, Eln2Processing.VULCANIZING_AUTOCLAVE_THERMAL_PORT_BLOCK_ENTITY.get()),
+    ValidateFormationBlockEntity<VulcanizingAutoclaveThermalPortBlockEntity>
+{
+    override fun validateMultiblockFormation() {
+        check(cell.connections.isNotEmpty() && cell.connections.any { it is VulcanizingAutoclaveMainCell }) {
+            DEBUGGER_BREAK("Vulcanizing autoclave didn't form correctly: the thermal port cell doesn't have the required connection (${cell.connections.size})")
+        }
+    }
+}
+
+class VulcanizingAutoclaveMainCell(ci: CellCreateInfo) : Cell(ci) {
+    override fun subscribe(subscribers: SubscriberCollection) {
+        super.subscribe(subscribers)
+    }
+}
+
+class VulcanizingAutoclaveMainBlock : UprightHorizontalDirectionCellBlock<VulcanizingAutoclaveMainCell>() {
+    @Deprecated("Deprecated in Java")
+    override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction): Boolean = true
+
+    override fun getCellProvider() = Eln2Processing.VULCANIZING_AUTOCLAVE_MAIN_CELL.get()
+
+    override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = VulcanizingAutoclaveMainBlockEntity(pPos, pState)
+
+    override fun spatialNeighborScan(level: Level, results: HashSet<CellAndContainerHandle>, cell: Cell) {
+        val pos = cell.locator.requireLocator(Locators.BLOCK)
+        val facing = cell.locator.requireLocator(Locators.CONVENTIONAL_FACING)
+        val blockEntity = level.getBlockEntity(pos) as VulcanizingAutoclaveMainBlockEntity
+
+        /**
+         * Only links up the delegate:
+         * */
+        blockEntity.delegateMap.forEachDelegateInWorld(level, facing.direction, pos) {
+            val delegate = level.getBlockEntity(it) as? VulcanizingAutoclaveThermalPortBlockEntity
+                ?: return@forEachDelegateInWorld
+
+            results.add(CellAndContainerHandle.captureInScope(delegate.cell))
+        }
+    }
+}
+
+class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
+    CellBlockEntity<VulcanizingAutoclaveMainCell>(pos, state, Eln2Processing.VULCANIZING_AUTOCLAVE_MAIN_BLOCK_ENTITY.get()),
+    BigBlockRepresentativeBlockEntity<VulcanizingAutoclaveMainBlockEntity>,
+    ValidateFormationBlockEntity<VulcanizingAutoclaveMainBlockEntity>
+{
+    override val delegateMap: MultiblockDelegateMap
+        get() = Eln2Processing.VULCANIZING_AUTOCLAVE_DELEGATE_MAP.value
+
+    override fun validateMultiblockFormation() {
+        check(cell.connections.size == 1 && cell.connections[0] is VulcanizingAutoclaveThermalPortCell) {
+            DEBUGGER_BREAK("Vulcanizing autoclave didn't form correctly: the main cell doesn't have the correct connections (${cell.connections.size})")
+        }
+    }
+
+    override fun setDestroyed() {
+        destroyDelegates()
+
+        super.setDestroyed()
+    }
+}
+
+class VulcanizingAutoclaveMainBlockEntityVisual(
+    ctx: VisualizationContext,
+    blockEntity: VulcanizingAutoclaveMainBlockEntity,
+    partialTick: Float
+) : AbstractBlockEntityVisual<VulcanizingAutoclaveMainBlockEntity>(ctx, blockEntity, partialTick), ShaderLightVisual {
+    val body: TransformedInstance = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.VULCANIZING_AUTOCLAVE_BODY, FlwMaterials.TRANSLUCENT_SMOOTH_LIT))
+        .createInstance()
+        .also {
+            it.translate(visualPosition)
+            it.center()
+            it.rotateToFace(blockEntity.representativeFacing.clockWise)
+            it.uncenter()
+        }
+
+
+    override fun updateLight(p0: Float) {
+        // NOOP
+    }
+
+    override fun collectCrumblingInstances(p0: Consumer<Instance?>) {
+        p0.accept(body)
+    }
+
+    override fun _delete() {
+        body.delete()
+    }
+}
+
+//#endregion

@@ -65,14 +65,16 @@ object Eln2HeatGenerators : ContentModule() {
                 Quantity(4.617, WATT_PER_METER_KELVIN)
             ),
             ThermalMassDefinition(
-                ChemicalElement.Copper.asMaterial,
-                mass = Quantity(26.1145, KILOGRAM)
+                ChemicalElement.Iron.asMaterial,
+                mass = Quantity(14.019, KILOGRAM)
             ),
-            ConnectionParameters()
+            ConnectionParameters(
+                conductance = Quantity(9.1, WATT_PER_KELVIN)
+            )
         )
 
         val map = monopolarMapPlanar(Base6Direction3d.Back)
-        val maxDraft = 0.02
+        val maxDraft = 0.025
 
         CellFactory {
             PrimitiveBurnerCell(it, options, map, maxDraft)

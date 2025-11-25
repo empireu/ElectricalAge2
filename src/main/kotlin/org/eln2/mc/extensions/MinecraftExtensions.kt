@@ -62,6 +62,9 @@ import kotlin.contracts.contract
 import kotlin.math.PI
 import kotlin.math.cos
 
+fun BlockEntity.setSyncDirty() {
+    level!!.sendBlockUpdated(blockPos, blockState, blockState, Block.UPDATE_CLIENTS)
+}
 
 @OptIn(ExperimentalContracts::class)
 inline fun PoseStack.preserve(block: () -> Unit) {

@@ -3,10 +3,8 @@ package org.eln2.mc.common.content
 import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.visual.DynamicVisual
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
-import dev.engine_room.flywheel.lib.instance.FlatLit
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
-import dev.engine_room.flywheel.lib.material.Materials
 import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
@@ -58,13 +56,13 @@ import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
-import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.FlwInstanceTypes
 import org.eln2.mc.client.render.foundation.MyColor
-import org.eln2.mc.client.render.foundation.PartialModelHelper
+import org.eln2.mc.client.render.foundation.PolarModel
 import org.eln2.mc.client.render.foundation.ThermalTint
 import org.eln2.mc.client.render.foundation.TransformedLightOverrideInstance
+import org.eln2.mc.client.render.foundation.TransformedPolarInstance
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
 import org.eln2.mc.common.cells.foundation.*
@@ -679,6 +677,21 @@ class PrimitiveBurnerCell(
             )
         }
     }
+
+    override fun saveCellData(): CompoundTag {
+        val tag = super.saveCellData()
+        tag.putDouble(CONTROL_PARAMETER, controlParameter)
+        return tag
+    }
+
+    override fun loadCellData(tag: CompoundTag) {
+        super.loadCellData(tag)
+        controlParameter = tag.getDouble(CONTROL_PARAMETER)
+    }
+
+    companion object {
+        private const val CONTROL_PARAMETER = "controlParameter"
+    }
 }
 
 class PrimitiveBurnerBlock : UprightHorizontalDirectionCellBlock<PrimitiveBurnerCell>() {
@@ -881,9 +894,81 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
     //#endregion
 }
 
+class ThermalConduitConnection(
+    val level: Level,
+    val position: BlockPos,
+    val context: VisualizationContext,
+    val model: PolarModel
+) {
+    var instance: TransformedPolarInstance? = null
+
+    fun create(transform: (TransformedPolarInstance) -> Unit) {
+        check(instance == null) {
+            "Cannot re-create conduit instance"
+        }
+
+        instance = context.instancerProvider()
+            .instancer(FlwInstanceTypes.TRANSFORMED_POLAR, FlwModels.PRIMITIVE_COAL_BURNER_CONDUIT.get())
+            .createInstance()
+
+        transform(instance!!)
+    }
+
+    fun createIfNeeded(transform: (TransformedPolarInstance) -> Unit) {
+        if(instance == null) {
+            create(transform)
+        }
+    }
+
+    fun update(coreTemperature: Double, remoteTemperature: Double, remotePositionWorld: BlockPos) {
+        val instance = instance
+            ?: error("Cannot update thermal conduit instance: not created!")
+
+        val coreColor = run {
+            val lightLevel = LightTexture.block(
+                LevelRenderer.getLightColor(
+                    level,
+                    position
+                )
+            )
+
+            ThermalTint.DEFAULT.evaluateRGBL(
+                Quantity(coreTemperature), lightLevel.toDouble()
+            )
+        }
+
+        val remoteColor = run {
+            val remoteLightLevel = level.getBrightness(
+                LightLayer.BLOCK,
+                remotePositionWorld
+            )
+
+            ThermalTint.DEFAULT.evaluateRGBL(
+                Quantity(remoteTemperature),
+                remoteLightLevel.toDouble()
+            )
+        }
+
+        instance.light(
+            0, LightTexture.sky(
+                LevelRenderer.getLightColor(
+                level,
+                remotePositionWorld
+            )
+        ))
+        instance.color1 = coreColor
+        instance.color2 = MyColor.lerp(coreColor, remoteColor, 0.5f)
+        instance.setChanged()
+    }
+
+    fun delete() {
+        instance?.delete()
+        instance = null
+    }
+}
+
 class PrimitiveBurnerBlockEntityVisual(ctx: VisualizationContext, blockEntity: PrimitiveBurnerBlockEntity, partialTick: Float) : AbstractBlockEntityVisual<PrimitiveBurnerBlockEntity>(ctx, blockEntity, partialTick), SimpleDynamicVisual {
     companion object {
-        val TINT = ThermalTint.DEFAULT_LIGHT_OVERRIDE
         const val SLIDING_RANGE = 3.5 / 16.0
     }
 
@@ -897,10 +982,7 @@ class PrimitiveBurnerBlockEntityVisual(ctx: VisualizationContext, blockEntity: P
         .createInstance()
         .transformFacingBlock(visualPos, blockEntity)
 
-    val conduit: TransformedLightOverrideInstance = visualizationContext.instancerProvider()
-        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, Models.partial(FlwModels.PRIMITIVE_COAL_BURNER_CONDUIT))
-        .createInstance()
-        .transformFacingBlock(visualPos, blockEntity)
+    var conduit = ThermalConduitConnection(level, blockEntity.blockPos, ctx, FlwModels.PRIMITIVE_COAL_BURNER_CONDUIT)
 
     val door: TransformedInstance = visualizationContext.instancerProvider()
         .instancer(InstanceTypes.TRANSFORMED, Models.partial(FlwModels.PRIMITIVE_COAL_BURNER_DOOR))
@@ -911,54 +993,27 @@ class PrimitiveBurnerBlockEntityVisual(ctx: VisualizationContext, blockEntity: P
     var controlParameter = 0.0
 
     private fun applyHullTemperature() {
-        val color = TINT.evaluate(Quantity(hullTemperature, KELVIN))
+        val color = ThermalTint.DEFAULT_LIGHT_OVERRIDE.evaluate(Quantity(hullTemperature, KELVIN))
         hull.color(color.r, color.g, color.b)
         hull.lightOverride = color.a / 255.0f
         hull.setChanged()
     }
 
-    private fun getCoreColor() : MyColor {
-        val lightLevel = LightTexture.block(
-            LevelRenderer.getLightColor(
-                level,
-                blockEntity.blockPos
-            )
+    private fun updateConduit() {
+        if(externalTemperature == null) {
+            conduit.delete()
+            return
+        }
+
+        conduit.createIfNeeded {
+            it.transformFacingBlock(visualPos, blockEntity)
+        }
+
+        conduit.update(
+            hullTemperature,
+            externalTemperature!!,
+            blockEntity.blockPos - blockState.getValue(HorizontalDirectionalBlock.FACING)
         )
-
-        return TINT.evaluateRGBL(
-            Quantity(hullTemperature), lightLevel.toDouble()
-        )
-    }
-
-    private fun applyExternalTemperature() {
-        val remoteLightLevel = LightTexture.block(
-            LevelRenderer.getLightColor(
-                level,
-                blockEntity.blockPos - blockEntity.blockState.getValue(HorizontalDirectionalBlock.FACING)
-            )
-        )
-
-        val coreColor = getCoreColor()
-        val selfColor = TINT.evaluateRGBL(
-            Quantity(
-                externalTemperature ?: hullTemperature,
-                KELVIN
-            ),
-            remoteLightLevel.toDouble()
-        )
-
-        val color = MyColor.lerp(coreColor, selfColor, 0.5f)
-
-        conduit.light(0,
-            LevelRenderer.getLightColor(
-                level,
-                blockEntity.blockPos - blockEntity.blockState.getValue(HorizontalDirectionalBlock.FACING)
-            )
-        )
-
-        conduit.color(color.r, color.g, color.b)
-        conduit.lightOverride = color.a / 255.0f + 0.0301f
-        conduit.setChanged()
     }
 
     private fun applyControlParameter() {
@@ -970,7 +1025,7 @@ class PrimitiveBurnerBlockEntityVisual(ctx: VisualizationContext, blockEntity: P
 
     init {
         applyHullTemperature()
-        applyExternalTemperature()
+        updateConduit()
         applyControlParameter()
     }
 
@@ -982,18 +1037,23 @@ class PrimitiveBurnerBlockEntityVisual(ctx: VisualizationContext, blockEntity: P
         val targetExternalTemperature = renderState.externalTemperature
         val targetControlParameter = renderState.controlParameter
 
-        if(targetHullTemperature != hullTemperature) {
+        if(targetHullTemperature != hullTemperature && targetExternalTemperature != externalTemperature) {
             hullTemperature = targetHullTemperature
-            applyHullTemperature()
-
-            if(targetExternalTemperature == null && externalTemperature == null) {
-                applyExternalTemperature()
-            }
-        }
-
-        if(targetExternalTemperature != externalTemperature) {
             externalTemperature = targetExternalTemperature
-            applyExternalTemperature()
+            applyHullTemperature()
+            updateConduit()
+        }
+        else {
+            if(targetHullTemperature != hullTemperature) {
+                hullTemperature = targetHullTemperature
+                applyHullTemperature()
+                updateConduit()
+            }
+
+            if(targetExternalTemperature != externalTemperature) {
+                externalTemperature = targetExternalTemperature
+                updateConduit()
+            }
         }
 
         if(targetControlParameter != controlParameter) {
@@ -1004,7 +1064,7 @@ class PrimitiveBurnerBlockEntityVisual(ctx: VisualizationContext, blockEntity: P
 
     override fun updateLight(p0: Float) {
         relight(body, hull, door)
-        applyExternalTemperature()
+        updateConduit()
     }
 
     override fun collectCrumblingInstances(p0: Consumer<Instance?>) {

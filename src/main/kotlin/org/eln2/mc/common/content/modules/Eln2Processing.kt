@@ -28,8 +28,14 @@ import org.eln2.mc.FrictionNodeDescription
 import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
 import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
+import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
+import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
+import org.eln2.mc.common.blocks.BlockRegistry.defineDelegateMap
+import org.eln2.mc.common.blocks.foundation.BigBlockItem
+import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
+import org.eln2.mc.common.cells.foundation.ThermalSize
 import org.eln2.mc.common.containers.ContainerRegistry.menu
 import org.eln2.mc.common.content.CrusherBlock
 import org.eln2.mc.common.content.CrusherBlockEntity
@@ -50,6 +56,13 @@ import org.eln2.mc.common.content.KineticExtruderBlock
 import org.eln2.mc.common.content.KineticExtruderBlockEntity
 import org.eln2.mc.common.content.KineticExtruderBlockEntityVisual
 import org.eln2.mc.common.content.RubberTapPartProvider
+import org.eln2.mc.common.content.VulcanizingAutoclaveMainBlock
+import org.eln2.mc.common.content.VulcanizingAutoclaveMainBlockEntity
+import org.eln2.mc.common.content.VulcanizingAutoclaveMainBlockEntityVisual
+import org.eln2.mc.common.content.VulcanizingAutoclaveMainCell
+import org.eln2.mc.common.content.VulcanizingAutoclaveThermalPortBlock
+import org.eln2.mc.common.content.VulcanizingAutoclaveThermalPortBlockEntity
+import org.eln2.mc.common.content.VulcanizingAutoclaveThermalPortCell
 import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
 import org.eln2.mc.common.recipes.KineticProcessingCell
 import org.eln2.mc.common.recipes.KineticProcessingCellKineticOptions
@@ -62,6 +75,7 @@ import org.eln2.mc.common.recipes.RecipeRegistry.registerCatalyzedRecipe
 import org.eln2.mc.common.recipes.RecipeRegistry.registerDirectRecipe
 import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
 import org.eln2.mc.data.directionPoleMapPlanar
+import org.eln2.mc.data.monopolarMapPlanar
 import org.eln2.mc.data.nullPolarMap
 import org.eln2.mc.mathematics.Base6Direction3d
 
@@ -81,6 +95,11 @@ object Eln2Processing : ContentModule() {
             KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::KineticExtruderBlockEntityVisual) { true }
         )
+
+        VisualizerRegistry.setVisualizer(
+            VULCANIZING_AUTOCLAVE_MAIN_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::VulcanizingAutoclaveMainBlockEntityVisual) { true }
+        )
     }
 
     override fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
@@ -96,6 +115,11 @@ object Eln2Processing : ContentModule() {
 
         event.registerBlockEntityRenderer(
             KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
+            DummyBlockEntityRendererProvider()
+        )
+
+        event.registerBlockEntityRenderer(
+            VULCANIZING_AUTOCLAVE_MAIN_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
     }
@@ -260,6 +284,48 @@ object Eln2Processing : ContentModule() {
     val KINETIC_EXTRUDER_BLOCK_ENTITY = blockEntityOnly("kinetic_extruder", KINETIC_EXTRUDER_BLOCK.block, ::KineticExtruderBlockEntity)
 
     val EXTRUDER_MENU = menu("extruder", ::ExtruderMenu)
+
+    //#endregion
+
+    //#region Vulcanizing Autoclave
+
+    val VULCANIZING_AUTOCLAVE_THERMAL_PORT_CELL = cellMemoize("vulcanizing_autoclave_thermal_port") {
+        val map = monopolarMapPlanar(Base6Direction3d.Back)
+        val size = ThermalSize.Standard
+
+        CellFactory {
+            VulcanizingAutoclaveThermalPortCell(it, map, size)
+        }
+    }
+
+    val VULCANIZING_AUTOCLAVE_THERMAL_PORT_BLOCK = blockOnly("vulcanizing_autoclave_thermal_port", ::VulcanizingAutoclaveThermalPortBlock)
+
+    val VULCANIZING_AUTOCLAVE_THERMAL_PORT_BLOCK_ENTITY = blockEntityOnly(
+        "vulcanizing_autoclave_thermal_port",
+        VULCANIZING_AUTOCLAVE_THERMAL_PORT_BLOCK,
+        ::VulcanizingAutoclaveThermalPortBlockEntity
+    )
+
+    val VULCANIZING_AUTOCLAVE_MAIN_CELL = cellImmediate("vulcanizing_autoclave", ::VulcanizingAutoclaveMainCell)
+
+    val VULCANIZING_AUTOCLAVE_MAIN_BLOCK = blockOnly("vulcanizing_autoclave", ::VulcanizingAutoclaveMainBlock)
+
+    val VULCANIZING_AUTOCLAVE_MAIN_BLOCK_ENTITY = blockEntityOnly(
+        "vulcanizing_autoclave",
+        VULCANIZING_AUTOCLAVE_MAIN_BLOCK,
+        ::VulcanizingAutoclaveMainBlockEntity
+    )
+
+    val VULCANIZING_AUTOCLAVE_DELEGATE_MAP = defineDelegateMap("vulcanizing_autoclave") {
+        principal(0, 0, -1, VULCANIZING_AUTOCLAVE_THERMAL_PORT_BLOCK)
+    }
+
+    val VULCANIZING_AUTOCLAVE_BLOCK_ITEM = blockItemOnly("vulcanizing_autoclave") {
+        BigBlockItem(
+            VULCANIZING_AUTOCLAVE_DELEGATE_MAP.value,
+            VULCANIZING_AUTOCLAVE_MAIN_BLOCK.get()
+        )
+    }
 
     //#endregion
 }

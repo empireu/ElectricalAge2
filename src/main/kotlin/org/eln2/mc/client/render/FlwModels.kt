@@ -180,8 +180,15 @@ object FlwModels {
 
     val PRIMITIVE_COAL_BURNER_BODY = partialBlock("primitive_coal_burner/body")
     val PRIMITIVE_COAL_BURNER_HULL = partialBlock("primitive_coal_burner/hull_tintable")
-    val PRIMITIVE_COAL_BURNER_CONDUIT = partialBlock("primitive_coal_burner/conduit")
+    val PRIMITIVE_COAL_BURNER_CONDUIT = polarBlock("primitive_coal_burner/conduit")
     val PRIMITIVE_COAL_BURNER_DOOR = partialBlock("primitive_coal_burner/airflow_door")
+
+    //#endregion
+
+    //#region Vulcanizing Autoclave
+
+    val VULCANIZING_AUTOCLAVE_BODY = partialBlock("vulcanizing_autoclave/body")
+
 
     //#endregion
 

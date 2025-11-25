@@ -15,15 +15,14 @@ import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.context.BlockPlaceContext
 import net.minecraft.world.level.BlockGetter
-import net.minecraft.world.level.Explosion
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.LevelAccessor
 import net.minecraft.world.level.block.*
 import net.minecraft.world.level.block.entity.BlockEntity
+import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.level.block.state.properties.BooleanProperty
-import net.minecraft.world.level.material.FluidState
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
@@ -37,6 +36,7 @@ import org.eln2.mc.LOG
 import org.eln2.mc.OnServerThread
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.common.blocks.BlockRegistry
+import org.eln2.mc.common.cells.foundation.Cell
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
@@ -96,6 +96,13 @@ data class MultiblockDelegateMap(val delegates: Map<BlockPos, BlockState>) {
         }
     }
 
+    fun forEachDelegateInWorld(level: Level, facing: Direction, origin: BlockPos, consumer: (BlockPos) -> Unit) {
+        delegates.forEach { (delegatePosId, state) ->
+            val delegatePosWorld = MultiblockTransformations.transformMultiblockWorld(facing, origin, delegatePosId)
+
+            consumer(delegatePosWorld)
+        }
+    }
 }
 
 class MultiblockScan(
@@ -125,25 +132,13 @@ class MultiblockScan(
 
 interface MultiblockRepresentative {
     fun onDelegateUse(
-        delegate: MultiblockDelegateBlockEntity,
+        delegate: BlockEntity,
         pPlayer: Player,
         pHand: InteractionHand,
         pHit: BlockHitResult,
     ) = InteractionResult.PASS
 
-    fun onDelegateDestroyedByPlayer(
-        delegate: MultiblockDelegateBlockEntity,
-        pPlayer: Player,
-        pWillHarvest: Boolean,
-        pFluid: FluidState,
-    ) = onDelegateDestroyed(delegate)
-
-    fun onDelegateExploded(
-        delegate: MultiblockDelegateBlockEntity,
-        pExplosion: Explosion?,
-    ) = onDelegateDestroyed(delegate)
-
-    fun onDelegateDestroyed(pDelegate: MultiblockDelegateBlockEntity) { }
+    fun onDelegateDestroyed(pDelegate: BlockEntity) { }
 }
 
 interface BigBlockRepresentativeBlockEntity<Self> : MultiblockRepresentative where Self : BigBlockRepresentativeBlockEntity<Self>, Self : BlockEntity {
@@ -210,7 +205,7 @@ interface BigBlockRepresentativeBlockEntity<Self> : MultiblockRepresentative whe
     }*/
 
     // New logic [!]
-    override fun onDelegateDestroyed(pDelegate: MultiblockDelegateBlockEntity) {
+    override fun onDelegateDestroyed(pDelegate: BlockEntity) {
         destroyDelegates()
 
         self.level!!.destroyBlock(
@@ -248,7 +243,7 @@ open class MultiblockDelegateBlock(properties: Properties? = null) : BaseEntityB
     companion object {
         val SKIP_RENDERING: BooleanProperty = BooleanProperty.create("skip_rendering")
 
-        private fun getRepresentativeAndDelegate(pLevel: LevelAccessor, pPos: BlockPos) : Pair<MultiblockDelegateBlockEntity, MultiblockRepresentative>? {
+        fun getRepresentativeAndDelegate(pLevel: LevelAccessor, pPos: BlockPos) : Pair<MultiblockDelegateBlockEntity, MultiblockRepresentative>? {
             val blockEntity = pLevel.getBlockEntity(pPos) as? MultiblockDelegateBlockEntity
                 ?: return null
 
@@ -368,6 +363,95 @@ open class MultiblockDelegateBlock(properties: Properties? = null) : BaseEntityB
     }
 }
 
+@Suppress("UNCHECKED_CAST")
+fun getRepresentativeFromDelegateBlockEntity(delegate: BlockEntity, representativePos: BlockPos?) : BlockEntity {
+    requireIsOnServerThread {
+        "$delegate getRepresentativeFromDelegateBlockEntity"
+    }
+
+    val level = delegate.level
+        ?: error("Cannot get representative for $delegate: level null!")
+
+    return level.getBlockEntity(representativePos ?: error("Cannot get representative for $delegate: position null!"))
+        ?: error("Cannot get representative for $delegate: block entity null!")
+}
+
+inline fun<reified T> getRepresentativeFromDelegateBlockEntity(delegate: BlockEntity, representativePos: BlockPos?) : T {
+    val blockEntity = getRepresentativeFromDelegateBlockEntity(delegate, representativePos)
+
+    return (blockEntity as? T) ?: error("Cannot get representative for $delegate: required type was ${T::class.java}, but got $blockEntity instead!")
+}
+
+abstract class MultiblockDelegateUprightHorizontalDirectionCellBlock<C : Cell>(p: Properties? = null) : UprightHorizontalDirectionCellBlock<C>(p) {
+    companion object {
+        fun getRepresentativeAndDelegate(pLevel: LevelAccessor, pPos: BlockPos) : Pair<MultiblockDelegateCellBlockEntity<*>, MultiblockRepresentative>? {
+            val blockEntity = pLevel.getBlockEntity(pPos) as? MultiblockDelegateCellBlockEntity<*>
+                ?: return null
+
+            val representativePos = blockEntity.representativePos
+
+            if(representativePos == null) {
+                LOG.error("Did not have representative for cell interaction $pLevel $pPos")
+                return null
+            }
+
+            val representative = pLevel.getBlockEntity(representativePos) as? MultiblockRepresentative
+                ?: pLevel.getBlockState(representativePos).block as? MultiblockRepresentative
+
+            return if(representative == null) {
+                LOG.error("Cell representative is missing $pLevel $pPos $representativePos")
+                null
+            } else {
+                blockEntity to representative
+            }
+        }
+
+        private inline fun<T> runWithRepresentativeAndDelegate(pLevel: Level, pPos: BlockPos, use: (delegate: MultiblockDelegateCellBlockEntity<*>, representative: MultiblockRepresentative) -> T) : T? {
+            val pair = getRepresentativeAndDelegate(pLevel, pPos)
+                ?: return null
+
+            return use(pair.first, pair.second)
+        }
+    }
+
+    override fun initializeClient(consumer: Consumer<IClientBlockExtensions?>) {
+        consumer.accept(ReplaceVanillaParticlesBlockExtension)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun use(
+        pState: BlockState,
+        pLevel: Level,
+        pPos: BlockPos,
+        pPlayer: Player,
+        pHand: InteractionHand,
+        pHit: BlockHitResult,
+    ): InteractionResult {
+        return runWithRepresentativeAndDelegate(pLevel, pPos) { delegate, representative ->
+            representative.onDelegateUse(delegate, pPlayer, pHand, pHit)
+        } ?: InteractionResult.FAIL
+    }
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun onRemove(
+        pState: BlockState,
+        pLevel: Level,
+        pPos: BlockPos,
+        pNewState: BlockState,
+        pMovedByPiston: Boolean
+    ) {
+        check(pState.block !== pNewState.block) {
+            DEBUGGER_BREAK("Cell Multiblock delegate changed its blockstate, which is illegal")
+        }
+
+        runWithRepresentativeAndDelegate(pLevel, pPos) { delegate, representative ->
+            representative.onDelegateDestroyed(delegate)
+        }
+
+        super.onRemove(pState, pLevel, pPos, pNewState, pMovedByPiston)
+    }
+}
+
 open class MultiblockDelegateBlockWithCustomCollider(properties: Properties? = null, initialShapes: List<AABB>) : MultiblockDelegateBlock(properties) {
     val colliderVariants = Base6Direction3dMask.HORIZONTALS.directionList.associateWith { dir ->
         val transform = when(MultiblockTransformations.rot(dir)) {
@@ -431,18 +515,18 @@ open class MultiblockDelegateBlockWithCustomCollider(properties: Properties? = n
     override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction) = true
 }
 
-class MultiblockDelegateBlockEntity(pPos: BlockPos, pBlockState: BlockState) : BlockEntity(BlockRegistry.MULTIBLOCK_DELEGATE_BLOCK_ENTITY.get(), pPos, pBlockState), ComponentDisplay {
+open class MultiblockDelegateBlockEntity(pPos: BlockPos, pBlockState: BlockState) : BlockEntity(BlockRegistry.MULTIBLOCK_DELEGATE_BLOCK_ENTITY.get(), pPos, pBlockState), ComponentDisplay {
     var representativePos: BlockPos? = null
         private set
 
     @ServerOnly @OnServerThread
     fun setRepresentative(representative: BlockPos) {
         requireIsOnServerThread {
-            "Cannot set representative on non-server thread"
+            DEBUGGER_BREAK("Cannot set representative on non-server thread")
         }
 
         check(representativePos == null) {
-            "Tried to set representative multiple times"
+            DEBUGGER_BREAK("Tried to set representative multiple times")
         }
 
         this.representativePos = representative
@@ -465,10 +549,6 @@ class MultiblockDelegateBlockEntity(pPos: BlockPos, pBlockState: BlockState) : B
 
         this.setChanged()
         this.setSyncDirty()
-    }
-
-    private fun setSyncDirty() {
-        level!!.sendBlockUpdated(blockPos, blockState, blockState, Block.UPDATE_CLIENTS)
     }
 
     private fun putRepresentative(tag: CompoundTag) {
@@ -521,6 +601,100 @@ class MultiblockDelegateBlockEntity(pPos: BlockPos, pBlockState: BlockState) : B
     }
 }
 
+abstract class MultiblockDelegateCellBlockEntity<C : Cell>(pPos: BlockPos, pBlockState: BlockState, pType: BlockEntityType<*>) : CellBlockEntity<C>(pPos, pBlockState, pType) {
+    var representativePos: BlockPos? = null
+        private set
+
+    @ServerOnly @OnServerThread
+    fun setRepresentative(representative: BlockPos) {
+        requireIsOnServerThread {
+            "Cannot set representative on non-server thread"
+        }
+
+        check(representativePos == null) {
+            "Tried to set representative multiple times"
+        }
+
+        this.representativePos = representative
+
+        this.setChanged()
+        this.setSyncDirty()
+    }
+
+    @ServerOnly @OnServerThread
+    fun removeRepresentative() {
+        requireIsOnServerThread {
+            "Cannot remove representative on non-server thread"
+        }
+
+        check(representativePos != null) {
+            "Tried to remove non-exiting representative"
+        }
+
+        representativePos = null
+
+        this.setChanged()
+        this.setSyncDirty()
+    }
+
+    private fun putRepresentative(tag: CompoundTag) {
+        val representativePos = this.representativePos
+
+        if(representativePos != null) {
+            tag.putBlockPos(REPRESENTATIVE_POS, representativePos)
+        }
+    }
+
+    private fun loadRepresentative(tag: CompoundTag) {
+        if(tag.contains(REPRESENTATIVE_POS)) {
+            this.representativePos = tag.getBlockPos(REPRESENTATIVE_POS)
+        }
+    }
+
+    override fun saveAdditional(pTag: CompoundTag) {
+        super.saveAdditional(pTag)
+        putRepresentative(pTag)
+    }
+
+    override fun load(pTag: CompoundTag) {
+        super.load(pTag)
+        loadRepresentative(pTag)
+    }
+
+    override fun getUpdateTag(): CompoundTag {
+        val tag = super.getUpdateTag()
+        putRepresentative(tag)
+        return tag
+    }
+
+    override fun getUpdatePacket(): Packet<ClientGamePacketListener>? {
+        val superPacket = super.getUpdatePacket()
+
+        if(superPacket != null) {
+            check(superPacket is ClientboundBlockEntityDataPacket) {
+                "Unexpected super packet $superPacket"
+            }
+        }
+
+        @Suppress("USELESS_CAST") // shut the hell up
+        val tag = (superPacket as? ClientboundBlockEntityDataPacket)?.tag ?: CompoundTag()
+        putRepresentative(tag)
+        return ClientboundBlockEntityDataPacket.create(this) { tag }
+    }
+
+    companion object {
+        private const val REPRESENTATIVE_POS = "multiblockDelegateCellBlockEntityRepresentativePos"
+    }
+}
+
+interface ValidateFormationBlock<Self> where Self : Block, Self : ValidateFormationBlock<Self> {
+    fun validateMultiblockFormation(pos: BlockPos)
+}
+
+interface ValidateFormationBlockEntity<Self> where Self : BlockEntity, Self : ValidateFormationBlockEntity<Self> {
+    fun validateMultiblockFormation()
+}
+
 class BigBlockItem(val definition: MultiblockDelegateMap, representative: Block) : BlockItem(representative, Properties()) {
     override fun place(pContext: BlockPlaceContext): InteractionResult {
         val facing = checkNotNull(block.getStateForPlacement(pContext)) {
@@ -545,13 +719,41 @@ class BigBlockItem(val definition: MultiblockDelegateMap, representative: Block)
             return result
         }
 
+        val validations = ArrayList<() -> Unit>()
+
+        fun enlistForValidation(block: Block, pos: BlockPos) {
+            if(block is ValidateFormationBlock<*>) {
+                validations.add {
+                    block.validateMultiblockFormation(pos)
+                }
+            }
+        }
+
+        fun enlistForValidation(blockEntity: BlockEntity) {
+            if(blockEntity is ValidateFormationBlockEntity<*>) {
+                validations.add {
+                    blockEntity.validateMultiblockFormation()
+                }
+            }
+        }
+
+        enlistForValidation(block, pContext.clickedPos)
+
+        val repBlockEntity = pContext.level.getBlockEntity(pContext.clickedPos)
+
+        if(repBlockEntity != null) {
+            enlistForValidation(repBlockEntity)
+        }
+
         if(result == InteractionResult.CONSUME) {
             definition.delegates.forEach { (delegatePosMb, state) ->
                 val delegatePosWorld = transform(delegatePosMb)
 
                 var delegateState = state
+                val b = state.block
+                enlistForValidation(block, delegatePosWorld)
 
-                if(state.block is MultiblockDelegateBlock) {
+                if(b is MultiblockDelegateBlock || b is MultiblockDelegateUprightHorizontalDirectionCellBlock<*>) {
                     delegateState = delegateState.setValue(HorizontalDirectionalBlock.FACING, facing)
                 }
 
@@ -559,10 +761,23 @@ class BigBlockItem(val definition: MultiblockDelegateMap, representative: Block)
 
                 val blockEntity = pContext.level.getBlockEntity(delegatePosWorld)
 
-                if(blockEntity is MultiblockDelegateBlockEntity) {
-                    blockEntity.setRepresentative(pContext.clickedPos)
+                if(blockEntity != null) {
+                    enlistForValidation(blockEntity)
                 }
+
+                when(blockEntity) {
+                    is MultiblockDelegateBlockEntity -> blockEntity.setRepresentative(pContext.clickedPos)
+                    is MultiblockDelegateCellBlockEntity<*> -> blockEntity.setRepresentative(pContext.clickedPos)
+                }
+
+                // New code: needed for the cells.
+                // We do this here because we need the representative pos.
+                b.setPlacedBy(pContext.level, delegatePosWorld, delegateState, pContext.player, pContext.itemInHand)
             }
+        }
+
+        validations.forEach {
+            it.invoke()
         }
 
         return result
