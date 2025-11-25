@@ -1,5 +1,6 @@
 package org.eln2.mc.integration
 
+import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.network.chat.Component
@@ -12,6 +13,8 @@ import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlock
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockEntity
+import org.eln2.mc.common.blocks.foundation.MultiblockDelegateCellBlockEntity
+import org.eln2.mc.common.blocks.foundation.MultiblockDelegateUprightHorizontalDirectionCellBlock
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.specs.foundation.CellSpec
@@ -37,22 +40,31 @@ class Eln2WailaPlugin : IWailaPlugin {
 
         registration.addRayTraceCallback { _, accessor, _ ->
             if (accessor is BlockAccessor) {
-                if (accessor.block is MultiblockDelegateBlock) {
-                    val delegateBlockEntity = accessor.blockEntity
-                        as? MultiblockDelegateBlockEntity
+                val representativePos = when {
+                    accessor.block is MultiblockDelegateBlock -> {
+                        val delegateBlockEntity = accessor.blockEntity
+                                as? MultiblockDelegateBlockEntity
 
-                    if(delegateBlockEntity != null) {
-                        val representativePos = delegateBlockEntity.representativePos
-
-                        if(representativePos != null) {
-                            return@addRayTraceCallback registration
-                                .blockAccessor()
-                                .from(accessor)
-                                .blockState(accessor.level.getBlockState(representativePos))
-                                .blockEntity(accessor.level.getBlockEntity(representativePos))
-                                .build()
-                        }
+                        delegateBlockEntity?.representativePos
                     }
+                    accessor.block is MultiblockDelegateUprightHorizontalDirectionCellBlock<*> -> {
+                        val delegateBlockEntity = accessor.blockEntity
+                                as? MultiblockDelegateCellBlockEntity<*>
+
+                        delegateBlockEntity?.representativePos
+                    }
+                    else -> {
+                        null
+                    }
+                }
+
+                if(representativePos != null) {
+                    return@addRayTraceCallback registration
+                        .blockAccessor()
+                        .from(accessor)
+                        .blockState(accessor.level.getBlockState(representativePos))
+                        .blockEntity(accessor.level.getBlockEntity(representativePos))
+                        .build()
                 }
             }
 

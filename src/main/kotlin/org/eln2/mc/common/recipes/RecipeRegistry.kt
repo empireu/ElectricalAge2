@@ -24,7 +24,7 @@ object RecipeRegistry {
         RECIPE_SERIALIZERS.register(bus)
     }
 
-    private inline fun<reified R> register(id: String, crossinline serializer: (RecipeType<R>) -> RecipeSerializer<R>) : RecipeType<R> where R : Recipe<SimpleContainer> {
+    inline fun<reified R> register(id: String, crossinline serializer: (RecipeType<R>) -> RecipeSerializer<R>) : RecipeType<R> where R : Recipe<SimpleContainer> {
         val location = resource(id)
         val recipeType = RecipeType.simple<R>(location)
 

@@ -44,8 +44,17 @@ class WrenchItem : Item(Properties().stacksTo(1)) {
         }
 
         val player = pContext.player ?: return InteractionResult.FAIL
+        val blockEntity = pContext.level.getBlockEntity(pContext.clickedPos)
 
-        val multipart = pContext.level.getBlockEntity(pContext.clickedPos) as? MultipartBlockEntity ?: return InteractionResult.FAIL
+        if(blockEntity is WrenchInteractable) {
+            if(player.isShiftKeyDown) {
+                return blockEntity.applyWrench(this, pContext)
+            }
+
+            return InteractionResult.FAIL
+        }
+
+        val multipart = blockEntity as? MultipartBlockEntity ?: return InteractionResult.FAIL
 
         val part = multipart.pickPart(player) ?: return InteractionResult.FAIL
 

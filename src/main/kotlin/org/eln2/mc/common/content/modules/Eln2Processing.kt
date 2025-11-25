@@ -63,6 +63,7 @@ import org.eln2.mc.common.content.VulcanizingAutoclaveMainCell
 import org.eln2.mc.common.content.VulcanizingAutoclaveThermalPortBlock
 import org.eln2.mc.common.content.VulcanizingAutoclaveThermalPortBlockEntity
 import org.eln2.mc.common.content.VulcanizingAutoclaveThermalPortCell
+import org.eln2.mc.common.content.VulcanizingRecipe
 import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
 import org.eln2.mc.common.recipes.KineticProcessingCell
 import org.eln2.mc.common.recipes.KineticProcessingCellKineticOptions
@@ -71,13 +72,16 @@ import org.eln2.mc.common.recipes.MotorProcessingCell
 import org.eln2.mc.common.recipes.MotorProcessingCellElectricalOptions
 import org.eln2.mc.common.recipes.MotorProcessingCellOptions
 import org.eln2.mc.common.recipes.ProcessingCellThermalOptions
+import org.eln2.mc.common.recipes.RecipeRegistry
 import org.eln2.mc.common.recipes.RecipeRegistry.registerCatalyzedRecipe
 import org.eln2.mc.common.recipes.RecipeRegistry.registerDirectRecipe
+import org.eln2.mc.common.recipes.foundation.CatalyzedSimpleProcessingRecipe
 import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
 import org.eln2.mc.data.directionPoleMapPlanar
 import org.eln2.mc.data.monopolarMapPlanar
 import org.eln2.mc.data.nullPolarMap
 import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.resource
 
 object Eln2Processing : ContentModule() {
     override fun registerBlockEntityVisualizers() {
@@ -289,12 +293,21 @@ object Eln2Processing : ContentModule() {
 
     //#region Vulcanizing Autoclave
 
+    val VULCANIZING_RECIPE = RecipeRegistry.register<VulcanizingRecipe>("vulcanizing") {
+        VulcanizingRecipe.Serializer(it)
+    }
+
     val VULCANIZING_AUTOCLAVE_THERMAL_PORT_CELL = cellMemoize("vulcanizing_autoclave_thermal_port") {
+        val thermalDef = ThermalMassDefinition(
+            ChemicalElement.Copper.asMaterial,
+            mass = Quantity(31.65, KILOGRAM)
+        )
+
         val map = monopolarMapPlanar(Base6Direction3d.Back)
         val size = ThermalSize.Standard
 
         CellFactory {
-            VulcanizingAutoclaveThermalPortCell(it, map, size)
+            VulcanizingAutoclaveThermalPortCell(it, thermalDef, map, size)
         }
     }
 
