@@ -15,6 +15,13 @@ import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.common.cells.foundation.CellGraph
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
+
+fun easeInOutCubic(t: Double) =  if (t < 0.5) {
+    4.0 * t * t * t
+} else {
+    1.0 - (-2.0 * t + 2.0).pow(3) / 2.0
+}
 
 @Suppress("NOTHING_TO_INLINE")
 class BitSparseVoxelOctree(val log: Int) {

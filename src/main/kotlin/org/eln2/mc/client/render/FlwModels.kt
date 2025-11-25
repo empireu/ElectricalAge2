@@ -188,7 +188,11 @@ object FlwModels {
     //#region Vulcanizing Autoclave
 
     val VULCANIZING_AUTOCLAVE_BODY = partialBlock("vulcanizing_autoclave/body")
+    val VULCANIZING_AUTOCLAVE_DOOR = partialBlock("vulcanizing_autoclave/door")
 
+    val VULCANIZING_AUTOCLAVE_LATEX_SULFUR = partialBlock("vulcanizing_autoclave/latex_sulfur")
+    val VULCANIZING_AUTOCLAVE_RUBBER = partialBlock("vulcanizing_autoclave/rubber")
+    val VULCANIZING_AUTOCLAVE_BURNT = partialBlock("vulcanizing_autoclave/burnt")
 
     //#endregion
 
@@ -230,9 +234,7 @@ object FlwModels {
 
     private val modelCentersCache = ConcurrentHashMap<BakedModel, Vector3d>()
 
-    fun getModelCenter(model: BakedModel) : Vector3d = modelCentersCache.computeIfAbsent(model) {
-        val accumulator = Average3d()
-
+    fun iterateVertexPositions(model: BakedModel, consumer: (Vector3d) -> Unit) {
         @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")
         model.getQuads(null, null, null).forEach { quad ->
             require(quad.vertices.size == 32)
@@ -244,12 +246,22 @@ object FlwModels {
                 intView.clear()
                 intView.put(quad.vertices, i * 8, 8)
 
-                accumulator.add(
-                    buffer.getFloat(0).toDouble(),
-                    buffer.getFloat(4).toDouble(),
-                    buffer.getFloat(8).toDouble(),
+                consumer(
+                    Vector3d(
+                        buffer.getFloat(0).toDouble(),
+                        buffer.getFloat(4).toDouble(),
+                        buffer.getFloat(8).toDouble()
+                    )
                 )
             }
+        }
+    }
+
+    fun getModelCenter(model: BakedModel) : Vector3d = modelCentersCache.computeIfAbsent(model) {
+        val accumulator = Average3d()
+
+        iterateVertexPositions(model) {
+            accumulator.add(it)
         }
 
         accumulator.average

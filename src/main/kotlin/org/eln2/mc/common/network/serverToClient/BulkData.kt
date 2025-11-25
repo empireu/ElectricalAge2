@@ -632,7 +632,15 @@ class ClientSidePacketHandler(private val registeredIds: Map<Int, ClientSidePack
 
     companion object {
         inline fun <reified P> encode(packet: P): ByteArray {
-            val data = Cbor.encodeToByteArray(packet)
+            val data: ByteArray
+
+            try {
+                data = Cbor.encodeToByteArray(packet)
+            }
+            catch (t: Throwable) {
+                DEBUGGER_BREAK()
+                throw t
+            }
 
             val sendBuffer = ByteArray(4 + data.size)
             val result = ByteBuffer.wrap(sendBuffer)

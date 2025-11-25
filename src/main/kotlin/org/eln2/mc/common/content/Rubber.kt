@@ -3,6 +3,7 @@ package org.eln2.mc.common.content
 import com.google.gson.JsonObject
 import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.visual.DynamicVisual
+import dev.engine_room.flywheel.api.visual.SectionTrackedVisual
 import dev.engine_room.flywheel.api.visual.ShaderLightVisual
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
@@ -12,10 +13,12 @@ import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet
 import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue
+import it.unimi.dsi.fastutil.longs.LongArraySet
 import kotlinx.serialization.Serializable
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.RegistryAccess
+import net.minecraft.core.SectionPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.resources.ResourceLocation
@@ -51,7 +54,9 @@ import org.ageseries.libage.data.WATT_PER_KELVIN
 import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.ThermalMassDefinition
+import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.CrossThreadAccess
 import org.eln2.mc.DEBUGGER_BREAK
@@ -60,6 +65,8 @@ import org.eln2.mc.OnServerThread
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.FlwModels.VULCANIZING_AUTOCLAVE_DOOR
+import org.eln2.mc.client.render.FlwModels.iterateVertexPositions
 import org.eln2.mc.client.render.foundation.PartialModelHelper
 import org.eln2.mc.client.render.foundation.partTransformation
 import org.eln2.mc.common.blocks.foundation.*
@@ -74,15 +81,18 @@ import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
 import org.eln2.mc.common.recipes.foundation.OUTPUT_SLOT
 import org.eln2.mc.data.Locators
 import org.eln2.mc.data.MonopoleMap
+import org.eln2.mc.easeInOutCubic
 import org.eln2.mc.extensions.addItem
 import org.eln2.mc.extensions.bind
 import org.eln2.mc.extensions.getResourceLocation
 import org.eln2.mc.extensions.minus
+import org.eln2.mc.extensions.plus
 import org.eln2.mc.extensions.putResourceLocation
 import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.extensions.vector3d
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.BlockPosInt
 import java.util.Optional
@@ -527,13 +537,13 @@ class VulcanizingAutoclaveMainCell(ci: CellCreateInfo) : Cell(ci) {
             }
         }
 
+    val heatPort get() = connections[0] as VulcanizingAutoclaveThermalPortCell
 
     override fun subscribe(subscribers: SubscriberCollection) {
         subscribers.addPre(this::tick)
     }
 
     private fun applyLoss(dt: Double, loss: Quantity<ThermalConductance>) {
-        val heatPort = connections[0] as VulcanizingAutoclaveThermalPortCell
         val thermalBody = heatPort.thermalWire.thermalBody
 
         var newEnergy = !thermalBody.energy - !(thermalBody.temperature - heatPort.environmentData.ambientTemperature) * !loss * dt
@@ -557,6 +567,10 @@ class VulcanizingAutoclaveMainCell(ci: CellCreateInfo) : Cell(ci) {
      * Applies thermal loss due to the recipe and, if the door is open, applies a large penalty.
      * */
     private fun tick(dt: Double, phase: SubscriberPhase) {
+        if(connections.isEmpty()) {
+            return
+        }
+
         if(isOperating) {
             applyLoss(dt, OPERATING_CONSUMPTION)
         }
@@ -636,12 +650,19 @@ class VulcanizingAutoclaveMainBlock : UprightHorizontalDirectionCellBlock<Vulcan
     }
 }
 
+@Serializable
+private data class DoorStateSwitchMessage(val previousState: Int, val newState: Int)
+
+@Serializable
+private data class ChangeLoadMessage(val targetState: Int)
+
 class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
     CellBlockEntity<VulcanizingAutoclaveMainCell>(pos, state, Eln2Processing.VULCANIZING_AUTOCLAVE_MAIN_BLOCK_ENTITY.get()),
     BigBlockRepresentativeBlockEntity<VulcanizingAutoclaveMainBlockEntity>,
     ValidateFormationBlockEntity<VulcanizingAutoclaveMainBlockEntity>,
     BulkPacketHandlerBlockEntity,
-    WrenchInteractable
+    WrenchInteractable,
+    ComponentDisplay
 {
     companion object {
         private const val INVENTORY = "inventory"
@@ -785,6 +806,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
 
             // Potentially allows new stuff to happen:
             stateMachine.invalidateRecipe()
+            stateMachine.changeLoadState(StateMachine.LoadState.Empty)
 
             return InteractionResult.SUCCESS
         }
@@ -815,12 +837,22 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
          * Accepts the recipe:
          * */
         stateMachine.invalidateRecipe()
+        stateMachine.changeLoadState(StateMachine.LoadState.Ingredients)
         setChanged()
 
         return InteractionResult.CONSUME // Consumes 1 (as copied above)
     }
 
     //#endregion
+
+    var renderState: RenderState? = null
+        private set
+
+    @ClientOnly
+    class RenderState {
+        var doorStatePair = Pair(StateMachine.DoorState.Closed, StateMachine.DoorState.Closed)
+        var loadState = StateMachine.LoadState.Empty
+    }
 
     @ClientOnly
     override val clientSidePacketHandlerLazy = createClientSideHandler()
@@ -832,8 +864,11 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
     override fun setLevel(pLevel: Level) {
         super.setLevel(pLevel)
 
-        if(!pLevel.isClientSide) {
-            stateMachine = StateMachine(pLevel as ServerLevel)
+        if (pLevel.isClientSide) {
+            renderState = RenderState()
+        }
+        else {
+            stateMachine = StateMachine(pLevel as ServerLevel, this)
             if(savedStateMachineData != null) {
                 stateMachine!!.loadTag(savedStateMachineData!!)
                 savedStateMachineData = null
@@ -849,18 +884,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
     fun serverTick() {
         val stateMachine = stateMachine!!
 
-        /**
-         * Updates the state machine and sends render messages:
-         * */
-        run {
-            stateMachine.update()
-
-            stateMachine.messageList.forEach {
-                sendBulkPacket(it)
-            }
-
-            stateMachine.messageList.clear()
-        }
+        stateMachine.update()
 
         cell.doorClosed = !(stateMachine.doorState == StateMachine.DoorState.Opening || stateMachine.doorState == StateMachine.DoorState.Open)
 
@@ -885,11 +909,28 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
 
             if(operation != null) {
                 cell.isOperating = true
+
+                val temperature = cell.heatPort.thermalWire.thermalBody.temperature
+
                 /**
-                 * Tries to finish the operation:
+                 * Tries to progress and finish the operation, if in the right thermal range:
                  * */
-                if(stateMachine.progressOperation()) {
-                    inventoryHandler.setStackInSlot(OUTPUT_SLOT, operation.recipe.output.copy())
+                if(!temperature in operation.recipe.minTemperature..operation.recipe.maxTemperature) {
+                    if(stateMachine.progressOperation()) {
+                        inventoryHandler.setStackInSlot(INPUT_SLOT, ItemStack.EMPTY)
+                        inventoryHandler.setStackInSlot(OUTPUT_SLOT, operation.recipe.output.copy())
+                        stateMachine.changeLoadState(StateMachine.LoadState.Results)
+                    }
+                }
+                /**
+                 * Destroys the ingredients and outputs the burnt result:
+                 * */
+                else if(temperature > operation.recipe.maxTemperature) {
+                    stateMachine.clearOperation()
+                    inventoryHandler.setStackInSlot(INPUT_SLOT, ItemStack.EMPTY)
+                    inventoryHandler.setStackInSlot(OUTPUT_SLOT, operation.recipe.burnOutput.copy())
+                    stateMachine.changeLoadState(StateMachine.LoadState.Burnt)
+                    // P.S. we should add some A/V here
                 }
             }
             /**
@@ -905,24 +946,62 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
         }
     }
 
+    @ClientOnly
     override fun setupPacketsOnClient(handler: ClientSidePacketHandlerBuilder) {
+        fun modifyState(body: RenderState.() -> Unit) {
+            val state = renderState!!
+            body(state)
+        }
 
+        handler.withHandler<DoorStateSwitchMessage> {
+            modifyState {
+                doorStatePair = Pair(
+                    StateMachine.DoorState.entries[it.previousState],
+                    StateMachine.DoorState.entries[it.newState]
+                )
+            }
+        }
+
+        handler.withHandler<ChangeLoadMessage> {
+            modifyState {
+                loadState = StateMachine.LoadState.entries[it.targetState]
+            }
+        }
     }
 
+    // onSyncSuggested
+    override fun getUpdateTag(): CompoundTag {
+        val stateMachine = stateMachine!!
+        sendBulkPacket(DoorStateSwitchMessage(
+            stateMachine.doorState.index,
+            stateMachine.doorState.index
+        ))
+        sendBulkPacket(ChangeLoadMessage(stateMachine.loadState.index))
+        return super.getUpdateTag()
+    }
+
+    @ServerOnly
     override fun saveAdditional(pTag: CompoundTag) {
         super.saveAdditional(pTag)
         pTag.put(INVENTORY, inventoryHandler.serializeNBT())
         pTag.put(STATE_MACHINE, stateMachine!!.saveTag())
     }
 
+    @ServerOnly
     override fun load(pTag: CompoundTag) {
         super.load(pTag)
         inventoryHandler.deserializeNBT(pTag.getCompound(INVENTORY))
         savedStateMachineData = pTag.getCompound(STATE_MACHINE)
     }
 
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        val sm = stateMachine!!
+        builder.debugInIDE { "Door: ${sm.doorState}" }
+        builder.debugInIDE { "Door progress: ${sm.doorSwitchProgress}" }
+    }
+
     @ServerOnly @OnServerThread
-    class StateMachine(val level: ServerLevel) {
+    class StateMachine(val level: ServerLevel, val blockEntity: VulcanizingAutoclaveMainBlockEntity) {
         companion object {
             const val DOOR_TURN_RATE = 0.25
 
@@ -932,13 +1011,25 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
             private const val OPERATION = "operation"
             private const val OPERATION_RECIPE = "recipe"
             private const val OPERATION_PROGRESS = "progress"
+            private const val LOAD_STATE = "loadState"
         }
+
+        //#region Door State
 
         var doorState = DoorState.Closed
             private set
 
         var doorSwitchProgress = 0.0
             private set
+
+        enum class DoorState(val index: Int) {
+            Opening(0),
+            Open(1),
+            Closing(2),
+            Closed(3);
+        }
+
+        //#endregion
 
         //#region Dirty
 
@@ -952,7 +1043,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
 
         //#endregion
 
-        //#region Recipe State
+        //#region Recipe
 
         private var recipeInvalidated = false
 
@@ -1014,7 +1105,30 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
 
         //#endregion
 
-        val messageList = ArrayList<Any>()
+        //#region Load
+
+        var loadState = LoadState.Empty
+            private set
+
+        enum class LoadState(val index: Int) {
+            Empty(0),
+            Ingredients(1),
+            Results(2),
+            Burnt(3);
+        }
+
+
+        fun changeLoadState(targetState: LoadState) {
+            if(targetState == loadState) {
+                return
+            }
+
+            loadState = targetState
+            blockEntity.sendBulkPacket(ChangeLoadMessage(targetState.index))
+            saveChanged = true
+        }
+
+        //#endregion
 
         private fun updateDoor() {
             if(doorState == DoorState.Open || doorState == DoorState.Closed) {
@@ -1030,17 +1144,17 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
                 if(doorState == DoorState.Opening) {
                     doorState = DoorState.Open
 
-                    messageList.add(DoorStateSwitchMessage(
-                        DoorState.Opening,
-                        DoorState.Open
+                    blockEntity.sendBulkPacket(DoorStateSwitchMessage(
+                        DoorState.Opening.index,
+                        DoorState.Open.index
                     ))
                 }
                 else {
                     doorState = DoorState.Closed
 
-                    messageList.add(DoorStateSwitchMessage(
-                        DoorState.Closing,
-                        DoorState.Closed
+                    blockEntity.sendBulkPacket(DoorStateSwitchMessage(
+                        DoorState.Closing.index,
+                        DoorState.Closed.index
                     ))
 
                     invalidateRecipe()
@@ -1051,10 +1165,18 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
         fun doorAction() = when(doorState) {
             DoorState.Open -> {
                 doorState = DoorState.Closing
+                blockEntity.sendBulkPacket(DoorStateSwitchMessage(
+                    DoorState.Open.index,
+                    DoorState.Closing.index
+                ))
                 true
             }
             DoorState.Closed ->  {
                 doorState = DoorState.Opening
+                blockEntity.sendBulkPacket(DoorStateSwitchMessage(
+                    DoorState.Closed.index,
+                    DoorState.Opening.index
+                ))
                 clearOperation()
                 true
             }
@@ -1062,22 +1184,8 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
         }
 
         fun update() {
-            check(messageList.isEmpty()) {
-                "Non-consumed messages! $this"
-            }
-
             updateDoor()
         }
-
-        enum class DoorState(val index: Int) {
-            Opening(0),
-            Open(1),
-            Closing(2),
-            Closed(3);
-        }
-
-        @Serializable
-        data class DoorStateSwitchMessage(val previousState: DoorState, val newState: DoorState)
 
         fun saveTag() : CompoundTag {
             val tag = CompoundTag()
@@ -1091,6 +1199,8 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
                 operationTag.putDouble(OPERATION_PROGRESS, it.progress)
                 tag.put(OPERATION, operationTag)
             }
+
+            tag.putInt(LOAD_STATE, loadState.index)
 
             return tag
         }
@@ -1113,6 +1223,8 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
 
                 operation = Operation(recipe.get() as VulcanizingRecipe, progress)
             }
+
+            loadState = LoadState.entries[tag.getInt(LOAD_STATE)]
         }
     }
 }
@@ -1121,7 +1233,30 @@ class VulcanizingAutoclaveMainBlockEntityVisual(
     ctx: VisualizationContext,
     blockEntity: VulcanizingAutoclaveMainBlockEntity,
     partialTick: Float
-) : AbstractBlockEntityVisual<VulcanizingAutoclaveMainBlockEntity>(ctx, blockEntity, partialTick), ShaderLightVisual {
+) :
+    AbstractBlockEntityVisual<VulcanizingAutoclaveMainBlockEntity>(ctx, blockEntity, partialTick),
+    ShaderLightVisual,
+    SimpleDynamicVisual
+{
+    companion object {
+        val DOOR_PIVOT = lazy {
+            var minX = Double.POSITIVE_INFINITY
+            var maxZ = Double.NEGATIVE_INFINITY
+
+            iterateVertexPositions(VULCANIZING_AUTOCLAVE_DOOR.get()) { (x, y, z) ->
+                if(x < minX) {
+                    minX = x
+                }
+
+                if(z > maxZ) {
+                    maxZ = z
+                }
+            }
+
+            Pair(minX, maxZ)
+        }
+    }
+
     val body: TransformedInstance = visualizationContext.instancerProvider()
         .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.VULCANIZING_AUTOCLAVE_BODY, FlwMaterials.TRANSLUCENT_SMOOTH_LIT))
         .createInstance()
@@ -1132,16 +1267,131 @@ class VulcanizingAutoclaveMainBlockEntityVisual(
             it.uncenter()
         }
 
+    val door: TransformedInstance = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.VULCANIZING_AUTOCLAVE_DOOR, FlwMaterials.TRANSLUCENT_SMOOTH_LIT))
+        .createInstance()
+
+    var load = VulcanizingAutoclaveMainBlockEntity.StateMachine.LoadState.Empty
+    var loadInstance: TransformedInstance? = null
+
+    private var doorOpen = false
+    private var doorOpenParameter = 0.0
+    private val stopwatch = Stopwatch()
+
+    private fun rotateDoorEaseInOut() {
+        val (pivotX, pivotZ) = DOOR_PIVOT.value
+
+        door.setIdentityTransform()
+        door.translate(visualPosition)
+        door.center()
+        door.rotateToFace(blockEntity.representativeFacing.clockWise)
+        door.uncenter()
+
+        door.translate(pivotX, 0.0, pivotZ)
+        door.rotateY( map(easeInOutCubic(doorOpenParameter), 0.0, 1.0, 0.0, PI / 2.0).toFloat())
+        door.translate(-pivotX, 0.0, -pivotZ)
+        door.setChanged()
+    }
+
+    init {
+        rotateDoorEaseInOut()
+    }
+
+    override fun setSectionCollector(sectionCollector: SectionTrackedVisual.SectionCollector?) {
+        this.lightSections = sectionCollector
+
+        val set = LongArraySet()
+        set.add(SectionPos.asLong(pos))
+
+        // The model intersects all of these:
+        (Base6Direction3dMask.HORIZONTALS + Base6Direction3d.Up).forEach {
+            set.add(SectionPos.asLong(pos + it))
+        }
+
+        lightSections.sections(set)
+    }
+
+    private fun updateDoor() {
+        val dt = stopwatch.sample()
+
+        val renderState = blockEntity.renderState!!
+
+        val (psPreviousDoorState, rsTargetDoorState) = renderState.doorStatePair
+        val targetDoorOpen = rsTargetDoorState == VulcanizingAutoclaveMainBlockEntity.StateMachine.DoorState.Opening || rsTargetDoorState == VulcanizingAutoclaveMainBlockEntity.StateMachine.DoorState.Open
+        val previousDoorOpen = psPreviousDoorState == VulcanizingAutoclaveMainBlockEntity.StateMachine.DoorState.Opening || psPreviousDoorState == VulcanizingAutoclaveMainBlockEntity.StateMachine.DoorState.Open
+
+        if(targetDoorOpen != doorOpen) {
+            // Apply immediately:
+            if(targetDoorOpen == previousDoorOpen) {
+                doorOpenParameter = if(targetDoorOpen) 1.0 else 0.0
+            }
+
+            doorOpen = targetDoorOpen
+        }
+
+        val parametricSpeed = VulcanizingAutoclaveMainBlockEntity.StateMachine.DOOR_TURN_RATE * if(doorOpen) 1.0 else -1.0
+        val newDoorSwingProgress = (doorOpenParameter + parametricSpeed * !dt).coerceIn(0.0, 1.0)
+
+        if(newDoorSwingProgress != doorOpenParameter) {
+            doorOpenParameter = newDoorSwingProgress
+            rotateDoorEaseInOut()
+        }
+    }
+
+    private fun updateLoad() {
+        val target = blockEntity.renderState!!.loadState
+
+        if(target == load) {
+            return
+        }
+
+        load = target
+        loadInstance?.delete()
+
+        val model = when(target) {
+            VulcanizingAutoclaveMainBlockEntity.StateMachine.LoadState.Empty -> {
+                return
+            }
+            VulcanizingAutoclaveMainBlockEntity.StateMachine.LoadState.Ingredients -> {
+                FlwModels.VULCANIZING_AUTOCLAVE_RUBBER
+            }
+            VulcanizingAutoclaveMainBlockEntity.StateMachine.LoadState.Results -> {
+                FlwModels.VULCANIZING_AUTOCLAVE_RUBBER
+            }
+            VulcanizingAutoclaveMainBlockEntity.StateMachine.LoadState.Burnt -> {
+                FlwModels.VULCANIZING_AUTOCLAVE_BURNT
+            }
+        }
+
+        loadInstance = visualizationContext.instancerProvider()
+            .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(model, FlwMaterials.TRANSLUCENT_SMOOTH_LIT))
+            .createInstance()
+            .also {
+                it.translate(visualPosition)
+                it.center()
+                it.rotateToFace(blockEntity.representativeFacing.clockWise)
+                it.uncenter()
+            }
+    }
+
+    override fun beginFrame(p0: DynamicVisual.Context?) {
+        updateDoor()
+        updateLoad()
+    }
+
     override fun updateLight(p0: Float) {
         // NOOP
     }
 
     override fun collectCrumblingInstances(p0: Consumer<Instance?>) {
         p0.accept(body)
+        p0.accept(door)
     }
 
     override fun _delete() {
         body.delete()
+        door.delete()
+        loadInstance?.delete()
     }
 }
 
