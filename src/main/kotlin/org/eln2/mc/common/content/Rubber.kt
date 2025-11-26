@@ -1258,7 +1258,7 @@ class VulcanizingAutoclaveMainBlockEntityVisual(
     }
 
     val body: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.VULCANIZING_AUTOCLAVE_BODY, FlwMaterials.TRANSLUCENT_SMOOTH_LIT))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.VULCANIZING_AUTOCLAVE_BODY, FlwMaterials.CUTOUT_TRANSLUCENT_SMOOTH_LIT))
         .createInstance()
         .also {
             it.translate(visualPosition)
@@ -1268,7 +1268,7 @@ class VulcanizingAutoclaveMainBlockEntityVisual(
         }
 
     val door: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.VULCANIZING_AUTOCLAVE_DOOR, FlwMaterials.TRANSLUCENT_SMOOTH_LIT))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.VULCANIZING_AUTOCLAVE_DOOR, FlwMaterials.CUTOUT_SMOOTH_LIT))
         .createInstance()
 
     var load = VulcanizingAutoclaveMainBlockEntity.StateMachine.LoadState.Empty
@@ -1321,12 +1321,14 @@ class VulcanizingAutoclaveMainBlockEntityVisual(
         val previousDoorOpen = psPreviousDoorState == VulcanizingAutoclaveMainBlockEntity.StateMachine.DoorState.Opening || psPreviousDoorState == VulcanizingAutoclaveMainBlockEntity.StateMachine.DoorState.Open
 
         if(targetDoorOpen != doorOpen) {
-            // Apply immediately:
-            if(targetDoorOpen == previousDoorOpen) {
-                doorOpenParameter = if(targetDoorOpen) 1.0 else 0.0
-            }
-
             doorOpen = targetDoorOpen
+
+            if(targetDoorOpen == previousDoorOpen) {
+                // Apply immediately:
+                doorOpenParameter = if(targetDoorOpen) 1.0 else 0.0
+                rotateDoorEaseInOut()
+                return
+            }
         }
 
         val parametricSpeed = VulcanizingAutoclaveMainBlockEntity.StateMachine.DOOR_TURN_RATE * if(doorOpen) 1.0 else -1.0
@@ -1364,7 +1366,7 @@ class VulcanizingAutoclaveMainBlockEntityVisual(
         }
 
         loadInstance = visualizationContext.instancerProvider()
-            .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(model, FlwMaterials.TRANSLUCENT_SMOOTH_LIT))
+            .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(model, FlwMaterials.OIT_NON_MIP_SMOOTH_LIT))
             .createInstance()
             .also {
                 it.translate(visualPosition)

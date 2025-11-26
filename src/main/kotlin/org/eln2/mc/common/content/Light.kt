@@ -664,7 +664,7 @@ class LampPoleBlockEntityVisual(
     }
 
     val body: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.LAMP_POLE_BODY, FlwMaterials.TRANSLUCENT_SMOOTH_LIT))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.LAMP_POLE_BODY, FlwMaterials.OIT_NON_MIP_SMOOTH_LIT))
         .createInstance()
         .also {
             it.translate(visualPosition)

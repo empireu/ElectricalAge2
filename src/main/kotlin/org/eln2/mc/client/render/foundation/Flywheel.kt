@@ -64,16 +64,6 @@ import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityVisual
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.content.*
-import org.eln2.mc.common.content.modules.Eln2BasicComponents
-import org.eln2.mc.common.content.modules.Eln2Batteries
-import org.eln2.mc.common.content.modules.Eln2Grid
-import org.eln2.mc.common.content.modules.Eln2Kinetic
-import org.eln2.mc.common.content.modules.Eln2Lights
-import org.eln2.mc.common.content.modules.Eln2PowerDevices
-import org.eln2.mc.common.content.modules.Eln2Processing
-import org.eln2.mc.common.content.modules.Eln2Signal
-import org.eln2.mc.common.content.modules.Eln2Solar
-import org.eln2.mc.common.content.modules.Eln2Thermal
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.common.specs.foundation.*
@@ -1514,7 +1504,7 @@ class TestBlockEntityVisual<T : BlockEntity>(
     transformer: (instance: TransformedInstance, visual: TestBlockEntityVisual<T>) -> Unit,
 ) : AbstractBlockEntityVisual<T>(ctx, blockEntity, partialTick) {
     var instance: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(model, FlwMaterials.TRANSLUCENT_SMOOTH_LIT))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(model, FlwMaterials.OIT_NON_MIP_SMOOTH_LIT))
         .createInstance()
         .also { transformer(it, this) }
 
