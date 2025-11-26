@@ -303,7 +303,7 @@ object Eln2Processing : ContentModule() {
             mass = Quantity(31.65, KILOGRAM)
         )
 
-        val map = monopolarMapPlanar(Base6Direction3d.Back)
+        val map = monopolarMapPlanar(Base6Direction3d.Left)
         val size = ThermalSize.Standard
 
         CellFactory {

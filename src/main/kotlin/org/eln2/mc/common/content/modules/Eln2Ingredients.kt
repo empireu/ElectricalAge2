@@ -2,6 +2,8 @@
 
 package org.eln2.mc.common.content.modules
 
+import net.minecraft.world.item.Item
+import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.items.ItemRegistry.itemDefault
 import org.eln2.mc.common.items.ItemRegistry.itemNoStack
 
@@ -16,5 +18,8 @@ object Eln2Ingredients : ContentModule() {
 
     val COPPER_ROD = itemDefault("copper_rod")
 
-    val LATEX_ITEM = itemDefault("raw_latex")
+    val RAW_LATEX = itemDefault("raw_latex")
+    val RUBBER_COMPOUND = item("rubber_compound") { Item(Item.Properties().stacksTo(8)) }
+    val RUBBER = itemDefault("rubber")
+    val BURNT_RUBBER = itemDefault("burnt_rubber")
 }

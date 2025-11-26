@@ -419,8 +419,8 @@ abstract class BurnerCell(ci: CellCreateInfo, val burnerCellOptions: BurnerCellO
     )
 
     @Replicator
-    fun hullTemperatureReplicator(target: InternalTemperatureConsumer) =
-        InternalTemperatureReplicatorBehavior(listOf(hull.thermalBody), target)
+    fun hullTemperatureReplicator(target: InternalMultiThermalBodyTemperatureConsumer) =
+        InternalMultiThermalBodyTemperatureReplicatorBehavior(listOf(hull.thermalBody), target)
 
     @Replicator
     fun externalTemperatureReplicator(target: ExternalTemperatureConsumer) =
@@ -725,7 +725,7 @@ class PrimitiveBurnerBlock : UprightHorizontalDirectionCellBlock<PrimitiveBurner
 class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
     CellBlockEntity<PrimitiveBurnerCell>(pos, state, Eln2HeatGenerators.PRIMITIVE_BURNER_BLOCK_ENTITY.get()),
     BulkPacketHandlerBlockEntity,
-    InternalTemperatureConsumer,
+    InternalMultiThermalBodyTemperatureConsumer,
     ExternalTemperatureConsumer,
     ScrewdriverScrollable,
     ComponentDisplay

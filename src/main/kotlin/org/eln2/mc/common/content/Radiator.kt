@@ -15,7 +15,7 @@ import org.eln2.mc.ClientOnly
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
-import org.eln2.mc.common.cells.foundation.InternalTemperatureConsumer
+import org.eln2.mc.common.cells.foundation.InternalMultiThermalBodyTemperatureConsumer
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.integration.ComponentDisplayList
@@ -40,7 +40,7 @@ class RadiatorPart(
         coldTint = MyColor(0.0f, 1f, 1f, 1f)
         hotTint = MyColor( 0.4f, 1f, 0.1f, 0.1f)
     }.build()
-) : CellPart<ThermalWireCell>(ci, Eln2Wires.THERMAL_RADIATOR_CELL.get()), InternalTemperatureConsumer, RadiantMonopoleGameObject, ComponentDisplay {
+) : CellPart<ThermalWireCell>(ci, Eln2Wires.THERMAL_RADIATOR_CELL.get()), InternalMultiThermalBodyTemperatureConsumer, RadiantMonopoleGameObject, ComponentDisplay {
     override var renderTemperature: Quantity<Temperature> = STANDARD_TEMPERATURE
         private set
 

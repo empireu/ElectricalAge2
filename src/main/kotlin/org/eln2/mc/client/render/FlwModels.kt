@@ -189,6 +189,7 @@ object FlwModels {
 
     val VULCANIZING_AUTOCLAVE_BODY = partialBlock("vulcanizing_autoclave/body")
     val VULCANIZING_AUTOCLAVE_DOOR = partialBlock("vulcanizing_autoclave/door")
+    val VULCANIZING_AUTOCLAVE_INCANDESCENT = partialBlock("vulcanizing_autoclave/incandescent")
 
     val VULCANIZING_AUTOCLAVE_LATEX_SULFUR = partialBlock("vulcanizing_autoclave/latex_sulfur")
     val VULCANIZING_AUTOCLAVE_RUBBER = partialBlock("vulcanizing_autoclave/rubber")

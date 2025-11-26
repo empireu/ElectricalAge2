@@ -601,7 +601,7 @@ open class MultiblockDelegateBlockEntity(pPos: BlockPos, pBlockState: BlockState
     }
 }
 
-abstract class MultiblockDelegateCellBlockEntity<C : Cell>(pPos: BlockPos, pBlockState: BlockState, pType: BlockEntityType<*>) : CellBlockEntity<C>(pPos, pBlockState, pType) {
+abstract class MultiblockDelegateCellBlockEntity<C : Cell>(pPos: BlockPos, pBlockState: BlockState, pType: BlockEntityType<*>) : CellBlockEntity<C>(pPos, pBlockState, pType), ComponentDisplay {
     var representativePos: BlockPos? = null
         private set
 
@@ -680,6 +680,15 @@ abstract class MultiblockDelegateCellBlockEntity<C : Cell>(pPos: BlockPos, pBloc
         val tag = (superPacket as? ClientboundBlockEntityDataPacket)?.tag ?: CompoundTag()
         putRepresentative(tag)
         return ClientboundBlockEntityDataPacket.create(this) { tag }
+    }
+
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        val representativePos = this.representativePos
+
+        if(level != null && representativePos != null) {
+            builder.debugInIDE { "Representative: ${level!!.getBlockEntity(representativePos)}" }
+            (level?.getBlockEntity(representativePos) as? ComponentDisplay)?.submitDisplay(builder)
+        }
     }
 
     companion object {

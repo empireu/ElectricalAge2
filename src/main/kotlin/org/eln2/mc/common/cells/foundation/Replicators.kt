@@ -63,16 +63,21 @@ object Replicators {
         }
 }
 
-fun interface InternalTemperatureConsumer {
+/**
+ * - Internal - thermal bodies in (or owned) by the cell
+ * - Multi Thermal Body - tracks one or more [ThermalMass] references
+ * - Temperature Consumer - synchronizes by changes in the temperature of the thermal bodies
+ * */
+fun interface InternalMultiThermalBodyTemperatureConsumer {
     fun onInternalTemperatureChanges(dirty: List<ThermalMass>)
 }
 
 /**
- * Generalized behavior for sending temperature changes to clients (for e.g. rendering hot bodies)
+ * Generalized behavior for sending temperature changes to clients (for e.g. rendering hot bodies), with full access to the (multiple) underlying [ThermalMass]es.
  * @param bodies The list of bodies to track.
  * @param consumer The consumer for the changes.
  * */
-class InternalTemperatureReplicatorBehavior(val bodies: List<ThermalMass>, val consumer: InternalTemperatureConsumer) : ReplicatorBehavior {
+class InternalMultiThermalBodyTemperatureReplicatorBehavior(val bodies: List<ThermalMass>, val consumer: InternalMultiThermalBodyTemperatureConsumer) : ReplicatorBehavior {
     var scanInterval = 5
     var scanPhase = SubscriberPhase.Pre
     var tolerance = 1.0
@@ -97,6 +102,42 @@ class InternalTemperatureReplicatorBehavior(val bodies: List<ThermalMass>, val c
         }
 
         consumer.onInternalTemperatureChanges(dirty)
+    }
+}
+
+/**
+ * Internal - a temperature which is a state of the cell or a delegate
+ * Temperature Consumer - synchronizes by changes in the temperature value
+ * */
+fun interface InternalTemperatureConsumer {
+    fun onInternalTemperatureChange(temperature: Quantity<Temperature>)
+}
+
+/**
+ * Behavior for sending temperature changes to clients (for e.g. rendering hot bodies), with the single temperature being supplied as a numeric value.
+ * @param consumer The consumer for the changes.
+ * @param supplier The temperature supplier.
+ * */
+class InternalTemperatureReplicatorBehavior(val consumer: InternalTemperatureConsumer, val supplier: Supplier<Double>) : ReplicatorBehavior {
+    var scanInterval = 5
+    var scanPhase = SubscriberPhase.Pre
+    var tolerance = 1.0
+
+    private var tracked = 0.0
+
+    override fun subscribe(subscribers: SubscriberCollection) {
+        subscribers.addSubscriber(SubscriberOptions(scanInterval, scanPhase), this::scan)
+    }
+
+    private fun scan(dt: Double, phase: SubscriberPhase) {
+        val temperature = supplier.get()
+
+        if(temperature.approxEq(tracked, tolerance)) {
+            return
+        }
+
+        tracked = temperature
+        consumer.onInternalTemperatureChange(Quantity(temperature))
     }
 }
 

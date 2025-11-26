@@ -277,7 +277,7 @@ class ElectricalHeatEngineCell(
     }
 
     @Replicator
-    fun temperatureReplicator(target: InternalTemperatureConsumer) = InternalTemperatureReplicatorBehavior(
+    fun temperatureReplicator(target: InternalMultiThermalBodyTemperatureConsumer) = InternalMultiThermalBodyTemperatureReplicatorBehavior(
         listOf(thermalBipole.b1, thermalBipole.b2), target
     )
 
@@ -331,7 +331,7 @@ class ElectricalHeatEngineCell(
 
 class ElectricalHeatEnginePart(ci: PartCreateInfo) :
     CellPart<ElectricalHeatEngineCell>(ci, Eln2Thermal.ELECTRICAL_HEAT_ENGINE_CELL.get()),
-    InternalTemperatureConsumer,
+    InternalMultiThermalBodyTemperatureConsumer,
     InternalKineticStateConsumer,
     ComponentDisplay
 {

@@ -465,9 +465,9 @@ open class ThermalWireCell(
      * Replicates the temperature of [thermalWire] if [WireThermalProperties.replicatesInternalTemperature]
      * */
     @Replicator
-    fun internalTemperatureReplicator(consumer: InternalTemperatureConsumer) =
+    fun internalTemperatureReplicator(consumer: InternalMultiThermalBodyTemperatureConsumer) =
         if (thermalProperties.replicatesInternalTemperature)
-            InternalTemperatureReplicatorBehavior(listOf(thermalWire.thermalBody), consumer)
+            InternalMultiThermalBodyTemperatureReplicatorBehavior(listOf(thermalWire.thermalBody), consumer)
         else null
 
     /**
@@ -527,7 +527,7 @@ class WirePart<C : WireCell>(
     val connectionBoundsFilled: Map<Pair<Direction, Direction>, VoxelShape>,
     val renderModel: WireRenderModel?,
 ) : CellPart<C>(ci, cellProvider),
-    InternalTemperatureConsumer,
+    InternalMultiThermalBodyTemperatureConsumer,
     ExternalTemperatureConsumer,
     AnimatedPart,
     WrenchInteractable,
