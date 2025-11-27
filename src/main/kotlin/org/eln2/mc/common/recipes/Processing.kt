@@ -310,6 +310,7 @@ class MotorProcessingCell(
         )
     }
 
+    @Behavior
     val overPower = OverPowerBehavior.create(options.electrical.overPowerThreshold, this) {
         motor.armatureResistor.power
     }

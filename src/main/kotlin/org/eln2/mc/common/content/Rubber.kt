@@ -19,6 +19,9 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.RegistryAccess
 import net.minecraft.core.SectionPos
+import net.minecraft.core.particles.ParticleOptions
+import net.minecraft.core.particles.ParticleTypes
+import net.minecraft.core.particles.SimpleParticleType
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.resources.ResourceLocation
@@ -43,10 +46,12 @@ import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.shapes.Shapes
+import net.minecraftforge.client.extensions.common.IClientBlockExtensions
 import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.items.ItemStackHandler
+import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.JOULE
 import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.Quantity
@@ -77,6 +82,8 @@ import org.eln2.mc.client.render.foundation.TransformedLightOverrideInstance
 import org.eln2.mc.client.render.foundation.partTransformation
 import org.eln2.mc.common.blocks.foundation.*
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.content.VulcanizingAutoclaveMainBlockEntity.StateMachine
+import org.eln2.mc.common.content.VulcanizingAutoclaveMainBlockEntity.StateMachine.IsProcessingPacket
 import org.eln2.mc.common.content.modules.Eln2Ingredients
 import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
@@ -477,6 +484,13 @@ class VulcanizingAutoclaveThermalPortCell(
 ) : Cell(ci), SidedThermalMonoMapped<VulcanizingAutoclaveThermalPortCell> {
     @SimObject
     val thermalWire = ThermalWireObject(this, thermalDef())
+
+    @Behavior
+    val thermalExplosion = ThermalBreakdownBehavior.create(
+        Quantity(411.5, CELSIUS),
+        this,
+        thermalWire.thermalBody::temperature
+    )
 }
 
 class VulcanizingAutoclaveThermalPortBlock : MultiblockDelegateUprightHorizontalDirectionCellBlock<VulcanizingAutoclaveThermalPortCell>() {
@@ -617,6 +631,10 @@ class VulcanizingAutoclaveMainCell(ci: CellCreateInfo) : Cell(ci) {
 }
 
 class VulcanizingAutoclaveMainBlock : UprightHorizontalDirectionCellBlock<VulcanizingAutoclaveMainCell>() {
+    override fun initializeClient(consumer: Consumer<IClientBlockExtensions?>) {
+        consumer.accept(ReplaceVanillaParticlesBlockExtension)
+    }
+
     @Deprecated("Deprecated in Java")
     override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction): Boolean = true
 
@@ -787,7 +805,26 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
             return InteractionResult.PASS
         }
 
-        return if(stateMachine!!.doorAction()) {
+        val stateMachine = stateMachine!!
+        val previousDoor = stateMachine.doorState
+        val wasProcessing = stateMachine.isProcessing
+
+        return if(stateMachine.doorAction()) {
+            if(previousDoor == StateMachine.DoorState.Closed && wasProcessing) {
+                val level = level as ServerLevel
+                val facing = representativeFacing
+                val (x, y, z) = blockPos.toVector3d() + Vector3d(0.5) + facing.vector3d * 0.5
+                val dist = Random.nextDouble(0.1, 0.4)
+
+                level.sendParticles(
+                    ParticleTypes.LARGE_SMOKE,
+                    x, y, z,
+                    Random.nextInt(3, 7),
+                    facing.stepX.toDouble() * dist, facing.stepY.toDouble() * dist, facing.stepZ.toDouble() * dist,
+                    0.3
+                )
+            }
+
             InteractionResult.SUCCESS
         }
         else {
@@ -881,6 +918,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
         var doorStatePair = Pair(StateMachine.DoorState.Closed, StateMachine.DoorState.Closed)
         var loadState = StateMachine.LoadState.Empty
         var internalTemperature = 0.0
+        var isProcessing = false
     }
 
     @ClientOnly
@@ -918,6 +956,8 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
         cell.doorClosed = !(stateMachine.doorState == StateMachine.DoorState.Opening || stateMachine.doorState == StateMachine.DoorState.Open)
 
         if(stateMachine.recipeInvalidated()) {
+            stateMachine.isProcessing = false
+
             val recipe = searchForRecipe()
 
             /**
@@ -946,6 +986,8 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
                      * Tries to progress and finish the operation, if in the right thermal range:
                      * */
                     if(!temperature in operation.recipe.minTemperature..operation.recipe.maxTemperature) {
+                        stateMachine.isProcessing = true
+
                         if(stateMachine.progressOperation()) {
                             inventoryHandler.setStackInSlot(INPUT_SLOT, ItemStack.EMPTY)
                             inventoryHandler.setStackInSlot(OUTPUT_SLOT, operation.recipe.output.copy())
@@ -957,10 +999,10 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
                      * */
                     else if(temperature > operation.recipe.maxTemperature) {
                         stateMachine.clearOperation()
+                        stateMachine.isProcessing = false
                         inventoryHandler.setStackInSlot(INPUT_SLOT, ItemStack.EMPTY)
                         inventoryHandler.setStackInSlot(OUTPUT_SLOT, operation.recipe.burnOutput.copy())
                         stateMachine.changeLoadState(StateMachine.LoadState.Burnt)
-                        // P.S. we should add some A/V here
                     }
                 }
             }
@@ -969,6 +1011,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
              * */
             else {
                 cell.isOperating = false
+                stateMachine.isProcessing = false
             }
         }
 
@@ -999,6 +1042,12 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
             }
         }
 
+        handler.withHandler<IsProcessingPacket> {
+            modifyState {
+                isProcessing = it.value
+            }
+        }
+
         handler.withHandler<InternalTemperaturePacket> {
             modifyState {
                 internalTemperature = it.temperature
@@ -1018,6 +1067,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
         val stateMachine = stateMachine!!
         sendBulkPacket(DoorStateSwitchMessage(stateMachine.doorState.index, stateMachine.doorState.index))
         sendBulkPacket(ChangeLoadMessage(stateMachine.loadState.index))
+        sendBulkPacket(IsProcessingPacket(stateMachine.isProcessing))
 
         if(cell.isFormed) {
             sendBulkPacket(InternalTemperaturePacket(!cell.heatPort.thermalWire.thermalBody.temperature))
@@ -1062,6 +1112,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
             private const val OPERATION_RECIPE = "recipe"
             private const val OPERATION_PROGRESS = "progress"
             private const val LOAD_STATE = "loadState"
+            private const val IS_PROCESSING = "isProcessing"
         }
 
         //#region Door State
@@ -1180,6 +1231,22 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
 
         //#endregion
 
+        //#region A/V
+
+        var isProcessing = false
+            set(value) {
+                if(field != value) {
+                    field = value
+                    blockEntity.sendBulkPacket(IsProcessingPacket(value))
+                    saveChanged = true
+                }
+            }
+
+        @Serializable
+        data class IsProcessingPacket(val value: Boolean)
+
+        //#endregion
+
         private fun updateDoor() {
             if(doorState == DoorState.Open || doorState == DoorState.Closed) {
                 return
@@ -1251,6 +1318,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
             }
 
             tag.putInt(LOAD_STATE, loadState.index)
+            tag.putBoolean(IS_PROCESSING, isProcessing)
 
             return tag
         }
@@ -1275,6 +1343,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
             }
 
             loadState = LoadState.entries[tag.getInt(LOAD_STATE)]
+            isProcessing = tag.getBoolean(IS_PROCESSING)
         }
     }
 }
@@ -1321,7 +1390,7 @@ class VulcanizingAutoclaveMainBlockEntityVisual(
         .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.VULCANIZING_AUTOCLAVE_DOOR, FlwMaterials.CUTOUT_SMOOTH_LIT))
         .createInstance()
 
-    var load = VulcanizingAutoclaveMainBlockEntity.StateMachine.LoadState.Empty
+    var load = StateMachine.LoadState.Empty
     var loadInstance: TransformedInstance? = null
 
     val incandescent: TransformedLightOverrideInstance = visualizationContext.instancerProvider()
@@ -1379,8 +1448,8 @@ class VulcanizingAutoclaveMainBlockEntityVisual(
         val renderState = blockEntity.renderState!!
 
         val (psPreviousDoorState, rsTargetDoorState) = renderState.doorStatePair
-        val targetDoorOpen = rsTargetDoorState == VulcanizingAutoclaveMainBlockEntity.StateMachine.DoorState.Opening || rsTargetDoorState == VulcanizingAutoclaveMainBlockEntity.StateMachine.DoorState.Open
-        val previousDoorOpen = psPreviousDoorState == VulcanizingAutoclaveMainBlockEntity.StateMachine.DoorState.Opening || psPreviousDoorState == VulcanizingAutoclaveMainBlockEntity.StateMachine.DoorState.Open
+        val targetDoorOpen = rsTargetDoorState == StateMachine.DoorState.Opening || rsTargetDoorState == StateMachine.DoorState.Open
+        val previousDoorOpen = psPreviousDoorState == StateMachine.DoorState.Opening || psPreviousDoorState == StateMachine.DoorState.Open
 
         if(targetDoorOpen != doorOpen) {
             doorOpen = targetDoorOpen
@@ -1393,7 +1462,7 @@ class VulcanizingAutoclaveMainBlockEntityVisual(
             }
         }
 
-        val parametricSpeed = VulcanizingAutoclaveMainBlockEntity.StateMachine.DOOR_TURN_RATE * if(doorOpen) 1.0 else -1.0
+        val parametricSpeed = StateMachine.DOOR_TURN_RATE * if(doorOpen) 1.0 else -1.0
         val newDoorSwingProgress = (doorOpenParameter + parametricSpeed * !dt).coerceIn(0.0, 1.0)
 
         if(newDoorSwingProgress != doorOpenParameter) {
@@ -1413,16 +1482,16 @@ class VulcanizingAutoclaveMainBlockEntityVisual(
         loadInstance?.delete()
 
         val model = when(target) {
-            VulcanizingAutoclaveMainBlockEntity.StateMachine.LoadState.Empty -> {
+            StateMachine.LoadState.Empty -> {
                 return
             }
-            VulcanizingAutoclaveMainBlockEntity.StateMachine.LoadState.Ingredients -> {
+            StateMachine.LoadState.Ingredients -> {
                 FlwModels.VULCANIZING_AUTOCLAVE_LATEX_SULFUR
             }
-            VulcanizingAutoclaveMainBlockEntity.StateMachine.LoadState.Results -> {
+            StateMachine.LoadState.Results -> {
                 FlwModels.VULCANIZING_AUTOCLAVE_RUBBER
             }
-            VulcanizingAutoclaveMainBlockEntity.StateMachine.LoadState.Burnt -> {
+            StateMachine.LoadState.Burnt -> {
                 FlwModels.VULCANIZING_AUTOCLAVE_BURNT
             }
         }
