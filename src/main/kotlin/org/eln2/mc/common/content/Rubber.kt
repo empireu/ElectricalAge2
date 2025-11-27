@@ -19,13 +19,12 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.RegistryAccess
 import net.minecraft.core.SectionPos
-import net.minecraft.core.particles.ParticleOptions
 import net.minecraft.core.particles.ParticleTypes
-import net.minecraft.core.particles.SimpleParticleType
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.sounds.SoundSource
 import net.minecraft.util.GsonHelper
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
@@ -62,7 +61,6 @@ import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
-import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.ClientOnly
@@ -108,6 +106,7 @@ import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.BlockPosInt
+import org.eln2.mc.randomFloat
 import java.util.Optional
 import java.util.function.Consumer
 import kotlin.math.PI
@@ -795,11 +794,36 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
 
     //#endregion
 
+    private enum class HissType {
+        Interrupted,
+        VulcanizationSuccessful,
+        Burnt
+    }
+
+    @ServerOnly
+    private fun hiss(type: HissType) {
+        val (x, y, z) = blockPos.toVector3d() + Vector3d(0.5)
+
+        level!!.playSound(
+            null,
+            x, y, z,
+            when(type) {
+                HissType.Interrupted -> Eln2Processing.VULCANIZING_AUTOCLAVE_FAST_STEAM_RELEASE_SOUND.get()
+                HissType.VulcanizationSuccessful -> Eln2Processing.VULCANIZING_AUTOCLAVE_SUCCESS_STEAM_RELEASE_SOUND.get()
+                HissType.Burnt -> Eln2Processing.VULCANIZING_AUTOCLAVE_BURNT_STEAM_RELEASE_SOUND.get()
+            },
+            SoundSource.BLOCKS,
+            randomFloat(0.8f, 1.1f),
+            randomFloat(0.9f, 1.1f)
+        )
+    }
+
     //#region Player Interaction
 
     /**
-     * Opens/closes the door.
+     * Opens/closes the door and plays sounds and sends particles if applicable.
      * */
+    @ServerOnly // called on client, but ignored
     override fun applyWrench(wrench: WrenchItem, context: UseOnContext): InteractionResult {
         if(context.level.isClientSide) {
             return InteractionResult.PASS
@@ -810,19 +834,29 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
         val wasProcessing = stateMachine.isProcessing
 
         return if(stateMachine.doorAction()) {
+            val level = level as ServerLevel
+
             if(previousDoor == StateMachine.DoorState.Closed && wasProcessing) {
-                val level = level as ServerLevel
                 val facing = representativeFacing
                 val (x, y, z) = blockPos.toVector3d() + Vector3d(0.5) + facing.vector3d * 0.5
                 val dist = Random.nextDouble(0.1, 0.4)
 
-                level.sendParticles(
-                    ParticleTypes.LARGE_SMOKE,
-                    x, y, z,
-                    Random.nextInt(3, 7),
-                    facing.stepX.toDouble() * dist, facing.stepY.toDouble() * dist, facing.stepZ.toDouble() * dist,
-                    0.3
-                )
+                repeat(10) {
+                    val (incrX, incrY, incrZ) = Base6Direction3dMask
+                        .perpendicular(facing).directionList[Random.nextInt(0, 4)]
+                        .vector3d * Random.nextDouble(0.1, 0.5)
+
+
+                    level.sendParticles(
+                        ParticleTypes.LARGE_SMOKE,
+                        x + incrX, y + incrY, z + incrZ,
+                        Random.nextInt(3, 7),
+                        facing.stepX.toDouble() * dist, facing.stepY.toDouble() * dist, facing.stepZ.toDouble() * dist,
+                        0.3
+                    )
+                }
+
+                hiss(HissType.Interrupted)
             }
 
             InteractionResult.SUCCESS
@@ -992,6 +1026,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
                             inventoryHandler.setStackInSlot(INPUT_SLOT, ItemStack.EMPTY)
                             inventoryHandler.setStackInSlot(OUTPUT_SLOT, operation.recipe.output.copy())
                             stateMachine.changeLoadState(StateMachine.LoadState.Results)
+                            hiss(HissType.VulcanizationSuccessful)
                         }
                     }
                     /**
@@ -1003,6 +1038,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
                         inventoryHandler.setStackInSlot(INPUT_SLOT, ItemStack.EMPTY)
                         inventoryHandler.setStackInSlot(OUTPUT_SLOT, operation.recipe.burnOutput.copy())
                         stateMachine.changeLoadState(StateMachine.LoadState.Burnt)
+                        hiss(HissType.Burnt)
                     }
                 }
             }

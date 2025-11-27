@@ -38,5 +38,29 @@
                 "stream": false
             }
         ]
+    },
+    "steam.release0": {
+        "sounds": [
+            {
+                "name": "eln2:steam_release/steam_release0",
+                "stream": false
+            }
+        ]
+    },
+    "steam.release_long0": {
+        "sounds": [
+            {
+                "name": "eln2:steam_release/steam_release_long0",
+                "stream": false
+            }
+        ]
+    },
+    "steam.release_long1": {
+        "sounds": [
+            {
+                "name": "eln2:steam_release/steam_release_long1",
+                "stream": false
+            }
+        ]
     }
 }

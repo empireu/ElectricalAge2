@@ -75,13 +75,11 @@ import org.eln2.mc.common.recipes.ProcessingCellThermalOptions
 import org.eln2.mc.common.recipes.RecipeRegistry
 import org.eln2.mc.common.recipes.RecipeRegistry.registerCatalyzedRecipe
 import org.eln2.mc.common.recipes.RecipeRegistry.registerDirectRecipe
-import org.eln2.mc.common.recipes.foundation.CatalyzedSimpleProcessingRecipe
 import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
 import org.eln2.mc.data.directionPoleMapPlanar
 import org.eln2.mc.data.monopolarMapPlanar
 import org.eln2.mc.data.nullPolarMap
 import org.eln2.mc.mathematics.Base6Direction3d
-import org.eln2.mc.resource
 
 object Eln2Processing : ContentModule() {
     override fun registerBlockEntityVisualizers() {
@@ -292,6 +290,10 @@ object Eln2Processing : ContentModule() {
     //#endregion
 
     //#region Vulcanizing Autoclave
+
+    val VULCANIZING_AUTOCLAVE_FAST_STEAM_RELEASE_SOUND = soundEventVariableRange("steam.release0")
+    val VULCANIZING_AUTOCLAVE_SUCCESS_STEAM_RELEASE_SOUND = soundEventVariableRange("steam.release_long0")
+    val VULCANIZING_AUTOCLAVE_BURNT_STEAM_RELEASE_SOUND = soundEventVariableRange("steam.release_long1")
 
     val VULCANIZING_RECIPE = RecipeRegistry.register<VulcanizingRecipe>("vulcanizing") {
         VulcanizingRecipe.Serializer(it)
