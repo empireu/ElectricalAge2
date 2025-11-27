@@ -294,6 +294,7 @@ object Eln2Processing : ContentModule() {
     val VULCANIZING_AUTOCLAVE_FAST_STEAM_RELEASE_SOUND = soundEventVariableRange("steam.release0")
     val VULCANIZING_AUTOCLAVE_SUCCESS_STEAM_RELEASE_SOUND = soundEventVariableRange("steam.release_long0")
     val VULCANIZING_AUTOCLAVE_BURNT_STEAM_RELEASE_SOUND = soundEventVariableRange("steam.release_long1")
+    val VULCANIZING_AUTOCLAVE_HUM_SOUND = soundEventVariableRange("autoclave.hum")
 
     val VULCANIZING_RECIPE = RecipeRegistry.register<VulcanizingRecipe>("vulcanizing") {
         VulcanizingRecipe.Serializer(it)

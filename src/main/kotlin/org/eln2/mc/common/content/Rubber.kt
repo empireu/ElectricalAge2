@@ -57,7 +57,9 @@ import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.data.ThermalConductance
 import org.ageseries.libage.data.WATT_PER_KELVIN
+import org.ageseries.libage.data.registerHandler
 import org.ageseries.libage.data.requireLocator
+import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
@@ -88,8 +90,12 @@ import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.sendBulkPacket
 import org.eln2.mc.common.parts.foundation.*
+import org.eln2.mc.common.recipes.ProcessingBlockEntity
 import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
 import org.eln2.mc.common.recipes.foundation.OUTPUT_SLOT
+import org.eln2.mc.common.sounds.foundation.SimpleLoopingBlockEntitySoundInstance
+import org.eln2.mc.common.sounds.foundation.SoundInfo
+import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
 import org.eln2.mc.data.Locators
 import org.eln2.mc.data.MonopoleMap
 import org.eln2.mc.easeInOutCubic
@@ -953,6 +959,9 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
         var loadState = StateMachine.LoadState.Empty
         var internalTemperature = 0.0
         var isProcessing = false
+
+        var soundInstance: SimpleLoopingBlockEntitySoundInstance<VulcanizingAutoclaveMainBlockEntity>? = null
+        val humSoundVolumeSmoother = FramerateIndependentSmoother1d(0.5)
     }
 
     @ClientOnly
@@ -977,8 +986,24 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
         }
     }
 
+    /**
+     * Updates the working sound.
+     * */
     fun clientTick() {
+        val renderState = renderState
+            ?: return
 
+        renderState.humSoundVolumeSmoother.update(if(renderState.isProcessing) 1.0 else 0.0)
+
+        if(renderState.soundInstance == null) {
+            renderState.soundInstance = SimpleLoopingBlockEntitySoundInstance(this, Eln2Processing.VULCANIZING_AUTOCLAVE_HUM_SOUND.get()).also {
+                it.events.registerHandler<SoundInstanceTickEvent> { e ->
+                    it.soundInfo = SoundInfo(1.0, renderState.humSoundVolumeSmoother.value)
+                }
+
+                it.registerOnAudioManager()
+            }
+        }
     }
 
     @ServerOnly

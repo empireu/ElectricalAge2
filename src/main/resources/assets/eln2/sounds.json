@@ -62,5 +62,13 @@
                 "stream": false
             }
         ]
+    },
+    "autoclave.hum": {
+        "sounds": [
+            {
+                "name": "eln2:autoclave/autoclave_hum",
+                "stream": false
+            }
+        ]
     }
 }
