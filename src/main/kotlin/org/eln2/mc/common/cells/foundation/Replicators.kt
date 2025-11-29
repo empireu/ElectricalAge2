@@ -7,7 +7,9 @@ import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.kinetic.KineticNode
+import org.ageseries.libage.sim.kinetic.KineticSimulation
 import org.ageseries.libage.utils.Stopwatch
+import org.eln2.mc.OnServerThread
 import java.util.concurrent.ConcurrentHashMap
 import java.util.function.Supplier
 import kotlin.collections.set
@@ -250,21 +252,34 @@ fun interface InternalKineticStateConsumer {
     /**
      * Called when the estimated client orientation and the actual simulation orientation have deviated more than the [InternalKineticReplicatorBehavior.angleTolerance].
      * @param state The state supplied by the simulation.
-     * @param angularAccelerationEstimate The estimated angular acceleration, currently calculated from the difference between the current state and the previous state (timespan is [InternalKineticReplicatorBehavior.scanInterval] simulation ticks).
+     *
+     * Note: called on the game thread.
      * */
-    fun onKineticStateChanged(
-        state: RotatingKineticState,
-        angularAccelerationEstimate: Double
-    )
+    @OnServerThread
+    fun onKineticStateChanged(state: RotatingKineticState)
 }
 
 /**
- * Special behavior for sending kinetic rotation changes of a single rotating assembly to clients.
+ * Flag to re-sync all replicators.
  * */
-class InternalKineticReplicatorBehavior(val stateSupplier: Supplier<RotatingKineticState>, val consumer: InternalKineticStateConsumer) : ReplicatorBehavior {
-    var scanInterval = 5
-    var scanPhase = SubscriberPhase.Pre
+object KineticReSyncFlag
+
+/**
+ * Special behavior for sending kinetic rotation changes of a single rotating assembly to clients.
+ * Rotation visualization is finely grained. This behavior is running on the game thread to get fine control over the timings. It works in the following way:
+ * - On Pre-tick, the behavior checks if an update is necessary. If it is, the [KineticReSyncFlag] is set for the entire sub-solver (if [simulationSupplier] points to a sub-solver).
+ * - On Post-tick, if Pre-Tick indicated an update is necessary or the [KineticReSyncFlag] is set, the [consumer] is given the latest state for synchronization. This happens just before the bulk packets are flushed.
+ *
+ * @param simulationSupplier Optional supplier for the kinetic simulation (if the behavior is synchronizing an actual node). Leave it null if the behavior is synchronizing some internal rotation that is not constrained to the rest of the network. Keep in mind the supplier is called on the game thread.
+ * */
+class InternalKineticReplicatorBehavior(
+    val stateSupplier: Supplier<RotatingKineticState>,
+    val consumer: InternalKineticStateConsumer,
+    val cell: Cell,
+    val simulationSupplier: Supplier<KineticSimulation?>?
+) : ReplicatorBehavior {
     var angleTolerance = Math.toRadians(1.0)
+    var angularVelocityTolerance = Math.toRadians(5.0)
 
     var trackedAngle = 0.0
         private set
@@ -272,30 +287,66 @@ class InternalKineticReplicatorBehavior(val stateSupplier: Supplier<RotatingKine
     var trackedVelocity = 0.0
         private set
 
-    val stopwatch = Stopwatch()
-
-    var previousAngularVelocity = 0.0
-        private set
+    private var simulationTime = 0.0
 
     override fun subscribe(subscribers: SubscriberCollection) {
-        subscribers.addSubscriber(SubscriberOptions(scanInterval, scanPhase), this::scan)
+        subscribers.addPost { dt, phase ->
+            simulationTime += dt
+        }
     }
 
-    private fun scan(dt: Double, phase: SubscriberPhase) {
+    override fun subscribeServerThread(subscribers: SubscriberCollection) {
+        subscribers.addPre(this::updatePreServer)
+        subscribers.addPost(this::updatePostServer)
+    }
+
+    private var isDirty = false
+
+    /**
+     * Checks if an update is needed based on a prediction of the client's state.
+     * Sets [isDirty] and sets [KineticReSyncFlag] (if the [simulationSupplier] is not null).
+     * */
+    @OnServerThread
+    private fun updatePreServer(dt: Double, phase: SubscriberPhase) {
         val currentState = stateSupplier.get()
 
-        val trackedRotation = Rotation2d.exp(trackedAngle + trackedVelocity * !stopwatch.total)
+        val trackedRotation = Rotation2d.exp(trackedAngle + trackedVelocity * simulationTime)
         val currentRotation = Rotation2d.exp(currentState.angle)
 
-        if(abs(currentRotation - trackedRotation) > angleTolerance) {
-            val angularAccelerationEstimate = (currentState.angularVelocity - previousAngularVelocity) / dt
+        if(abs(currentRotation - trackedRotation) > angleTolerance || abs(currentState.angularVelocity - trackedVelocity) > angularVelocityTolerance) {
+            isDirty = true
 
-            consumer.onKineticStateChanged(currentState, angularAccelerationEstimate)
-            trackedAngle = currentRotation.ln()
-            trackedVelocity = currentState.angularVelocity
-            stopwatch.resetTotal()
+            val subSolver = simulationSupplier?.get()
+
+            /**
+             * Re-sync the sub-solver:
+             * */
+            if(subSolver != null) {
+                cell.graph.kineticFlagsSimulation.setFlag(subSolver, KineticReSyncFlag)
+            }
+        }
+    }
+
+    /**
+     * Checks if [isDirty] was set or if the sub-solver has [KineticReSyncFlag] (if the [simulationSupplier] is not null).
+     * */
+    @OnServerThread
+    private fun updatePostServer(dt: Double, phase: SubscriberPhase) {
+        val subSolver = simulationSupplier?.get()
+
+        val test = if(subSolver == null) null else cell.graph.kineticFlagsSimulation.isSet(subSolver, KineticReSyncFlag)
+
+        if(!isDirty && (subSolver == null || !cell.graph.kineticFlagsSimulation.isSet(subSolver, KineticReSyncFlag))) {
+            return
         }
 
-        previousAngularVelocity = currentState.angularVelocity
+        isDirty = false
+
+        val currentState = stateSupplier.get()
+        consumer.onKineticStateChanged(currentState)
+
+        trackedAngle = Rotation2d.exp(currentState.angle).ln()
+        trackedVelocity = currentState.angularVelocity
+        simulationTime = 0.0
     }
 }

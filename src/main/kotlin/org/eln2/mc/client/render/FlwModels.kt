@@ -158,6 +158,13 @@ object FlwModels {
 
     //#endregion
 
+    //#region Rolling Machine
+
+    val ROLLING_MACHINE_KINETIC_BODY = partialBlock("kinetic_rolling_machine/body")
+    val ROLLING_MACHINE_KINETIC_SHAFT = partialBlock("kinetic_rolling_machine/shaft")
+
+    //#endregion
+
     //#region Motors
 
     val BASIC_DC_MOTOR = partialBlock("motor/basic_dc_motor")

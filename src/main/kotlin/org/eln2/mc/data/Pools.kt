@@ -1,5 +1,7 @@
 package org.eln2.mc.data
 
+import java.util.concurrent.ConcurrentLinkedQueue
+
 interface ObjectPool<T> {
     fun get(): T
 
@@ -24,7 +26,7 @@ class LinearObjectPool<T>(private val policy: PooledObjectPolicy<T>, val maximum
         }
     }
 
-    private val items = ArrayList<T>(maximumRetained)
+    private val items = ArrayList<T>()
 
     override fun get(): T {
         if(items.isEmpty()) {
@@ -44,5 +46,37 @@ class LinearObjectPool<T>(private val policy: PooledObjectPolicy<T>, val maximum
         }
 
         items.add(obj)
+    }
+}
+
+/**
+ * Thread-safe object pool implemented with locking.
+ * */
+class LockingObjectPool<T>(private val policy: PooledObjectPolicy<T>, val maximumRetained: Int) : ObjectPool<T> {
+    private val objLock = Any()
+    private val items = ArrayList<T>()
+
+    override fun get(): T {
+        synchronized(objLock) {
+            if(items.isEmpty()) {
+                return policy.create()
+            }
+
+            return items.removeLast()
+        }
+    }
+
+    override fun release(obj: T) {
+        synchronized(objLock) {
+            if(!policy.release(obj)) {
+                return
+            }
+
+            if(items.size == maximumRetained) {
+                return
+            }
+
+            items.add(obj)
+        }
     }
 }

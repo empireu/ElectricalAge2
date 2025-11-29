@@ -795,8 +795,7 @@ interface BasicKineticPart {
     @Serializable
     data class RotationSyncPacket(
         val angle: Double,
-        val angularVelocity: Double,
-        val angularAccelerationEstimate: Double
+        val angularVelocity: Double
     )
 
     class RenderStateImpl : RenderState {
@@ -815,7 +814,6 @@ interface BasicKineticPart {
         fun load(packet: RotationSyncPacket) {
             angle = packet.angle
             angularVelocity = packet.angularVelocity
-            angularAccelerationEstimate = packet.angularAccelerationEstimate
             version++
         }
 
@@ -824,6 +822,41 @@ interface BasicKineticPart {
                 RenderStateImpl()
             }
             else null
+        }
+    }
+}
+
+class KineticStateInterpolator {
+    var version = 0
+    var rotation = Rotation2d.identity
+    var velocity = 0.0
+    var interpolationState: RotationUpdateProfile2d? = null
+    val frameTimer = Stopwatch()
+
+    fun loadPacket(angle: Double, angularVelocity: Double, angularAccelerationEstimate: Double) {
+        interpolationState = computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
+            angularAccelerationEstimate,
+            Rotation2d.exp(angle), angularVelocity,
+            rotation, velocity
+        )
+    }
+
+    fun update() {
+        val dt = !frameTimer.sample()
+
+        if(interpolationState == null) {
+            rotation += velocity * dt
+        }
+        else {
+            val state = interpolationState!!
+            state.currentTime += dt
+            state.sampleTrajectory()
+            rotation = state.sampleP
+            velocity = state.sampleV
+
+            if(state.timeRemaining == 0.0) {
+                interpolationState = null
+            }
         }
     }
 }

@@ -15,8 +15,6 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraftforge.api.distmarker.Dist
-import net.minecraftforge.event.TickEvent
-import net.minecraftforge.eventbus.api.SubscribeEvent
 import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.network.NetworkEvent
@@ -24,6 +22,7 @@ import org.eln2.mc.ClientOnly
 import org.eln2.mc.CrossThreadAccess
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.ELN2_DEBUG
+import org.eln2.mc.ELN2_LOG_STATS
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
@@ -404,19 +403,16 @@ object BulkMessages {
         .getOrPut(level, ::ConcurrentLinkedDeque)
         .add(msg)
 
-    @SubscribeEvent
-    @JvmStatic
-    fun onServerTick(event: TickEvent.ServerTickEvent) {
-        if (event.phase == TickEvent.Phase.END) {
-            //flushPartData()
-            blockMessagesPerTickAverage.addSample(
-                flush(bulkBlockEntityMessages, ::BulkDimensionMessageBlockEntity).toDouble()
-            )
+    fun flush() {
+        blockMessagesPerTickAverage.addSample(
+            flush(bulkBlockEntityMessages, ::BulkDimensionMessageBlockEntity).toDouble()
+        )
 
-            partMessagesPerTickAverage.addSample(
-                flush(bulkPartMessages, ::BulkDimensionMessagePart).toDouble()
-            )
+        partMessagesPerTickAverage.addSample(
+            flush(bulkPartMessages, ::BulkDimensionMessagePart).toDouble()
+        )
 
+        if(ELN2_LOG_STATS) {
             if(++lastLog == 100) {
                 lastLog = 0
                 LOG.debug("Bulk messages per tick: ${blockMessagesPerTickAverage.calculate().formatted()} BE, ${partMessagesPerTickAverage.calculate().formatted()} Part")

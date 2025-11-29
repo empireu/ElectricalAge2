@@ -1,4 +1,4 @@
-package org.eln2.mc.common.content
+package org.eln2.mc.common.content.processing
 
 import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.visual.DynamicVisual
@@ -238,7 +238,7 @@ class CrusherMenu(
     val containerData: ProgressContainerData,
     val access: ContainerLevelAccess,
     val level: Level,
-) : AbstractContainerMenu(Eln2Processing.CRUSHER_MENU.get(), pContainerId) {
+) : net.minecraft.world.inventory.AbstractContainerMenu(Eln2Processing.CRUSHER_MENU.get(), pContainerId) {
     @ServerOnly
     constructor(entity: CrusherBlockEntity, id: Int, inventory: Inventory): this(
         id,

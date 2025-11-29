@@ -45,29 +45,6 @@ import kotlin.reflect.KProperty1
 import kotlin.reflect.full.isSuperclassOf
 
 /**
- * [SubscriberCollection] that tracks the added subscribers, making it possible to remove all of them at a later time.
- * @param underlyingCollection The parent subscriber collection that will actually run the subscribers.
- * */
-class TrackedSubscriberCollection(private val underlyingCollection: SubscriberCollection) : SubscriberCollection {
-    private val subscribers = HashMap<SimulationSubscriber, SubscriberOptions>()
-
-    override fun addSubscriber(parameters: SubscriberOptions, subscriber: SimulationSubscriber) {
-        require(subscribers.put(subscriber, parameters) == null) { "Duplicate subscriber $subscriber" }
-        underlyingCollection.addSubscriber(parameters, subscriber)
-    }
-
-    override fun remove(subscriber: SimulationSubscriber) {
-        require(subscribers.remove(subscriber) != null) { "Subscriber $subscriber was never added" }
-        underlyingCollection.remove(subscriber)
-    }
-
-    fun clear() {
-        subscribers.keys.forEach { underlyingCollection.remove(it) }
-        subscribers.clear()
-    }
-}
-
-/**
  * Describes the environment the cell sits in.
  * @param ambientTemperature The temperature of the environment.
  * */
@@ -277,6 +254,16 @@ interface CellLifetime {
         }
     }
     /**
+     * Called when subscribers should be added, after the graph changes. These subscribers are for the server thread.
+     * This is called before [SimulationObject.subscribeServerThread].
+     * Calling the super method is not needed, by convention.
+     * */
+    fun subscribeServerThread(subscribers: SubscriberCollection) {
+        requireIsOnServerThread {
+            "subscribe server non-server"
+        }
+    }
+    /**
      * Called when the build started, right after the connections were cleared.
      * */
     fun onBuildStarted() {
@@ -364,6 +351,7 @@ data class Cell_onUpdate(val connectionsChanged: Boolean, val graphChanged: Bool
  * Calling the super method is not needed, by convention.
  * */
 data class Cell_subscribe(val subscribers: SubscriberCollection) : CellLifetimeEvent
+data class Cell_subscribeServer(val subscribers: SubscriberCollection) : CellLifetimeEvent
 /**
  * Called when the build started, right after the connections were cleared.
  * */
@@ -419,16 +407,90 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
 
     constructor(ci: CellCreateInfo) : this(ci.locator, ci.id, ci.environment)
 
-    // Persistent behaviors are used by cell logic, and live throughout the lifetime of the cell:
-    private var persistentPoolInternal: TrackedSubscriberCollection? = null
+    /**
+     * Separate, tracked sets of subscribers for various dispatch stages and lifetimes:
+     * - Simulation - dispatched on the simulation thread
+     * - Server - dispatched on the game tick loop
+     * - Persistent - these subscribers live throughout the lifetime of the cell
+     * - Transient - these subscribers live as long as players are watching the game object
+     * */
+    class SeparatedSubscriberCollections {
+        class Implementation : SubscriberCollection {
+            var wrappedCollection: SubscriberCollection? = null
 
-    // Transient behaviors are used when the cell is in range of a player (and the game object exists):
-    private var transientPoolInternal: TrackedSubscriberCollection? = null
+            private val underlyingCollection get() = wrappedCollection ?: error("Wrapped collection was not set")
 
-    val persistentPool get() = persistentPoolInternal ?: error("Invalid access to persistent pool")
+            private val subscribers = HashMap<SimulationSubscriber, SubscriberOptions>()
+
+            fun wrap(targetCollection: SubscriberCollection) {
+                check(wrappedCollection == null) {
+                    "Tried to wrap with non-cleared subscriber pool"
+                }
+
+                wrappedCollection = targetCollection
+            }
+
+            override fun addSubscriber(parameters: SubscriberOptions, subscriber: SimulationSubscriber) {
+                require(subscribers.put(subscriber, parameters) == null) { "Duplicate subscriber $subscriber" }
+                underlyingCollection.addSubscriber(parameters, subscriber)
+            }
+
+            override fun remove(subscriber: SimulationSubscriber) {
+                require(subscribers.remove(subscriber) != null) { "Subscriber $subscriber was never added" }
+                underlyingCollection.remove(subscriber)
+            }
+
+            fun clear() {
+                subscribers.keys.forEach { underlyingCollection.remove(it) }
+                subscribers.clear()
+            }
+        }
+
+        /**
+         * Sets up the collections to add subscribers for [graph].
+         * */
+        fun acquire(graph: CellGraph) {
+            val simulationPool = graph.simulationThreadSubscribers
+            val serverPool = graph.serverThreadSubscribers
+
+            persistentSimulation.wrap(simulationPool)
+            persistentServer.wrap(serverPool)
+            transientSimulation.wrap(simulationPool)
+            transientServer.wrap(serverPool)
+        }
+
+        fun clear() {
+            persistentSimulation.clear()
+            persistentServer.clear()
+            transientSimulation.clear()
+            transientServer.clear()
+        }
+
+        /**
+         * Persistent pool dispatched on the simulation thread.
+         * */
+        val persistentSimulation = Implementation()
+
+        /**
+         * Persistent pool dispatched on the server thread.
+         * */
+        val persistentServer = Implementation()
+
+        /**
+         * Transient pool dispatched on the simulation thread.
+         * */
+        val transientSimulation = Implementation()
+
+        /**
+         * Transient pool dispatched on the server thread.
+         * */
+        val transientServer = Implementation()
+    }
+
+    val subscribers = SeparatedSubscriberCollections()
 
     lateinit var graph: CellGraph
-    var connections: ArrayList<Cell> = ArrayList(0)
+    var connections = ArrayList<Cell>(0)
 
     /**
      * Event bus where all calls from [CellLifetime] are also directed.
@@ -497,6 +559,11 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     override fun subscribe(subscribers: SubscriberCollection) {
         super.subscribe(subscribers)
         dispatchLifetime(Cell_subscribe(subscribers))
+    }
+
+    override fun subscribeServerThread(subscribers: SubscriberCollection) {
+        super.subscribeServerThread(subscribers)
+        dispatchLifetime(Cell_subscribeServer(subscribers))
     }
 
     override fun onBuildStarted() {
@@ -947,10 +1014,6 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     }
 
     fun bindGameObjects(objects: List<Any>) {
-        // Not null, it is initialized when added to graph (so the SubscriberCollection is available)
-        val transient = this.transientPoolInternal
-            ?: error("Transient pool is null in bind")
-
         require(replicators.isEmpty()) { "Lingering replicators in bind" }
 
         objects.forEach { obj ->
@@ -968,22 +1031,21 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
         }
 
         replicators.forEach { replicator ->
-            replicator.subscribe(transient)
+            replicator.subscribe(subscribers.transientSimulation)
+            replicator.subscribeServerThread(subscribers.transientServer)
         }
     }
 
     fun unbindGameObjects() {
         requireIsOnServerThread { "unbindGameObjects" }
 
-        val transient = this.transientPoolInternal
-            ?: error("Transient null in unbind")
-
         replicators.forEach {
             behaviorContainer.destroy(it)
         }
 
         replicators.clear()
-        transient.clear()
+        subscribers.transientSimulation.clear()
+        subscribers.transientServer.clear()
     }
 
     override fun onDestroying() {
@@ -991,7 +1053,7 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
         dispatchLifetime(Cell_onDestroying)
         isBeingRemoved = true
         behaviorContainer.destroy()
-        persistentPoolInternal?.clear()
+        subscribers.clear()
     }
 
     override fun onDestroyed() {
@@ -1015,17 +1077,16 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
 
             lastLevel = graph.level
 
-            persistentPoolInternal?.clear()
-            transientPoolInternal?.clear()
-
-            persistentPoolInternal = TrackedSubscriberCollection(graph.simulationSubscribers)
-            transientPoolInternal = TrackedSubscriberCollection(graph.simulationSubscribers)
+            subscribers.clear()
+            subscribers.acquire(graph)
 
             behaviorContainer.behaviors.forEach {
-                it.subscribe(persistentPoolInternal!!)
+                it.subscribe(subscribers.persistentSimulation)
+                it.subscribeServerThread(subscribers.persistentServer)
             }
 
-            subscribe(persistentPoolInternal!!)
+            subscribe(subscribers.persistentSimulation)
+            subscribeServerThread(subscribers.persistentServer)
         }
 
         objects.forEachObject {
@@ -1767,6 +1828,59 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
     private val thermalSims = ArrayList<Simulator>()
     private val kineticSubSolverSets = ArrayList<SubSolverSet<KineticSimulation>>()
 
+    @OnServerThread
+    interface FlagSets<TSolver> {
+        fun setFlag(solver: TSolver, flag: Any) : Boolean
+        fun isSet(solver: TSolver, flag: Any) : Boolean
+    }
+
+    @OnServerThread
+    private class FlagSetsImpl<TSolver> : FlagSets<TSolver> {
+        private val sets = HashMap<TSolver, HashSet<Any>>()
+
+        private fun validateUsage() {
+            if(ELN2_DEBUG) {
+                requireIsOnServerThread()
+            }
+        }
+
+        override fun setFlag(solver: TSolver, flag: Any) : Boolean {
+            validateUsage()
+
+            val set = sets.computeIfAbsent(solver) {
+                HashSet<Any>()
+            }
+
+            return set.add(flag)
+        }
+
+        override fun isSet(solver: TSolver, flag: Any) : Boolean {
+            validateUsage()
+
+            val set = sets[solver]
+                ?: return false
+
+            return set.contains(flag)
+        }
+
+        fun clear() {
+            validateUsage()
+
+            sets.clear()
+        }
+
+        fun advanceFrame() {
+            validateUsage()
+
+            sets.values.forEach {
+                it.clear()
+            }
+        }
+    }
+
+    private val kineticFlagsImplSimulation = FlagSetsImpl<KineticSimulation>()
+    val kineticFlagsSimulation: FlagSets<KineticSimulation> get() = kineticFlagsImplSimulation
+
     private val simulationStopLock = ReentrantLock()
 
     // This is the simulation task. It will be null if the simulation is stopped
@@ -1779,7 +1893,17 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
 
     private var updatesCheckpoint = 0L
 
-    val simulationSubscribers = SubscriberPool()
+    /**
+     * Subscribers for the simulation steps.
+     * */
+    @OnSimulationThread
+    val simulationThreadSubscribers = SubscriberPool()
+
+    /**
+     * Subscribers for the server thread tick events.
+     * */
+    @OnServerThread
+    val serverThreadSubscribers = SubscriberPool()
 
     @CrossThreadAccess
     var lastTickTime = 0.0
@@ -1919,7 +2043,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
 
         try {
             stage = UpdateStep.UpdateSubsPre
-            simulationSubscribers.update(DT, SubscriberPhase.Pre)
+            simulationThreadSubscribers.update(DT, SubscriberPhase.Pre)
 
             lastTickTime = !measureDuration {
                 stage = UpdateStep.UpdateElectricalSims
@@ -1950,16 +2074,19 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
             }
 
             stage = UpdateStep.UpdateSubsPost
-            simulationSubscribers.update(DT, SubscriberPhase.Post)
+            simulationThreadSubscribers.update(DT, SubscriberPhase.Post)
 
             updates++
-
         } catch (t: Throwable) {
             LOG.error(DEBUGGER_BREAK("FAILED TO UPDATE SIMULATION at $stage: $t ${t.stackTraceToString()}"))
         } finally {
             // Maybe blow up the game instead of just allowing this to go on?
             simulationStopLock.unlock()
         }
+    }
+
+    fun advanceServerFrame() {
+        kineticFlagsImplSimulation.advanceFrame()
     }
 
     private fun clearElectricalSimulation() {
@@ -1990,6 +2117,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         }
 
         kineticSubSolverSets.clear()
+        kineticFlagsImplSimulation.clear()
     }
 
     /**
@@ -2462,6 +2590,17 @@ fun runSuspended(vararg cells: Cell, action: () -> Unit) {
  * */
 class CellGraphManager(val level: ServerLevel) : SavedData() {
     private val graphs = HashMap<UUID, CellGraph>()
+
+    @OnServerThread
+    fun forEachGraph(consumer: (CellGraph) -> Unit) {
+        requireIsOnServerThread {
+            "CellGraphManager#forEachGraph"
+        }
+
+        graphs.values.forEach {
+            consumer(it)
+        }
+    }
 
     private val statisticsWatch = Stopwatch()
 

@@ -145,8 +145,6 @@ object Scheduler {
         }
     }
 
-    @SubscribeEvent
-    @JvmStatic
     fun onServerTick(event: TickEvent.ServerTickEvent) {
         workQueues[event.phase]!!.dispatchWork(timeStamp)
 

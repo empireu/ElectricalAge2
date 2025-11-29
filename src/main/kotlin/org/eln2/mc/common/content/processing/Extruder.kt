@@ -1,4 +1,4 @@
-package org.eln2.mc.common.content
+package org.eln2.mc.common.content.processing
 
 import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.model.Model
@@ -9,7 +9,6 @@ import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.material.Materials
 import dev.engine_room.flywheel.lib.model.Models
-import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import net.minecraft.client.gui.GuiGraphics
@@ -46,8 +45,6 @@ import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.BasicKineticPart
 import org.eln2.mc.client.render.foundation.PartialModelHelper
-import org.eln2.mc.client.render.foundation.partTransformation
-import org.eln2.mc.common.cells.foundation.InternalKineticReplicatorBehavior
 import org.eln2.mc.common.cells.foundation.InternalKineticStateConsumer
 import org.eln2.mc.common.cells.foundation.RotatingKineticState
 import org.eln2.mc.common.containers.*
@@ -290,11 +287,7 @@ class KineticExtruderBlock : KineticProcessingBlock<CatalyzedSimpleProcessingRec
 
     override fun getTitle(): MutableComponent = Component.translatable("menu.$MODID.extruder")
 
-    override fun createMenu(
-        pBlockEntity: KineticExtruderBlockEntity,
-        pContainerId: Int,
-        pPlayerInventory: Inventory,
-    ) = ExtruderMenu(pBlockEntity, pContainerId, pPlayerInventory)
+    override fun createMenu(pBlockEntity: KineticExtruderBlockEntity, pContainerId: Int, pPlayerInventory: Inventory, ) = ExtruderMenu(pBlockEntity, pContainerId, pPlayerInventory)
 
     override fun getCellProvider() = Eln2Processing.KINETIC_EXTRUDER_CELL.get()
 
@@ -374,11 +367,10 @@ class KineticExtruderBlockEntity(pos: BlockPos, state: BlockState) :
     }
 
     @ServerOnly
-    override fun onKineticStateChanged(state: RotatingKineticState, angularAccelerationEstimate: Double, ) {
+    override fun onKineticStateChanged(state: RotatingKineticState) {
         sendBulkPacket(BasicKineticPart.RotationSyncPacket(
             state.angle,
-            state.angularVelocity,
-            angularAccelerationEstimate
+            state.angularVelocity
         ))
     }
 }

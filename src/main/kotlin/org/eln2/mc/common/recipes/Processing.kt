@@ -709,7 +709,9 @@ class KineticProcessingCell(
     @Replicator
     fun replicator(target: InternalKineticStateConsumer) = InternalKineticReplicatorBehavior(
         RotatingKineticState.accessor(kinetic.node),
-        target
+        target,
+        this,
+        kinetic.node::simulation
     )
 
     @Behavior

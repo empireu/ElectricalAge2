@@ -47,6 +47,14 @@ interface CellBehavior {
     fun subscribe(subscribers: SubscriberCollection) { }
 
     /**
+     * Called when the subscriber collection is being set up.
+     * Subscribers that are executed on the server thread can be added here.
+     * Note: the END stage is executed just before the bulk packets are flushed, which means you can use it for synchronization.
+     * */
+    @OnServerThread
+    fun subscribeServerThread(subscribers: SubscriberCollection) { }
+
+    /**
      * Called when the behavior is destroyed.
      * This can be caused by the cell being destroyed.
      * It can also be caused by the game object being detached, in the case of [ReplicatorBehavior]s.

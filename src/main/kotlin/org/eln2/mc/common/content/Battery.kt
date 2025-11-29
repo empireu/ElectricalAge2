@@ -348,7 +348,9 @@ abstract class BatteryCell(
         deserializeNbt(tag)
     }
 
-    override fun subscribe(subscribers: SubscriberCollection) = graph.simulationSubscribers.addPre(this::simulationTick)
+    override fun subscribe(subscribers: SubscriberCollection) {
+        subscribers.addPre(this::simulationTick)
+    }
 
     private fun appliesExternalUpdates() = stateUpdate.consume {
         energy = it.energy

@@ -284,7 +284,9 @@ class ElectricalHeatEngineCell(
     @Replicator
     fun kineticReplicator(target: InternalKineticStateConsumer) = InternalKineticReplicatorBehavior(
         this::kineticState,
-        target
+        target,
+        this,
+        null
     )
 
     override fun subscribe(subscribers: SubscriberCollection) {
@@ -377,7 +379,6 @@ class ElectricalHeatEnginePart(ci: PartCreateInfo) :
         builder.withHandler<RotationSyncPacket> {
             renderState.angle = it.angle
             renderState.angularVelocity = it.angularVelocity
-            renderState.angularAccelerationEstimate = it.angularAccelerationEstimate
             renderState.kinematicVersion++
         }
     }
@@ -393,12 +394,11 @@ class ElectricalHeatEnginePart(ci: PartCreateInfo) :
     }
 
     @ServerOnly
-    override fun onKineticStateChanged(state: RotatingKineticState, angularAccelerationEstimate: Double) {
+    override fun onKineticStateChanged(state: RotatingKineticState) {
         sendBulkPacket(
             RotationSyncPacket(
                 state.angle,
-                state.angularVelocity,
-                angularAccelerationEstimate
+                state.angularVelocity
             )
         )
     }
@@ -423,11 +423,7 @@ class ElectricalHeatEnginePart(ci: PartCreateInfo) :
     )
 
     @Serializable
-    private data class RotationSyncPacket(
-        val angle: Double,
-        val angularVelocity: Double,
-        val angularAccelerationEstimate: Double
-    )
+    private data class RotationSyncPacket(val angle: Double, val angularVelocity: Double)
 }
 
 class ElectricalHeatEnginePartVisual(

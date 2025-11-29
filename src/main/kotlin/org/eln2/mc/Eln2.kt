@@ -156,6 +156,7 @@ fun getResourceString(location: ResourceLocation, charset: Charset = Charset.def
     getResourceBinary(location).toString(charset)
 
 val ELN2_DEBUG get() = true
+val ELN2_LOG_STATS get() = false
 
 fun getResourceStringHelper(resource: String) : String =
     if (!SharedConstants.IS_RUNNING_IN_IDE) getResourceString(resource(resource))

@@ -717,7 +717,9 @@ class WindTurbineCell(ci: CellCreateInfo, val options: WindTurbineOptions) : Cel
     @Replicator
     fun replicator(target: InternalKineticStateConsumer) = InternalKineticReplicatorBehavior(
         RotatingKineticState.accessor(kinetic.node),
-        target
+        target,
+        this,
+        kinetic.node::simulation
     )
 
     override fun getKineticSizeOnSide(side: Base6Direction3d, targetCell: Cell) = when(side) {
@@ -833,11 +835,10 @@ class WindTurbineBlockEntity(pos: BlockPos, state: BlockState) :
     }
 
     @ServerOnly
-    override fun onKineticStateChanged(state: RotatingKineticState, angularAccelerationEstimate: Double, ) {
+    override fun onKineticStateChanged(state: RotatingKineticState) {
         sendBulkPacket(BasicKineticPart.RotationSyncPacket(
             state.angle,
-            state.angularVelocity,
-            angularAccelerationEstimate
+            state.angularVelocity
         ))
     }
 

@@ -123,7 +123,9 @@ class DoubleJointCell(
     @Replicator
     fun kineticReplicator(target: InternalKineticStateConsumer) = InternalKineticReplicatorBehavior(
         RotatingKineticState.accessor(kinetic.node),
-        target
+        target,
+        this,
+        kinetic.node::simulation
     )
 
     override val node: KineticNode
@@ -233,7 +235,9 @@ class TripleJointCell(
     @Replicator
     fun kineticReplicator(target: InternalKineticStateConsumer) = InternalKineticReplicatorBehavior(
         RotatingKineticState.accessor(kinetic.node),
-        target
+        target,
+        this,
+        kinetic.node::simulation
     )
 
     override val node: KineticNode
@@ -298,11 +302,10 @@ class JointPart<C>(
     }
 
     @ServerOnly
-    override fun onKineticStateChanged(state: RotatingKineticState, angularAccelerationEstimate: Double) {
+    override fun onKineticStateChanged(state: RotatingKineticState) {
         sendBulkPacket(BasicKineticPart.RotationSyncPacket(
             state.angle,
-            state.angularVelocity,
-            angularAccelerationEstimate
+            state.angularVelocity
         ))
     }
 

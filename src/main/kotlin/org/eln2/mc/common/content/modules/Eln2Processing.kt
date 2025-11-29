@@ -26,6 +26,7 @@ import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.FrictionNodeDescription
 import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
+import org.eln2.mc.client.screens.BasicProgressScreen
 import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
@@ -37,33 +38,37 @@ import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.cells.foundation.ThermalSize
 import org.eln2.mc.common.containers.ContainerRegistry.menu
-import org.eln2.mc.common.content.CrusherBlock
-import org.eln2.mc.common.content.CrusherBlockEntity
-import org.eln2.mc.common.content.CrusherBlockEntityVisual
-import org.eln2.mc.common.content.CrusherMenu
-import org.eln2.mc.common.content.CrusherScreen
-import org.eln2.mc.common.content.ElectricExtruderBlock
-import org.eln2.mc.common.content.ElectricExtruderBlockEntity
-import org.eln2.mc.common.content.ElectricExtruderBlockEntityVisual
-import org.eln2.mc.common.content.ExtruderMenu
-import org.eln2.mc.common.content.ExtruderScreen
+import org.eln2.mc.common.content.processing.CrusherBlock
+import org.eln2.mc.common.content.processing.CrusherBlockEntity
+import org.eln2.mc.common.content.processing.CrusherBlockEntityVisual
+import org.eln2.mc.common.content.processing.CrusherMenu
+import org.eln2.mc.common.content.processing.CrusherScreen
+import org.eln2.mc.common.content.processing.ElectricExtruderBlock
+import org.eln2.mc.common.content.processing.ElectricExtruderBlockEntity
+import org.eln2.mc.common.content.processing.ElectricExtruderBlockEntityVisual
+import org.eln2.mc.common.content.processing.ExtruderMenu
+import org.eln2.mc.common.content.processing.ExtruderScreen
 import org.eln2.mc.common.content.FurnaceBlock
 import org.eln2.mc.common.content.FurnaceBlockEntity
 import org.eln2.mc.common.content.FurnaceCell
 import org.eln2.mc.common.content.FurnaceMenu
 import org.eln2.mc.common.content.FurnaceScreen
-import org.eln2.mc.common.content.KineticExtruderBlock
-import org.eln2.mc.common.content.KineticExtruderBlockEntity
-import org.eln2.mc.common.content.KineticExtruderBlockEntityVisual
-import org.eln2.mc.common.content.RubberTapPartProvider
-import org.eln2.mc.common.content.VulcanizingAutoclaveMainBlock
-import org.eln2.mc.common.content.VulcanizingAutoclaveMainBlockEntity
-import org.eln2.mc.common.content.VulcanizingAutoclaveMainBlockEntityVisual
-import org.eln2.mc.common.content.VulcanizingAutoclaveMainCell
-import org.eln2.mc.common.content.VulcanizingAutoclaveThermalPortBlock
-import org.eln2.mc.common.content.VulcanizingAutoclaveThermalPortBlockEntity
-import org.eln2.mc.common.content.VulcanizingAutoclaveThermalPortCell
-import org.eln2.mc.common.content.VulcanizingRecipe
+import org.eln2.mc.common.content.processing.KineticExtruderBlock
+import org.eln2.mc.common.content.processing.KineticExtruderBlockEntity
+import org.eln2.mc.common.content.processing.KineticExtruderBlockEntityVisual
+import org.eln2.mc.common.content.processing.KineticRollingMachineBlock
+import org.eln2.mc.common.content.processing.KineticRollingMachineBlockEntity
+import org.eln2.mc.common.content.processing.KineticRollingMachineBlockEntityVisual
+import org.eln2.mc.common.content.processing.RollingMachineMenu
+import org.eln2.mc.common.content.processing.RubberTapPartProvider
+import org.eln2.mc.common.content.processing.VulcanizingAutoclaveMainBlock
+import org.eln2.mc.common.content.processing.VulcanizingAutoclaveMainBlockEntity
+import org.eln2.mc.common.content.processing.VulcanizingAutoclaveMainBlockEntityVisual
+import org.eln2.mc.common.content.processing.VulcanizingAutoclaveMainCell
+import org.eln2.mc.common.content.processing.VulcanizingAutoclaveThermalPortBlock
+import org.eln2.mc.common.content.processing.VulcanizingAutoclaveThermalPortBlockEntity
+import org.eln2.mc.common.content.processing.VulcanizingAutoclaveThermalPortCell
+import org.eln2.mc.common.content.processing.VulcanizingRecipe
 import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
 import org.eln2.mc.common.recipes.KineticProcessingCell
 import org.eln2.mc.common.recipes.KineticProcessingCellKineticOptions
@@ -80,6 +85,7 @@ import org.eln2.mc.data.directionPoleMapPlanar
 import org.eln2.mc.data.monopolarMapPlanar
 import org.eln2.mc.data.nullPolarMap
 import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.resource
 
 object Eln2Processing : ContentModule() {
     override fun registerBlockEntityVisualizers() {
@@ -96,6 +102,11 @@ object Eln2Processing : ContentModule() {
         VisualizerRegistry.setVisualizer(
             KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::KineticExtruderBlockEntityVisual) { true }
+        )
+
+        VisualizerRegistry.setVisualizer(
+            KINETIC_ROLLING_MACHINE_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::KineticRollingMachineBlockEntityVisual) { true }
         )
 
         VisualizerRegistry.setVisualizer(
@@ -121,6 +132,11 @@ object Eln2Processing : ContentModule() {
         )
 
         event.registerBlockEntityRenderer(
+            KINETIC_ROLLING_MACHINE_BLOCK_ENTITY.get(),
+            DummyBlockEntityRendererProvider()
+        )
+
+        event.registerBlockEntityRenderer(
             VULCANIZING_AUTOCLAVE_MAIN_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
@@ -130,6 +146,16 @@ object Eln2Processing : ContentModule() {
         MenuScreens.register(FURNACE_MENU.get(), ::FurnaceScreen)
         MenuScreens.register(CRUSHER_MENU.get(), ::CrusherScreen)
         MenuScreens.register(EXTRUDER_MENU.get(), ::ExtruderScreen)
+
+        MenuScreens.register(ROLLING_MACHINE_MENU.get()) { menu, inventory, title ->
+            BasicProgressScreen(
+                menu, inventory, title,
+                resource("textures/gui/container/rolling_machine_base.png"),
+                resource("textures/gui/container/rolling_machine_progress.png"),
+                54.0f,
+                129.0f
+            )
+        }
     }
 
     //#region Rubber
@@ -286,6 +312,51 @@ object Eln2Processing : ContentModule() {
     val KINETIC_EXTRUDER_BLOCK_ENTITY = blockEntityOnly("kinetic_extruder", KINETIC_EXTRUDER_BLOCK.block, ::KineticExtruderBlockEntity)
 
     val EXTRUDER_MENU = menu("extruder", ::ExtruderMenu)
+
+    //#endregion
+
+    //#region Rolling Machine
+
+    val ROLLING_RECIPE = registerDirectRecipe("rolling")
+
+    val KINETIC_ROLLING_MACHINE_CELL = cellMemoize("kinetic_rolling_machine") {
+        val inertia = Quantity(0.491, KILOGRAM_METER2)
+
+        val options = KineticProcessingCellOptions(
+            1.0,
+            KineticProcessingCellKineticOptions(
+                FrictionNodeDescription(
+                    inertia,
+                    0.01,
+                    Quantity(0.1, NEWTON_METER),
+                    Quantity(1.0, NEWTON_METER)
+                ),
+                FrictionNodeDescription(
+                    inertia,
+                    10.0,
+                    Quantity(0.5, NEWTON_METER),
+                    Quantity(1.0, NEWTON_METER)
+                ),
+                Quantity(1.0, REVOLUTION_PER_SECOND),
+                Quantity(25.0, REVOLUTION_PER_SECOND),
+                Quantity(250.0, NEWTON_METER)
+            ),
+            null
+        )
+
+        val kineticMap = directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)
+        val thermalMap = nullPolarMap()
+
+        CellFactory {
+            KineticProcessingCell(it, options, kineticMap, thermalMap)
+        }
+    }
+
+    val KINETIC_ROLLING_MACHINE_BLOCK = blockAndItem("kinetic_rolling_machine", ::KineticRollingMachineBlock)
+
+    val KINETIC_ROLLING_MACHINE_BLOCK_ENTITY = blockEntityOnly("kinetic_rolling_machine", KINETIC_ROLLING_MACHINE_BLOCK.block, ::KineticRollingMachineBlockEntity)
+
+    val ROLLING_MACHINE_MENU = menu("rolling_machine", ::RollingMachineMenu)
 
     //#endregion
 

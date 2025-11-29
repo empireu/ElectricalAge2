@@ -14,23 +14,31 @@ import net.minecraftforge.eventbus.api.SubscribeEvent
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.event.lifecycle.FMLLoadCompleteEvent
 import net.minecraftforge.server.ServerLifecycleHooks
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.SECOND
+import org.ageseries.libage.data.classify
 import org.ageseries.libage.utils.Stopwatch
+import org.eln2.mc.ELN2_LOG_STATS
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityLevelRendererProvider
 import org.eln2.mc.common.cells.foundation.CellGraph
 import org.eln2.mc.common.cells.foundation.CellGraphManager
+import org.eln2.mc.common.cells.foundation.SubscriberPhase
 import org.eln2.mc.common.content.modules.ContentModuleManager
 import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.content.WindSystem
+import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.events.schedulePost
 import org.eln2.mc.common.grids.GridCollisions
 import org.eln2.mc.common.grids.GridConnectionManagerClient
 import org.eln2.mc.common.grids.GridConnectionManagerServer
+import org.eln2.mc.common.network.serverToClient.BulkMessages
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.foundation.SpecPlacementOverlayServer
 import org.eln2.mc.data.AveragingList
+import org.eln2.mc.extensions.formatted
 
 @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.MOD)
 object ModEvents {
@@ -82,32 +90,71 @@ object ForgeEvents {
         CellGraph.makePool()
     }
 
-    @SubscribeEvent @JvmStatic
-    fun onServerTick(event: TickEvent.ServerTickEvent) {
-        if (event.phase == TickEvent.Phase.END) {
-            var tickRate = 0.0
-            var tickTime = 0.0
+    private fun simulationStats() {
+        var tickRate = 0.0
+        var tickTime = 0.0
 
-            forEachGraphManager {
-                tickRate += it.sampleTickRate()
-                tickTime += it.totalSpentTime
-            }
+        forEachGraphManager {
+            tickRate += it.sampleTickRate()
+            tickTime += it.totalSpentTime
+        }
 
-            upsAveragingList.addSample(tickRate)
-            tickTimeAveragingList.addSample(tickTime)
+        upsAveragingList.addSample(tickRate)
+        tickTimeAveragingList.addSample(tickTime)
 
+        if(ELN2_LOG_STATS) {
             if (++lastLog == 100) {
                 lastLog = 0
 
-                //LOG.debug("Simulation rate: ${upsAveragingList.calculate().formatted()} U/S")
-                //LOG.debug("Simulation time: ${Quantity(tickTimeAveragingList.calculate(), SECOND).classify()}")
+                LOG.debug("Simulation rate: ${upsAveragingList.calculate().formatted()} U/S")
+                LOG.debug("Simulation time: ${Quantity(tickTimeAveragingList.calculate(), SECOND).classify()}")
             }
+        }
 
+        lastTickStopwatch.resetTotal()
+    }
+
+    private fun dispatchServerSubscribers(phase: SubscriberPhase) {
+        forEachGraphManager { manager ->
+            manager.forEachGraph { graph ->
+                graph.serverThreadSubscribers.update(1.0 / 20.0, phase)
+            }
+        }
+    }
+
+    private fun advanceServerFrames() {
+        forEachGraphManager { manager ->
+            manager.forEachGraph { graph ->
+                graph.advanceServerFrame()
+            }
+        }
+    }
+
+    /**
+     * Orchestrates all per-tick work.
+     * The order of the calls is important here.
+     * */
+    @SubscribeEvent @JvmStatic
+    fun onServerTick(event: TickEvent.ServerTickEvent) {
+        if(event.phase == TickEvent.Phase.START) {
+            Scheduler.onServerTick(event)
+            dispatchServerSubscribers(SubscriberPhase.Pre)
+        }
+        else {
+            // Dispatch with high priority:
+            Scheduler.onServerTick(event)
+
+            simulationStats()
+
+            // The order of these 3 doesn't matter:
             GhostLightServer.applyChanges()
             ScrewdriverItem.Scroll.tickCooldowns()
             WindSystem.update()
 
-            lastTickStopwatch.resetTotal()
+            // Dispatch server subscribers, clear simulation flags, then flush messages:
+            dispatchServerSubscribers(SubscriberPhase.Post)
+            advanceServerFrames()
+            BulkMessages.flush()
         }
     }
 

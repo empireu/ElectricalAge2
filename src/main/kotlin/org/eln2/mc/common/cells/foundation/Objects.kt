@@ -36,7 +36,8 @@ abstract class SimulationObject<C : Cell>(val cell: C) {
      * */
     open fun update(connectionsChanged: Boolean, graphChanged: Boolean) {
         if(graphChanged) {
-            subscribe(cell.persistentPool)
+            subscribe(cell.subscribers.persistentSimulation)
+            subscribeServerThread(cell.subscribers.persistentServer)
         }
     }
 
@@ -45,6 +46,13 @@ abstract class SimulationObject<C : Cell>(val cell: C) {
      * This is called after [Cell.subscribe]
      * */
     protected open fun subscribe(subscribers: SubscriberCollection) { }
+
+    /**
+     * Called when subscribers should be added, after the graph changes.
+     * These subscribers are for the game thread.
+     * This is called after [Cell.subscribeServerThread]
+     * */
+    protected open fun subscribeServerThread(subscribers: SubscriberCollection) { }
 
     /**
      * Called when the solver is being built.

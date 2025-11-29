@@ -1,4 +1,4 @@
-package org.eln2.mc.common.content
+package org.eln2.mc.common.content.processing
 
 import com.google.gson.JsonObject
 import dev.engine_room.flywheel.api.instance.Instance
@@ -32,11 +32,7 @@ import net.minecraft.world.SimpleContainer
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.context.UseOnContext
-import net.minecraft.world.item.crafting.Ingredient
-import net.minecraft.world.item.crafting.Recipe
-import net.minecraft.world.item.crafting.RecipeSerializer
-import net.minecraft.world.item.crafting.RecipeType
-import net.minecraft.world.item.crafting.ShapedRecipe
+import net.minecraft.world.item.crafting.*
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.entity.BlockEntity
@@ -50,47 +46,30 @@ import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.items.ItemStackHandler
-import org.ageseries.libage.data.CELSIUS
-import org.ageseries.libage.data.JOULE
-import org.ageseries.libage.data.KELVIN
-import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.Temperature
-import org.ageseries.libage.data.ThermalConductance
-import org.ageseries.libage.data.WATT_PER_KELVIN
-import org.ageseries.libage.data.registerHandler
-import org.ageseries.libage.data.requireLocator
+import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.utils.Stopwatch
-import org.eln2.mc.ClientOnly
-import org.eln2.mc.CrossThreadAccess
-import org.eln2.mc.DEBUGGER_BREAK
-import org.eln2.mc.LOG
-import org.eln2.mc.OnServerThread
-import org.eln2.mc.ServerOnly
+import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.FlwModels.VULCANIZING_AUTOCLAVE_DOOR
 import org.eln2.mc.client.render.FlwModels.iterateVertexPositions
-import org.eln2.mc.client.render.foundation.FlwInstanceTypes
-import org.eln2.mc.client.render.foundation.PartialModelHelper
-import org.eln2.mc.client.render.foundation.ThermalTint
-import org.eln2.mc.client.render.foundation.TransformedLightOverrideInstance
-import org.eln2.mc.client.render.foundation.partTransformation
+import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.*
 import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.content.VulcanizingAutoclaveMainBlockEntity.StateMachine
-import org.eln2.mc.common.content.VulcanizingAutoclaveMainBlockEntity.StateMachine.IsProcessingPacket
+import org.eln2.mc.common.content.ThermalWireObject
+import org.eln2.mc.common.content.processing.VulcanizingAutoclaveMainBlockEntity.StateMachine
+import org.eln2.mc.common.content.processing.VulcanizingAutoclaveMainBlockEntity.StateMachine.IsProcessingPacket
 import org.eln2.mc.common.content.modules.Eln2Ingredients
 import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.sendBulkPacket
 import org.eln2.mc.common.parts.foundation.*
-import org.eln2.mc.common.recipes.ProcessingBlockEntity
 import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
 import org.eln2.mc.common.recipes.foundation.OUTPUT_SLOT
 import org.eln2.mc.common.sounds.foundation.SimpleLoopingBlockEntitySoundInstance
@@ -98,22 +77,13 @@ import org.eln2.mc.common.sounds.foundation.SoundInfo
 import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
 import org.eln2.mc.data.Locators
 import org.eln2.mc.data.MonopoleMap
-import org.eln2.mc.easeInOutCubic
-import org.eln2.mc.extensions.addItem
-import org.eln2.mc.extensions.bind
-import org.eln2.mc.extensions.getResourceLocation
-import org.eln2.mc.extensions.minus
-import org.eln2.mc.extensions.plus
-import org.eln2.mc.extensions.putResourceLocation
-import org.eln2.mc.extensions.toVector3d
-import org.eln2.mc.extensions.vector3d
+import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.BlockPosInt
-import org.eln2.mc.randomFloat
-import java.util.Optional
+import java.util.*
 import java.util.function.Consumer
 import kotlin.math.PI
 import kotlin.random.Random
@@ -699,7 +669,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
     ValidateFormationBlockEntity<VulcanizingAutoclaveMainBlockEntity>,
     BulkPacketHandlerBlockEntity,
     InternalTemperatureConsumer,
-    WrenchInteractable,
+    org.eln2.mc.common.content.WrenchInteractable,
     ComponentDisplay
 {
     companion object {
@@ -763,7 +733,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
         inventoryHandlerLazy.invalidate()
     }
 
-    class InventoryHandler(val blockEntity: VulcanizingAutoclaveMainBlockEntity) : ItemStackHandler(2) {
+    class InventoryHandler(val blockEntity: VulcanizingAutoclaveMainBlockEntity) : net.minecraftforge.items.ItemStackHandler(2) {
         override fun insertItem(slot: Int, stack: ItemStack, simulate: Boolean): ItemStack {
             return stack
         }
@@ -830,7 +800,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
      * Opens/closes the door and plays sounds and sends particles if applicable.
      * */
     @ServerOnly // called on client, but ignored
-    override fun applyWrench(wrench: WrenchItem, context: UseOnContext): InteractionResult {
+    override fun applyWrench(wrench: org.eln2.mc.common.content.WrenchItem, context: UseOnContext): InteractionResult {
         if(context.level.isClientSide) {
             return InteractionResult.PASS
         }
@@ -1414,7 +1384,7 @@ class VulcanizingAutoclaveMainBlockEntityVisual(
     blockEntity: VulcanizingAutoclaveMainBlockEntity,
     partialTick: Float
 ) :
-    AbstractBlockEntityVisual<VulcanizingAutoclaveMainBlockEntity>(ctx, blockEntity, partialTick),
+    dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual<VulcanizingAutoclaveMainBlockEntity>(ctx, blockEntity, partialTick),
     ShaderLightVisual,
     SimpleDynamicVisual
 {
