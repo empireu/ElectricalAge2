@@ -6,7 +6,6 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.Pole
 import org.ageseries.libage.sim.electrical.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
-import org.ageseries.libage.sim.electrical.ElectricalPin
 import org.ageseries.libage.sim.electrical.LinearDiode
 import org.ageseries.libage.sim.electrical.PowerSource
 import org.ageseries.libage.sim.electrical.Resistor
@@ -19,11 +18,8 @@ import org.eln2.mc.extensions.celestialPass
 import org.eln2.mc.extensions.evaluateDiffuseIrradianceFactor
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.offerExternal
-import org.eln2.mc.offerInternal
 import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.pow
 
 val LEVEL_INTENSITY = Quantity(1000.0, WATT_PER_METER2) // evaluate from level (eg for planets)
 

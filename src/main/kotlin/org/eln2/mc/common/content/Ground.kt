@@ -8,16 +8,13 @@ import org.eln2.mc.client.render.foundation.BasicPartVisual
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.content.modules.Eln2BasicComponents
-import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.parts.foundation.GridCellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.common.specs.foundation.CellSpec
 import org.eln2.mc.common.specs.foundation.SpecCreateInfo
-import org.eln2.mc.data.findDirActualPlanarOrNull
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.mathematics.Base6Direction3d
 
 class GroundCell(ci: CellCreateInfo) : Cell(ci), SidedElectricalFLBR<GroundCell> {
     override val electricalSize: ElectricalSize

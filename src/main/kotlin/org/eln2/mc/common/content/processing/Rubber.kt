@@ -9,7 +9,6 @@ import dev.engine_room.flywheel.api.visualization.VisualizationContext
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.model.Models
-import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet
 import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue
@@ -45,7 +44,6 @@ import net.minecraftforge.client.extensions.common.IClientBlockExtensions
 import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
-import net.minecraftforge.items.ItemStackHandler
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
 import org.ageseries.libage.mathematics.approxEq

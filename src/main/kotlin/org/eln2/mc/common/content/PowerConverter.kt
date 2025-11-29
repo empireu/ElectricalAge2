@@ -4,7 +4,6 @@ import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerPlayer
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
-import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.Capacitor

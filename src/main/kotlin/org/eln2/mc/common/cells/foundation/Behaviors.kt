@@ -48,8 +48,10 @@ interface CellBehavior {
 
     /**
      * Called when the subscriber collection is being set up.
-     * Subscribers that are executed on the server thread can be added here.
-     * Note: the END stage is executed just before the bulk packets are flushed, which means you can use it for synchronization.
+     * Subscribers that are executed on the server thread can be added here. **The timing of these updates is designed especially for synchronization!**
+     *
+     * - The `Pre` updates are executed just before the simulations are dispatched, so all subscribers will see a coherent image of the simulation state.
+     * - The `Post` updates are executed just after the simulations have finished and just before the bulk data is dispatched, which means this is the ideal place to synchronize.
      * */
     @OnServerThread
     fun subscribeServerThread(subscribers: SubscriberCollection) { }

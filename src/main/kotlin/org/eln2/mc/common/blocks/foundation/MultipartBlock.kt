@@ -1313,7 +1313,7 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
 
                         val innerCell = innerPart.cell
 
-                        if (!isConnectionAcceptedByGameObjectProximity(actualCell, innerCell)) {
+                        if (!isConnectionAcceptedByGameObjectLayer(actualCell, innerCell)) {
                             return
                         }
 

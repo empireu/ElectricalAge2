@@ -26,7 +26,6 @@ import org.ageseries.libage.data.Distance
 import org.ageseries.libage.data.LocatorBuilder
 import org.ageseries.libage.data.NEWTON_METER
 import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.classify
 import org.ageseries.libage.data.put
 import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.RotationUpdateProfile2d
