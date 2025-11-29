@@ -13,9 +13,38 @@ import org.ageseries.libage.sim.kinetic.KineticMono
 import org.ageseries.libage.sim.kinetic.KineticTriple
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.common.cells.foundation.CellGraph
-import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.pow
+import kotlin.math.*
+
+class FramerateIndependentSmoother1dA(val tau: Double) {
+    var value = 0.0
+
+    private var initialized = false
+
+    fun reset() {
+        initialized = false
+        value = 0.0
+    }
+
+    fun update(dt: Double, target: Double) : Double {
+        if(!initialized) {
+            value = target
+            initialized = true
+            return dt
+        }
+
+        val alpha = 1.0 - exp(-dt / tau)
+        value += (target - value) * alpha
+
+        return dt
+    }
+
+    fun pullDown(eps: Double = 1e-6) {
+        if(abs(value) < eps) {
+            value = 0.0
+        }
+    }
+}
+
 
 fun easeInOutCubic(t: Double) =  if (t < 0.5) {
     4.0 * t * t * t

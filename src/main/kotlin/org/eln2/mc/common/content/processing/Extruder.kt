@@ -46,6 +46,7 @@ import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.BasicKineticPart
 import org.eln2.mc.client.render.foundation.PartialModelHelper
 import org.eln2.mc.common.cells.foundation.InternalKineticStateConsumer
+import org.eln2.mc.common.cells.foundation.KineticInterpolatorClient
 import org.eln2.mc.common.cells.foundation.RotatingKineticState
 import org.eln2.mc.common.containers.*
 import org.eln2.mc.common.content.modules.Eln2Processing
@@ -361,17 +362,14 @@ class KineticExtruderBlockEntity(pos: BlockPos, state: BlockState) :
     override fun setupPacketsOnClient(handler: ClientSidePacketHandlerBuilder) {
         super.setupPacketsOnClient(handler)
 
-        handler.withHandler<BasicKineticPart.RotationSyncPacket> {
+        handler.withHandler<RotatingKineticState> {
             renderState!!.load(it)
         }
     }
 
     @ServerOnly
     override fun onKineticStateChanged(state: RotatingKineticState) {
-        sendBulkPacket(BasicKineticPart.RotationSyncPacket(
-            state.angle,
-            state.angularVelocity
-        ))
+        sendBulkPacket(state)
     }
 }
 
@@ -396,10 +394,7 @@ class KineticExtruderBlockEntityVisual(
         .createInstance()
 
     var version = 0
-    var rotation = Rotation2d.identity
-    var velocity = 0.0
-    var interpolationState: RotationUpdateProfile2d? = null
-    val frameTimer = Stopwatch()
+    val interpolator = KineticInterpolatorClient()
 
     init {
         poseShaft(shaft, shaftCenter, 0.0)
@@ -413,32 +408,11 @@ class KineticExtruderBlockEntityVisual(
         val targetVersion = renderState.version
         if(version != targetVersion) {
             version = targetVersion
-
-            interpolationState = computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
-                renderState.angularAccelerationEstimate,
-                Rotation2d.exp(renderState.angle), renderState.angularVelocity,
-                rotation, velocity
-            )
+            interpolator.applyServerState(renderState.angle, renderState.angularVelocity)
         }
 
-        val dt = !frameTimer.sample()
-
-        if(interpolationState == null) {
-            rotation += velocity * dt
-        }
-        else {
-            val state = interpolationState!!
-            state.currentTime += dt
-            state.sampleTrajectory()
-            rotation = state.sampleP
-            velocity = state.sampleV
-
-            if(state.timeRemaining == 0.0) {
-                interpolationState = null
-            }
-        }
-
-        poseShaft(shaft, shaftCenter, rotation.ln())
+        interpolator.update()
+        poseShaft(shaft, shaftCenter, interpolator.clientRotation.ln())
     }
 
     override fun _delete() {

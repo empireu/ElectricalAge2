@@ -23,20 +23,17 @@ import net.minecraft.world.phys.shapes.CollisionContext
 import net.minecraft.world.phys.shapes.Shapes
 import net.minecraft.world.phys.shapes.VoxelShape
 import net.minecraftforge.items.ItemStackHandler
-import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
-import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.ClientOnly
-import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.MODID
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.BasicKineticPart
-import org.eln2.mc.client.render.foundation.KineticStateInterpolator
 import org.eln2.mc.client.render.foundation.PartialModelHelper
 import org.eln2.mc.client.screens.ProgressSupplierMenu
 import org.eln2.mc.common.cells.foundation.InternalKineticStateConsumer
+import org.eln2.mc.common.cells.foundation.KineticInterpolatorClient
 import org.eln2.mc.common.cells.foundation.RotatingKineticState
 import org.eln2.mc.common.containers.ContainerHelper
 import org.eln2.mc.common.containers.ProgressContainerData
@@ -121,17 +118,14 @@ class KineticRollingMachineBlockEntity(pPos: BlockPos, pState: BlockState) :
     override fun setupPacketsOnClient(handler: ClientSidePacketHandlerBuilder) {
         super.setupPacketsOnClient(handler)
 
-        handler.withHandler<BasicKineticPart.RotationSyncPacket> {
+        handler.withHandler<RotatingKineticState> {
             renderState!!.load(it)
         }
     }
 
     @ServerOnly
     override fun onKineticStateChanged(state: RotatingKineticState) {
-        sendBulkPacket(BasicKineticPart.RotationSyncPacket(
-            state.angle,
-            state.angularVelocity
-        ))
+        sendBulkPacket(state)
     }
 }
 
@@ -153,13 +147,9 @@ class KineticRollingMachineBlockEntityVisual(
         .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.ROLLING_MACHINE_KINETIC_SHAFT, FlwMaterials.SMOOTH_LIT))
         .createInstance()
 
-    val interpolator = KineticStateInterpolator()
+    val interpolator = KineticInterpolatorClient()
 
     private fun poseShaft() {
-        if(interpolator.rotation.ln().let { it.isNaN() || it.isInfinite() }) {
-            DEBUGGER_BREAK()
-        }
-
         val z = SHAFT_CENTER.z
         val y = SHAFT_CENTER.y
 
@@ -169,7 +159,7 @@ class KineticRollingMachineBlockEntityVisual(
             .rotateToFace(blockEntity.blockState.getValue(HorizontalDirectionalBlock.FACING))
             .uncenter()
             .translate(0.0, y, z)
-            .rotateX(interpolator.rotation.ln().toFloat())
+            .rotateX(interpolator.clientRotation.ln().toFloat())
             .translate(0.0, -y, -z)
             .setChanged()
     }
@@ -187,11 +177,8 @@ class KineticRollingMachineBlockEntityVisual(
         val targetVersion = renderState.version
 
         if(targetVersion != version) {
-            interpolator.loadPacket(
-                renderState.angle,
-                renderState.angularVelocity,
-                renderState.angularAccelerationEstimate
-            )
+            version = targetVersion
+            interpolator.applyServerState(renderState.angle, renderState.angularVelocity)
         }
 
         interpolator.update()

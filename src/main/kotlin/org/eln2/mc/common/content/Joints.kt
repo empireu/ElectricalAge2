@@ -296,17 +296,14 @@ class JointPart<C>(
 
     @ClientOnly
     override fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) {
-        builder.withHandler<BasicKineticPart.RotationSyncPacket> {
+        builder.withHandler<RotatingKineticState> {
             renderState!!.load(it)
         }
     }
 
     @ServerOnly
     override fun onKineticStateChanged(state: RotatingKineticState) {
-        sendBulkPacket(BasicKineticPart.RotationSyncPacket(
-            state.angle,
-            state.angularVelocity
-        ))
+        sendBulkPacket(state)
     }
 
     /**

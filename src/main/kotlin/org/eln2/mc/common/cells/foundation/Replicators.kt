@@ -1,6 +1,7 @@
 package org.eln2.mc.common.cells.foundation
 
 import it.unimi.dsi.fastutil.objects.Reference2DoubleArrayMap
+import kotlinx.serialization.Serializable
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.approxEq
@@ -9,6 +10,8 @@ import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.kinetic.KineticNode
 import org.ageseries.libage.sim.kinetic.KineticSimulation
 import org.ageseries.libage.utils.Stopwatch
+import org.eln2.mc.ClientOnly
+import org.eln2.mc.FramerateIndependentSmoother1dA
 import org.eln2.mc.OnServerThread
 import java.util.concurrent.ConcurrentHashMap
 import java.util.function.Supplier
@@ -237,6 +240,7 @@ class ExternalTemperatureReplicatorBehavior(val cell: Cell, val consumer: Extern
     }
 }
 
+@Serializable
 data class RotatingKineticState(val angle: Double, val angularVelocity: Double) {
     companion object {
         fun accessor(node: KineticNode) : Supplier<RotatingKineticState> = Supplier {
@@ -250,17 +254,17 @@ data class RotatingKineticState(val angle: Double, val angularVelocity: Double) 
 
 fun interface InternalKineticStateConsumer {
     /**
-     * Called when the estimated client orientation and the actual simulation orientation have deviated more than the [InternalKineticReplicatorBehavior.angleTolerance].
+     * Called when the estimated client kinetic state has deviated enough from the actual simulation state.
      * @param state The state supplied by the simulation.
      *
-     * Note: called on the game thread.
+     * Note: called on the game thread, before the bulk packets are flushed.
      * */
     @OnServerThread
     fun onKineticStateChanged(state: RotatingKineticState)
 }
 
 /**
- * Flag to re-sync all replicators.
+ * Flag to re-sync all replicators, used by [InternalKineticReplicatorBehavior].
  * */
 object KineticReSyncFlag
 
@@ -334,8 +338,6 @@ class InternalKineticReplicatorBehavior(
     private fun updatePostServer(dt: Double, phase: SubscriberPhase) {
         val subSolver = simulationSupplier?.get()
 
-        val test = if(subSolver == null) null else cell.graph.kineticFlagsSimulation.isSet(subSolver, KineticReSyncFlag)
-
         if(!isDirty && (subSolver == null || !cell.graph.kineticFlagsSimulation.isSet(subSolver, KineticReSyncFlag))) {
             return
         }
@@ -348,5 +350,50 @@ class InternalKineticReplicatorBehavior(
         trackedAngle = Rotation2d.exp(currentState.angle).ln()
         trackedVelocity = currentState.angularVelocity
         simulationTime = 0.0
+    }
+}
+
+/**
+ * Utility class for using updates sent by the [InternalKineticReplicatorBehavior] from the server for rendering on the client (per-frame).
+ * */
+@ClientOnly
+class KineticInterpolatorClient(tau: Double = 1.0, val snapThreshold: Double = Math.toRadians(45.0)) {
+    private var serverRotation = Rotation2d.identity
+    private var serverAngularVelocity = 0.0
+    private val errorInterpolator = FramerateIndependentSmoother1dA(tau)
+
+    var clientRotation = Rotation2d.identity
+
+    private val watch = Stopwatch()
+
+    fun applyServerState(targetServerAngle: Double, targetServerAngularVelocity: Double) {
+        val targetServerRotation = Rotation2d.exp(targetServerAngle)
+
+        if(targetServerRotation.approxEq(serverRotation) && targetServerAngularVelocity == serverAngularVelocity) {
+            return
+        }
+
+        serverRotation = targetServerRotation
+        serverAngularVelocity = targetServerAngularVelocity
+
+        val error = (serverRotation.inverse * clientRotation).ln()
+
+        if(abs(error) < snapThreshold) {
+            errorInterpolator.value = error
+        }
+        else {
+            errorInterpolator.value = 0.0
+            clientRotation = serverRotation
+        }
+
+        watch.resetTotal()
+    }
+
+    fun update() {
+        val dt = !watch.sample()
+        val serverPrediction = serverRotation + serverAngularVelocity * !watch.total
+        val displacement = errorInterpolator.update(dt, 0.0)
+
+        clientRotation = serverPrediction + displacement
     }
 }

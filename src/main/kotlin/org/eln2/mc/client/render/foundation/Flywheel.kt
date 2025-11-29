@@ -40,14 +40,11 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
-import org.ageseries.libage.mathematics.RotationUpdateProfile2d
-import org.ageseries.libage.mathematics.computeRotationUpdateAccelerationProfileWithAccelerationEstimate
 import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Rotation3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
-import org.ageseries.libage.utils.Stopwatch
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.DEBUGGER_BREAK
@@ -63,6 +60,8 @@ import org.eln2.mc.client.render.foundation.WirePatchType.Wrapped
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityVisual
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
+import org.eln2.mc.common.cells.foundation.KineticInterpolatorClient
+import org.eln2.mc.common.cells.foundation.RotatingKineticState
 import org.eln2.mc.common.content.*
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.parts.foundation.*
@@ -789,14 +788,7 @@ interface BasicKineticPart {
         val version: Int
         val angle: Double
         val angularVelocity: Double
-        val angularAccelerationEstimate: Double
     }
-
-    @Serializable
-    data class RotationSyncPacket(
-        val angle: Double,
-        val angularVelocity: Double
-    )
 
     class RenderStateImpl : RenderState {
         override var version = 0
@@ -808,10 +800,7 @@ interface BasicKineticPart {
         override var angularVelocity = 0.0
             private set
 
-        override var angularAccelerationEstimate = 0.0
-            private set
-
-        fun load(packet: RotationSyncPacket) {
+        fun load(packet: RotatingKineticState) {
             angle = packet.angle
             angularVelocity = packet.angularVelocity
             version++
@@ -822,41 +811,6 @@ interface BasicKineticPart {
                 RenderStateImpl()
             }
             else null
-        }
-    }
-}
-
-class KineticStateInterpolator {
-    var version = 0
-    var rotation = Rotation2d.identity
-    var velocity = 0.0
-    var interpolationState: RotationUpdateProfile2d? = null
-    val frameTimer = Stopwatch()
-
-    fun loadPacket(angle: Double, angularVelocity: Double, angularAccelerationEstimate: Double) {
-        interpolationState = computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
-            angularAccelerationEstimate,
-            Rotation2d.exp(angle), angularVelocity,
-            rotation, velocity
-        )
-    }
-
-    fun update() {
-        val dt = !frameTimer.sample()
-
-        if(interpolationState == null) {
-            rotation += velocity * dt
-        }
-        else {
-            val state = interpolationState!!
-            state.currentTime += dt
-            state.sampleTrajectory()
-            rotation = state.sampleP
-            velocity = state.sampleV
-
-            if(state.timeRemaining == 0.0) {
-                interpolationState = null
-            }
         }
     }
 }
@@ -880,10 +834,7 @@ class BasicKineticPartVisual<P>(
         .createInstance()
 
     var version = 0
-    var rotation = Rotation2d.identity
-    var velocity = 0.0
-    var interpolationState: RotationUpdateProfile2d? = null
-    val frameTimer = Stopwatch()
+    val interpolator = KineticInterpolatorClient()
 
     private fun poseShaft() {
         val x = shaftCenter.x
@@ -892,7 +843,7 @@ class BasicKineticPartVisual<P>(
         shaft.setIdentityTransform()
             .partTransformation(visualizationContext.parent, part)
             .translate(x, y, 0.0)
-            .rotateZ(rotation.ln().toFloat())
+            .rotateZ(interpolator.clientRotation.ln().toFloat())
             .translate(-x, -y, 0.0)
             .handle()
             .setChanged()
@@ -908,31 +859,10 @@ class BasicKineticPartVisual<P>(
         val targetVersion = renderState.version
         if(version != targetVersion) {
             version = targetVersion
-
-            interpolationState = computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
-                renderState.angularAccelerationEstimate,
-                Rotation2d.exp(renderState.angle), renderState.angularVelocity,
-                rotation, velocity
-            )
+            interpolator.applyServerState(renderState.angle, renderState.angularVelocity)
         }
 
-        val dt = !frameTimer.sample()
-
-        if(interpolationState == null) {
-            rotation += velocity * dt
-        }
-        else {
-            val state = interpolationState!!
-            state.currentTime += dt
-            state.sampleTrajectory()
-            rotation = state.sampleP
-            velocity = state.sampleV
-
-            if(state.timeRemaining == 0.0) {
-                interpolationState = null
-            }
-        }
-
+        interpolator.update()
         poseShaft()
     }
 
@@ -988,13 +918,10 @@ class SingleNodeMultiShaftKineticPartVisual<P>(
     }
 
     var version = 0
-    var rotation = Rotation2d.identity
-    var velocity = 0.0
-    var interpolationState: RotationUpdateProfile2d? = null
-    val frameTimer = Stopwatch()
+    val interpolator = KineticInterpolatorClient()
 
     private fun poseShafts() {
-        val t = rotation.ln()
+        val t = interpolator.clientRotation.ln()
 
         shafts.forEach {
             val angle = (t * it.description.factor).toFloat()
@@ -1044,30 +971,10 @@ class SingleNodeMultiShaftKineticPartVisual<P>(
         val targetVersion = renderState.version
         if(version != targetVersion) {
             version = targetVersion
-
-            interpolationState = computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
-                renderState.angularAccelerationEstimate,
-                Rotation2d.exp(renderState.angle), renderState.angularVelocity,
-                rotation, velocity
-            )
+            interpolator.applyServerState(renderState.angle, renderState.angularVelocity)
         }
 
-        val dt = !frameTimer.sample()
-
-        if(interpolationState == null) {
-            rotation += velocity * dt
-        }
-        else {
-            val state = interpolationState!!
-            state.currentTime += dt
-            state.sampleTrajectory()
-            rotation = state.sampleP
-            velocity = state.sampleV
-
-            if(state.timeRemaining == 0.0) {
-                interpolationState = null
-            }
-        }
+        interpolator.update()
 
         poseShafts()
     }

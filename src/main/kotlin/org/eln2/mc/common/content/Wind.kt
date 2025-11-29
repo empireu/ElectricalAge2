@@ -55,6 +55,7 @@ import org.eln2.mc.common.cells.foundation.CellCreateInfo
 import org.eln2.mc.common.cells.foundation.CellProvider
 import org.eln2.mc.common.cells.foundation.InternalKineticReplicatorBehavior
 import org.eln2.mc.common.cells.foundation.InternalKineticStateConsumer
+import org.eln2.mc.common.cells.foundation.KineticInterpolatorClient
 import org.eln2.mc.common.cells.foundation.KineticObject
 import org.eln2.mc.common.cells.foundation.KineticSize
 import org.eln2.mc.common.cells.foundation.PersistentObject
@@ -828,17 +829,14 @@ class WindTurbineBlockEntity(pos: BlockPos, state: BlockState) :
 
     @ClientOnly
     override fun setupPacketsOnClient(handler: ClientSidePacketHandlerBuilder) {
-        handler.withHandler<BasicKineticPart.RotationSyncPacket> {
+        handler.withHandler<RotatingKineticState> {
             renderState?.load(it)
         }
     }
 
     @ServerOnly
     override fun onKineticStateChanged(state: RotatingKineticState) {
-        sendBulkPacket(BasicKineticPart.RotationSyncPacket(
-            state.angle,
-            state.angularVelocity
-        ))
+        sendBulkPacket(state)
     }
 
     @ServerOnly
@@ -867,10 +865,7 @@ class WindTurbineBlockEntityVisual(
     SimpleDynamicVisual
 {
     var version = 0
-    var rotation = Rotation2d.identity
-    var velocity = 0.0
-    var interpolationState: RotationUpdateProfile2d? = null
-    val frameTimer = Stopwatch()
+    val interpolator = KineticInterpolatorClient()
 
     val models = (blockState.block as WindTurbineBlock).model
 
@@ -891,7 +886,7 @@ class WindTurbineBlockEntityVisual(
         rotor.setIdentityTransform()
         rotor.translate(visualPosition)
         rotor.translate(0.5f, 0.0f, 0.5f)
-        rotor.rotateY(rotation.ln().toFloat())
+        rotor.rotateY(interpolator.clientRotation.ln().toFloat())
         rotor.rotateToFace(blockEntity.representativeFacing.clockWise)
         rotor.setChanged()
     }
@@ -927,31 +922,10 @@ class WindTurbineBlockEntityVisual(
         val targetVersion = renderState.version
         if(version != targetVersion) {
             version = targetVersion
-
-            interpolationState = computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
-                renderState.angularAccelerationEstimate,
-                Rotation2d.exp(renderState.angle), renderState.angularVelocity,
-                rotation, velocity
-            )
+            interpolator.applyServerState(renderState.angle, renderState.angularVelocity)
         }
 
-        val dt = !frameTimer.sample()
-
-        if(interpolationState == null) {
-            rotation += velocity * dt
-        }
-        else {
-            val state = interpolationState!!
-            state.currentTime += dt
-            state.sampleTrajectory()
-            rotation = state.sampleP
-            velocity = state.sampleV
-
-            if(state.timeRemaining == 0.0) {
-                interpolationState = null
-            }
-        }
-
+        interpolator.update()
         poseRotor()
     }
 
