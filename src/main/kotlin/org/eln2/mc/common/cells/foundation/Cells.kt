@@ -32,12 +32,15 @@ import org.eln2.mc.data.*
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3d
 import java.util.*
+import java.util.concurrent.Callable
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
-import java.util.concurrent.ScheduledFuture
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.ForkJoinPool
+import java.util.concurrent.ForkJoinTask
+import java.util.concurrent.ForkJoinWorkerThread
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.Volatile
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 import kotlin.reflect.KClass
@@ -423,10 +426,6 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
             private val subscribers = HashMap<SimulationSubscriber, SubscriberOptions>()
 
             fun wrap(targetCollection: SubscriberCollection) {
-                check(wrappedCollection == null) {
-                    "Tried to wrap with non-cleared subscriber pool"
-                }
-
                 wrappedCollection = targetCollection
             }
 
@@ -1299,11 +1298,11 @@ object CellConnections {
             .map { it.graph }
             .distinct()
             .forEach {
-                it.ensureStopped()
+                it.executionGraph.suspend()
                 it.captureAllInScope()
             }
 
-        if(insertedCell.hasGraph) {
+        if (insertedCell.hasGraph) {
             insertedCell.graph.captureAllInScope()
         }
 
@@ -1404,7 +1403,7 @@ object CellConnections {
         insertedCell.container?.onTopologyChanged()
 
         // And now resume/start the simulation:
-        insertedCell.graph.startSimulation()
+        insertedCell.graph.executionGraph.resume()
     }
 
     fun disconnectCell(actualCell: Cell, actualContainer: CellContainer, notify: Boolean = true) {
@@ -1423,12 +1422,8 @@ object CellConnections {
 
         val graph = actualCell.graph
 
-        if (!graph.isSimulating) {
-            DEBUGGER_BREAK()
-        }
-
         // Stop Simulation
-        graph.stopSimulation()
+        graph.executionGraph.suspend()
 
         graph.captureAllInScope()
 
@@ -1488,7 +1483,7 @@ object CellConnections {
             neighbor.onUpdate(connectionsChanged = true, graphChanged = false)
 
             graph.buildSolver()
-            graph.startSimulation()
+            graph.executionGraph.resume()
             graph.setChanged()
         } else {
             // Case 3 and 4. Implement a more sophisticated algorithm, if necessary.
@@ -1604,7 +1599,7 @@ object CellConnections {
             // Finally, build the solver and start simulation.
 
             graph.buildSolver()
-            graph.startSimulation()
+            graph.executionGraph.resume()
             graph.setChanged()
 
             // We don't need to keep the cells, we have already traversed all the connected ones.
@@ -1785,7 +1780,7 @@ data class CellAndContainerHandle @Deprecated("Use [of]") constructor(val neighb
 /**
  * Bijective map between [Cell] and the [Locator].
  * */
-class CellList : Iterable<Cell> {
+class CellMap : Iterable<Cell> {
     private val cells = MutableMapPairBiMap<Cell, Locator>()
 
     val size get() = cells.size
@@ -1800,9 +1795,436 @@ class CellList : Iterable<Cell> {
 
     fun getByLocator(locator: Locator) = cells.backward[locator]
 
-    fun addAll(source: CellList) = source.forEach { this.add(it) }
+    fun addAll(source: CellMap) = source.forEach { this.add(it) }
 
     override fun iterator(): Iterator<Cell> = cells.forward.keys.iterator()
+}
+
+class SimulationExecutionSubgraph(val graph: CellGraph) {
+    companion object {
+        /**
+         * The approximate maximum tick time an execution group is given.
+         * */
+        val TIME_THRESHOLD = Quantity(1.0, MILLI * SECOND)
+
+        private fun getThreadCount() : Int {
+            val threadCount = Eln2Config.serverConfig.simulationThreadCount.get()
+
+            // We do get an exception from thread pool creation, but explicit handling is better here.
+            if (threadCount <= 0) {
+                error("Simulation threads is $threadCount")
+            }
+
+            LOG.info("Using $threadCount ELN2 simulation threads")
+
+            return threadCount
+        }
+
+        private val threadNumber = AtomicInteger()
+
+        private fun createThread(pool: ForkJoinPool) : ForkJoinWorkerThread {
+            val thread = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool)
+            thread.name = "eln-pool-${threadNumber.getAndIncrement()}"
+            return thread
+        }
+
+        private fun exceptionHandler(t: Thread, e: Throwable) {
+            LOG.error("ELN2 SIMULATION ERROR ($t): $e")
+        }
+
+        private val pool = ForkJoinPool(
+            getThreadCount(),
+            ::createThread,
+            ::exceptionHandler,
+            true
+        )
+
+        fun makePool() {
+            requireIsOnServerThread()
+            pool
+        }
+    }
+
+    private class SubSolver(val solver: Any, val method: Runnable) {
+        var lastExecutionTime = Quantity<Time>(0.0)
+
+        fun execute() {
+            lastExecutionTime = measureDuration {
+                method.run()
+            }
+        }
+    }
+
+    private val subSolvers = ArrayList<SubSolver>()
+
+    private val priorityQueue = PriorityQueue<SubSolver> { a, b ->
+        a.lastExecutionTime.value.compareTo(b.lastExecutionTime.value)
+    }
+
+    /**
+     * Re-builds the [subSolvers] list.
+     * */
+    fun rebuild() {
+        subSolvers.clear()
+
+        requireIsOnServerThread {
+            "Cannot create SimulationExecutionSubgraph on current thread"
+        }
+
+        graph.electricalSubSolverSets.forEach { subSolverSet ->
+            subSolverSet.solvers.forEach { electricalSimulation ->
+                subSolvers.add(SubSolver(
+                    electricalSimulation,
+                    electricalSimulation::step)
+                )
+            }
+        }
+
+        graph.thermalSims.forEach {
+            subSolvers.add(SubSolver(it) { it.step(CellGraph.DT) })
+        }
+
+        graph.kineticSubSolverSets.forEach { subSolverSet ->
+            subSolverSet.solvers.forEach { kineticSimulation ->
+                subSolvers.add(SubSolver(
+                    kineticSimulation,
+                    kineticSimulation::step
+                ))
+            }
+        }
+    }
+
+    //#region Concurrency State
+
+    private val lock = ReentrantLock()
+    private val resumeCondition = lock.newCondition()
+    private val pausedSignal = lock.newCondition()
+
+    @Volatile
+    private var pauseRequested = false
+
+    @Volatile
+    private var isPaused = false
+
+    private var isRunning = false
+
+    // Not sure
+    val isNotRunning get() = isPaused || !isRunning
+
+    //#endregion
+
+    //#region Game Thread API
+
+    /**
+     * Blocks the caller until the graph reaches a safe point, and pauses the simulation of this graph.
+     * Will be a no-op if the simulation is already paused.
+     * */
+    @OnServerThread
+    fun suspend() {
+        requireIsOnServerThread {
+            "Cannot use SimulationExecutionSubgraph#suspend on current thread"
+        }
+
+        lock.lock()
+
+        try {
+            if(pauseRequested) {
+                check(isPaused)
+                return
+            }
+
+            if(!isRunning) {
+                return
+            }
+
+            /**
+             * Request the simulation to pause:
+             * */
+            pauseRequested = true
+
+            /**
+             * Wait for the simulation to confirm it paused:
+             * */
+            while(!isPaused && isRunning) {
+                pausedSignal.await()
+            }
+        }
+        catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+        finally {
+            lock.unlock()
+            LOG.info("Stopped simulation for $graph")
+        }
+    }
+
+    /**
+     * Resumes the simulation.
+     * Will be a no-op if the simulation is already running.
+     * */
+    @OnServerThread
+    fun resume() {
+        requireIsOnServerThread {
+            "Cannot use SimulationExecutionSubgraph#resume on current thread"
+        }
+
+        lock.lock()
+
+        try {
+            if(!isPaused) {
+                check(!pauseRequested)
+                return
+            }
+
+            pauseRequested = false
+            isPaused = false
+            resumeCondition.signal()
+        }
+        finally {
+            lock.unlock()
+            LOG.info("Resumed simulation for $graph")
+        }
+    }
+
+    //#endregion
+
+    /**
+     * The Synchronization Barrier.
+     * If main thread requested a pause, we stop here, signal we are paused, and wait for resume.
+     */
+    private fun pauseBarrier() {
+        /**
+         * Check-lock-check:
+         * */
+        if(pauseRequested) {
+            lock.lock()
+
+            try {
+                if(pauseRequested) {
+                    isPaused = true
+
+                    /**
+                     * Signal to wake up game thread:
+                     * */
+                    pausedSignal.signalAll()
+
+                    /**
+                     * Wait for resume:
+                     * */
+                    while (pauseRequested) {
+                        resumeCondition.await()
+                    }
+                }
+            }
+            finally {
+                lock.unlock()
+            }
+        }
+    }
+
+    /**
+     * A batch of sub-solvers to execute.
+     * */
+    private class ExecutionSubgroup private constructor() : Callable<Void> {
+        /**
+         * The individual tick methods, with additional time tracking.
+         * */
+        val subSolvers = ArrayList<SubSolver>()
+
+        /**
+         * Executes all sub-solvers.
+         * */
+        override fun call(): Void? {
+            var i = 0
+            val count = subSolvers.size
+            while (i < count) {
+                subSolvers[i].execute()
+                i++
+            }
+
+            return null
+        }
+
+        companion object {
+            fun allocate() = pool.get()
+            fun release(instance: ExecutionSubgroup) = pool.release(instance)
+
+            private val pool = LocklessAtomicObjectPool<ExecutionSubgroup>(object : PooledObjectPolicy<ExecutionSubgroup> {
+                override fun create(): ExecutionSubgroup {
+                    return ExecutionSubgroup()
+                }
+
+                override fun release(obj: ExecutionSubgroup): Boolean {
+                    obj.subSolvers.clear()
+                    return true
+                }
+            }, 1024 * 16)
+        }
+    }
+
+    /**
+     * Utility class for generating all the execution subgroups and the tasks to run.
+     * */
+    private class ExecutionSubgroupCompiler {
+        val subGroups = ArrayList<ExecutionSubgroup>()
+
+        /**
+         * If true, the next [insert] call will generate a new group.
+         * */
+        private var splitPoint = false
+
+        /**
+         * After this is called, the next [insert] call will insert the sub-solver into a new group.
+         * */
+        fun markSplit() {
+            splitPoint = true
+        }
+
+        /**
+         * Inserts a new sub-solver.
+         * */
+        fun insert(solver: SubSolver) {
+            if(splitPoint || subGroups.isEmpty()) {
+                subGroups.add(ExecutionSubgroup.allocate())
+            }
+
+            subGroups[subGroups.size - 1].subSolvers.add(solver)
+            splitPoint = false
+        }
+
+        /**
+         * Frees all the allocated subgroups.
+         * */
+        fun finish() {
+            subGroups.forEach {
+                ExecutionSubgroup.release(it)
+            }
+
+            subGroups.clear()
+            splitPoint = false
+        }
+    }
+
+    private val workCompiler = ExecutionSubgroupCompiler()
+
+    private fun executeSimulation() {
+        try {
+            /**
+             * Sorts the sub-solvers:
+             * */
+            subSolvers.forEach { subSolver ->
+                priorityQueue.add(subSolver)
+            }
+
+            /**
+             * Compiles all the subgroups:
+             * */
+            var totalTime = 0.0
+            while (priorityQueue.isNotEmpty()) {
+                val subSolver = priorityQueue.remove()
+                workCompiler.insert(subSolver)
+
+                totalTime += !subSolver.lastExecutionTime
+
+                if(totalTime > !TIME_THRESHOLD) {
+                    /**
+                     * Create a new work group:
+                     * */
+                    workCompiler.markSplit()
+                    totalTime = 0.0
+                }
+            }
+
+            for (i in 0 until CellGraph.SUBSTEPS) {
+                /**
+                 * Checks if a pause is requested and, if so, pauses the simulation.
+                 * */
+                pauseBarrier()
+
+                /**
+                 * Dispatches the pre-update sequentially:
+                 * */
+                graph.simulationThreadSubscribers.update(CellGraph.DT, SubscriberPhase.Pre)
+
+                /**
+                 * Dispatches the sub-solvers in parallel and awaits completion:
+                 * */
+                pool.invokeAll(workCompiler.subGroups)
+
+                /**
+                 * Dispatches the post-update sequentially:
+                 * */
+                graph.simulationThreadSubscribers.update(CellGraph.DT, SubscriberPhase.Post)
+            }
+        }
+        finally {
+            workCompiler.finish()
+
+            lock.lock()
+
+            try {
+                isRunning = false
+                isPaused = false
+                pausedSignal.signalAll()
+            }
+            finally {
+                lock.unlock()
+            }
+        }
+    }
+
+    /**
+     * The currently orchestrated frame.
+     * */
+    var frame: ForkJoinTask<*>? = null
+        private set
+
+    /**
+     * Orchestrates the simulation frame. Called at the start of the game loop.
+     * */
+    fun orchestrateFrame() {
+        requireIsOnServerThread {
+            "Cannot orchestrate a frame from the current thread"
+        }
+
+        if(frame != null) {
+            check(frame!!.isDone) {
+                "Tried to orchestrate frame, but previous frame was not done!"
+            }
+        }
+
+        lock.lock()
+        try {
+            check(!isRunning)
+
+            isRunning = true
+            isPaused = false
+            pauseRequested = false
+
+            frame = pool.submit {
+                executeSimulation()
+            }
+        }
+        finally {
+            lock.unlock()
+        }
+    }
+
+    /**
+     * Waits for the simulation to complete. Called at the end of the game loop.
+     * */
+    fun awaitCompletion() {
+        requireIsOnServerThread {
+            "Cannot await completion on current thread"
+        }
+
+        if(frame == null) {
+            return
+        }
+
+        frame!!.get()
+        frame = null
+    }
 }
 
 /**
@@ -1812,21 +2234,11 @@ class CellList : Iterable<Cell> {
  * It also has serialization/deserialization logic for saving to the disk using NBT.
  * */
 class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLevel) : Iterable<Cell> {
-    private val cells = CellList()
+    private val cells = CellMap()
 
-    // P.S. the sub-solvers don't have any data dependency with each other or the objects.
-    // The objects also don't use events fired by any simulation.
-    // This means that sub-solvers can be dispatched in parallel for solve:
-    //  1. The graph is picked up by a thread and the subscribers pre-step is executed.
-    //  2. The sub-solvers are dispatched in parallel on a thread pool.
-    //  3. The tasks finish and a thread executes the subscribers post-step.
-    // This way, the parallelization factor can be increased dramatically for large networks.
-    // This is because I imagine most builds consist of a power grid that distributes power to some bases or plants, and each plant has:
-    //  - a DC-DC converter (transforming the grid to a useful potential). Currently, the DC-DC is implemented as an unconstrained process in the pre-step/post-step loop. So the plant and the grid would be separate sub-solvers.
-    //  - some mechanical and thermal devices - those will separate all other simulations so that's more sub-solvers.
-    private val electricalSubSolverSets = ArrayList<SubSolverSet<ElectricalSimulation>>()
-    private val thermalSims = ArrayList<Simulator>()
-    private val kineticSubSolverSets = ArrayList<SubSolverSet<KineticSimulation>>()
+    val electricalSubSolverSets = ArrayList<SubSolverSet<ElectricalSimulation>>()
+    val thermalSims = ArrayList<Simulator>()
+    val kineticSubSolverSets = ArrayList<SubSolverSet<KineticSimulation>>()
 
     @OnServerThread
     interface FlagSets<TSolver> {
@@ -1881,16 +2293,13 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
     private val kineticFlagsImplSimulation = FlagSetsImpl<KineticSimulation>()
     val kineticFlagsSimulation: FlagSets<KineticSimulation> get() = kineticFlagsImplSimulation
 
-    private val simulationStopLock = ReentrantLock()
-
-    // This is the simulation task. It will be null if the simulation is stopped
-    private var simulationTask: ScheduledFuture<*>? = null
-
-    val isSimulating get() = simulationTask != null
+    /**
+     * The execution graph for this cell graph, updated when [buildSolver] is called.
+     * */
+    val executionGraph = SimulationExecutionSubgraph(this)
 
     @CrossThreadAccess
     private var updates = 0L
-
     private var updatesCheckpoint = 0L
 
     /**
@@ -2003,85 +2412,12 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
      * It also checks if the caller is the server thread.
      * */
     private fun validateMutationAccess() {
-        if (simulationTask != null) {
+        if (!executionGraph.isNotRunning) {
             error("Tried to mutate the simulation while it was running")
         }
 
         if (Thread.currentThread() != ServerLifecycleHooks.getCurrentServer().runningThread) {
             error("Illegal cross-thread access into the cell graph")
-        }
-    }
-
-    private enum class UpdateStep {
-        Start,
-        UpdateSubsPre,
-        UpdateElectricalSims,
-        UpdateThermalSims,
-        UpdateKineticSims,
-        UpdateSubsPost
-    }
-
-    /**
-     * Runs one simulation step. This is called from the update thread.
-     * **The update is aborted if the server thread is not running. This happens if it got suspended externally or if the integrated server is paused!**
-     * */
-    @CrossThreadAccess
-    private fun update() {
-        if(isServerPaused()) {
-            return
-        }
-
-        simulationStopLock.lock()
-
-        if(!isSimulating) {
-            LOG.warn("Aborting tick!")
-            simulationStopLock.unlock()
-            return
-        }
-
-        var stage = UpdateStep.Start
-
-        try {
-            stage = UpdateStep.UpdateSubsPre
-            simulationThreadSubscribers.update(DT, SubscriberPhase.Pre)
-
-            lastTickTime = !measureDuration {
-                stage = UpdateStep.UpdateElectricalSims
-                val electricalTime = measureDuration {
-                    electricalSubSolverSets.forEach {
-                        it.solvers.forEach { circuit ->
-                            circuit.step()
-                        }
-
-                    }
-                }
-
-                stage = UpdateStep.UpdateThermalSims
-                val thermalTime = measureDuration {
-                    thermalSims.forEach {
-                        it.step(DT)
-                    }
-                }
-
-                stage = UpdateStep.UpdateKineticSims
-                val kineticTime = measureDuration {
-                    kineticSubSolverSets.forEach {
-                        it.solvers.forEach { solver ->
-                            solver.step()
-                        }
-                    }
-                }
-            }
-
-            stage = UpdateStep.UpdateSubsPost
-            simulationThreadSubscribers.update(DT, SubscriberPhase.Post)
-
-            updates++
-        } catch (t: Throwable) {
-            LOG.error(DEBUGGER_BREAK("FAILED TO UPDATE SIMULATION at $stage: $t ${t.stackTraceToString()}"))
-        } finally {
-            // Maybe blow up the game instead of just allowing this to go on?
-            simulationStopLock.unlock()
         }
     }
 
@@ -2198,6 +2534,8 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         }
 
         cells.forEach { it.onBuildFinished() }
+
+        executionGraph.rebuild()
     }
 
     /**
@@ -2342,64 +2680,15 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         manager.setDirty()
     }
 
-    fun ensureStopped() {
-        if (isSimulating) {
-            stopSimulation()
-        }
-    }
-
-    /**
-     * Stops the simulation. This is a sync point, so usage of this should be sparse.
-     * Will result in an error if it was not running.
-     * */
-    fun stopSimulation() {
-        if (simulationTask == null) {
-            return
-        }
-
-        simulationStopLock.lock()
-        simulationTask!!.cancel(true)
-        simulationTask = null
-        simulationStopLock.unlock()
-
-        LOG.info("Stopped simulation for $this")
-    }
-
-    /**
-     * Starts the simulation. Will result in an error if it is already running.,
-     * */
-    fun startSimulation() {
-        if (simulationTask != null) {
-            error("Tried to start simulation, but it was already running")
-        }
-
-        simulationTask = pool.scheduleAtFixedRate(this::update, 0, 10, TimeUnit.MILLISECONDS)
-
-        LOG.info("Started simulation for $this")
-    }
-
-    /**
-     * Runs the specified [action], ensuring that the simulation is paused.
-     * The previous running state is preserved; if the simulation was paused, it will not be started after the [action] is completed.
-     * If it was running, then the simulation will resume.
-     * */
     @OptIn(ExperimentalContracts::class)
     fun runSuspended(action: (() -> Unit)) {
         contract {
             callsInPlace(action)
         }
 
-        val running = isSimulating
-
-        if (running) {
-            stopSimulation()
-        }
-
+        executionGraph.suspend()
         action()
-
-        if (running) {
-            startSimulation()
-        }
+        executionGraph.resume()
     }
 
     // TODO revamp the schema
@@ -2407,7 +2696,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
     fun toNbt(): CompoundTag {
         val circuitCompound = CompoundTag()
 
-        require(!isSimulating)
+        require(executionGraph.isNotRunning)
 
         circuitCompound.putUUID(NBT_ID, id)
 
@@ -2442,12 +2731,11 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
     }
 
     fun serverStop() {
-        if (simulationTask != null) {
-            stopSimulation()
-        }
+        executionGraph.suspend()
     }
 
     companion object {
+        const val SUBSTEPS = 5
         const val DT = 1.0 / 100.0
 
         private const val NBT_CELL_DATA = "data"
@@ -2455,43 +2743,6 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         private const val NBT_CELLS = "cells"
         private const val NBT_POSITION = "pos"
         private const val NBT_CONNECTIONS = "connections"
-
-        private val threadNumber = AtomicInteger()
-
-        private fun createThread(r: Runnable): Thread {
-            val thread = Thread(r, "cell-graph-${threadNumber.getAndIncrement()}")
-
-            if (thread.isDaemon) {
-                thread.isDaemon = false
-            }
-
-            if (thread.priority != Thread.NORM_PRIORITY) {
-                thread.priority = Thread.NORM_PRIORITY
-            }
-
-            return thread
-        }
-
-        private val pool = Executors.newScheduledThreadPool(
-            run {
-                val threadCount = Eln2Config.serverConfig.simulationThreadCount.get()
-
-                // We do get an exception from thread pool creation, but explicit handling is better here.
-                if (threadCount <= 0) {
-                    error("Simulation threads is $threadCount")
-                }
-
-                LOG.info("Using $threadCount simulation threads")
-
-                threadCount
-            },
-            ::createThread
-        )
-
-        fun makePool() {
-            requireIsOnServerThread()
-            pool
-        }
 
         fun fromNbt(graphCompound: CompoundTag, manager: CellGraphManager, level: ServerLevel): CellGraph {
             val graphId = graphCompound.getUUID(NBT_ID)
@@ -2718,7 +2969,7 @@ class CellGraphManager(val level: ServerLevel) : SavedData() {
             }
 
             manager.graphs.values.forEach {
-                it.startSimulation()
+                it.executionGraph.resume()
             }
 
             manager.graphs.values.forEach {

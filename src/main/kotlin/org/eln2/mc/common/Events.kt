@@ -23,8 +23,8 @@ import org.eln2.mc.LOG
 import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityLevelRendererProvider
-import org.eln2.mc.common.cells.foundation.CellGraph
 import org.eln2.mc.common.cells.foundation.CellGraphManager
+import org.eln2.mc.common.cells.foundation.SimulationExecutionSubgraph
 import org.eln2.mc.common.cells.foundation.SubscriberPhase
 import org.eln2.mc.common.content.modules.ContentModuleManager
 import org.eln2.mc.common.content.ScrewdriverItem
@@ -87,7 +87,7 @@ object ForgeEvents {
     @SubscribeEvent @JvmStatic
     fun onServerStarting(event: ServerStartingEvent) {
         LOG.info("Making ELN2 thread pool")
-        CellGraph.makePool()
+        SimulationExecutionSubgraph.makePool()
     }
 
     private fun simulationStats() {
@@ -122,6 +122,22 @@ object ForgeEvents {
         }
     }
 
+    private fun dispatchAllSimulations() {
+        forEachGraphManager { manager ->
+            manager.forEachGraph { graph ->
+                graph.executionGraph.orchestrateFrame()
+            }
+        }
+    }
+
+    private fun awaitAllSimulations() {
+        forEachGraphManager { manager ->
+            manager.forEachGraph { graph ->
+                graph.executionGraph.awaitCompletion()
+            }
+        }
+    }
+
     private fun advanceServerFrames() {
         forEachGraphManager { manager ->
             manager.forEachGraph { graph ->
@@ -138,7 +154,10 @@ object ForgeEvents {
     fun onServerTick(event: TickEvent.ServerTickEvent) {
         if(event.phase == TickEvent.Phase.START) {
             Scheduler.onServerTick(event)
+
+            // Schedule the simulations after those subscribers ran, so they don't get a torn frame:
             dispatchServerSubscribers(SubscriberPhase.Pre)
+            dispatchAllSimulations()
         }
         else {
             // Dispatch with high priority:
@@ -151,7 +170,8 @@ object ForgeEvents {
             ScrewdriverItem.Scroll.tickCooldowns()
             WindSystem.update()
 
-            // Dispatch server subscribers, clear simulation flags, then flush messages:
+            // Await simulation completion, dispatch those subscribers, clear simulation flags, then flush messages:
+            awaitAllSimulations()
             dispatchServerSubscribers(SubscriberPhase.Post)
             advanceServerFrames()
             BulkMessages.flush()

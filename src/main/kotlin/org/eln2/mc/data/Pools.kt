@@ -1,6 +1,6 @@
 package org.eln2.mc.data
 
-import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicReference
 
 interface ObjectPool<T> {
     fun get(): T
@@ -50,33 +50,40 @@ class LinearObjectPool<T>(private val policy: PooledObjectPolicy<T>, val maximum
 }
 
 /**
- * Thread-safe object pool implemented with locking.
+ * Thread-safe object pool implemented as an atomic stack.
  * */
-class LockingObjectPool<T>(private val policy: PooledObjectPolicy<T>, val maximumRetained: Int) : ObjectPool<T> {
-    private val objLock = Any()
-    private val items = ArrayList<T>()
+class LocklessAtomicObjectPool<T>(private val policy: PooledObjectPolicy<T>, val maximumRetained: Int) : ObjectPool<T> {
+    private class Node<T>(val value: T) {
+        var next: Node<T>? = null
+    }
+
+    private val head = AtomicReference<Node<T>>()
 
     override fun get(): T {
-        synchronized(objLock) {
-            if(items.isEmpty()) {
-                return policy.create()
-            }
+        while (true) {
+            val h = head.get()
+                ?: return policy.create()
 
-            return items.removeLast()
+            if(head.compareAndSet(h, h.next)) {
+                return h.value!!
+            }
         }
     }
 
     override fun release(obj: T) {
-        synchronized(objLock) {
-            if(!policy.release(obj)) {
+        if(!policy.release(obj)) {
+            return
+        }
+
+        val n = Node(obj)
+
+        while (true) {
+            val h = head.get()
+            n.next = h
+
+            if (head.compareAndSet(h, n)) {
                 return
             }
-
-            if(items.size == maximumRetained) {
-                return
-            }
-
-            items.add(obj)
         }
     }
 }
