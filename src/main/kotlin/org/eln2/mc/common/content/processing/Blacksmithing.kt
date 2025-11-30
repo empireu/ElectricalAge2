@@ -502,7 +502,7 @@ class BlacksmithingStationBlockEntityRenderer(val itemRenderer: ItemRenderer) : 
  * The variants can be cycled on right-click and an overlay is also rendered to show the current variant.
  * @param extraVariants Variants to append to the [DEFAULT_VARIANT]. They must be unique.
  * */
-class BlacksmithingToolItem(extraVariants: List<String>) : Item(Properties().stacksTo(1).durability(24)) {
+class BlacksmithingToolItem(durability: Int, extraVariants: List<String>) : Item(Properties().stacksTo(1).durability(durability)) {
     val variants = listOf(DEFAULT_VARIANT).plus(extraVariants).toList().also {
         check(it.toSet().size == it.size) {
             "Duplicate variant names for blacksmithing tool!"

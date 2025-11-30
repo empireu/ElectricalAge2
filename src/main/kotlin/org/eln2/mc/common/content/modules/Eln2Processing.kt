@@ -187,10 +187,24 @@ object Eln2Processing : ContentModule() {
 
     val BLACKSMITHING_HAMMER_ITEM = item("blacksmithing_hammer") {
         BlacksmithingToolItem(
+            30,
             listOf(
                 "flattening",
                 "two_side_flattening"
             )
+        )
+    }
+
+    val BLACKSMITHING_FILE_ITEM = item("blacksmithing_file") {
+        BlacksmithingToolItem(14,
+            listOf()
+        )
+    }
+
+    val BLACKSMITHING_CHISEL_AND_HAMMER_ITEM = item("blacksmithing_chisel_and_hammer") {
+        BlacksmithingToolItem(
+            50,
+            listOf()
         )
     }
 
