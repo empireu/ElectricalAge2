@@ -623,6 +623,8 @@ value class MyColor(val data : Int) {
         MemoryUtil.memPutByte(ptr + 2, b.toByte())
         MemoryUtil.memPutByte(ptr + 3, a.toByte())
     }
+
+    operator fun not() = data
 }
 
 class DummyBlockEntityRendererProvider<T : BlockEntity> : BlockEntityRendererProvider<T> {

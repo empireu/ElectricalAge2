@@ -53,6 +53,10 @@ import org.eln2.mc.common.content.FurnaceBlockEntity
 import org.eln2.mc.common.content.FurnaceCell
 import org.eln2.mc.common.content.FurnaceMenu
 import org.eln2.mc.common.content.FurnaceScreen
+import org.eln2.mc.common.content.processing.BlacksmithingStationBlock
+import org.eln2.mc.common.content.processing.BlacksmithingStationBlockEntity
+import org.eln2.mc.common.content.processing.BlacksmithingStationBlockEntityRenderer
+import org.eln2.mc.common.content.processing.BlacksmithingToolItem
 import org.eln2.mc.common.content.processing.KineticExtruderBlock
 import org.eln2.mc.common.content.processing.KineticExtruderBlockEntity
 import org.eln2.mc.common.content.processing.KineticExtruderBlockEntityVisual
@@ -69,6 +73,7 @@ import org.eln2.mc.common.content.processing.VulcanizingAutoclaveThermalPortBloc
 import org.eln2.mc.common.content.processing.VulcanizingAutoclaveThermalPortBlockEntity
 import org.eln2.mc.common.content.processing.VulcanizingAutoclaveThermalPortCell
 import org.eln2.mc.common.content.processing.VulcanizingRecipe
+import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
 import org.eln2.mc.common.recipes.KineticProcessingCell
 import org.eln2.mc.common.recipes.KineticProcessingCellKineticOptions
@@ -117,6 +122,11 @@ object Eln2Processing : ContentModule() {
 
     override fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
         event.registerBlockEntityRenderer(
+            BLACKSMITHING_STATION_BLOCK_ENTITY.get(),
+            BlacksmithingStationBlockEntityRenderer.Provider()
+        )
+
+        event.registerBlockEntityRenderer(
             CRUSHER_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
@@ -157,6 +167,27 @@ object Eln2Processing : ContentModule() {
             )
         }
     }
+
+    //#region Blacksmithing
+
+    val BLACKSMITHING_STATION_BLOCK = blockAndItem("blacksmithing_station", ::BlacksmithingStationBlock)
+
+    val BLACKSMITHING_STATION_BLOCK_ENTITY = blockEntityOnly(
+        "blacksmithing_station",
+        BLACKSMITHING_STATION_BLOCK.block,
+        ::BlacksmithingStationBlockEntity
+    )
+
+    val BLACKSMITHING_HAMMER_ITEM = item("blacksmithing_hammer") {
+        BlacksmithingToolItem(
+            listOf(
+                "flattening",
+                "two_side_flattening"
+            )
+        )
+    }
+
+    //#endregion
 
     //#region Rubber
 

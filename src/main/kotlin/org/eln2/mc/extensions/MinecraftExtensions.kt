@@ -63,7 +63,19 @@ import kotlin.math.PI
 import kotlin.math.cos
 
 fun BlockEntity.setSyncDirty() {
-    level!!.sendBlockUpdated(blockPos, blockState, blockState, Block.UPDATE_CLIENTS)
+    val level = level
+        ?: return
+
+    if(level.isClientSide) {
+        return
+    }
+
+    level.sendBlockUpdated(
+        blockPos,
+        blockState,
+        blockState,
+        Block.UPDATE_CLIENTS
+    )
 }
 
 @OptIn(ExperimentalContracts::class)
