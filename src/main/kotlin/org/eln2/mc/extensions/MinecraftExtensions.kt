@@ -19,6 +19,7 @@ import net.minecraft.sounds.SoundSource
 import net.minecraft.util.Mth
 import net.minecraft.util.RandomSource
 import net.minecraft.world.Container
+import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.MenuProvider
 import net.minecraft.world.SimpleContainer
@@ -61,6 +62,10 @@ import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
 import kotlin.math.PI
 import kotlin.math.cos
+
+fun ItemStack.takeDurability(player: Player, hand: InteractionHand = InteractionHand.MAIN_HAND, durability: Int = 1) {
+    this.hurtAndBreak(durability, player, { p -> p.broadcastBreakEvent(hand) })
+}
 
 fun BlockEntity.setSyncDirty() {
     val level = level

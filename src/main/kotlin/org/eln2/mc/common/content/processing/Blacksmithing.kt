@@ -1,5 +1,6 @@
 package org.eln2.mc.common.content.processing
 
+import com.google.gson.JsonObject
 import com.mojang.blaze3d.vertex.PoseStack
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
@@ -10,20 +11,28 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider
 import net.minecraft.client.renderer.entity.ItemRenderer
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.core.RegistryAccess
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.Connection
+import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.chat.Component
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ClientGamePacketListener
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket
+import net.minecraft.resources.ResourceLocation
+import net.minecraft.sounds.SoundEvents
+import net.minecraft.sounds.SoundSource
+import net.minecraft.util.GsonHelper
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.InteractionResultHolder
+import net.minecraft.world.SimpleContainer
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemDisplayContext
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.context.BlockPlaceContext
+import net.minecraft.world.item.crafting.*
 import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.LightLayer
@@ -42,7 +51,9 @@ import net.minecraftforge.client.gui.overlay.IGuiOverlay
 import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
+import net.minecraftforge.registries.ForgeRegistries
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.MODID
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.client.render.foundation.MyColor
@@ -50,8 +61,131 @@ import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.content.processing.BlacksmithingToolItem.Companion.DEFAULT_VARIANT
 import org.eln2.mc.extensions.preserve
 import org.eln2.mc.extensions.setSyncDirty
+import org.eln2.mc.extensions.takeDurability
+import org.eln2.mc.extensions.toVector3d
+import org.eln2.mc.randomFloat
 import org.joml.Quaternionf
+import java.util.*
 import kotlin.math.PI
+
+/**
+ * @param input The single input item for the recipe.
+ * @param output The single output item for the recipe.
+ * @param tool The tool item.
+ * @param toolMode The tool variant ([BlacksmithingToolItem.variants]).
+ * @param cooldown The cooldown, in ticks, applied by the server to the item after this recipe has been applied.
+ * */
+class BlacksmithingRecipe(
+    val recipeSerializer: Serializer,
+    val recipeId: ResourceLocation,
+    val input: Ingredient,
+    val output: ItemStack,
+    val tool: Ingredient,
+    val toolMode: String,
+    val cooldown: Int,
+    val sound: ResourceLocation?
+) : Recipe<SimpleContainer> {
+    val toolItem: BlacksmithingToolItem
+
+    init {
+        require(input.items.size == 1 && input.items[0].count == 1) {
+            DEBUGGER_BREAK("Blacksmithing recipe requires exactly one input!")
+        }
+
+        require(output.count == 1) {
+            DEBUGGER_BREAK("Blacksmithing recipe requires exactly one output!")
+        }
+
+        require(input.items.size == 1 && input.items[0].count == 1) {
+            DEBUGGER_BREAK("Blacksmithing recipe requires exactly one tool item!")
+        }
+
+        require(tool.items[0].item is BlacksmithingToolItem) {
+            "Blacksmithing recipe requires a blacksmithing tool item implementation!"
+        }
+
+        toolItem = tool.items[0].item as BlacksmithingToolItem
+
+        require(toolItem.variants.contains(toolMode)) {
+            "The variants of $toolItem don't include the mode \"$toolMode\"!"
+        }
+    }
+
+    override fun matches(pContainer: SimpleContainer, pLevel: Level) : Boolean {
+        if(!input.test(pContainer.getItem(BlacksmithingStationBlockEntity.STATION_SLOT))) {
+            return false
+        }
+
+        val toolStack = pContainer.getItem(BlacksmithingStationBlockEntity.TOOL_SLOT)
+
+        if(!tool.test(toolStack)) {
+            return false
+        }
+
+        return (toolStack.item as BlacksmithingToolItem).getVariantName(toolStack) == toolMode
+    }
+
+    override fun assemble(pContainer: SimpleContainer, pRegistryAccess: RegistryAccess): ItemStack = output.copy()
+    override fun canCraftInDimensions(pWidth: Int, pHeight: Int) = true
+    override fun getResultItem(pRegistryAccess: RegistryAccess): ItemStack = output.copy()
+
+    override fun getId() = recipeId
+    override fun getSerializer() = recipeSerializer
+    override fun getType() = recipeSerializer.recipeType
+
+    class Serializer(val recipeType: RecipeType<BlacksmithingRecipe>) : RecipeSerializer<BlacksmithingRecipe> {
+        override fun fromJson(pRecipeId: ResourceLocation, pSerializedRecipe: JsonObject): BlacksmithingRecipe {
+            val input = Ingredient.fromJson(pSerializedRecipe.get("ingredient"))
+            val output = ShapedRecipe.itemStackFromJson(GsonHelper.getAsJsonObject(pSerializedRecipe, "result"))
+            val tool = Ingredient.fromJson(pSerializedRecipe.get("tool"))
+            val toolMode = pSerializedRecipe.getAsJsonPrimitive("tool_mode").asString
+            val cooldown = pSerializedRecipe.getAsJsonPrimitive("cooldown").asInt
+
+            val sound = if(pSerializedRecipe.has("sound")) {
+                ResourceLocation.parse(pSerializedRecipe.getAsJsonPrimitive("sound").asString)
+            }
+            else {
+                null
+            }
+
+            return BlacksmithingRecipe(
+                this,
+                pRecipeId,
+                input, output,
+                tool, toolMode,
+                cooldown,
+                sound
+            )
+        }
+
+        override fun fromNetwork(pRecipeId: ResourceLocation, pBuffer: FriendlyByteBuf): BlacksmithingRecipe {
+            val input = Ingredient.fromNetwork(pBuffer)
+            val output = pBuffer.readItem()
+            val tool = Ingredient.fromNetwork(pBuffer)
+            val toolMode = pBuffer.readUtf()
+            val cooldown = pBuffer.readInt()
+            val sound = pBuffer.readUtf()
+
+            return BlacksmithingRecipe(
+                this,
+                pRecipeId,
+                input, output,
+                tool, toolMode,
+                cooldown,
+                if(sound.isEmpty()) null else ResourceLocation.parse(sound)
+            )
+        }
+
+        override fun toNetwork(pBuffer: FriendlyByteBuf, pRecipe: BlacksmithingRecipe) {
+            pRecipe.input.toNetwork(pBuffer)
+            pBuffer.writeItem(pRecipe.output)
+            pRecipe.tool.toNetwork(pBuffer)
+            pBuffer.writeUtf(pRecipe.toolMode)
+            pBuffer.writeInt(pRecipe.cooldown)
+            pBuffer.writeUtf(if(pRecipe.sound == null) "" else pRecipe.sound.toString())
+        }
+    }
+}
 
 class BlacksmithingStationBlock : HorizontalDirectionalBlock(Properties.of().noOcclusion()), EntityBlock {
     init {
@@ -169,11 +303,64 @@ class BlacksmithingStationBlockEntity(pPos: BlockPos, pState: BlockState) : Bloc
 
     //#endregion
 
+    fun searchForRecipe(tool: ItemStack): Optional<BlacksmithingRecipe> {
+        val stack = inventoryHandler.getStackInSlot(STATION_SLOT)
+
+        if(stack.isEmpty) {
+            return Optional.empty()
+        }
+
+        val level = level!!
+
+        val craftingContainer = SimpleContainer(2)
+        craftingContainer.setItem(STATION_SLOT, stack)
+        craftingContainer.setItem(TOOL_SLOT, tool)
+
+        return level.recipeManager.getRecipeFor(
+            Eln2Processing.BLACKSMITHING_RECIPE,
+            craftingContainer,
+            level
+        )
+    }
+
     @ServerOnly
     private fun toolInteraction(player: Player) : InteractionResult {
         val toolStack = player.getItemInHand(InteractionHand.MAIN_HAND)
+        val recipeOptional = searchForRecipe(toolStack)
 
-        return InteractionResult.FAIL
+        if(recipeOptional.isEmpty) {
+            return InteractionResult.FAIL
+        }
+
+        val recipe = recipeOptional.get()
+
+        val output = recipe.output.copy()
+        inventoryHandler.setStackInSlot(STATION_SLOT, output)
+
+        val sound = if(recipe.sound == null) {
+            SoundEvents.ANVIL_USE
+        }
+        else {
+            ForgeRegistries.SOUND_EVENTS.getValue(recipe.sound) ?: error(
+                DEBUGGER_BREAK("Invalid sound event \"${recipe.sound}\" from recipe ${recipe.recipeId}")
+            )
+        }
+
+        val (x, y, z) = blockPos.toVector3d() + Vector3d(0.5)
+
+        level!!.playSound(
+            null,
+            x, y, z,
+            sound,
+            SoundSource.BLOCKS,
+            randomFloat(0.8f, 1.1f),
+            randomFloat(0.9f, 1.1f)
+        )
+
+        player.cooldowns.addCooldown(recipe.toolItem, recipe.cooldown)
+        toolStack.takeDurability(player)
+
+        return InteractionResult.CONSUME_PARTIAL
     }
 
     @ServerOnly
@@ -187,14 +374,14 @@ class BlacksmithingStationBlockEntity(pPos: BlockPos, pState: BlockState) : Bloc
             return toolInteraction(player)
         }
 
-        val anvilItem = inventoryHandler.getStackInSlot(SLOT)
+        val anvilItem = inventoryHandler.getStackInSlot(STATION_SLOT)
 
         /**
          * Tries to remove an item from the anvil:
          * */
         if(!anvilItem.isEmpty) {
             if(player.addItem(anvilItem)) {
-                inventoryHandler.setStackInSlot(SLOT, ItemStack.EMPTY)
+                inventoryHandler.setStackInSlot(STATION_SLOT, ItemStack.EMPTY)
                 return InteractionResult.SUCCESS
             }
 
@@ -208,7 +395,7 @@ class BlacksmithingStationBlockEntity(pPos: BlockPos, pState: BlockState) : Bloc
             return InteractionResult.FAIL
         }
 
-        inventoryHandler.setStackInSlot(SLOT, stackInHand.copyWithCount(1))
+        inventoryHandler.setStackInSlot(STATION_SLOT, stackInHand.copyWithCount(1))
         return InteractionResult.CONSUME
     }
 
@@ -248,7 +435,8 @@ class BlacksmithingStationBlockEntity(pPos: BlockPos, pState: BlockState) : Bloc
     //#endregion
 
     companion object {
-        const val SLOT = 0
+        const val STATION_SLOT = 0
+        const val TOOL_SLOT = 1
         private const val INVENTORY = "inventory"
     }
 }
@@ -268,7 +456,7 @@ class BlacksmithingStationBlockEntityRenderer(val itemRenderer: ItemRenderer) : 
         val blockPos = pBlockEntity.blockPos
             ?: return
 
-        val stack = pBlockEntity.inventoryHandler.getStackInSlot(BlacksmithingStationBlockEntity.SLOT)
+        val stack = pBlockEntity.inventoryHandler.getStackInSlot(BlacksmithingStationBlockEntity.STATION_SLOT)
 
         if(stack.isEmpty) {
             return
@@ -314,7 +502,7 @@ class BlacksmithingStationBlockEntityRenderer(val itemRenderer: ItemRenderer) : 
  * The variants can be cycled on right-click and an overlay is also rendered to show the current variant.
  * @param extraVariants Variants to append to the [DEFAULT_VARIANT]. They must be unique.
  * */
-class BlacksmithingToolItem(extraVariants: List<String>) : Item(Properties().stacksTo(1)) {
+class BlacksmithingToolItem(extraVariants: List<String>) : Item(Properties().stacksTo(1).durability(24)) {
     val variants = listOf(DEFAULT_VARIANT).plus(extraVariants).toList().also {
         check(it.toSet().size == it.size) {
             "Duplicate variant names for blacksmithing tool!"
@@ -362,6 +550,15 @@ class BlacksmithingToolItem(extraVariants: List<String>) : Item(Properties().sta
             val next = variants[(index + 1) % variants.size]
 
             stack.orCreateTag.putString(VARIANT, next)
+
+            level.playSound(
+                null,
+                player.x, player.y, player.z,
+                SoundEvents.BUNDLE_DROP_CONTENTS,
+                SoundSource.BLOCKS,
+                randomFloat(1.3f, 1.5f),
+                randomFloat(0.5f, 0.8f)
+            )
         }
 
         return InteractionResultHolder.sidedSuccess(stack, level.isClientSide)

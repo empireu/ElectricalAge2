@@ -53,6 +53,7 @@ import org.eln2.mc.common.content.FurnaceBlockEntity
 import org.eln2.mc.common.content.FurnaceCell
 import org.eln2.mc.common.content.FurnaceMenu
 import org.eln2.mc.common.content.FurnaceScreen
+import org.eln2.mc.common.content.processing.BlacksmithingRecipe
 import org.eln2.mc.common.content.processing.BlacksmithingStationBlock
 import org.eln2.mc.common.content.processing.BlacksmithingStationBlockEntity
 import org.eln2.mc.common.content.processing.BlacksmithingStationBlockEntityRenderer
@@ -169,6 +170,12 @@ object Eln2Processing : ContentModule() {
     }
 
     //#region Blacksmithing
+
+    val BLACKSMITHING_RECIPE = RecipeRegistry.register<BlacksmithingRecipe>("blacksmithing") {
+        BlacksmithingRecipe.Serializer(it)
+    }
+
+    val BLACKSMITHING_HAMMER_MANY_HITS_SOUND = soundEventVariableRange("blacksmithing/hammer_many_hits")
 
     val BLACKSMITHING_STATION_BLOCK = blockAndItem("blacksmithing_station", ::BlacksmithingStationBlock)
 

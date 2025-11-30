@@ -57,12 +57,7 @@ import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.client.render.FlwModels
-import org.eln2.mc.client.render.foundation.FlwInstanceTypes
-import org.eln2.mc.client.render.foundation.MyColor
-import org.eln2.mc.client.render.foundation.PolarModel
-import org.eln2.mc.client.render.foundation.ThermalTint
-import org.eln2.mc.client.render.foundation.TransformedLightOverrideInstance
-import org.eln2.mc.client.render.foundation.TransformedPolarInstance
+import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
 import org.eln2.mc.common.cells.foundation.*
@@ -103,7 +98,7 @@ data class BurnerDeviceDescription(
     val conductivityCoalHull: Quantity<ThermalConductivity>,
     val temperatureParameter: Quantity<Temperature> = Quantity(681.0195, CELSIUS),
     val rateParameter: Double = 0.05,
-    val gasCaptureFactor: Double = 0.25
+    val gasCaptureFactor: Double = 0.25,
 )
 
 class BurnerSimulation(val ambientTemperature: Quantity<Temperature>, val hull: ThermalMass, val options: BurnerDeviceDescription) {
@@ -174,7 +169,7 @@ class BurnerSimulation(val ambientTemperature: Quantity<Temperature>, val hull: 
         val characteristicSurfaceArea: Double = 17.6,
         val ignitionThreshold: Quantity<Temperature> = Quantity(126.01, CELSIUS),
         val ignitionWindow: Quantity<Temperature> = Quantity(50.0, CELSIUS),
-        val airToCoalRatio: Double = 11.5
+        val airToCoalRatio: Double = 11.5,
     )
 
     /**
@@ -383,7 +378,7 @@ data class BurnerCellOptions(
     val deviceDescription: BurnerDeviceDescription,
     val hullDef: ThermalMassDefinition,
     val leakageParameters: ConnectionParameters,
-    val substeps: Int = 16
+    val substeps: Int = 16,
 )
 
 object CoalGradeRegistry {
@@ -648,7 +643,7 @@ class PrimitiveBurnerCell(
     ci: CellCreateInfo,
     burnerCellOptions: BurnerCellOptions,
     override val thermalMap: MonopoleMap,
-    val maxDraftStrength: Double
+    val maxDraftStrength: Double,
 ) : BurnerCell(ci, burnerCellOptions), SidedThermalMonoMapped<PrimitiveBurnerCell> {
     override val thermalSize: ThermalSize
         get() = ThermalSize.Standard
@@ -745,6 +740,7 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
                 }
 
                 cell.ignite()
+                stack.takeDurability(player)
 
                 return InteractionResult.CONSUME_PARTIAL
             }
@@ -854,7 +850,11 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
     }
 
     @ServerOnly
-    override fun onExternalTemperatureChanges(removed: HashSet<ThermalObject<*>>, dirty: HashMap<ThermalObject<*>, Double>, all: HashMap<ThermalObject<*>, Double>, ) {
+    override fun onExternalTemperatureChanges(
+        removed: HashSet<ThermalObject<*>>,
+        dirty: HashMap<ThermalObject<*>, Double>,
+        all: HashMap<ThermalObject<*>, Double>,
+    ) {
         sendBulkPacket(
             if (removed.isNotEmpty()) {
                 ExternalTemperaturePacket(null)
@@ -898,7 +898,7 @@ class ThermalConduitConnection(
     val level: Level,
     val position: BlockPos,
     val context: VisualizationContext,
-    val model: PolarModel
+    val model: PolarModel,
 ) {
     var instance: TransformedPolarInstance? = null
 

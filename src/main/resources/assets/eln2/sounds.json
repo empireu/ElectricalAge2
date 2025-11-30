@@ -70,5 +70,13 @@
                 "stream": false
             }
         ]
+    },
+    "blacksmithing/hammer_many_hits": {
+        "sounds": [
+            {
+                "name": "eln2:blacksmithing/hammer_many_hits",
+                "stream": false
+            }
+        ]
     }
 }
