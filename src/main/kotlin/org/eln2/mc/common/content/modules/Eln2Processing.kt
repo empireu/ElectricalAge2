@@ -210,6 +210,10 @@ object Eln2Processing : ContentModule() {
 
     //#endregion
 
+    //#region Coking
+
+    //#endregion
+
     //#region Rubber
 
     val RUBBER_TAP_PART = partAndItemWithProvider("rubber_tap", RubberTapPartProvider())

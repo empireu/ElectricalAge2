@@ -1,6 +1,7 @@
 package org.eln2.mc.common.content.modules
 
 import net.minecraftforge.client.event.EntityRenderersEvent
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
 import org.ageseries.libage.utils.addUnique
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
@@ -115,6 +116,14 @@ private val registerBlockEntityRenderersScope = Scope(
 )
 
 /**
+ * Client-only scope where render layers (for fluids) are set.
+ * */
+private val setRenderLayersScope = Scope(
+    "setRenderLayers",
+    listOf(initScope)
+)
+
+/**
  * Implemented by `object`s that hold fields for the registered blocks, items, block entities, cells, parts, specs, and other things.
  * Methods to register visualizers and block entity renderers are also present. They are called in [ContentModuleManager], with some validation.
  * */
@@ -168,6 +177,13 @@ abstract class ContentModule {
     }
 
     protected open fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) { }
+
+    fun setRenderLayersModule() {
+        setRenderLayersScope.validate()
+        setRenderLayers()
+    }
+
+    protected open fun setRenderLayers() { }
 }
 
 /**
@@ -190,6 +206,7 @@ object ContentModuleManager {
         Eln2Processing.initialize()
         Eln2Signal.initialize()
         Eln2Grid.initialize()
+        Eln2ForgeFluids.initialize()
 
         LOG.info("Content init completed.")
     }
@@ -239,5 +256,13 @@ object ContentModuleManager {
         }
 
         LOG.info("Register block entity renderers completed.")
+    }
+
+    fun setRenderLayers() = setRenderLayersScope.executeInScope {
+        contentModules.forEach {
+            it.setRenderLayersModule()
+        }
+
+        LOG.info("Set render layers completed.")
     }
 }

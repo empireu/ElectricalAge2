@@ -29,6 +29,7 @@ import org.eln2.mc.common.content.OscilloscopeCopyManager
 import org.eln2.mc.common.content.OscilloscopeShader
 import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.entities.EntityRegistry
+import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.grids.TerminalHighlightRenderer
 import org.eln2.mc.common.items.CreativeTabRegistry
 import org.eln2.mc.common.items.ItemRegistry
@@ -70,6 +71,7 @@ class Eln2 {
         ContainerRegistry.setup(modEventBus)
         RecipeRegistry.setup(modEventBus)
         SoundRegistry.setup(modEventBus)
+        ForgeFluidRegistry.setup(modEventBus)
 
         DistExecutor.unsafeRunWhenOn(Dist.CLIENT) {
             Runnable {
@@ -96,6 +98,7 @@ class Eln2 {
                 ContentModuleManager.registerPartVisualizers()
                 ContentModuleManager.registerSpecVisualizers()
                 ContentModuleManager.setupScreens()
+                ContentModuleManager.setRenderLayers()
             }
         }
 
