@@ -1,4 +1,4 @@
-@file:Suppress("RemoveRedundantQualifierName")
+@file:Suppress("RemoveRedundantQualifierName", "unused", "ClassName")
 
 package org.eln2.mc.common.recipes.foundation
 
@@ -14,6 +14,7 @@ import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.crafting.*
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntity
+import net.minecraftforge.items.IItemHandler
 import net.minecraftforge.items.ItemStackHandler
 import org.eln2.mc.CrossThreadAccess
 import org.eln2.mc.DEBUGGER_BREAK
@@ -516,7 +517,7 @@ data class Eln2WeightedItemIngredient(val ingredient: Ingredient, val value: Int
 
     companion object {
         fun fromJson(json: JsonObject) : Eln2WeightedItemIngredient {
-            val ingredient = Ingredient.fromJson(json)
+            val ingredient = Ingredient.fromJson(json.getAsJsonObject("ingredient"))
             val value = GsonHelper.getAsInt(json, "value")
 
             return Eln2WeightedItemIngredient(ingredient, value)
@@ -601,9 +602,25 @@ data class Eln2WeightedItemRecipeRequirements(val requirements: List<Eln2Weighte
 
 /**
  * Checks if the [recipe] is matched by item stacks, and also mutates the item stacks along the way.
+ * @param checkForUnmatchedItems If true, then the recipe won't be applicable if there exist items in the list that don't match any options in the recipe.
  * @return True if the container satisfies the recipe. Otherwise, false (but the container is still mutated!).
  * */
-fun List<ItemStack>.applyRecipeWeighted(recipe: Eln2WeightedItemRecipeRequirements) : Boolean {
+fun List<ItemStack>.applyRecipeWeighted(recipe: Eln2WeightedItemRecipeRequirements, checkForUnmatchedItems: Boolean) : Boolean {
+    if(checkForUnmatchedItems) {
+        /**
+         * Checks for any illegal items:
+         * */
+        for (currentStack in this) {
+            if(currentStack.isEmpty) {
+                continue
+            }
+
+            if(!recipe.requirements.any { requirement -> requirement.options.any { it.ingredient.test(currentStack) } }) {
+                return false
+            }
+        }
+    }
+
     /**
      * The algorithm is very inefficient, but we assume the inventories are very small, and it's also not called in a hot path.
      * */
@@ -663,10 +680,32 @@ fun List<ItemStack>.applyRecipeWeighted(recipe: Eln2WeightedItemRecipeRequiremen
 }
 
 /**
+ * Function reference to [net.minecraftforge.items.IItemHandler.insertItem]
+ * */
+fun interface IItemHandler_insertItem {
+    /**
+     * <p>
+     * Inserts an ItemStack into the given slot and return the remainder.
+     * The ItemStack <em>should not</em> be modified in this function!
+     * </p>
+     * Note: This behaviour is subtly different from {@link IFluidHandler#fill(FluidStack, IFluidHandler.FluidAction)}
+     *
+     * @param slot     Slot to insert into.
+     * @param stack    ItemStack to insert. This must not be modified by the item handler.
+     * @param simulate If true, the insertion is only simulated
+     * @return The remaining ItemStack that was not inserted (if the entire stack is accepted, then return an empty ItemStack).
+     *         May be the same as the input ItemStack if unchanged, otherwise a new ItemStack.
+     *         The returned ItemStack can be safely modified after.
+     **/
+    fun insertItem(slot: Int, stack: ItemStack, simulate: Boolean) : ItemStack
+}
+
+
+/**
  * Tries to insert the [items] into this handler, in the slots in [slotRange]. **Mutates the handler!**
  * @return True if all items were inserted. Otherwise, false (still mutates the handler!).
  * */
-fun ItemStackHandler.insertRange(items: List<ItemStack>, slotRange: IntRange) : Boolean {
+fun IItemHandler_insertItem.insertRange(items: List<ItemStack>, slotRange: IntRange) : Boolean {
     for (sourceStack in items) {
         var remainingStack = sourceStack.copy()
 

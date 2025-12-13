@@ -1,0 +1,29 @@
+{
+    "type": "eln2:coking",
+    "inputItems": [
+        {
+            "requiredValue": 16,
+            "options": [
+                {
+                    "ingredient": { "item": "minecraft:coal" },
+                    "value": 8
+                },
+                {
+                    "ingredient": { "item": "minecraft:charcoal" },
+                    "value": 8
+                }
+            ]
+        }
+    ],
+    "outputItems": [
+        {
+            "item": "eln2:coke",
+            "count": 1
+        }
+    ],
+    "outputFluid": {
+        "fluid": "eln2:coal_gas",
+        "amount": 1000
+    },
+    "duration": 100
+}

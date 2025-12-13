@@ -8,6 +8,8 @@ import org.eln2.mc.common.items.ItemRegistry.itemDefault
 import org.eln2.mc.common.items.ItemRegistry.itemNoStack
 
 object Eln2Ingredients : ContentModule() {
+    val COKE = itemDefault("coke")
+
     //#region Crushed Ores
 
     val CRUSHED_IRON_ORE = itemDefault("crushed_iron_ore")
@@ -37,8 +39,12 @@ object Eln2Ingredients : ContentModule() {
 
     //#endregion
 
+    //#region Rubber
+
     val RAW_LATEX = itemDefault("raw_latex")
     val RUBBER_COMPOUND = item("rubber_compound") { Item(Item.Properties().stacksTo(8)) }
     val RUBBER = itemDefault("rubber")
     val BURNT_RUBBER = itemDefault("burnt_rubber")
+
+    //#endregion
 }

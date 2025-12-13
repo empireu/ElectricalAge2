@@ -47,21 +47,17 @@ import net.minecraftforge.fluids.capability.IFluidHandler
 import net.minecraftforge.fluids.capability.templates.FluidTank
 import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.items.SlotItemHandler
-import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector2di
-import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.ServerOnly
-import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.PartialModelHelper
 import org.eln2.mc.client.screens.ProgressSupplierMenu
 import org.eln2.mc.common.blocks.foundation.BigBlockRepresentativeBlockEntity
-import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlock
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockWithCustomCollider
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
@@ -71,19 +67,17 @@ import org.eln2.mc.common.containers.ContainerHelper
 import org.eln2.mc.common.containers.ProgressContainerData
 import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
 import org.eln2.mc.common.content.modules.Eln2Processing
-import org.eln2.mc.common.parts.foundation.incrementFromForwardUp
 import org.eln2.mc.common.recipes.foundation.*
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
-import org.eln2.mc.mathematics.toHorizontalFacing
 import java.util.*
 import java.util.function.Consumer
 
-private const val COKING_INPUT_SLOTS = 4
-private const val COKING_OUTPUT_SLOTS = 4
+private const val COKING_INPUT_SLOT_COUNT = 4
+private const val COKING_OUTPUT_SLOT_COUNT = 4
 
 /**
  * Multiple item input, multiple item output, single fluid output constant time recipe.
@@ -97,21 +91,25 @@ class CokingRecipe(
     val duration: Int
 ) : Eln2CustomRecipe<CokingRecipe>, Eln2NonStandardRecipe {
     init {
-        require(inputItems.requirements.size <= COKING_INPUT_SLOTS) {
-            "Coking recipe \"$recipeId\" has more input items than is allowed ($COKING_INPUT_SLOTS)"
+        require(inputItems.requirements.size <= COKING_INPUT_SLOT_COUNT) {
+            "Coking recipe \"$recipeId\" has more input items than is allowed ($COKING_INPUT_SLOT_COUNT)"
         }
 
         if(outputItems != null) {
-            require(outputItems.size <= COKING_OUTPUT_SLOTS) {
-                "Coking recipe \"$recipeId\" has more output items than is allowed ($COKING_OUTPUT_SLOTS)"
+            require(outputItems.size <= COKING_OUTPUT_SLOT_COUNT) {
+                "Coking recipe \"$recipeId\" has more output items than is allowed ($COKING_OUTPUT_SLOT_COUNT)"
             }
         }
     }
 
     override fun matches(pContainer: SimpleContainer, pLevel: Level) : Boolean {
-        val items = pContainer.bindToList()
+        if(pContainer.containerSize != COKING_INPUT_SLOT_COUNT + COKING_OUTPUT_SLOT_COUNT) {
+            return false
+        }
 
-        return items.applyRecipeWeighted(inputItems)
+        val items = pContainer.bindToList().take(COKING_INPUT_SLOT_COUNT)
+
+        return items.applyRecipeWeighted(inputItems, true)
     }
 
     class Serializer(override val recipeType: RecipeType<CokingRecipe>) : Eln2RecipeSerializer<CokingRecipe> {
@@ -132,7 +130,7 @@ class CokingRecipe(
                 null
             }
 
-            val duration = pSerializedRecipe.getAsJsonObject("duration").asInt
+            val duration = pSerializedRecipe.get("duration").asInt
 
             return CokingRecipe(
                 this, pRecipeId,
@@ -364,18 +362,22 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
         fluidHandlerLazy.invalidate()
     }
 
-    class InventoryHandlerImpl(val blockEntity: CokeOvenMainBlockEntity) : ItemStackHandler(COKING_INPUT_SLOTS + COKING_OUTPUT_SLOTS) {
-        val inputRange = 0 until COKING_INPUT_SLOTS
-        val outputRange = COKING_INPUT_SLOTS until (COKING_INPUT_SLOTS + COKING_OUTPUT_SLOTS)
+    class InventoryHandlerImpl(val blockEntity: CokeOvenMainBlockEntity) : ItemStackHandler(COKING_INPUT_SLOT_COUNT + COKING_OUTPUT_SLOT_COUNT) {
+        val inputRange = 0 until COKING_INPUT_SLOT_COUNT
+        val outputRange = COKING_INPUT_SLOT_COUNT until (COKING_INPUT_SLOT_COUNT + COKING_OUTPUT_SLOT_COUNT)
 
         var dirty = false
 
         fun searchForRecipe() : Optional<CokingRecipe> {
             val level = blockEntity.level!!
 
+            val container = this.bindToSimpleContainer()
+
+            container.and(inputRange)
+
             return level.recipeManager.getRecipeFor(
                 Eln2Processing.COKING_RECIPE,
-                this.bindToSimpleContainer(),
+                container,
                 level
             )
         }
@@ -384,7 +386,7 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
             /**
              * Consumes the items:
              * */
-            check(stacks.applyRecipeWeighted(recipe.inputItems)) {
+            check(stacks.take(COKING_INPUT_SLOT_COUNT).applyRecipeWeighted(recipe.inputItems, true)) {
                 DEBUGGER_BREAK("Could not apply the previously verified recipe (input items) $recipe ${blockEntity.blockPos}")
             }
 
@@ -392,7 +394,11 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
              * Creates the results:
              * */
             if(recipe.outputItems != null) {
-                check(this.insertRange(recipe.outputItems, outputRange)) {
+                val handler = IItemHandler_insertItem { a, b, c ->
+                    super.insertItem(a, b, c)
+                }
+
+                check(handler.insertRange(recipe.outputItems, outputRange)) {
                     DEBUGGER_BREAK("Could not apply the previously verified recipe (output items) $recipe ${blockEntity.blockPos}")
                 }
             }
@@ -406,26 +412,6 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
             }
 
             return super.insertItem(slot, stack, simulate)
-        }
-
-        override fun isItemValid(slot: Int, stack: ItemStack): Boolean {
-            if(!inputRange.contains(slot)) {
-                return true
-            }
-
-            val level = blockEntity.level!!
-            val recipeManager = level.recipeManager
-            val copy = this.bindToSimpleContainer()
-
-            copy.setItem(slot, stack.copy())
-
-            val recipe = recipeManager.getRecipeFor(
-                Eln2Processing.COKING_RECIPE,
-                copy,
-                level
-            )
-
-            return recipe.isPresent
         }
 
         override fun onContentsChanged(slot: Int) {
@@ -512,24 +498,24 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
                 /**
                  * Checks if we have space for export:
                  * */
-                if(targetRecipe.get().outputItems != null && !inventoryHandler.bind().insertRange(targetRecipe.get().outputItems!!, inventoryHandler.outputRange)) {
+                if(targetRecipe.get().outputItems != null && !(IItemHandler_insertItem(inventoryHandler.bind()::insertItem)).insertRange(targetRecipe.get().outputItems!!, inventoryHandler.outputRange)) {
                     operation = null // Cannot do anything
                 }
                 /**
                  * Can do this recipe:
                  * */
                 else {
-                    if(operation != null) {
+                    if(operation == null || operation!!.recipe != targetRecipe.get()) {
                         /**
                          * Restart only if recipe changed:
                          * */
-                        if(operation!!.recipe != targetRecipe.get()) {
-                            operation = null
-                            operation = Operation(targetRecipe.get(), 0)
-                        }
+                        operation = null
+                        operation = Operation(targetRecipe.get(), 0)
                     }
                 }
             }
+
+            inventoryHandler.dirty = false
         }
 
         /**
@@ -538,6 +524,8 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
         if(operation != null) {
             val operation = operation!!
             operation.elapsedTime++
+
+            data.progress = operation.elapsedTime / operation.recipe.duration.toFloat()
 
             /**
              * Try to finish the operation:
@@ -549,6 +537,9 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
             }
 
             setChanged()
+        }
+        else {
+            data.progress = 0.0f
         }
     }
 
@@ -636,10 +627,10 @@ private val INPUT_SLOTS = mapOf(
 )
 
 private val OUTPUT_SLOTS = mapOf(
-    0 to Vector2di(25, 49),
-    1 to Vector2di(51, 49),
-    2 to Vector2di(77, 49),
-    3 to Vector2di(103, 49)
+    4 to Vector2di(25, 49),
+    5 to Vector2di(51, 49),
+    6 to Vector2di(77, 49),
+    7 to Vector2di(103, 49)
 )
 
 class CokeOvenMenu(
@@ -664,7 +655,7 @@ class CokeOvenMenu(
     constructor(pContainerId: Int, playerInventory: Inventory) : this(
         pContainerId,
         playerInventory,
-        ItemStackHandler(COKING_INPUT_SLOTS + COKING_OUTPUT_SLOTS),
+        ItemStackHandler(COKING_INPUT_SLOT_COUNT + COKING_OUTPUT_SLOT_COUNT),
         ProgressContainerData(),
         ContainerLevelAccess.NULL,
         playerInventory.player.level()

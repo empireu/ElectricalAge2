@@ -693,6 +693,14 @@ fun ItemStackHandler.bindToSimpleContainer() : SimpleContainer {
     return copy
 }
 
+fun SimpleContainer.and(rangeInclude: IntRange) {
+    for (slot in 0 until this.containerSize) {
+        if (!rangeInclude.contains(slot)) {
+            this.setItem(slot, ItemStack.EMPTY)
+        }
+    }
+}
+
 fun SimpleContainer.bind() : SimpleContainer {
     val result = SimpleContainer(this.containerSize)
 
