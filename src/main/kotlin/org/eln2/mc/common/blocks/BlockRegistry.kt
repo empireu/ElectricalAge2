@@ -28,7 +28,6 @@ object BlockRegistry {
         blockEntitySupplier: BlockEntityType.BlockEntitySupplier<T>,
         vararg blockSuppliers: (() -> Block),
     ): RegistryObject<BlockEntityType<T>> {
-
         return BLOCK_ENTITIES.register(name) {
             @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS") // Thanks, Minecraft for the high quality code.
             BlockEntityType.Builder.of(
@@ -36,6 +35,20 @@ object BlockRegistry {
                 *blockSuppliers.map {
                     it.invoke()
                 }.toTypedArray()
+            ).build(null)
+        }
+    }
+
+    fun<T : BlockEntity> blockEntityOnly(
+        name: String,
+        blockEntitySupplier: BlockEntityType.BlockEntitySupplier<T>,
+        blockRegistryObjectListSupplier: Supplier<Iterable<Block>>
+    ) : RegistryObject<BlockEntityType<T>> {
+        return BLOCK_ENTITIES.register(name) {
+            @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS") // Thanks, Minecraft for the high quality code.
+            BlockEntityType.Builder.of(
+                blockEntitySupplier,
+                *blockRegistryObjectListSupplier.get().toList().toTypedArray()
             ).build(null)
         }
     }
@@ -65,7 +78,7 @@ object BlockRegistry {
 
     val MULTIBLOCK_DELEGATE_BLOCK_ENTITY: RegistryObject<BlockEntityType<MultiblockDelegateBlockEntity>> =
         BLOCK_ENTITIES.register("big_block_delegate") {
-            BlockEntityType.Builder.of(::MultiblockDelegateBlockEntity).build(null)
+            BlockEntityType.Builder.of({ a, b -> MultiblockDelegateBlockEntity(a, b, null) } ).build(null)
         }
 
     data class BlockRegistryItem<T : Block>(

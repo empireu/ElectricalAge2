@@ -48,6 +48,7 @@ import kotlin.math.PI
 import kotlin.math.ceil
 
 object MultiblockTransformations {
+    // PS this is an old convention, should be removed and converted to our current convention
     fun rot(dir: Direction) = when (dir) {
         Direction.NORTH -> Rotation.COUNTERCLOCKWISE_90
         Direction.SOUTH -> Rotation.CLOCKWISE_90
@@ -69,6 +70,8 @@ object MultiblockTransformations {
 }
 
 data class MultiblockDelegateMap(val delegates: Map<BlockPos, BlockState>) {
+    inline fun <reified T : Block> getBlocksOfType(): List<T> = delegates.values.mapNotNull { it.block as? T }
+
     val volume = run {
         var box = AABB(BlockPos.ZERO)
 
@@ -292,7 +295,7 @@ open class MultiblockDelegateBlock(properties: Properties? = null) : BaseEntityB
     }
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState): BlockEntity {
-        return MultiblockDelegateBlockEntity(pPos, pState)
+        return MultiblockDelegateBlockEntity(pPos, pState, null)
     }
 
     @Suppress("OVERRIDE_DEPRECATION")
@@ -515,7 +518,7 @@ open class MultiblockDelegateBlockWithCustomCollider(properties: Properties? = n
     override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction) = true
 }
 
-open class MultiblockDelegateBlockEntity(pPos: BlockPos, pBlockState: BlockState) : BlockEntity(BlockRegistry.MULTIBLOCK_DELEGATE_BLOCK_ENTITY.get(), pPos, pBlockState), ComponentDisplay {
+open class MultiblockDelegateBlockEntity(pPos: BlockPos, pBlockState: BlockState, pType: BlockEntityType<*>?) : BlockEntity(pType ?: BlockRegistry.MULTIBLOCK_DELEGATE_BLOCK_ENTITY.get(), pPos, pBlockState), ComponentDisplay {
     var representativePos: BlockPos? = null
         private set
 

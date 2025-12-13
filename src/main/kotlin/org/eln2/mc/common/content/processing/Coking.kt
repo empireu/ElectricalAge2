@@ -9,7 +9,6 @@ import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet
-import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.SectionPos
@@ -37,39 +36,49 @@ import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.StateDefinition
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraftforge.client.extensions.common.IClientBlockExtensions
 import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.fluids.FluidStack
+import net.minecraftforge.fluids.capability.IFluidHandler
+import net.minecraftforge.fluids.capability.templates.FluidTank
 import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.items.SlotItemHandler
+import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Vector2di
-import org.ageseries.libage.mathematics.map
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.ServerOnly
+import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.PartialModelHelper
 import org.eln2.mc.client.screens.ProgressSupplierMenu
 import org.eln2.mc.common.blocks.foundation.BigBlockRepresentativeBlockEntity
+import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlock
+import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockEntity
+import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockWithCustomCollider
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
+import org.eln2.mc.common.blocks.foundation.MultiblockTransformations
 import org.eln2.mc.common.blocks.foundation.ReplaceVanillaParticlesBlockExtension
 import org.eln2.mc.common.containers.ContainerHelper
-import org.eln2.mc.common.containers.MyAbstractContainerScreen
 import org.eln2.mc.common.containers.ProgressContainerData
 import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
-import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicateAndSkipPickupCheck
 import org.eln2.mc.common.content.modules.Eln2Processing
-import org.eln2.mc.common.content.processing.RollingMachineMenu
+import org.eln2.mc.common.parts.foundation.incrementFromForwardUp
 import org.eln2.mc.common.recipes.foundation.*
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.mathematics.Base6Direction3dMask
+import org.eln2.mc.mathematics.toHorizontalFacing
 import java.util.*
 import java.util.function.Consumer
 
@@ -170,7 +179,71 @@ class CokingRecipe(
     }
 }
 
+class CokeOvenDelegateBlock(initialShapes: List<AABB>, val capabilityMaskLocal: Base6Direction3dMask) : MultiblockDelegateBlockWithCustomCollider(initialShapes = initialShapes) {
+    override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = CokeOvenDelegateBlockEntity(pPos, pState)
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun use(
+        pState: BlockState,
+        pLevel: Level,
+        pPos: BlockPos,
+        pPlayer: Player,
+        pHand: InteractionHand,
+        pHit: BlockHitResult
+    ): InteractionResult {
+        return super.use(pState, pLevel, pPos, pPlayer, pHand, pHit)
+    }
+}
+
+class CokeOvenDelegateBlockEntity(pPos: BlockPos, pBlockState: BlockState) : MultiblockDelegateBlockEntity(pPos, pBlockState, Eln2Processing.COKE_OVEN_DELEGATE_BLOCK_ENTITY.get()) {
+    override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
+        if(side != null) {
+            val sideLocal = MultiblockTransformations.rot(blockState.getValue(HorizontalDirectionalBlock.FACING))
+                .rotate(side)
+
+            if(!(blockState.block as CokeOvenDelegateBlock).capabilityMaskLocal.has(sideLocal)) {
+                /**
+                 * Rejects the capability on that side:
+                 * */
+                return LazyOptional.empty()
+            }
+        }
+
+        val level = this.level
+            ?: return super.getCapability(cap, side)
+
+        val representativePos = this.representativePos
+            ?: return super.getCapability(cap, side)
+
+        if (!level.isLoaded(representativePos)) {
+            return LazyOptional.empty()
+        }
+
+        val representative = level.getBlockEntity(representativePos) as? CokeOvenMainBlockEntity
+            ?: return super.getCapability(cap, side)
+
+        /**
+         * Forward the fetch to the representative:
+         * */
+        return representative.getCapability(cap, null)
+    }
+
+    override fun invalidateCaps() {
+
+        super.invalidateCaps()
+    }
+}
+
 class CokeOvenMainBlock : HorizontalDirectionalBlock(Properties.of().noOcclusion()), EntityBlock {
+    companion object {
+        fun constructMenu(pLevel: Level, pPos: BlockPos, pPlayer: Player) = pLevel.constructMenuHelper2<CokeOvenMainBlockEntity>(
+            pPos,
+            pPlayer,
+            Component.translatable("menu.$MODID.coke_oven"),
+            ::CokeOvenMenu
+        )
+    }
+
     override fun getStateForPlacement(pContext: BlockPlaceContext): BlockState? {
         return super.defaultBlockState().setValue(
             FACING,
@@ -202,14 +275,7 @@ class CokeOvenMainBlock : HorizontalDirectionalBlock(Properties.of().noOcclusion
         pPlayer: Player,
         pHand: InteractionHand,
         pHit: BlockHitResult,
-    ): InteractionResult {
-        return pLevel.constructMenuHelper2<CokeOvenMainBlockEntity>(
-            pPos,
-            pPlayer,
-            Component.translatable("menu.$MODID.coke_oven"),
-            ::CokeOvenMenu
-        )
-    }
+    ) = constructMenu(pLevel, pPos, pPlayer)
 
     override fun <T : BlockEntity?> getTicker(pLevel: Level, pState: BlockState, pBlockEntityType: BlockEntityType<T?>): BlockEntityTicker<T?>? {
         if(pLevel.isClientSide) {
@@ -259,6 +325,13 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
 
     //#region Multiblock Setup
 
+    override fun onDelegateUse(
+        delegate: BlockEntity,
+        pPlayer: Player,
+        pHand: InteractionHand,
+        pHit: BlockHitResult
+    ) = CokeOvenMainBlock.constructMenu(level!!, blockPos, pPlayer)
+
     fun setDestroyed() {
         destroyDelegates()
     }
@@ -270,13 +343,16 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
     val inventoryHandler = InventoryHandlerImpl(this)
     val inventoryHandlerLazy: LazyOptional<InventoryHandlerImpl> = LazyOptional.of { inventoryHandler }
 
-    override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
-        if(side != null) {
-            return LazyOptional.empty()
-        }
+    val fluidHandler = FluidHandlerImpl(this)
+    val fluidHandlerLazy: LazyOptional<FluidTank> = LazyOptional.of { fluidHandler }
 
+    override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
         if (cap == ForgeCapabilities.ITEM_HANDLER) {
             return inventoryHandlerLazy.cast()
+        }
+
+        if (cap == ForgeCapabilities.FLUID_HANDLER) {
+            return fluidHandlerLazy.cast()
         }
 
         return super.getCapability(cap, side)
@@ -285,6 +361,7 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
     override fun invalidateCaps() {
         super.invalidateCaps()
         inventoryHandlerLazy.invalidate()
+        fluidHandlerLazy.invalidate()
     }
 
     class InventoryHandlerImpl(val blockEntity: CokeOvenMainBlockEntity) : ItemStackHandler(COKING_INPUT_SLOTS + COKING_OUTPUT_SLOTS) {
@@ -354,6 +431,36 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
         override fun onContentsChanged(slot: Int) {
             blockEntity.setChanged()
             dirty = true
+        }
+    }
+
+    class FluidHandlerImpl(val blockEntity: CokeOvenMainBlockEntity) : FluidTank(8000) {
+        override fun fill(resource: FluidStack?, action: IFluidHandler.FluidAction?): Int {
+            return 0
+        }
+
+        fun execute(recipe: CokingRecipe) {
+            val increment = recipe.outputFluid?.copy()
+                ?: return
+
+            /**
+             * Directly increases the fluid in the tank (if the generated fluid is compatible with the current fluid):
+             * */
+            if(isEmpty || fluid.isFluidEqual(increment)) {
+                super.fill(increment, IFluidHandler.FluidAction.EXECUTE)
+                return
+            }
+
+            /**
+             * Voids the previous fluid type and adds the increment:
+             * */
+            fluid = FluidStack.EMPTY
+            super.fill(increment, IFluidHandler.FluidAction.EXECUTE)
+        }
+
+        override fun onContentsChanged() {
+            blockEntity.setChanged()
+            super.onContentsChanged()
         }
     }
 
@@ -437,6 +544,7 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
              * */
             if(operation.elapsedTime >= operation.recipe.duration) {
                 inventoryHandler.execute(operation.recipe)
+                fluidHandler.execute(operation.recipe)
                 this.operation = null
             }
 
@@ -455,7 +563,9 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
 
     override fun saveAdditional(pTag: CompoundTag) {
         super.saveAdditional(pTag)
+
         pTag.put("inventory", inventoryHandler.serializeNBT())
+        fluidHandler.writeToNBT(pTag)
 
         if(operation != null) {
             pTag.putInt("progress", operation!!.elapsedTime)
@@ -464,7 +574,10 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
 
     override fun load(pTag: CompoundTag) {
         super.load(pTag)
+
         inventoryHandler.deserializeNBT(pTag.getCompound("inventory"))
+        fluidHandler.readFromNBT(pTag)
+
         if(pTag.contains("progress")) {
             savedProgress = pTag.getInt("progress")
         }
@@ -493,24 +606,15 @@ class CokeOvenMainBlockEntityVisual(
     override fun setSectionCollector(sectionCollector: SectionTrackedVisual.SectionCollector) {
         val set = LongOpenHashSet()
 
-        val pos = blockEntity.blockPos
-        val facing = blockEntity.representativeFacing
-        val incr = facing.opposite
-
         set.add(SectionPos.asLong(pos))
-        set.add(SectionPos.asLong(pos + incr))
-        set.add(SectionPos.asLong(pos.above()))
-        set.add(SectionPos.asLong((pos + incr).above()))
 
-        set.add(SectionPos.asLong(pos + facing.clockWise))
-        set.add(SectionPos.asLong(pos + incr + facing.clockWise))
-        set.add(SectionPos.asLong((pos + facing.clockWise).above()))
-        set.add(SectionPos.asLong((pos + incr + facing.clockWise).above()))
+        blockEntity.delegateMap.forEachDelegateInWorld(blockEntity.level!!, blockEntity.blockState.getValue(HorizontalDirectionalBlock.FACING), blockEntity.blockPos) {
+            set.add(SectionPos.asLong(it))
 
-        set.add(SectionPos.asLong(pos + facing.counterClockWise))
-        set.add(SectionPos.asLong(pos + incr + facing.counterClockWise))
-        set.add(SectionPos.asLong((pos + facing.counterClockWise).above()))
-        set.add(SectionPos.asLong((pos + incr + facing.counterClockWise).above()))
+            Base6Direction3d.entries.forEach { dir ->
+                set.add(SectionPos.asLong(it + dir.alias))
+            }
+        }
 
         sectionCollector.sections(set)
     }

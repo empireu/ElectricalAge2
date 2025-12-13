@@ -247,6 +247,8 @@ dependencies {
 
     implementation fg.deobf("maven.modrinth:embeddium:${embeddium_version}")
 
+    runtimeOnly fg.deobf("curse.maven:mekanism-268560:4866575")
+
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
 

@@ -5,7 +5,10 @@ package org.eln2.mc.common.content.modules
 import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.minecraft.client.gui.screens.MenuScreens
+import net.minecraft.world.level.block.entity.BlockEntityType
+import net.minecraft.world.phys.AABB
 import net.minecraftforge.client.event.EntityRenderersEvent
+import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.HENRY
 import org.ageseries.libage.data.KILO
@@ -27,12 +30,14 @@ import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.FrictionNodeDescription
 import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
 import org.eln2.mc.client.screens.BasicProgressScreen
+import org.eln2.mc.common.blocks.BlockRegistry.BLOCK_ENTITIES
 import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
 import org.eln2.mc.common.blocks.BlockRegistry.defineDelegateMap
 import org.eln2.mc.common.blocks.foundation.BigBlockItem
+import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockEntity
 import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
@@ -58,6 +63,8 @@ import org.eln2.mc.common.content.processing.BlacksmithingStationBlock
 import org.eln2.mc.common.content.processing.BlacksmithingStationBlockEntity
 import org.eln2.mc.common.content.processing.BlacksmithingStationBlockEntityRenderer
 import org.eln2.mc.common.content.processing.BlacksmithingToolItem
+import org.eln2.mc.common.content.processing.CokeOvenDelegateBlock
+import org.eln2.mc.common.content.processing.CokeOvenDelegateBlockEntity
 import org.eln2.mc.common.content.processing.CokeOvenMainBlock
 import org.eln2.mc.common.content.processing.CokeOvenMainBlockEntity
 import org.eln2.mc.common.content.processing.CokeOvenMainBlockEntityVisual
@@ -96,6 +103,7 @@ import org.eln2.mc.data.directionPoleMapPlanar
 import org.eln2.mc.data.monopolarMapPlanar
 import org.eln2.mc.data.nullPolarMap
 import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.resource
 
 object Eln2Processing : ContentModule() {
@@ -135,6 +143,11 @@ object Eln2Processing : ContentModule() {
         event.registerBlockEntityRenderer(
             BLACKSMITHING_STATION_BLOCK_ENTITY.get(),
             BlacksmithingStationBlockEntityRenderer.Provider()
+        )
+
+        event.registerBlockEntityRenderer(
+            COKE_OVEN_MAIN_BLOCK_ENTITY.get(),
+            DummyBlockEntityRendererProvider()
         )
 
         event.registerBlockEntityRenderer(
@@ -235,6 +248,79 @@ object Eln2Processing : ContentModule() {
         CokingRecipe.Serializer(it)
     }
 
+    val COKE_OVEN_DELEGATE_MAP = defineDelegateMap("coke_oven") {
+        fun specialDelegate(minX: Double, minY: Double, minZ: Double, maxX: Double, maxY: Double, maxZ: Double, mask: Base6Direction3dMask) =
+            blockOnly("${getDelegateId()}_io") {
+                CokeOvenDelegateBlock(
+                    listOf(AABB(minX, minY, minZ, maxX, maxY, maxZ)),
+                    mask
+                )
+            }
+
+        val leftBottom = specialDelegate(
+            0.0, 0.0, 0.0,
+            0.5, 1.0, 1.0,
+            Base6Direction3dMask.DOWN
+        )
+
+        val rightBottom = specialDelegate(
+            0.5, 0.0, 0.0,
+            1.0, 1.0, 1.0,
+            Base6Direction3dMask.DOWN
+        )
+
+        val bottomCenter = specialDelegate(
+            0.0, 0.0, 0.0,
+            1.0, 1.0, 1.0,
+            Base6Direction3d.Down + Base6Direction3d.Back + Base6Direction3d.Front
+        )
+
+        val top = specialDelegate(
+            0.0, 0.0, 0.0,
+            1.0, 1.0 - 4.0 / 16.0, 1.0,
+            Base6Direction3dMask.EMPTY
+        )
+
+        val topBack = specialDelegate(
+            0.0, 0.0, 0.0,
+            1.0, 1.0 - 4.0 / 16.0, 1.0,
+            Base6Direction3dMask.BACK
+        )
+
+        val leftTop = specialDelegate(
+            0.0, 0.0, 0.0,
+            0.5, 1.0 - 4.0 / 16.0, 1.0,
+            Base6Direction3d.Back + Base6Direction3d.Front
+        )
+
+        val rightTop = specialDelegate(
+            0.5, 0.0, 0.0,
+            1.0, 1.0 - 4.0 / 16.0, 1.0,
+             Base6Direction3d.Back + Base6Direction3d.Front
+        )
+
+        principal(-1, 0, 0, rightBottom)
+        principal(-1, 0, -1, rightBottom)
+
+        principal(1, 0, 0, leftBottom)
+        principal(1, 0, -1, leftBottom)
+
+        principal(0, 0, -1, bottomCenter)
+
+        principal(0, 1, 0, top)
+        principal(0, 1, -1, topBack)
+
+        principal(-1, 1, 0, rightTop)
+        principal(-1, 1, -1, rightTop)
+
+        principal(1, 1, 0, leftTop)
+        principal(1, 1, -1, leftTop)
+    }
+
+    val COKE_OVEN_DELEGATE_BLOCK_ENTITY = blockEntityOnly("coke_oven_delegate_io", ::CokeOvenDelegateBlockEntity) {
+        COKE_OVEN_DELEGATE_MAP.value.getBlocksOfType<CokeOvenDelegateBlock>()
+    }
+
     val COKE_OVEN_MAIN_BLOCK = blockOnly("coke_oven", ::CokeOvenMainBlock)
 
     val COKE_OVEN_MAIN_BLOCK_ENTITY = blockEntityOnly(
@@ -242,21 +328,6 @@ object Eln2Processing : ContentModule() {
         COKE_OVEN_MAIN_BLOCK,
         ::CokeOvenMainBlockEntity
     )
-
-    val COKE_OVEN_DELEGATE_MAP = defineDelegateMap("coke_oven") {
-        val rightWallNI = registerDelegate(
-            0.0, 0.0, 0.0,
-            0.5, 1.0, 1.0
-        )
-
-        val leftWallNI = registerDelegate(
-            0.5, 0.0, 0.0,
-            1.0, 1.0, 1.0
-        )
-
-        principal(-1, 0, 0, leftWallNI)
-        principal(1, 0, 0, rightWallNI)
-    }
 
     val COKE_OVEN_BLOCK_ITEM = blockItemOnly("coke_oven") {
         BigBlockItem(
