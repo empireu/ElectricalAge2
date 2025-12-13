@@ -51,7 +51,7 @@ import org.eln2.mc.common.content.ThermalWireObject
 import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.sendBulkPacket
-import org.eln2.mc.common.recipes.foundation.Eln2SimpleRecipe
+import org.eln2.mc.common.recipes.foundation.Eln2SimpleOutputProcessingLoopRecipe
 import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
 import org.eln2.mc.common.recipes.foundation.ProcessingDevice
 import org.eln2.mc.common.recipes.foundation.ProcessingRecipeLoop
@@ -317,7 +317,7 @@ class MotorProcessingCell(
 }
 
 abstract class ProcessingBlock<R, C, BE> : UprightHorizontalDirectionCellBlock<C>()
-    where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>,
+    where R : Eln2SimpleOutputProcessingLoopRecipe, R : Recipe<SimpleContainer>,
           C : Cell, C : ProcessingDevice,
           BE : ProcessingBlockEntity<R, C>
 {
@@ -385,7 +385,7 @@ abstract class ProcessingBlockEntity<R, C>(
 ) : CellBlockEntity<C>(pos, state, targetType),
     ComponentDisplay,
     BulkPacketHandlerBlockEntity
-    where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>, C : Cell, C : ProcessingDevice
+    where R : Eln2SimpleOutputProcessingLoopRecipe, R : Recipe<SimpleContainer>, C : Cell, C : ProcessingDevice
 {
     companion object {
         private const val INVENTORY = "inventory"
@@ -556,7 +556,7 @@ abstract class ProcessingBlockEntity<R, C>(
 
 abstract class MotorProcessingBlock<R, BE> : ProcessingBlock<R, MotorProcessingCell, BE>()
     where
-        R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>,
+        R : Eln2SimpleOutputProcessingLoopRecipe, R : Recipe<SimpleContainer>,
         BE : MotorProcessingBlockEntity<R>
 
 abstract class MotorProcessingBlockEntity<R>(
@@ -565,7 +565,7 @@ abstract class MotorProcessingBlockEntity<R>(
     targetType: BlockEntityType<*>,
     inventorySize: Int
 ) : ProcessingBlockEntity<R, MotorProcessingCell>(pos, state, targetType, inventorySize)
-    where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>
+    where R : Eln2SimpleOutputProcessingLoopRecipe, R : Recipe<SimpleContainer>
 {
     @ServerOnly
     override fun submitDisplay(builder: ComponentDisplayList) {
@@ -734,7 +734,7 @@ class KineticProcessingCell(
 
 abstract class KineticProcessingBlock<R, BE> : ProcessingBlock<R, KineticProcessingCell, BE>()
     where
-        R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>,
+        R : Eln2SimpleOutputProcessingLoopRecipe, R : Recipe<SimpleContainer>,
         BE : KineticProcessingBlockEntity<R>
 
 abstract class KineticProcessingBlockEntity<R>(
@@ -743,7 +743,7 @@ abstract class KineticProcessingBlockEntity<R>(
     targetType: BlockEntityType<*>,
     inventorySize: Int
 ) : ProcessingBlockEntity<R, KineticProcessingCell>(pos, state, targetType, inventorySize)
-    where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>
+    where R : Eln2SimpleOutputProcessingLoopRecipe, R : Recipe<SimpleContainer>
 {
     @ServerOnly
     override fun submitDisplay(builder: ComponentDisplayList) {

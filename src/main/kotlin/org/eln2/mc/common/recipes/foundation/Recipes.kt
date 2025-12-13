@@ -2,6 +2,7 @@
 
 package org.eln2.mc.common.recipes.foundation
 
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import net.minecraft.core.RegistryAccess
 import net.minecraft.nbt.CompoundTag
@@ -18,10 +19,12 @@ import org.eln2.mc.CrossThreadAccess
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.OnServerThread
 import org.eln2.mc.ServerOnly
-import org.eln2.mc.extensions.bind
+import org.eln2.mc.common.content.processing.CokingRecipe
+import org.eln2.mc.extensions.bindToSimpleContainer
 import org.eln2.mc.extensions.recipeExists
 import java.util.*
 import java.util.function.Supplier
+import kotlin.math.min
 
 // Standard inventory slots for input and output item in processing.
 // Applies to [SimpleProcessingRecipe], [SimpleCatalyzedProcessingRecipe]
@@ -29,7 +32,44 @@ const val INPUT_SLOT = 0
 const val OUTPUT_SLOT = 1
 const val CATALYST_SLOT = 2
 
-interface Eln2Recipe {
+// LOL, it's an abuse of the type system, but what are you gonna' do to me?
+
+/**
+ * Standard recipe serializer form. Meant to be implemented as a subclass in the custom recipe class.
+ * The Recipe ([R]) must implement [Eln2CustomRecipe].
+ * */
+interface Eln2RecipeSerializer<R> : RecipeSerializer<R> where R : Recipe<SimpleContainer>, R : Eln2CustomRecipe<R> {
+    val recipeType: RecipeType<CokingRecipe>
+}
+
+/**
+ * Standard custom recipe form. The various information (ingredients, durations, and so on) required by the recipe are meant to be added as fields in the constructor.
+ * The [recipeSerializer] must be an [Eln2RecipeSerializer] and should be a subclass.
+ * The [recipeId] is meant to be implemented as a field in the constructor.
+ * */
+interface Eln2CustomRecipe<Self> : Recipe<SimpleContainer> where Self : Recipe<SimpleContainer>, Self : Eln2CustomRecipe<Self> {
+    val recipeSerializer : Eln2RecipeSerializer<Self>
+    val recipeId: ResourceLocation
+
+    override fun getId() = recipeId
+    override fun getSerializer() = recipeSerializer
+    override fun getType() = recipeSerializer.recipeType
+}
+
+/**
+ * It seems like we *need* to implement [Recipe] for correctness.
+ * But its API is meant for only one output item, so this overrides those boilerplate methods.
+ * */
+interface Eln2NonStandardRecipe : Recipe<SimpleContainer> {
+    override fun assemble(pContainer: SimpleContainer, pRegistryAccess: RegistryAccess): ItemStack = ItemStack.EMPTY
+    override fun canCraftInDimensions(pWidth: Int, pHeight: Int) = false
+    override fun getResultItem(pRegistryAccess: RegistryAccess): ItemStack = ItemStack.EMPTY
+}
+
+/**
+ * Recipe for the [ProcessingRecipeInventoryHandler] and [ProcessingRecipeLoop].
+ * */
+interface Eln2ProcessingLoopRecipe {
     /**
      * The ID of the recipe, including the path of the data file.
      * */
@@ -42,7 +82,7 @@ interface Eln2Recipe {
     val duration: Double
 }
 
-interface Eln2SimpleRecipe : Eln2Recipe {
+interface Eln2SimpleOutputProcessingLoopRecipe : Eln2ProcessingLoopRecipe {
     val output: ItemStack
 }
 
@@ -70,14 +110,14 @@ interface ProcessingDevice {
  * @param duration The base duration, in seconds.
  * */
 class DirectSimpleProcessingRecipe(
-    val recipeSerializer: DirectSimpleProcessingRecipe.Serializer,
+    val recipeSerializer: Serializer,
     override val recipeId: ResourceLocation,
     val input: Ingredient,
     override val output: ItemStack,
     override val duration: Double
-) : Recipe<SimpleContainer>, Eln2SimpleRecipe {
+) : Recipe<SimpleContainer>, Eln2SimpleOutputProcessingLoopRecipe {
     init {
-        require(input.items.size == 1 && input.items[0].count == 1) {
+        require(input.items.size > 0 && input.items[0].count == 1) {
             DEBUGGER_BREAK("Simple processing recipe requires exactly one/one input!")
         }
     }
@@ -136,19 +176,19 @@ class DirectSimpleProcessingRecipe(
  * @param duration The base duration, in seconds.
  * */
 class CatalyzedSimpleProcessingRecipe(
-    val recipeSerializer: CatalyzedSimpleProcessingRecipe.Serializer,
+    val recipeSerializer: Serializer,
     override val recipeId: ResourceLocation,
     val input: Ingredient,
     val catalyst: Ingredient,
     override val output: ItemStack,
     override val duration: Double
-) : Recipe<SimpleContainer>, Eln2SimpleRecipe {
+) : Recipe<SimpleContainer>, Eln2SimpleOutputProcessingLoopRecipe {
     init {
-        require(input.items.size == 1 && input.items[0].count == 1) {
+        require(input.items.size > 0 && input.items.all { it.count == 1 }) {
             DEBUGGER_BREAK("Simple catalyzed processing recipe requires exactly one/one input!")
         }
 
-        require(catalyst.items.size == 1 && catalyst.items[0].count == 1) {
+        require(catalyst.items.size > 0 && catalyst.items.all { it.count == 1 }) {
             DEBUGGER_BREAK("Simple catalyzed processing recipe requires exactly one/one catalyst!")
         }
     }
@@ -207,7 +247,7 @@ class CatalyzedSimpleProcessingRecipe(
     }
 }
 
-interface ProcessingInventoryHandler<R : Eln2Recipe> {
+interface ProcessingRecipeInventoryHandler<R : Eln2ProcessingLoopRecipe> {
     /**
      * Checks if the input was recently changed, and resets the flag.
      * */
@@ -255,14 +295,14 @@ class SimpleProcessingRecipeInventoryHandler<R>(
     val recipeType: RecipeType<R>,
     size: Int,
     val inputSlots: IntArray
-) : ItemStackHandler(size), ProcessingInventoryHandler<R> where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer>{
+) : ItemStackHandler(size), ProcessingRecipeInventoryHandler<R> where R : Eln2SimpleOutputProcessingLoopRecipe, R : Recipe<SimpleContainer>{
     companion object {
         fun<R> create(
             blockEntity: BlockEntity,
             recipeType: RecipeType<R>,
             size: Int,
             inputSlots: IntArray = intArrayOf(INPUT_SLOT)
-        ) where R : Eln2SimpleRecipe, R : Recipe<SimpleContainer> =
+        ) where R : Eln2SimpleOutputProcessingLoopRecipe, R : Recipe<SimpleContainer> =
             SimpleProcessingRecipeInventoryHandler<R>(
                 blockEntity::setChanged,
                 { blockEntity.level ?: error(DEBUGGER_BREAK("Level null in block entity simple processing inventory handler")) },
@@ -321,14 +361,14 @@ class SimpleProcessingRecipeInventoryHandler<R>(
 
         return level.recipeManager.getRecipeFor(
             recipeType,
-            this.bind(),
+            this.bindToSimpleContainer(),
             level
         )
     }
 
     override fun isItemValid(slot: Int, stack: ItemStack): Boolean {
         return if(slot == INPUT_SLOT) {
-            val copy = this.bind()
+            val copy = this.bindToSimpleContainer()
             copy.setItem(slot, stack)
             return levelSupplier.get().recipeExists(recipeType, copy)
         }
@@ -358,17 +398,17 @@ class SimpleProcessingRecipeInventoryHandler<R>(
  * Server tick for a machine that uses a [ProcessingDevice] and applies a [DirectSimpleProcessingRecipe] or [CatalyzedSimpleProcessingRecipe].
  * */
 @ServerOnly
-class ProcessingRecipeLoop<R : Eln2Recipe>(val onChanged: Runnable) {
+class ProcessingRecipeLoop<R : Eln2ProcessingLoopRecipe>(val onChanged: Runnable) {
     companion object {
         private const val IS_WORKING = "hasRecipe"
         private const val TIME_PROGRESS = "timeProgress"
 
-        fun<R : Eln2Recipe> create(blockEntity: BlockEntity) = ProcessingRecipeLoop<R> {
+        fun<R : Eln2ProcessingLoopRecipe> create(blockEntity: BlockEntity) = ProcessingRecipeLoop<R> {
             blockEntity.setChanged()
         }
     }
 
-    class Operation<R : Eln2Recipe>(val recipe: R) {
+    class Operation<R : Eln2ProcessingLoopRecipe>(val recipe: R) {
         var timeProgress = 0.0
     }
 
@@ -385,7 +425,7 @@ class ProcessingRecipeLoop<R : Eln2Recipe>(val onChanged: Runnable) {
      * Advances the processing, if the inventory is eligible for operation.
      * Calls [BlockEntity.setChanged] if the NBT needs to be serialized.
      * */
-    fun tick(device: ProcessingDevice, inventoryHandler: ProcessingInventoryHandler<R>) : Result {
+    fun tick(device: ProcessingDevice, inventoryHandler: ProcessingRecipeInventoryHandler<R>) : Result {
         val processingSpeed = device.processingSpeed
         val progress: Float
 
@@ -462,4 +502,186 @@ class ProcessingRecipeLoop<R : Eln2Recipe>(val onChanged: Runnable) {
             savedProgress = pTag.getDouble(TIME_PROGRESS)
         }
     }
+}
+
+/**
+ * Represents one valid ingredient for a recipe.
+ * The [value] is used to set how many of this specific item are required to substitute into the recipe.
+ * */
+data class Eln2WeightedItemIngredient(val ingredient: Ingredient, val value: Int) {
+    fun toNetwork(buf: FriendlyByteBuf) {
+        ingredient.toNetwork(buf)
+        buf.writeInt(value)
+    }
+
+    companion object {
+        fun fromJson(json: JsonObject) : Eln2WeightedItemIngredient {
+            val ingredient = Ingredient.fromJson(json)
+            val value = GsonHelper.getAsInt(json, "value")
+
+            return Eln2WeightedItemIngredient(ingredient, value)
+        }
+
+        fun fromNetwork(buf: FriendlyByteBuf) : Eln2WeightedItemIngredient {
+            val ingredient = Ingredient.fromNetwork(buf)
+            val value = buf.readInt()
+
+            return Eln2WeightedItemIngredient(ingredient, value)
+        }
+    }
+}
+
+/**
+ * Represents all possible variants of an ingredient in a recipe. Example: allows you to substitute 1 coal for e.g. 8 coal fragments, or 1 coal coke dust, and so on.
+ * I'm not sure that's how it should be done. If not, please correct (join the discord or open a pull request).
+ *
+ * @param options All possible allowed ingredients.
+ * @param requiredValue The total value required. Basically, the value of an item stack is the number of items multiplied by [Eln2WeightedItemIngredient.value].
+ * */
+data class Eln2WeightedItemRecipeRequirement(val options: List<Eln2WeightedItemIngredient>, val requiredValue: Int) {
+    fun toNetwork(buf: FriendlyByteBuf) {
+        buf.writeCollection(options) { _, ingredient ->
+            ingredient.toNetwork(buf)
+        }
+
+        buf.writeInt(requiredValue)
+    }
+
+    companion object {
+        fun fromJson(json: JsonObject) : Eln2WeightedItemRecipeRequirement {
+            val options = json.getAsJsonArray("options")
+                .map { it as JsonObject }
+                .map(Eln2WeightedItemIngredient::fromJson)
+
+            val requiredValue = GsonHelper.getAsInt(json, "requiredValue")
+
+            return Eln2WeightedItemRecipeRequirement(options, requiredValue)
+        }
+
+        fun fromNetwork(buf: FriendlyByteBuf) : Eln2WeightedItemRecipeRequirement {
+            val options = buf.readList {
+                Eln2WeightedItemIngredient.fromNetwork(buf)
+            }
+
+            val requiredValue = buf.readInt()
+
+            return Eln2WeightedItemRecipeRequirement(options, requiredValue)
+        }
+    }
+}
+
+/**
+ * Represents a recipe's multiple possible substituted inputs.
+ * */
+data class Eln2WeightedItemRecipeRequirements(val requirements: List<Eln2WeightedItemRecipeRequirement>) {
+    fun toNetwork(buf: FriendlyByteBuf) {
+        buf.writeCollection(requirements) { _, requirement ->
+            requirement.toNetwork(buf)
+        }
+    }
+
+    companion object {
+        fun fromJson(json: JsonElement) : Eln2WeightedItemRecipeRequirements {
+            val requirements = json.asJsonArray
+                .map { it as JsonObject }
+                .map { Eln2WeightedItemRecipeRequirement.fromJson(it) }
+
+            return Eln2WeightedItemRecipeRequirements(requirements)
+        }
+
+        fun fromNetwork(buf: FriendlyByteBuf) : Eln2WeightedItemRecipeRequirements {
+            val requirements = buf.readList {
+                Eln2WeightedItemRecipeRequirement.fromNetwork(buf)
+            }
+
+            return Eln2WeightedItemRecipeRequirements(requirements)
+        }
+    }
+}
+
+/**
+ * Checks if the [recipe] is matched by item stacks, and also mutates the item stacks along the way.
+ * @return True if the container satisfies the recipe. Otherwise, false (but the container is still mutated!).
+ * */
+fun List<ItemStack>.applyRecipeWeighted(recipe: Eln2WeightedItemRecipeRequirements) : Boolean {
+    /**
+     * The algorithm is very inefficient, but we assume the inventories are very small, and it's also not called in a hot path.
+     * */
+    for (requirement in recipe.requirements) {
+        /**
+         * The remaining value to satisfy:
+         * */
+        var valueRequirementRemaining = requirement.requiredValue
+
+        /**
+         * Tries to match each option to the inventory:
+         * */
+        for (option in requirement.options) {
+            for (currentStack in this) {
+
+                if(currentStack.isEmpty) {
+                    continue
+                }
+
+                if(!option.ingredient.test(currentStack)) {
+                    continue
+                }
+
+                /**
+                 * Calculates how many items of this type are needed to satisfy the remaining value.
+                 * */
+                val itemsNeeded = (valueRequirementRemaining + option.value - 1) / option.value
+                val itemsToTake = min(itemsNeeded, currentStack.count)
+
+                val valueContributed = itemsToTake * option.value
+                valueRequirementRemaining -= valueContributed
+
+                /**
+                 * Removes the items from the inventory:
+                 * */
+                currentStack.shrink(itemsToTake)
+
+                if(valueRequirementRemaining <= 0) {
+                    break
+                }
+            }
+
+            if(valueRequirementRemaining <= 0) {
+                break
+            }
+        }
+
+        /**
+         * Didn't match this specific requirement:
+         * */
+        if (valueRequirementRemaining > 0) {
+            return false
+        }
+    }
+
+    return true
+}
+
+/**
+ * Tries to insert the [items] into this handler, in the slots in [slotRange]. **Mutates the handler!**
+ * @return True if all items were inserted. Otherwise, false (still mutates the handler!).
+ * */
+fun ItemStackHandler.insertRange(items: List<ItemStack>, slotRange: IntRange) : Boolean {
+    for (sourceStack in items) {
+        var remainingStack = sourceStack.copy()
+
+        for (slot in slotRange) {
+            remainingStack = this.insertItem(slot, remainingStack, false)
+
+            if(remainingStack.isEmpty) {
+                break
+            }
+        }
+
+        if(!remainingStack.isEmpty) {
+            return false
+        }
+    }
+
+    return true
 }

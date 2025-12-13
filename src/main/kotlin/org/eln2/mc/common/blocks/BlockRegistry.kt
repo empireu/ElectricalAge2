@@ -105,6 +105,12 @@ object BlockRegistry {
 
     interface DelegateMapBuilder {
         /**
+         * Gets a unique synthetic ID to register a delegate block.
+         * This method works by incrementing an internal counter. It is used by all the other methods that register delegates in the builder.
+         * */
+        fun getDelegateId(): String
+
+        /**
          * Puts the [state] at the specified position [x] [y] [z].
          * */
         fun state(x: Int, y: Int, z: Int, state: Supplier<BlockState>)
@@ -123,6 +129,13 @@ object BlockRegistry {
          * Registers a [MultiblockDelegateBlockWithCustomCollider] with a collider composed of the specified [colliders].
          * */
         fun registerDelegate(colliders: List<AABB>) : RegistryObject<MultiblockDelegateBlockWithCustomCollider>
+
+        /**
+         * Registers a [MultiblockDelegateBlockWithCustomCollider] with a custom collider with one cube with the specified bounds.
+         * */
+        fun registerDelegate(minX: Double, minY: Double, minZ: Double, maxX: Double, maxY: Double, maxZ: Double) = registerDelegate(
+            listOf(AABB(minX, minY, minZ, maxX, maxY, maxZ))
+        )
 
         /**
          * Registers a [MultiblockDelegateBlockWithCustomCollider] with a collider composed of the specified [colliders].
@@ -176,7 +189,7 @@ object BlockRegistry {
             }
         }
 
-        private fun getDelegateId() = "${id}_delegate_${registeredDelegateCounter++}"
+        override fun getDelegateId() = "${id}_delegate_${registeredDelegateCounter++}"
 
         override fun registerDelegate(colliders: List<AABB>): RegistryObject<MultiblockDelegateBlockWithCustomCollider> {
             return blockOnly(getDelegateId()) {

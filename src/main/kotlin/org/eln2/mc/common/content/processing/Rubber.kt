@@ -389,7 +389,7 @@ class VulcanizingRecipe(
     val maxTemperature: Double
 ) : Recipe<SimpleContainer> {
     init {
-        require(input.items.size == 1 && input.items[0].count == 1) {
+        require(input.items.size > 0 && input.items[0].count == 1) {
             DEBUGGER_BREAK("Autoclave recipe requires exactly one/one input!")
         }
     }
@@ -745,10 +745,6 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
 
     //#region Recipe Processing
 
-    private class Operation(val recipe: VulcanizingRecipe, var progress: Double)
-
-    private var operation: Operation? = null
-
     @ServerOnly
     fun searchForRecipe(): Optional<VulcanizingRecipe> {
         val stack = inventoryHandler.getStackInSlot(INPUT_SLOT)
@@ -761,7 +757,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
 
         return level.recipeManager.getRecipeFor(
             Eln2Processing.VULCANIZING_RECIPE,
-            inventoryHandler.bind(),
+            inventoryHandler.bindToSimpleContainer(),
             level
         )
     }

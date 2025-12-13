@@ -58,6 +58,11 @@ import org.eln2.mc.common.content.processing.BlacksmithingStationBlock
 import org.eln2.mc.common.content.processing.BlacksmithingStationBlockEntity
 import org.eln2.mc.common.content.processing.BlacksmithingStationBlockEntityRenderer
 import org.eln2.mc.common.content.processing.BlacksmithingToolItem
+import org.eln2.mc.common.content.processing.CokeOvenMainBlock
+import org.eln2.mc.common.content.processing.CokeOvenMainBlockEntity
+import org.eln2.mc.common.content.processing.CokeOvenMainBlockEntityVisual
+import org.eln2.mc.common.content.processing.CokeOvenMenu
+import org.eln2.mc.common.content.processing.CokingRecipe
 import org.eln2.mc.common.content.processing.KineticExtruderBlock
 import org.eln2.mc.common.content.processing.KineticExtruderBlockEntity
 import org.eln2.mc.common.content.processing.KineticExtruderBlockEntityVisual
@@ -119,6 +124,11 @@ object Eln2Processing : ContentModule() {
             VULCANIZING_AUTOCLAVE_MAIN_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::VulcanizingAutoclaveMainBlockEntityVisual) { true }
         )
+
+        VisualizerRegistry.setVisualizer(
+            COKE_OVEN_MAIN_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::CokeOvenMainBlockEntityVisual) { true }
+        )
     }
 
     override fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
@@ -154,6 +164,15 @@ object Eln2Processing : ContentModule() {
     }
 
     override fun setupScreens() {
+        MenuScreens.register(COKE_OVEN_MENU.get()) { menu, pInventory, title ->
+            BasicProgressScreen(
+                menu, pInventory, title,
+                resource("textures/gui/container/coking_furnace_base.png"),
+                resource("textures/gui/container/coking_furnace_progress.png"),
+                134.0f,
+                155.0f
+            )
+        }
         MenuScreens.register(FURNACE_MENU.get(), ::FurnaceScreen)
         MenuScreens.register(CRUSHER_MENU.get(), ::CrusherScreen)
         MenuScreens.register(EXTRUDER_MENU.get(), ::ExtruderScreen)
@@ -211,6 +230,42 @@ object Eln2Processing : ContentModule() {
     //#endregion
 
     //#region Coking
+
+    val COKING_RECIPE = RecipeRegistry.register("coking") {
+        CokingRecipe.Serializer(it)
+    }
+
+    val COKE_OVEN_MAIN_BLOCK = blockOnly("coke_oven", ::CokeOvenMainBlock)
+
+    val COKE_OVEN_MAIN_BLOCK_ENTITY = blockEntityOnly(
+        "coke_oven",
+        COKE_OVEN_MAIN_BLOCK,
+        ::CokeOvenMainBlockEntity
+    )
+
+    val COKE_OVEN_DELEGATE_MAP = defineDelegateMap("coke_oven") {
+        val rightWallNI = registerDelegate(
+            0.0, 0.0, 0.0,
+            0.5, 1.0, 1.0
+        )
+
+        val leftWallNI = registerDelegate(
+            0.5, 0.0, 0.0,
+            1.0, 1.0, 1.0
+        )
+
+        principal(-1, 0, 0, leftWallNI)
+        principal(1, 0, 0, rightWallNI)
+    }
+
+    val COKE_OVEN_BLOCK_ITEM = blockItemOnly("coke_oven") {
+        BigBlockItem(
+            COKE_OVEN_DELEGATE_MAP.value,
+            COKE_OVEN_MAIN_BLOCK.get()
+        )
+    }
+
+    val COKE_OVEN_MENU = menu("coke_oven", ::CokeOvenMenu)
 
     //#endregion
 

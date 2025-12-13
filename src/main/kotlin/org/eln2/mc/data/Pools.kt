@@ -1,11 +1,23 @@
 package org.eln2.mc.data
 
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 interface ObjectPool<T> {
     fun get(): T
 
     fun release(obj: T)
+}
+
+inline fun<reified T> ObjectPool<T>.using(block: (obj: T) -> Unit) {
+    val obj = this.get()
+
+    try {
+        block.invoke(obj)
+    }
+    finally {
+        this.release(obj)
+    }
 }
 
 interface PooledObjectPolicy<T> {
@@ -52,36 +64,55 @@ class LinearObjectPool<T>(private val policy: PooledObjectPolicy<T>, val maximum
 /**
  * Thread-safe object pool implemented as an atomic stack.
  * */
-class LocklessAtomicObjectPool<T>(private val policy: PooledObjectPolicy<T>, val maximumRetained: Int) : ObjectPool<T> {
+class LocklessAtomicObjectPool<T>(val policy: PooledObjectPolicy<T>, val maximumRetained: Int) : ObjectPool<T> {
     private class Node<T>(val value: T) {
         var next: Node<T>? = null
     }
 
-    private val head = AtomicReference<Node<T>>()
+    private val head = AtomicReference<Node<T>?>(null)
+    private val retained = AtomicInteger(0)
 
     override fun get(): T {
         while (true) {
             val h = head.get()
                 ?: return policy.create()
 
-            if(head.compareAndSet(h, h.next)) {
-                return h.value!!
+            val next = h.next
+
+            if (head.compareAndSet(h, next)) {
+                retained.decrementAndGet()
+                h.next = null
+
+                return h.value
             }
         }
     }
 
     override fun release(obj: T) {
-        if(!policy.release(obj)) {
+        if (!policy.release(obj)) {
             return
         }
 
-        val n = Node(obj)
+        while (true) {
+            val count = retained.get()
+
+            if (count >= maximumRetained) {
+                return
+            }
+
+            if (retained.compareAndSet(count, count + 1)) {
+                break
+            }
+        }
+
+        val node = Node(obj)
 
         while (true) {
             val h = head.get()
-            n.next = h
 
-            if (head.compareAndSet(h, n)) {
+            node.next = h
+
+            if (head.compareAndSet(h, node)) {
                 return
             }
         }

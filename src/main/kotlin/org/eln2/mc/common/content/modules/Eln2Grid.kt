@@ -329,11 +329,9 @@ object Eln2Grid : ContentModule() {
     //#region Poles (delegate maps and block entities)
 
     val GRID_POLE_DELEGATE_MAP = defineDelegateMap("grid_pole") {
-        val column = registerDelegateOf(
-            AABB(
-                0.35, 0.0, 0.35,
-                0.65, 1.0, 0.65
-            )
+        val column = registerDelegate(
+            0.35, 0.0, 0.35,
+            0.65, 1.0, 0.65
         )
 
         principal(0, 1, 0, column)

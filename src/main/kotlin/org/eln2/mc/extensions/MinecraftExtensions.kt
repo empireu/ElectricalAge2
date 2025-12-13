@@ -1,5 +1,6 @@
 package org.eln2.mc.extensions
 
+import com.google.gson.JsonObject
 import com.mojang.blaze3d.vertex.PoseStack
 import net.minecraft.client.renderer.block.model.BakedQuad
 import net.minecraft.client.resources.model.BakedModel
@@ -12,6 +13,7 @@ import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.chat.Component
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.sounds.SoundEvent
@@ -45,8 +47,10 @@ import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.Vec3
 import net.minecraft.world.phys.shapes.VoxelShape
 import net.minecraftforge.common.ForgeMod
+import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.network.NetworkHooks
+import net.minecraftforge.registries.ForgeRegistries
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.mathematics.geometry.*
 import org.eln2.mc.*
@@ -62,6 +66,17 @@ import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
 import kotlin.math.PI
 import kotlin.math.cos
+
+fun JsonObject.asFluidStack() : FluidStack {
+    val fluidId = ResourceLocation.parse(this.get("fluid").asString)
+
+    val fluid = ForgeRegistries.FLUIDS.getValue(fluidId)
+        ?: error("Invalid fluid \"$fluidId\"")
+
+    val amount = this.get("amount").asInt
+
+    return FluidStack(fluid, amount)
+}
 
 fun ItemStack.takeDurability(player: Player, hand: InteractionHand = InteractionHand.MAIN_HAND, durability: Int = 1) {
     this.hurtAndBreak(durability, player, { p -> p.broadcastBreakEvent(hand) })
@@ -658,7 +673,17 @@ fun Level.recipeExists(recipe: RecipeType<*>, stack: ItemStack) : Boolean {
     return recipe.isPresent
 }
 
-fun ItemStackHandler.bind() : SimpleContainer {
+fun ItemStackHandler.bind() : ItemStackHandler {
+    val result = ItemStackHandler(this.slots)
+
+    for (slot in 0 until this.slots) {
+        result.setStackInSlot(slot, this.getStackInSlot(slot).copy())
+    }
+
+    return result
+}
+
+fun ItemStackHandler.bindToSimpleContainer() : SimpleContainer {
     val copy = SimpleContainer(this.slots)
 
     repeat(this.slots) {
@@ -666,6 +691,30 @@ fun ItemStackHandler.bind() : SimpleContainer {
     }
 
     return copy
+}
+
+fun SimpleContainer.bind() : SimpleContainer {
+    val result = SimpleContainer(this.containerSize)
+
+    for (slot in 0 until this.containerSize) {
+        result.setItem(slot, this.getItem(slot).copy())
+    }
+
+    return result
+}
+
+fun SimpleContainer.bindToList() : ArrayList<ItemStack> {
+    val result = ArrayList<ItemStack>()
+
+    for (slot in 0 until this.containerSize) {
+        val stack = this.getItem(slot)
+
+        if(!stack.isEmpty) {
+            result.add(stack.copy())
+        }
+    }
+
+    return result
 }
 
 fun Level.recipeExists(recipe: RecipeType<*>, container: SimpleContainer) : Boolean {

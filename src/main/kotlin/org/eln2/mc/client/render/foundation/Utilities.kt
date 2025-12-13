@@ -38,7 +38,6 @@ import org.eln2.mc.extensions.bind
 import org.eln2.mc.extensions.cast
 import org.eln2.mc.requireIsOnRenderThread
 import org.lwjgl.opengl.GL11
-import org.lwjgl.opengl.GL44
 import org.lwjgl.system.MemoryStack
 import org.lwjgl.system.MemoryUtil
 import java.io.File

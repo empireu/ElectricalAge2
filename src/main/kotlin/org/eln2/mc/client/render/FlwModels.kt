@@ -165,7 +165,7 @@ object FlwModels {
 
     //#endregion
 
-    //#region Motors
+    //#region Motors and Generators
 
     val BASIC_DC_MOTOR = partialBlock("motor/basic_dc_motor")
 
@@ -204,7 +204,8 @@ object FlwModels {
 
     //#endregion
 
-    private fun partial(path: String): PartialModel = PartialModel.of(resource(path))
+    val COKING_OVEN = partialBlock("coking_oven/coking_oven")
+
     fun partialBlock(path: String): PartialModel = PartialModel.of(resource("block/$path"))
     fun polarBlock(path: String): PolarModel = PolarModel(resource("block/$path"))
 

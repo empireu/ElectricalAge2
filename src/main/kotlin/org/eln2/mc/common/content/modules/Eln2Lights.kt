@@ -251,18 +251,14 @@ object Eln2Lights : ContentModule() {
     }
 
     val LAMP_POLE_BLOCK_DELEGATE_MAP = defineDelegateMap("lamp_pole") {
-        val column = registerDelegateOf(
-            AABB(
-                0.325, 0.0, 0.325,
-                0.675, 1.0, 0.675
-            )
+        val column = registerDelegate(
+            0.325, 0.0, 0.325,
+            0.675, 1.0, 0.675
         )
 
-        val lamp = registerDelegateOf(
-            AABB(
-                0.25, 0.0, 0.25,
-                0.75, 0.65, 0.75
-            )
+        val lamp = registerDelegate(
+            0.25, 0.0, 0.25,
+            0.75, 0.65, 0.75
         )
 
         principal(0, 2, 0, column)

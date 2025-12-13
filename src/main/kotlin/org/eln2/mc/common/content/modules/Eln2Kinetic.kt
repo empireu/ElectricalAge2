@@ -439,11 +439,9 @@ object Eln2Kinetic : ContentModule() {
     }
 
     val BASIC_WIND_TURBINE_DELEGATE_MAP = defineDelegateMap("basic_wind_turbine") {
-        val fullBlock = registerDelegateOf(
-            AABB(
-                0.0, 0.0, 0.0,
-                1.0, 1.0, 1.0
-            )
+        val fullBlock = registerDelegate(
+            0.0, 0.0, 0.0,
+            1.0, 1.0, 1.0
         )
 
         fun defineSlab(y: Int) {
