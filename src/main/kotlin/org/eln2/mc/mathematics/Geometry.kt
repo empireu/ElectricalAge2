@@ -4,10 +4,12 @@ package org.eln2.mc.mathematics
 
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.world.level.block.Rotation
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Rotation3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.geometry.Vector3di
+import org.eln2.mc.DEBUGGER_BREAK
 import org.joml.Quaternionf
 import org.joml.Quaternionfc
 import kotlin.math.PI
@@ -111,11 +113,11 @@ value class BlockPosInt(val value: Int) {
     }
 }
 
-enum class FacingDirection(val angle: Double, val direction: Direction) {
-    SOUTH(PI, Direction.SOUTH),
-    WEST(PI / 2.0, Direction.WEST),
-    NORTH(0.0, Direction.NORTH),
-    EAST(-PI / 2.0, Direction.EAST);
+enum class FacingDirection(val angle: Double, val direction: Direction, val minecraftRotation: Rotation) {
+    SOUTH(PI, Direction.SOUTH, Rotation.CLOCKWISE_180),
+    WEST(PI / 2.0, Direction.WEST, Rotation.COUNTERCLOCKWISE_90),
+    NORTH(0.0, Direction.NORTH, Rotation.NONE),
+    EAST(-PI / 2.0, Direction.EAST, Rotation.CLOCKWISE_90);
 
     val clockWise get() = when(this) {
         SOUTH -> WEST
@@ -142,8 +144,8 @@ enum class FacingDirection(val angle: Double, val direction: Direction) {
 }
 
 fun Direction.toHorizontalFacing() = when(this) {
-    Direction.DOWN -> error("Down is not a good horizontal facing")
-    Direction.UP -> error("Up is not a good horizontal facing")
+    Direction.DOWN -> error(DEBUGGER_BREAK("Down is not a good horizontal facing"))
+    Direction.UP -> error(DEBUGGER_BREAK("Up is not a good horizontal facing"))
     Direction.NORTH -> FacingDirection.NORTH
     Direction.SOUTH -> FacingDirection.SOUTH
     Direction.WEST -> FacingDirection.WEST

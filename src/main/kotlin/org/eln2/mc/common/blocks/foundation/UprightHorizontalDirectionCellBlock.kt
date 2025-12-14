@@ -126,7 +126,7 @@ abstract class UprightHorizontalDirectionCellBlock<C : Cell>(p : Properties? = n
     override fun getStateForPlacement(pContext: BlockPlaceContext): BlockState? {
         return super.defaultBlockState().setValue(
             HorizontalDirectionalBlock.FACING,
-            pContext.horizontalDirection.opposite
+            pContext.horizontalDirection
         )
     }
 

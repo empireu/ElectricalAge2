@@ -669,7 +669,7 @@ class LampPoleBlockEntityVisual(
         .also {
             it.translate(visualPosition)
             it.center()
-            it.rotateToFace(blockEntity.representativeFacing.clockWise)
+            it.rotateToFace(blockEntity.representativeFacing.opposite)
             it.uncenter()
         }
 
@@ -683,7 +683,7 @@ class LampPoleBlockEntityVisual(
                 visualPosition.z.toDouble()
             )
             it.center()
-            it.rotateToFace(blockEntity.representativeFacing.clockWise)
+            it.rotateToFace(blockEntity.representativeFacing.opposite)
             it.uncenter()
         }
 

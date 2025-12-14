@@ -2,9 +2,11 @@
 
 package org.eln2.mc.common.blocks.foundation
 
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet
 import net.minecraft.client.particle.ParticleEngine
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.core.SectionPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ClientGamePacketListener
@@ -38,9 +40,11 @@ import org.eln2.mc.ServerOnly
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.Cell
 import org.eln2.mc.extensions.*
+import org.eln2.mc.extensions.plus
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3dMask
+import org.eln2.mc.mathematics.toHorizontalFacing
 import org.eln2.mc.requireIsOnServerThread
 import org.joml.Quaternionf
 import java.util.function.Consumer
@@ -49,13 +53,15 @@ import kotlin.math.ceil
 
 object MultiblockTransformations {
     // PS this is an old convention, should be removed and converted to our current convention
-    fun rot(dir: Direction) = when (dir) {
+    /*fun rot(dir: Direction) = when (dir) {
         Direction.NORTH -> Rotation.COUNTERCLOCKWISE_90
         Direction.SOUTH -> Rotation.CLOCKWISE_90
         Direction.WEST -> Rotation.CLOCKWISE_180
         Direction.EAST -> Rotation.NONE
         else -> error("Invalid horizontal facing $dir")
-    }
+    }*/
+
+    fun rot(dir: Direction) = dir.toHorizontalFacing().minecraftRotation
 
     fun transformMultiblockWorld(facing: Direction, origin: BlockPos, posMb: BlockPos): BlockPos {
         val posActual = rot(facing) * posMb
@@ -99,12 +105,46 @@ data class MultiblockDelegateMap(val delegates: Map<BlockPos, BlockState>) {
         }
     }
 
-    fun forEachDelegateInWorld(level: Level, facing: Direction, origin: BlockPos, consumer: (BlockPos) -> Unit) {
+    /**
+     * Iterates over the world position of each delegate.
+     * @param facing The facing of the representative.
+     * @param origin The position of the representative.
+     * @param consumer Consumer for the position of each delegate, in the world frame.
+     * */
+    fun forEachDelegateInWorld(facing: Direction, origin: BlockPos, consumer: (BlockPos) -> Unit) {
         delegates.forEach { (delegatePosId, state) ->
             val delegatePosWorld = MultiblockTransformations.transformMultiblockWorld(facing, origin, delegatePosId)
 
             consumer(delegatePosWorld)
         }
+    }
+
+    /**
+     * Used for setting the section collector in visuals.
+     * Gets all the sections intersected by the entire multiblock plus each block's Von Neumann neighborhood.
+     * Useful for setting the sections needed for GPU lighting.
+     * @param facing The facing of the representative.
+     * @param origin The position of the representative.
+     * @return All the sections spanned by the origin block, delegate blocks, and the immediate neighbors to all the previously mentioned blocks.
+     * */
+    fun getTotalSpannedSectionsFat(facing: Direction, origin: BlockPos) : LongOpenHashSet {
+        val result = LongOpenHashSet()
+
+        result.add(SectionPos.asLong(origin))
+
+        Direction.entries.forEach { dir ->
+            result.add(SectionPos.asLong(origin + dir))
+        }
+
+        forEachDelegateInWorld(facing, origin) {
+            result.add(SectionPos.asLong(it))
+
+            Direction.entries.forEach { dir ->
+                result.add(SectionPos.asLong(it + dir))
+            }
+        }
+
+        return result
     }
 }
 

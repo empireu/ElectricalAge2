@@ -12,10 +12,14 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.SectionPos
+import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.sounds.SoundEvents
+import net.minecraft.sounds.SoundSource
+import net.minecraft.util.RandomSource
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.SimpleContainer
@@ -36,6 +40,7 @@ import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.StateDefinition
+import net.minecraft.world.level.block.state.properties.BooleanProperty
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraftforge.client.extensions.common.IClientBlockExtensions
@@ -225,11 +230,6 @@ class CokeOvenDelegateBlockEntity(pPos: BlockPos, pBlockState: BlockState) : Mul
          * */
         return representative.getCapability(cap, null)
     }
-
-    override fun invalidateCaps() {
-
-        super.invalidateCaps()
-    }
 }
 
 class CokeOvenMainBlock : HorizontalDirectionalBlock(Properties.of().noOcclusion()), EntityBlock {
@@ -239,6 +239,15 @@ class CokeOvenMainBlock : HorizontalDirectionalBlock(Properties.of().noOcclusion
             pPlayer,
             Component.translatable("menu.$MODID.coke_oven"),
             ::CokeOvenMenu
+        )
+
+        val ACTIVE: BooleanProperty = BooleanProperty.create("active")
+    }
+
+    init {
+        registerDefaultState(stateDefinition.any()
+            .setValue(FACING, Direction.NORTH)
+            .setValue(ACTIVE, false)
         )
     }
 
@@ -252,6 +261,7 @@ class CokeOvenMainBlock : HorizontalDirectionalBlock(Properties.of().noOcclusion
     override fun createBlockStateDefinition(pBuilder: StateDefinition.Builder<Block, BlockState>) {
         super.createBlockStateDefinition(pBuilder)
         pBuilder.add(FACING)
+        pBuilder.add(ACTIVE)
     }
 
     override fun initializeClient(consumer: Consumer<IClientBlockExtensions?>) {
@@ -300,6 +310,71 @@ class CokeOvenMainBlock : HorizontalDirectionalBlock(Properties.of().noOcclusion
         }
 
         super.onRemove(pState, pLevel, pPos, pNewState, pMovedByPiston)
+    }
+
+    override fun animateTick(pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {
+        if(!pState.getValue(ACTIVE)) {
+            return
+        }
+
+        val facing = pState.getValue(FACING)
+        val sideDir = facing.clockWise
+        val particleDir = facing.opposite
+
+        val originX = pPos.x + 0.5 + particleDir.stepX * 0.5
+        val originY = pPos.y + 0.5 + particleDir.stepY * 0.5
+        val originZ = pPos.z + 0.5 + particleDir.stepZ * 0.5
+
+        if (pRandom.nextDouble() < 0.5) {
+            pLevel.playLocalSound(
+                originX,
+                originY,
+                originZ,
+                SoundEvents.FURNACE_FIRE_CRACKLE,
+                SoundSource.BLOCKS,
+                pRandom.nextDouble(0.9, 1.1).toFloat(),
+                pRandom.nextDouble(0.9, 1.1).toFloat(),
+                false
+            )
+        }
+
+        repeat(pRandom.nextInt(8)) {
+            val incr = if((it and 1) == 0) sideDir else sideDir.opposite
+
+            val pX = originX + 0.825 * incr.stepX + pRandom.nextDouble(-0.1, 0.1)
+            val pY = originY + 0.825 * incr.stepY + pRandom.nextDouble(-0.05, 0.05) - 0.225
+            val pZ = originZ + 0.825 * incr.stepZ + pRandom.nextDouble(-0.1, 0.1)
+
+            val vX = 0.01 * particleDir.stepX + pRandom.nextDouble(-0.01, 0.01)
+            val vY = 0.01 * particleDir.stepY + pRandom.nextDouble(0.0, 0.025)
+            val vZ = 0.01 * particleDir.stepZ + pRandom.nextDouble(-0.01, 0.01)
+
+            val num = pRandom.nextDouble()
+
+            when (num) {
+                in 0.0..(1.0 / 3.0) -> {
+                    pLevel.addParticle(
+                        ParticleTypes.SMOKE,
+                        pX, pY, pZ,
+                        vX, vY, vZ
+                    )
+                }
+                in (1.0 / 3.0)..(2.0 / 3.0) -> {
+                    pLevel.addParticle(
+                        ParticleTypes.FLAME,
+                        pX, pY, pZ,
+                        vX, vY, vZ
+                    )
+                }
+                else -> {
+                    pLevel.addParticle(
+                        ParticleTypes.CAMPFIRE_COSY_SMOKE,
+                        pX, pY, pZ,
+                        vX, vY, vZ
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -541,6 +616,18 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
         else {
             data.progress = 0.0f
         }
+
+        /**
+         * Updates blockstate for A/V:
+         * */
+        val isRunning = operation != null
+        if(blockState.getValue(CokeOvenMainBlock.ACTIVE) != isRunning) {
+            level!!.setBlock(
+                blockPos,
+                blockState.setValue(CokeOvenMainBlock.ACTIVE, isRunning),
+                Block.UPDATE_ALL
+            )
+        }
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
@@ -586,7 +673,7 @@ class CokeOvenMainBlockEntityVisual(
         .also {
             it.translate(visualPosition)
             it.center()
-            it.rotateToFace(blockEntity.representativeFacing.clockWise)
+            it.rotateToFace(blockEntity.representativeFacing.opposite)
             it.uncenter()
         }
 
@@ -595,19 +682,14 @@ class CokeOvenMainBlockEntityVisual(
     }
 
     override fun setSectionCollector(sectionCollector: SectionTrackedVisual.SectionCollector) {
-        val set = LongOpenHashSet()
+        this.lightSections = sectionCollector
 
-        set.add(SectionPos.asLong(pos))
-
-        blockEntity.delegateMap.forEachDelegateInWorld(blockEntity.level!!, blockEntity.blockState.getValue(HorizontalDirectionalBlock.FACING), blockEntity.blockPos) {
-            set.add(SectionPos.asLong(it))
-
-            Base6Direction3d.entries.forEach { dir ->
-                set.add(SectionPos.asLong(it + dir.alias))
-            }
-        }
-
-        sectionCollector.sections(set)
+        sectionCollector.sections(
+            blockEntity.delegateMap.getTotalSpannedSectionsFat(
+                blockState.getValue(HorizontalDirectionalBlock.FACING),
+                pos
+            )
+        )
     }
 
     override fun collectCrumblingInstances(p0: Consumer<Instance?>) {
@@ -619,20 +701,6 @@ class CokeOvenMainBlockEntityVisual(
     }
 }
 
-private val INPUT_SLOTS = mapOf(
-    0 to Vector2di(21, 24),
-    1 to Vector2di(48, 24),
-    2 to Vector2di(75, 24),
-    3 to Vector2di(102, 24)
-)
-
-private val OUTPUT_SLOTS = mapOf(
-    4 to Vector2di(25, 49),
-    5 to Vector2di(51, 49),
-    6 to Vector2di(77, 49),
-    7 to Vector2di(103, 49)
-)
-
 class CokeOvenMenu(
     pContainerId: Int,
     playerInventory: Inventory,
@@ -641,6 +709,22 @@ class CokeOvenMenu(
     val access: ContainerLevelAccess,
     val level: Level
 ) : AbstractContainerMenu(Eln2Processing.COKE_OVEN_MENU.get(), pContainerId), ProgressSupplierMenu {
+    companion object {
+        private val INPUT_SLOTS = mapOf(
+            0 to Vector2di(21, 24),
+            1 to Vector2di(48, 24),
+            2 to Vector2di(75, 24),
+            3 to Vector2di(102, 24)
+        )
+
+        private val OUTPUT_SLOTS = mapOf(
+            4 to Vector2di(25, 49),
+            5 to Vector2di(51, 49),
+            6 to Vector2di(77, 49),
+            7 to Vector2di(103, 49)
+        )
+    }
+
     @ServerOnly
     constructor(entity: CokeOvenMainBlockEntity, id: Int, inventory: Inventory): this(
         id,

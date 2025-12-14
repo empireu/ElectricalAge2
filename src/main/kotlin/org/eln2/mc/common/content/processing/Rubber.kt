@@ -34,6 +34,7 @@ import net.minecraft.world.item.context.UseOnContext
 import net.minecraft.world.item.crafting.*
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.entity.BlockEntityType
@@ -627,7 +628,7 @@ class VulcanizingAutoclaveMainBlock : UprightHorizontalDirectionCellBlock<Vulcan
         /**
          * Only links up the delegate:
          * */
-        blockEntity.delegateMap.forEachDelegateInWorld(level, facing.direction, pos) {
+        blockEntity.delegateMap.forEachDelegateInWorld(facing.direction, pos) {
             val delegate = level.getBlockEntity(it) as? VulcanizingAutoclaveThermalPortBlockEntity
                 ?: return@forEachDelegateInWorld
 
@@ -1407,7 +1408,7 @@ class VulcanizingAutoclaveMainBlockEntityVisual(
         .also {
             it.translate(visualPosition)
             it.center()
-            it.rotateToFace(blockEntity.representativeFacing.clockWise)
+            it.rotateToFace(blockEntity.representativeFacing.opposite)
             it.uncenter()
         }
 
@@ -1424,7 +1425,7 @@ class VulcanizingAutoclaveMainBlockEntityVisual(
         .also {
             it.translate(visualPosition)
             it.center()
-            it.rotateToFace(blockEntity.representativeFacing.clockWise)
+            it.rotateToFace(blockEntity.representativeFacing.opposite)
             it.uncenter()
         }
 
@@ -1440,7 +1441,7 @@ class VulcanizingAutoclaveMainBlockEntityVisual(
         door.setIdentityTransform()
         door.translate(visualPosition)
         door.center()
-        door.rotateToFace(blockEntity.representativeFacing.clockWise)
+        door.rotateToFace(blockEntity.representativeFacing.opposite)
         door.uncenter()
 
         door.translate(pivotX, 0.0, pivotZ)
@@ -1453,18 +1454,15 @@ class VulcanizingAutoclaveMainBlockEntityVisual(
         rotateDoorEaseInOut()
     }
 
-    override fun setSectionCollector(sectionCollector: SectionTrackedVisual.SectionCollector?) {
+    override fun setSectionCollector(sectionCollector: SectionTrackedVisual.SectionCollector) {
         this.lightSections = sectionCollector
 
-        val set = LongArraySet()
-        set.add(SectionPos.asLong(pos))
-
-        // The model intersects all of these:
-        (Base6Direction3dMask.HORIZONTALS + Base6Direction3d.Up).forEach {
-            set.add(SectionPos.asLong(pos + it))
-        }
-
-        lightSections.sections(set)
+        sectionCollector.sections(
+            blockEntity.delegateMap.getTotalSpannedSectionsFat(
+                blockState.getValue(HorizontalDirectionalBlock.FACING),
+                pos
+            )
+        )
     }
 
     private fun updateDoor() {
@@ -1527,7 +1525,7 @@ class VulcanizingAutoclaveMainBlockEntityVisual(
             .also {
                 it.translate(visualPosition)
                 it.center()
-                it.rotateToFace(blockEntity.representativeFacing.clockWise)
+                it.rotateToFace(blockEntity.representativeFacing.opposite)
                 it.uncenter()
             }
     }
