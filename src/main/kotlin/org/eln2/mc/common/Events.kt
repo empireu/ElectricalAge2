@@ -4,6 +4,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraftforge.client.event.EntityRenderersEvent
+import net.minecraftforge.event.AddReloadListenerEvent
 import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.level.BlockEvent
 import net.minecraftforge.event.level.ChunkWatchEvent
@@ -26,6 +27,8 @@ import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityLevelRendererPro
 import org.eln2.mc.common.cells.foundation.CellGraphManager
 import org.eln2.mc.common.cells.foundation.SimulationExecutionSubgraph
 import org.eln2.mc.common.cells.foundation.SubscriberPhase
+import org.eln2.mc.common.chemistry.FluidTransformationManager
+import org.eln2.mc.common.chemistry.ThermalFluidManager
 import org.eln2.mc.common.content.modules.ContentModuleManager
 import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.content.WindSystem
@@ -82,6 +85,12 @@ object ForgeEvents {
             val graphManager = CellGraphManager.getFor(it)
             user(graphManager)
         }
+    }
+
+    @SubscribeEvent @JvmStatic
+    fun onAddReloadListeners(event: AddReloadListenerEvent) {
+        event.addListener(ThermalFluidManager)
+        event.addListener(FluidTransformationManager)
     }
 
     @SubscribeEvent @JvmStatic

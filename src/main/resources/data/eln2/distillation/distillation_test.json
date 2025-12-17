@@ -1,0 +1,14 @@
+{
+    "fluid": "minecraft:water",
+    "boiling": {
+        "temperature": 100.0,
+        "enthalpy": 1.0,
+        "resultGas": "minecraft:lava",
+        "resultLiquidResidue": "eln2:coal_gas"
+    },
+    "condensation": {
+        "temperature": 101.0,
+        "enthalpy": 2.0,
+        "resultLiquid": "eln2:coal_tar"
+    }
+}

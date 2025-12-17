@@ -1,8 +1,12 @@
 package org.eln2.mc.extensions
 
+import com.google.gson.JsonObject
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
+import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.util.GsonHelper
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.MutableSetMapMultiMap
@@ -30,6 +34,27 @@ inline fun <reified T : Cell> Level.getCell(mb: MultiblockManager, cellPosId: Bl
     getCellOrNull(mb, cellPosId) ?: error("Cell was not present")
 */
 
+fun JsonObject.getString(memberName: String): String = GsonHelper.getAsString(this, memberName)
+fun JsonObject.getDouble(memberName: String): Double = GsonHelper.getAsDouble(this, memberName)
+fun JsonObject.getResourceLocation(memberName: String): ResourceLocation = ResourceLocation.parse(GsonHelper.getAsString(this, memberName))
+
+inline fun<T> JsonObject.getNullable(memberName: String, function: (memberName: String) -> T) : T? {
+    if(this.has(memberName)) {
+        return function(memberName)
+    }
+
+    return null
+}
+
+inline fun<T> JsonObject.mapNullable(memberName: String, function: (obj: JsonObject) -> T) : T? {
+    if(this.has(memberName)) {
+        val obj = this.getAsJsonObject(memberName)
+        return function(obj)
+    }
+
+    return null
+}
+
 fun SubSolverSet<KineticSimulation>.debugInIDE(builder: ComponentDisplayList) {
     this.solvers.forEachIndexed { index, solver ->
         builder.debugInIDE {
@@ -43,7 +68,7 @@ fun SubSolverSet<KineticSimulation>.debugInIDE(builder: ComponentDisplayList) {
     }
 }
 
-inline fun<reified I> I.transformFacingBlock(visualPos: net.minecraft.core.BlockPos, blockEntity: BlockEntity) : I where I : TransformedInstance {
+inline fun<reified I> I.transformFacingBlock(visualPos: BlockPos, blockEntity: BlockEntity) : I where I : TransformedInstance {
     this.translate(visualPos)
     this.center()
     this.rotateToFace(blockEntity.blockState.getValue(HorizontalDirectionalBlock.FACING))
