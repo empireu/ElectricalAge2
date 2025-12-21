@@ -3,6 +3,7 @@ package org.eln2.mc.common.chemistry
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
+import it.unimi.dsi.fastutil.longs.Long2BooleanOpenHashMap
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.packs.resources.ResourceManager
 import net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener
@@ -14,25 +15,23 @@ import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.utils.putUnique
-import org.eln2.mc.DEBUGGER_BREAK
-import org.eln2.mc.ForgeFluidEnergyDensity
-import org.eln2.mc.ForgeFluidSpecificHeatCapacity
-import org.eln2.mc.JOULE_PER_MILLIBUCKET
-import org.eln2.mc.JOULE_PER_MILLIBUCKET_KELVIN
-import org.eln2.mc.extensions.getDouble
-import org.eln2.mc.extensions.getNullable
-import org.eln2.mc.extensions.getResourceLocation
-import org.eln2.mc.extensions.getString
-import org.eln2.mc.extensions.mapNullable
+import org.eln2.mc.*
+import org.eln2.mc.extensions.*
 
 /**
  * Attaches properties to a Forge Fluid.
- * @param specificHeatCapacity The specific heat capacity, but relating mB instead of normal physical quantities. P.S. By convention, 1mB = 1L.
- * */
+ * @param cacheId Unique ID chosen by the [ThermalFluidManager].
+ * @param specificHeatCapacity The specific heat capacity.
+ * @param density The density of the fluid. Used for gravity separation.
+ * @param mixabilityTags If this fluid shares any of the [mixabilityTags] with another fluid, these two fluids mix and cannot be separated by gravity.
+ *  */
 class ThermalFluid(
     val forgeFluidId: ResourceLocation,
     val forgeFluid: Fluid,
-    val specificHeatCapacity: Quantity<ForgeFluidSpecificHeatCapacity>
+    val cacheId: Int,
+    val specificHeatCapacity: Quantity<ForgeFluidSpecificHeatCapacity>,
+    val density: Quantity<ForgeFluidDensity>,
+    val mixabilityTags: List<String>
 )
 
 private fun resolveForgeFluid(id: ResourceLocation): Fluid {
@@ -46,30 +45,78 @@ private fun resolveForgeFluid(id: ResourceLocation): Fluid {
 }
 
 /**
- * Loader for all defined [ThermalFluid]s.
+ * Loader for all defined [ThermalFluid]s. Also has utility methods that cache results (to make use of the reload event).
  * */
 object ThermalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().create(), "thermal_fluid") {
     private val thermalFluids = HashMap<Fluid, ThermalFluid>()
 
     override fun apply(pObject: Map<ResourceLocation, JsonElement>, pResourceManager: ResourceManager, pProfiler: ProfilerFiller) {
         thermalFluids.clear()
+        mixablePairs.clear()
 
+        var cacheId = 0
+        val fluids = ArrayList<ThermalFluid>()
         pObject.forEach { (id, json) ->
             json as JsonObject
 
             val forgeFluidId = json.getResourceLocation("forgeFluid")
             val forgeFluid = resolveForgeFluid(forgeFluidId)
             val specificHeatCapacity = Quantity(json.getDouble("specificHeatCapacity"), JOULE_PER_MILLIBUCKET_KELVIN)
+            val density = Quantity(json.getDouble("density"), KILOGRAM_PER_MILLIBUCKET)
+            val mixabilityTags = if(json.has("mixabilityTags")) json.getAsJsonArray("mixabilityTags").map { it.asString } else emptyList<String>()
 
-            val result = ThermalFluid(forgeFluidId, forgeFluid, specificHeatCapacity)
+            val result = ThermalFluid(
+                forgeFluidId,
+                forgeFluid,
+                cacheId++,
+                specificHeatCapacity,
+                density,
+                mixabilityTags
+            )
+
+            fluids.add(result)
 
             thermalFluids.putUnique(result.forgeFluid, result) {
                 DEBUGGER_BREAK("Duplicate thermal fluid entry $id, ${result.forgeFluidId}")
             }
         }
+
+        fluids.forEach { a ->
+            fluids.forEach { b ->
+                if(a.cacheId < b.cacheId) {
+                    mixablePairs.putUnique(getPairKey(a, b), a.mixabilityTags.any { b.mixabilityTags.contains(it) })
+                }
+            }
+        }
     }
 
     fun getThermalFluid(fluid: Fluid) = thermalFluids[fluid]
+
+    fun requireThermalFluid(fluid: Fluid) = getThermalFluid(fluid) ?: error("$fluid was not a thermal fluid!")
+
+    private val mixablePairs = Long2BooleanOpenHashMap()
+
+    @Suppress("NOTHING_TO_INLINE")
+    private inline fun getPairKey(a: ThermalFluid, b: ThermalFluid) : Long {
+        val fluid1: ThermalFluid
+        val fluid2: ThermalFluid
+
+        if(a.cacheId < b.cacheId) {
+            fluid1 = a
+            fluid2 = b
+        }
+        else {
+            fluid1 = b
+            fluid2 = a
+        }
+
+        return (fluid1.cacheId.toLong() shl 32) or (fluid2.cacheId.toLong() and 0xFFFFFFFFL)
+    }
+
+    /**
+     * Checks if [a] and [b] are mixable, based on their tags.
+     * */
+    fun areMixable(a: ThermalFluid, b: ThermalFluid) = mixablePairs.get(getPairKey(a, b))
 }
 
 /**

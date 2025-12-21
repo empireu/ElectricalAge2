@@ -45,11 +45,14 @@ class FramerateIndependentSmoother1dA(val tau: Double) {
     }
 }
 
-@DimensionClassifier("J/mbK") interface ForgeFluidSpecificHeatCapacity
+@DimensionClassifier("J/mBK") interface ForgeFluidSpecificHeatCapacity
 val JOULE_PER_MILLIBUCKET_KELVIN = standardScale<ForgeFluidSpecificHeatCapacity>()
 
-@DimensionClassifier("J/mb") interface ForgeFluidEnergyDensity
+@DimensionClassifier("J/mB") interface ForgeFluidEnergyDensity
 val JOULE_PER_MILLIBUCKET = standardScale<ForgeFluidEnergyDensity>()
+
+@DimensionClassifier("kg/mB") interface ForgeFluidDensity
+val KILOGRAM_PER_MILLIBUCKET = standardScale<ForgeFluidDensity>()
 
 fun easeInOutCubic(t: Double) =  if (t < 0.5) {
     4.0 * t * t * t

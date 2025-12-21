@@ -1,4 +1,8 @@
 {
     "forgeFluid": "minecraft:water",
-    "specificHeatCapacity": 4184.0
+    "specificHeatCapacity": 4184.0,
+    "density": 1.0,
+    "mixabilityTags": [
+        "water"
+    ]
 }
