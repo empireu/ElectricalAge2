@@ -42,6 +42,11 @@ fun JsonObject.getInt(memberName: String): Int = GsonHelper.getAsInt(this, membe
 fun JsonObject.getDouble(memberName: String): Double = GsonHelper.getAsDouble(this, memberName)
 fun JsonObject.getResourceLocation(memberName: String): ResourceLocation = ResourceLocation.parse(GsonHelper.getAsString(this, memberName))
 
+fun JsonObject.getBool(memberName: String, fallback: Boolean): Boolean = GsonHelper.getAsBoolean(this, memberName, fallback)
+fun JsonObject.getString(memberName: String, fallback: String): String = GsonHelper.getAsString(this, memberName, fallback)!!
+fun JsonObject.getInt(memberName: String, fallback: Int): Int = GsonHelper.getAsInt(this, memberName, fallback)
+fun JsonObject.getDouble(memberName: String, fallback: Double): Double = GsonHelper.getAsDouble(this, memberName, fallback)
+
 fun Vector3f.toVector3d() = Vector3d(this.x.toDouble(), this.y.toDouble(), this.z.toDouble())
 fun Vector3d.toVector3f() = Vector3f(this.x.toFloat(), this.y.toFloat(), this.z.toFloat())
 

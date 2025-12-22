@@ -404,19 +404,27 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
                 continue
             }
 
+            var residueStack: FractionalFluidStack? = null
+
             if(boiling.resultLiquidResidue != null) {
                 val residue = amountToBoil - gasGenerated
 
-                if(residue < FractionalFluidStack.EPSILON) {
-                    continue
+                if(residue >= FractionalFluidStack.EPSILON) {
+                    /**
+                     * Assume quantity lost. It is better not to stall the main transformation for this crap.
+                     * */
+                    @Suppress("UNNECESSARY_NOT_NULL_ASSERTION")
+                    residueStack = FractionalFluidStack(boiling.resultLiquidResidue!!, residue)
                 }
-
-                @Suppress("UNNECESSARY_NOT_NULL_ASSERTION")
-                liquidTank.fillFractional(FractionalFluidStack(boiling.resultLiquidResidue!!, residue), IFluidHandler.FluidAction.EXECUTE)
             }
 
             liquidTank.drainFractional(FractionalFluidStack(target.fluid, amountToBoil), IFluidHandler.FluidAction.EXECUTE)
             gasTank.fillFractional(FractionalFluidStack(boiling.resultGas, gasGenerated), IFluidHandler.FluidAction.EXECUTE)
+
+            if(residueStack != null) {
+                liquidTank.fillFractional(residueStack, IFluidHandler.FluidAction.EXECUTE)
+            }
+
             val enthalpy = Quantity(!boiling.enthalpy * amountToBoil, JOULE)
 
             thermalPower += !enthalpy
@@ -487,18 +495,45 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
             amountToCondense = min(amountToCondense, dT * !body.mass * !body.material.specificHeat / !condensation.enthalpy)
 
             /**
-             * Constrain by remaining liquid capacity:
+             * Constrain by remaining capacity in the liquid tank:
              * */
-            amountToCondense = min(amountToCondense, liquidTank.remainingCapacity)
+            amountToCondense = min(amountToCondense, liquidTank.remainingCapacity * 1000.0 / condensation.resultLiquidProportion)
 
             if(amountToCondense < FractionalFluidStack.EPSILON) {
                 continue
             }
 
-            gasTank.drainFractional(FractionalFluidStack(target.fluid, amountToCondense), IFluidHandler.FluidAction.EXECUTE)
-            liquidTank.fillFractional(FractionalFluidStack(condensation.resultLiquid, amountToCondense), IFluidHandler.FluidAction.EXECUTE)
+            val liquidGenerated = amountToCondense * condensation.resultLiquidProportion / 1000.0
 
-            val enthalpy =  Quantity(!condensation.enthalpy * amountToCondense, JOULE)
+            if(liquidGenerated < FractionalFluidStack.EPSILON) {
+                /**
+                 * If the amount is too low, then it will round down to 0, so we can't do anything.
+                 * */
+                continue
+            }
+
+            var residueStack: FractionalFluidStack? = null
+
+            if(condensation.resultGasResidue != null) {
+                val residue = amountToCondense - liquidGenerated
+
+                if(residue >= FractionalFluidStack.EPSILON) {
+                    /**
+                     * Assume quantity lost. It is better not to stall the main transformation for this crap.
+                     * */
+                    @Suppress("UNNECESSARY_NOT_NULL_ASSERTION")
+                    residueStack = FractionalFluidStack(condensation.resultGasResidue!!, residue)
+                }
+            }
+
+            gasTank.drainFractional(FractionalFluidStack(target.fluid, amountToCondense), IFluidHandler.FluidAction.EXECUTE)
+            liquidTank.fillFractional(FractionalFluidStack(condensation.resultLiquid, liquidGenerated), IFluidHandler.FluidAction.EXECUTE)
+
+            if(residueStack != null) {
+                gasTank.fillFractional(residueStack, IFluidHandler.FluidAction.EXECUTE)
+            }
+
+            val enthalpy = Quantity(!condensation.enthalpy * amountToCondense, JOULE)
 
             thermalPower -= !enthalpy
             body.energy += enthalpy

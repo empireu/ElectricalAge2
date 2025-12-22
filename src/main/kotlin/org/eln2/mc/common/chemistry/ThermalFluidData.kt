@@ -128,7 +128,7 @@ object ThermalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().crea
  * @param enthalpy The heat of vaporization.
  * @param resultGas The resulting gas.
  * @param resultGasProportion How many `mB` of [resultGas] are created from `1000 mB` of liquid.
- * @param resultLiquidResidue The liquid remaining in the container. The amount will be `1000 - `[resultGasProportion]`.
+ * @param resultLiquidResidue The liquid remaining in the container. The amount will be proportional to `1000 - `[resultGasProportion]`.
  * */
 class BoilingTransformation(
     val temperature: Quantity<Temperature>,
@@ -142,11 +142,14 @@ class BoilingTransformation(
  * @param temperature The boiling point of the liquid.
  * @param enthalpy The heat of vaporization.
  * @param resultLiquid The resulting liquid ("quantity" mapped 1mB to 1mB).
+ * @param resultLiquidProportion How many `mB` of [resultLiquid] are created from `1000 mB` of gas.
+ * @param resultGasResidue The gas that remains in gas phase. The amount will be proportional to `100 - `[resultLiquidProportion]`.
  * */
 class CondensationTransformation(
     val temperature: Quantity<Temperature>,
     val enthalpy: Quantity<ForgeFluidEnergyDensity>,
-    val resultLiquid: Fluid
+    val resultLiquid: Fluid, val resultLiquidProportion: Int,
+    val resultGasResidue: Fluid?
 )
 
 /**
@@ -182,7 +185,7 @@ object FluidTransformationManager : SimpleJsonResourceReloadListener(GsonBuilder
                 val temperature = Quantity(it.getDouble("temperature"), CELSIUS)
                 val enthalpy = Quantity(it.getDouble("enthalpy"), JOULE_PER_MILLIBUCKET)
                 val resultGas = resolveForgeFluid(it.getResourceLocation("resultGas"))
-                val resultGasProportion = it.getInt("resultGasProportion")
+                val resultGasProportion = it.getInt("resultGasProportion", 1000)
                 val resultLiquidResidue = it.getNullable("resultLiquidResidue") { _ ->
                     resolveForgeFluid(ResourceLocation.parse(it.getString("resultLiquidResidue")))
                 }
@@ -194,8 +197,12 @@ object FluidTransformationManager : SimpleJsonResourceReloadListener(GsonBuilder
                 val temperature = Quantity(it.getDouble("temperature"), CELSIUS)
                 val enthalpy = Quantity(it.getDouble("enthalpy"), JOULE_PER_MILLIBUCKET)
                 val resultLiquid = resolveForgeFluid(it.getResourceLocation("resultLiquid"))
+                val resultLiquidProportion = it.getInt("resultLiquidProportion", 1000)
+                val resultGasResidue = it.getNullable("resultGasResidue") { _ ->
+                    resolveForgeFluid(ResourceLocation.parse(it.getString("resultGasResidue")))
+                }
 
-                CondensationTransformation(temperature, enthalpy, resultLiquid)
+                CondensationTransformation(temperature, enthalpy, resultLiquid, resultLiquidProportion, resultGasResidue)
             }
 
             val transformations = ThermalFluidTransformation(
