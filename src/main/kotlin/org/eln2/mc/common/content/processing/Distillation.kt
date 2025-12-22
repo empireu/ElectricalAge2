@@ -3,11 +3,17 @@ package org.eln2.mc.common.content.processing
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.world.InteractionResult
+import net.minecraft.world.item.context.BlockPlaceContext
+import net.minecraft.world.item.context.UseOnContext
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.Block
+import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.level.material.Fluid
 import net.minecraftforge.client.extensions.common.IClientBlockExtensions
 import net.minecraftforge.common.capabilities.Capability
@@ -15,10 +21,13 @@ import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.fluids.capability.IFluidHandler
+import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.JOULE
 import org.ageseries.libage.data.KILOGRAM
 import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.WATT
 import org.ageseries.libage.sim.ChemicalElement
+import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMass
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
@@ -32,30 +41,25 @@ import org.eln2.mc.common.chemistry.CondensationTransformation
 import org.eln2.mc.common.chemistry.FluidTransformationManager
 import org.eln2.mc.common.chemistry.ThermalFluidManager
 import org.eln2.mc.common.content.ThermalWireObject
+import org.eln2.mc.common.content.WrenchInteractable
+import org.eln2.mc.common.content.WrenchItem
 import org.eln2.mc.common.content.modules.Eln2Processing
-import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
-import org.eln2.mc.common.fluids.foundation.GravityBasedMultipleFluidTank
-import org.eln2.mc.common.fluids.foundation.GravityBasedMultipleFractionalFluidTank
-import org.eln2.mc.common.fluids.foundation.MultipleFluidTank
-import org.eln2.mc.common.fluids.foundation.MultipleFractionalFluidTank
-import org.eln2.mc.common.fluids.foundation.PurityBasedMultipleFluidTank
-import org.eln2.mc.common.fluids.foundation.PurityBasedMultipleFractionalFluidTank
+import org.eln2.mc.common.content.processing.DistillationModuleBlockEntity.Companion.PHASE_CHANGE_RATE
+import org.eln2.mc.common.fluids.foundation.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import java.util.concurrent.locks.ReentrantLock
 import java.util.function.Consumer
-import kotlin.math.floor
 import kotlin.math.min
 
 /**
  * Thermal body. Has a synchronization point around the execution of the subsolver. It is used to execute the distillation logic on the server thread.
  * */
-class DistillationModuleCell(ci: CellCreateInfo) :
+class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters) :
     Cell(ci),
     SidedThermalFLBR<DistillationModuleCell>,
     SimulationExecutionSubgraph.SynchronizationPointCell<DistillationModuleCell>
 {
-
     override val thermalSize: ThermalSize
         get() = ThermalSize.Any
 
@@ -64,8 +68,9 @@ class DistillationModuleCell(ci: CellCreateInfo) :
         this,
         ThermalMass(
             ChemicalElement.Copper.asMaterial,
-            mass = Quantity(30.0, KILOGRAM)
-        )
+            mass = Quantity(50.0, KILOGRAM)
+        ),
+        leakage
     )
 
     val sync = ReentrantLock()
@@ -83,15 +88,37 @@ class DistillationModuleCell(ci: CellCreateInfo) :
     }
 }
 
-class DistillationModuleBlock : UprightHorizontalDirectionCellBlock<DistillationModuleCell>() {
+/**
+ * Acts as a pipe for gas to move up from modules. Doesn't have a block entity or tanks.
+ * */
+class DistillationColumnBlock : HorizontalDirectionalBlock(Properties.of()) {
+    init {
+        @Suppress("LeakingThis")
+        registerDefaultState(getStateDefinition().any().setValue(
+            FACING,
+            Direction.NORTH
+        ))
+    }
+
+    override fun getStateForPlacement(pContext: BlockPlaceContext): BlockState? {
+        return super.defaultBlockState().setValue(
+            FACING,
+            pContext.horizontalDirection
+        )
+    }
+
+    override fun createBlockStateDefinition(pBuilder: StateDefinition.Builder<Block, BlockState>) {
+        super.createBlockStateDefinition(pBuilder)
+        pBuilder.add(FACING)
+    }
+}
+
+class DistillationModuleBlock(val cell: RegistryObject<CellProvider<DistillationModuleCell>>) : UprightHorizontalDirectionCellBlock<DistillationModuleCell>() {
     override fun initializeClient(consumer: Consumer<IClientBlockExtensions?>) {
         consumer.accept(ReplaceVanillaParticlesBlockExtension)
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction): Boolean = true
-
-    override fun getCellProvider() = Eln2Processing.DISTILLATION_MODULE_CELL.get()
+    override fun getCellProvider() = cell.get()
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = DistillationModuleBlockEntity(pPos, pState)
 
@@ -104,7 +131,11 @@ class DistillationModuleBlock : UprightHorizontalDirectionCellBlock<Distillation
     }
 }
 
-class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<DistillationModuleCell>(pos, state, Eln2Processing.DISTILLATION_MODULE_MAIN_BLOCK_ENTITY.get()), ComponentDisplay {
+class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
+    CellBlockEntity<DistillationModuleCell>(pos, state, Eln2Processing.INSULATED_DISTILLATION_MODULE_BLOCK_ENTITY.get()),
+    ComponentDisplay,
+    WrenchInteractable
+{
     companion object {
         fun tick(pLevel: Level?, pPos: BlockPos?, pState: BlockState?, pBlockEntity: BlockEntity?) {
             if (pLevel == null || pBlockEntity == null) {
@@ -125,8 +156,8 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
 
     //#region Fluid Handling
 
-    val liquidTank = MultipleFractionalFluidTank(32000.0, true)
-    val gasTank = MultipleFractionalFluidTank(1024.0, true)
+    val liquidTank = MultipleFractionalFluidTank(1000.0, true)
+    val gasTank = MultipleFractionalFluidTank(1000.0, true)
 
     /**
      * Fluid handler for the bottom face:
@@ -213,7 +244,25 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
         sideHandlerLazy.invalidate()
     }
 
+    /**
+     * Voids the tanks.
+     * */
+    override fun applyWrench(wrench: WrenchItem, context: UseOnContext): InteractionResult {
+        liquidTank.fluids.clear()
+        gasTank.fluids.clear()
+        setChanged()
+
+        return InteractionResult.SUCCESS
+    }
+
     //#endregion
+
+    /**
+     * Thermal power calculated from enthalpy.
+     * For boiling modules, it describes the power input that goes into driving evaporation.
+     * */
+    @ServerOnly
+    private var thermalPower = 0.0
 
     //#region Distillation Loop
 
@@ -221,31 +270,57 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
 
     /**
      * Pushes [gasTank] into the module above (gas rises). Pushes the lighter gases first.
+     * Also follows [DistillationColumnBlock]s to find the module above them.
      * */
     private fun gasTransport() {
         if (gasTank.fluids.isEmpty()) {
             return
         }
 
-        val targetModule = level?.getBlockEntity(blockPos.above()) as? DistillationModuleBlockEntity
-            ?: return
+        val currentPos = blockPos.mutable()
 
-        /**
-         * Order by lowest density first:
-         * */
-        val gases = gasTank.fluids.sortedBy {
-            ThermalFluidManager.requireThermalFluid(it.fluid).density
-        }
+        while (true) {
+            currentPos.y++
 
-        for (stack in gases) {
-            val transfer = targetModule.gasTank.fillFractional(stack, IFluidHandler.FluidAction.EXECUTE)
+            val block = level!!.getBlockState(currentPos).block
 
-            if (transfer > 0) {
-                gasTank.drainFractional(FractionalFluidStack(stack.fluid, transfer), IFluidHandler.FluidAction.EXECUTE)
+            if(block is DistillationColumnBlock) {
+                /**
+                 * Move upward:
+                 * */
+                continue
             }
-            else {
+
+            if(block !is DistillationModuleBlock) {
+                /**
+                 * No module to transfer to:
+                 * */
                 break
             }
+
+            val targetModule = level?.getBlockEntity(currentPos) as? DistillationModuleBlockEntity
+                ?: return
+
+            /**
+             * Order by lowest density first:
+             * */
+            val gases = gasTank.fluids.sortedBy {
+                ThermalFluidManager.requireThermalFluid(it.fluid).density
+            }
+
+            for (stack in gases) {
+                val transfer = targetModule.gasTank.fillFractional(stack, IFluidHandler.FluidAction.EXECUTE)
+
+                if (transfer > 0) {
+                    gasTank.drainFractional(FractionalFluidStack(stack.fluid, transfer), IFluidHandler.FluidAction.EXECUTE)
+                    setChanged()
+                }
+                else {
+                    break
+                }
+            }
+
+            break
         }
     }
 
@@ -329,7 +404,6 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
                 continue
             }
 
-
             if(boiling.resultLiquidResidue != null) {
                 val residue = amountToBoil - gasGenerated
 
@@ -343,9 +417,13 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
 
             liquidTank.drainFractional(FractionalFluidStack(target.fluid, amountToBoil), IFluidHandler.FluidAction.EXECUTE)
             gasTank.fillFractional(FractionalFluidStack(boiling.resultGas, gasGenerated), IFluidHandler.FluidAction.EXECUTE)
+            val enthalpy = Quantity(!boiling.enthalpy * amountToBoil, JOULE)
 
-            body.energy -= Quantity(!boiling.enthalpy * amountToBoil, JOULE)
+            thermalPower += !enthalpy
+            body.energy -= enthalpy
             remainingEvaporation -= amountToBoil
+
+            setChanged()
         }
 
         phaseChangeVisited.clear()
@@ -420,8 +498,13 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
             gasTank.drainFractional(FractionalFluidStack(target.fluid, amountToCondense), IFluidHandler.FluidAction.EXECUTE)
             liquidTank.fillFractional(FractionalFluidStack(condensation.resultLiquid, amountToCondense), IFluidHandler.FluidAction.EXECUTE)
 
-            body.energy += Quantity(!condensation.enthalpy * amountToCondense, JOULE)
+            val enthalpy =  Quantity(!condensation.enthalpy * amountToCondense, JOULE)
+
+            thermalPower -= !enthalpy
+            body.energy += enthalpy
             remainingCondensation -= amountToCondense
+
+            setChanged()
         }
 
         phaseChangeVisited.clear()
@@ -431,6 +514,8 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
      * Executes evaporation and condensation.
      * */
     private fun phaseChange() {
+        thermalPower = 0.0
+
         cell.sync.lock()
 
         try {
@@ -440,8 +525,14 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
         finally {
             cell.sync.unlock()
         }
+
+        thermalPower /= 1.0 / 20.0
     }
 
+    /**
+     * Performs phase changes *first*, and then transports gas.
+     * This order is important.
+     * */
     fun serverTick() {
         phaseChange()
         gasTransport()
@@ -465,5 +556,6 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
     override fun submitDisplay(builder: ComponentDisplayList) {
         bottomFaceHandler.debugView(builder)
         builder.quantity(cell.wire.thermalBody.temperature)
+        builder.quantity(Quantity(thermalPower, WATT))
     }
 }

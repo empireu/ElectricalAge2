@@ -276,13 +276,41 @@ object Eln2Processing : ContentModule() {
 
     //#region Distillation
 
-    val DISTILLATION_MODULE_CELL = cellImmediate("distillation_module", ::DistillationModuleCell)
+    val DISTILLATION_COLUMN_BLOCK = blockAndItem("distillation_column", ::DistillationColumnBlock)
 
-    val DISTILLATION_MODULE_MAIN_BLOCK = blockAndItem("distillation_module", ::DistillationModuleBlock)
+    val INSULATED_DISTILLATION_MODULE_CELL = cellMemoize("insulated_distillation_module") {
+        val leakage = ConnectionParameters(conductance = Quantity(0.1, WATT_PER_KELVIN))
 
-    val DISTILLATION_MODULE_MAIN_BLOCK_ENTITY = blockEntityOnly(
-        "distillation_module",
-        DISTILLATION_MODULE_MAIN_BLOCK,
+        CellFactory {
+            DistillationModuleCell(it, leakage)
+        }
+    }
+
+    val INSULATED_DISTILLATION_MODULE_BLOCK = blockAndItem("insulated_distillation_module") {
+        DistillationModuleBlock(INSULATED_DISTILLATION_MODULE_CELL)
+    }
+
+    val INSULATED_DISTILLATION_MODULE_BLOCK_ENTITY = blockEntityOnly(
+        "insulated_distillation_module",
+        INSULATED_DISTILLATION_MODULE_BLOCK,
+        ::DistillationModuleBlockEntity
+    )
+
+    val CONDENSER_DISTILLATION_MODULE_CELL = cellMemoize("condenser_distillation_module") {
+        val leakage = ConnectionParameters(conductance = Quantity(5.0, WATT_PER_KELVIN))
+
+        CellFactory {
+            DistillationModuleCell(it, leakage)
+        }
+    }
+
+    val CONDENSER_DISTILLATION_MODULE_BLOCK = blockAndItem("condenser_distillation_module") {
+        DistillationModuleBlock(CONDENSER_DISTILLATION_MODULE_CELL)
+    }
+
+    val CONDENSER_DISTILLATION_MODULE_BLOCK_ENTITY = blockEntityOnly(
+        "condenser_distillation_module",
+        CONDENSER_DISTILLATION_MODULE_BLOCK,
         ::DistillationModuleBlockEntity
     )
 
