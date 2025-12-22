@@ -12,7 +12,6 @@ import net.minecraft.world.level.material.Fluid
 import net.minecraft.world.level.material.Fluids
 import net.minecraftforge.registries.ForgeRegistries
 import org.ageseries.libage.data.CELSIUS
-import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.utils.putUnique
