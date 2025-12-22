@@ -11,6 +11,7 @@ import net.minecraft.util.profiling.ProfilerFiller
 import net.minecraft.world.level.material.Fluid
 import net.minecraft.world.level.material.Fluids
 import net.minecraftforge.registries.ForgeRegistries
+import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
@@ -23,6 +24,7 @@ import org.eln2.mc.extensions.*
  * @param cacheId Unique ID chosen by the [ThermalFluidManager].
  * @param specificHeatCapacity The specific heat capacity.
  * @param density The density of the fluid. Used for gravity separation.
+ * @param isGaseous Indicates if this fluid is treated as gaseous (usually for fluid handler routing).
  * @param mixabilityTags If this fluid shares any of the [mixabilityTags] with another fluid, these two fluids mix and cannot be separated by gravity.
  *  */
 class ThermalFluid(
@@ -31,6 +33,7 @@ class ThermalFluid(
     val cacheId: Int,
     val specificHeatCapacity: Quantity<ForgeFluidSpecificHeatCapacity>,
     val density: Quantity<ForgeFluidDensity>,
+    val isGaseous: Boolean,
     val mixabilityTags: List<String>
 )
 
@@ -63,6 +66,7 @@ object ThermalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().crea
             val forgeFluid = resolveForgeFluid(forgeFluidId)
             val specificHeatCapacity = Quantity(json.getDouble("specificHeatCapacity"), JOULE_PER_MILLIBUCKET_KELVIN)
             val density = Quantity(json.getDouble("density"), KILOGRAM_PER_MILLIBUCKET)
+            val isGaseous = json.getBool("isGaseous")
             val mixabilityTags = if(json.has("mixabilityTags")) json.getAsJsonArray("mixabilityTags").map { it.asString } else emptyList<String>()
 
             val result = ThermalFluid(
@@ -71,6 +75,7 @@ object ThermalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().crea
                 cacheId++,
                 specificHeatCapacity,
                 density,
+                isGaseous,
                 mixabilityTags
             )
 
@@ -122,13 +127,14 @@ object ThermalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().crea
 /**
  * @param temperature The boiling point of the liquid.
  * @param enthalpy The heat of vaporization.
- * @param resultGas The resulting gas ("quantity" mapped 1mB to 1mB).
- * @param resultLiquidResidue The liquid remaining in the container.
+ * @param resultGas The resulting gas.
+ * @param resultGasProportion How many `mB` of [resultGas] are created from `1000 mB` of liquid.
+ * @param resultLiquidResidue The liquid remaining in the container. The amount will be `1000 - `[resultGasProportion]`.
  * */
 class BoilingTransformation(
     val temperature: Quantity<Temperature>,
     val enthalpy: Quantity<ForgeFluidEnergyDensity>,
-    val resultGas: Fluid,
+    val resultGas: Fluid, val resultGasProportion: Int,
     val resultLiquidResidue: Fluid?
     // We can also add an item, we'll see
 )
@@ -174,18 +180,19 @@ object FluidTransformationManager : SimpleJsonResourceReloadListener(GsonBuilder
             val fluid = resolveForgeFluid(fluidId)
 
             val boilingTransformation = json.mapNullable("boiling") {
-                val temperature = Quantity(it.getDouble("temperature"), KELVIN)
+                val temperature = Quantity(it.getDouble("temperature"), CELSIUS)
                 val enthalpy = Quantity(it.getDouble("enthalpy"), JOULE_PER_MILLIBUCKET)
                 val resultGas = resolveForgeFluid(it.getResourceLocation("resultGas"))
+                val resultGasProportion = it.getInt("resultGasProportion")
                 val resultLiquidResidue = it.getNullable("resultLiquidResidue") { _ ->
                     resolveForgeFluid(ResourceLocation.parse(it.getString("resultLiquidResidue")))
                 }
 
-                BoilingTransformation(temperature, enthalpy, resultGas, resultLiquidResidue)
+                BoilingTransformation(temperature, enthalpy, resultGas, resultGasProportion, resultLiquidResidue)
             }
 
             val condensationTransformation = json.mapNullable("condensation") {
-                val temperature = Quantity(it.getDouble("temperature"), KELVIN)
+                val temperature = Quantity(it.getDouble("temperature"), CELSIUS)
                 val enthalpy = Quantity(it.getDouble("enthalpy"), JOULE_PER_MILLIBUCKET)
                 val resultLiquid = resolveForgeFluid(it.getResourceLocation("resultLiquid"))
 

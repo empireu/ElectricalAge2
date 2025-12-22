@@ -5,97 +5,31 @@ package org.eln2.mc.common.content.modules
 import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.minecraft.client.gui.screens.MenuScreens
-import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.phys.AABB
 import net.minecraftforge.client.event.EntityRenderersEvent
-import net.minecraftforge.registries.RegistryObject
-import org.ageseries.libage.data.CELSIUS
-import org.ageseries.libage.data.HENRY
-import org.ageseries.libage.data.KILO
-import org.ageseries.libage.data.KILOGRAM
-import org.ageseries.libage.data.KILOGRAM_METER2
-import org.ageseries.libage.data.MILLI
-import org.ageseries.libage.data.NEWTON_METER
-import org.ageseries.libage.data.NEWTON_METER_PER_AMPERE
-import org.ageseries.libage.data.OHM
-import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.REVOLUTION_PER_SECOND
-import org.ageseries.libage.data.VOLT
-import org.ageseries.libage.data.VOLT_PER_RADIAN_PER_SECOND
-import org.ageseries.libage.data.WATT
-import org.ageseries.libage.data.WATT_PER_KELVIN
+import org.ageseries.libage.data.*
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.FrictionNodeDescription
 import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
 import org.eln2.mc.client.screens.BasicProgressScreen
-import org.eln2.mc.common.blocks.BlockRegistry.BLOCK_ENTITIES
 import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
 import org.eln2.mc.common.blocks.BlockRegistry.defineDelegateMap
 import org.eln2.mc.common.blocks.foundation.BigBlockItem
-import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockEntity
 import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.cells.foundation.ThermalSize
 import org.eln2.mc.common.containers.ContainerRegistry.menu
-import org.eln2.mc.common.content.processing.CrusherBlock
-import org.eln2.mc.common.content.processing.CrusherBlockEntity
-import org.eln2.mc.common.content.processing.CrusherBlockEntityVisual
-import org.eln2.mc.common.content.processing.CrusherMenu
-import org.eln2.mc.common.content.processing.CrusherScreen
-import org.eln2.mc.common.content.processing.ElectricExtruderBlock
-import org.eln2.mc.common.content.processing.ElectricExtruderBlockEntity
-import org.eln2.mc.common.content.processing.ElectricExtruderBlockEntityVisual
-import org.eln2.mc.common.content.processing.ExtruderMenu
-import org.eln2.mc.common.content.processing.ExtruderScreen
-import org.eln2.mc.common.content.FurnaceBlock
-import org.eln2.mc.common.content.FurnaceBlockEntity
-import org.eln2.mc.common.content.FurnaceCell
-import org.eln2.mc.common.content.FurnaceMenu
-import org.eln2.mc.common.content.FurnaceScreen
-import org.eln2.mc.common.content.processing.BlacksmithingRecipe
-import org.eln2.mc.common.content.processing.BlacksmithingStationBlock
-import org.eln2.mc.common.content.processing.BlacksmithingStationBlockEntity
-import org.eln2.mc.common.content.processing.BlacksmithingStationBlockEntityRenderer
-import org.eln2.mc.common.content.processing.BlacksmithingToolItem
-import org.eln2.mc.common.content.processing.CokeOvenDelegateBlock
-import org.eln2.mc.common.content.processing.CokeOvenDelegateBlockEntity
-import org.eln2.mc.common.content.processing.CokeOvenMainBlock
-import org.eln2.mc.common.content.processing.CokeOvenMainBlockEntity
-import org.eln2.mc.common.content.processing.CokeOvenMainBlockEntityVisual
-import org.eln2.mc.common.content.processing.CokeOvenMenu
-import org.eln2.mc.common.content.processing.CokingRecipe
-import org.eln2.mc.common.content.processing.KineticExtruderBlock
-import org.eln2.mc.common.content.processing.KineticExtruderBlockEntity
-import org.eln2.mc.common.content.processing.KineticExtruderBlockEntityVisual
-import org.eln2.mc.common.content.processing.KineticRollingMachineBlock
-import org.eln2.mc.common.content.processing.KineticRollingMachineBlockEntity
-import org.eln2.mc.common.content.processing.KineticRollingMachineBlockEntityVisual
-import org.eln2.mc.common.content.processing.RollingMachineMenu
-import org.eln2.mc.common.content.processing.RubberTapPartProvider
-import org.eln2.mc.common.content.processing.VulcanizingAutoclaveMainBlock
-import org.eln2.mc.common.content.processing.VulcanizingAutoclaveMainBlockEntity
-import org.eln2.mc.common.content.processing.VulcanizingAutoclaveMainBlockEntityVisual
-import org.eln2.mc.common.content.processing.VulcanizingAutoclaveMainCell
-import org.eln2.mc.common.content.processing.VulcanizingAutoclaveThermalPortBlock
-import org.eln2.mc.common.content.processing.VulcanizingAutoclaveThermalPortBlockEntity
-import org.eln2.mc.common.content.processing.VulcanizingAutoclaveThermalPortCell
-import org.eln2.mc.common.content.processing.VulcanizingRecipe
+import org.eln2.mc.common.content.*
+import org.eln2.mc.common.content.processing.*
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
-import org.eln2.mc.common.recipes.KineticProcessingCell
-import org.eln2.mc.common.recipes.KineticProcessingCellKineticOptions
-import org.eln2.mc.common.recipes.KineticProcessingCellOptions
-import org.eln2.mc.common.recipes.MotorProcessingCell
-import org.eln2.mc.common.recipes.MotorProcessingCellElectricalOptions
-import org.eln2.mc.common.recipes.MotorProcessingCellOptions
-import org.eln2.mc.common.recipes.ProcessingCellThermalOptions
-import org.eln2.mc.common.recipes.RecipeRegistry
+import org.eln2.mc.common.recipes.*
 import org.eln2.mc.common.recipes.RecipeRegistry.registerCatalyzedRecipe
 import org.eln2.mc.common.recipes.RecipeRegistry.registerDirectRecipe
 import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
@@ -337,6 +271,20 @@ object Eln2Processing : ContentModule() {
     }
 
     val COKE_OVEN_MENU = menu("coke_oven", ::CokeOvenMenu)
+
+    //#endregion
+
+    //#region Distillation
+
+    val DISTILLATION_MODULE_CELL = cellImmediate("distillation_module", ::DistillationModuleCell)
+
+    val DISTILLATION_MODULE_MAIN_BLOCK = blockAndItem("distillation_module", ::DistillationModuleBlock)
+
+    val DISTILLATION_MODULE_MAIN_BLOCK_ENTITY = blockEntityOnly(
+        "distillation_module",
+        DISTILLATION_MODULE_MAIN_BLOCK,
+        ::DistillationModuleBlockEntity
+    )
 
     //#endregion
 

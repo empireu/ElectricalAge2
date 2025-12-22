@@ -31,6 +31,8 @@ import kotlin.contracts.contract
 abstract class SimulationObject<C : Cell>(val cell: C) {
     abstract val type: SimulationObjectType
 
+    abstract fun getSubSolvers() : Iterable<Any>
+
     /**
      * Called when the connections and/or graph changes.
      * */
@@ -76,6 +78,8 @@ interface ThermalContactInfo {
 abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
     var simulation: Simulator? = null
         private set
+
+    override fun getSubSolvers() = simulation?.let { listOf(it) } ?: emptyList()
 
     val connections = ArrayList<ThermalObject<*>>()
 
@@ -172,6 +176,8 @@ abstract class ElectricalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
      * */
     var subSolvers: SubSolverSet<ElectricalSimulation>? = null
         private set
+
+    override fun getSubSolvers() = subSolvers?.solvers ?: emptyList()
 
     val connections = ArrayList<ElectricalObject<*>>()
 
@@ -289,6 +295,8 @@ abstract class KineticObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
      * */
     var subSolvers: SubSolverSet<KineticSimulation>? = null
         private set
+
+    override fun getSubSolvers() = subSolvers?.solvers ?: emptyList()
 
     val connections = ArrayList<KineticObject<*>>()
 

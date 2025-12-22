@@ -10,6 +10,7 @@ import net.minecraft.util.GsonHelper
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.MutableSetMapMultiMap
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.SubSolverSet
 import org.ageseries.libage.sim.kinetic.KineticNode
@@ -20,6 +21,7 @@ import org.eln2.mc.common.network.serverToClient.BulkMessageHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.BulkMessages
 import org.eln2.mc.control.PIDController
 import org.eln2.mc.integration.ComponentDisplayList
+import org.joml.Vector3f
 
 /*
 //FIXME where is multiblock manager? what is it?
@@ -34,9 +36,14 @@ inline fun <reified T : Cell> Level.getCell(mb: MultiblockManager, cellPosId: Bl
     getCellOrNull(mb, cellPosId) ?: error("Cell was not present")
 */
 
+fun JsonObject.getBool(memberName: String): Boolean = GsonHelper.getAsBoolean(this, memberName)
 fun JsonObject.getString(memberName: String): String = GsonHelper.getAsString(this, memberName)
+fun JsonObject.getInt(memberName: String): Int = GsonHelper.getAsInt(this, memberName)
 fun JsonObject.getDouble(memberName: String): Double = GsonHelper.getAsDouble(this, memberName)
 fun JsonObject.getResourceLocation(memberName: String): ResourceLocation = ResourceLocation.parse(GsonHelper.getAsString(this, memberName))
+
+fun Vector3f.toVector3d() = Vector3d(this.x.toDouble(), this.y.toDouble(), this.z.toDouble())
+fun Vector3d.toVector3f() = Vector3f(this.x.toFloat(), this.y.toFloat(), this.z.toFloat())
 
 inline fun<T> JsonObject.getNullable(memberName: String, function: (memberName: String) -> T) : T? {
     if(this.has(memberName)) {

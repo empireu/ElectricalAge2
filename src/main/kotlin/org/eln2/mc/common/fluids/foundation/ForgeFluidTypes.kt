@@ -8,8 +8,10 @@ import net.minecraft.client.renderer.FogRenderer
 import net.minecraft.resources.ResourceLocation
 import net.minecraftforge.client.extensions.common.IClientFluidTypeExtensions
 import net.minecraftforge.fluids.FluidType
+import org.ageseries.libage.data.ClosedInterval
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.client.render.foundation.MyColor
-import org.joml.Vector2d
+import org.eln2.mc.extensions.toVector3f
 import org.joml.Vector3f
 import java.util.function.Consumer
 
@@ -18,8 +20,8 @@ data class BasicForgeFluidTypeClientOptions(
     val flowingTexture: ResourceLocation?,
     val overlayTexture: ResourceLocation?,
     val tintColor: MyColor?,
-    val fogColor: Vector3f?,
-    val fog: Vector2d? = null
+    val fogColor: Vector3d?,
+    val fog: ClosedInterval? = null
 )
 
 class BasicForgeFluidType(val clientOptions: BasicForgeFluidTypeClientOptions, properties: Properties) : FluidType(properties) {
@@ -38,7 +40,7 @@ class BasicForgeFluidType(val clientOptions: BasicForgeFluidTypeClientOptions, p
                 darkenWorldAmount: Float,
                 fluidFogColor: Vector3f?
             ): Vector3f {
-                return clientOptions.fogColor ?: super.modifyFogColor(
+                return clientOptions.fogColor?.toVector3f() ?: super.modifyFogColor(
                     camera,
                     partialTick,
                     level,
@@ -58,8 +60,8 @@ class BasicForgeFluidType(val clientOptions: BasicForgeFluidTypeClientOptions, p
                 shape: FogShape?
             ) {
                 if(clientOptions.fog != null) {
-                    RenderSystem.setShaderFogStart(clientOptions.fog.x.toFloat())
-                    RenderSystem.setShaderFogEnd(clientOptions.fog.y.toFloat())
+                    RenderSystem.setShaderFogStart(clientOptions.fog.min.toFloat())
+                    RenderSystem.setShaderFogEnd(clientOptions.fog.max.toFloat())
                 }
             }
         })

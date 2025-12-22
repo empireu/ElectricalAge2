@@ -25,6 +25,7 @@ import org.ageseries.libage.utils.Stopwatch
 import org.ageseries.libage.utils.addUnique
 import org.ageseries.libage.utils.measureDuration
 import org.ageseries.libage.utils.putUnique
+import org.eln2.mc.CrossThreadAccess
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.ELN2_DEBUG
 import org.eln2.mc.Eln2Config
@@ -85,6 +86,64 @@ class CellMap : Iterable<Cell> {
  * - Executing the simulation flow
  * */
 class SimulationExecutionSubgraph(val graph: CellGraph) {
+    /**
+     * Finely-grained events for each individual sub-solver.
+     * */
+    private interface SynchronizationPoint {
+        /**
+         * Called right before the work thread steps the subsolver.
+         * */
+        fun prepareForSubSolverStep()
+
+        /**
+         * Called right after the work thread stepped the subsolver.
+         * */
+        fun endSubSolverStep()
+    }
+
+    /**
+     * Implemented by simulation objects that wish to execute code before and after their sub solvers are stepped.
+     * **Calls are coming in parallel from the work threads.**
+     * */
+    interface SynchronizationPointObject<Self> where Self : SimulationObject<*>, Self : SynchronizationPointObject<Self> {
+        /**
+         * Called right before the [subSolver] is stepped by the execution system.
+         * */
+        @CrossThreadAccess
+        fun prepareForSubSolverStep(subSolver: Any)
+
+        /**
+         * Called right after the [subSolver] is stepped by the execution system.
+         * */
+        @CrossThreadAccess
+        fun endSubSolverStep(subSolver: Any)
+    }
+
+    /**
+     * Implemented by cells that wish to execute code before and after the sub-solvers for their objects are stepped.
+     * **Calls are coming in parallel from the work threads.**
+     * */
+    interface SynchronizationPointCell<Self> where Self : Cell, Self : SynchronizationPointCell<Self> {
+        /**
+         * Called when the execution graph is being built. Determines if the simulation object [obj] should be monitored for the [prepareForSubSolverStep] and [endSubSolverStep] events.
+         * @return True if events for [obj]'s sub solvers should be received by this [SynchronizationPointCell]. Otherwise, false.
+         * */
+        @OnServerThread
+        fun monitorsObject(obj: SimulationObject<*>) : Boolean
+
+        /**
+         * Called right before the [subSolver] for the object [obj] is stepped by the execution system.
+         * */
+        @CrossThreadAccess
+        fun prepareForSubSolverStep(obj: SimulationObject<*>, subSolver: Any)
+
+        /**
+         * Called right after the [subSolver] for the object [obj] is stepped by the execution system.
+         * */
+        @CrossThreadAccess
+        fun endSubSolverStep(obj: SimulationObject<*>, subSolver: Any)
+    }
+
     companion object {
         /**
          * The approximate maximum tick time an execution group is given.
@@ -129,12 +188,35 @@ class SimulationExecutionSubgraph(val graph: CellGraph) {
         }
     }
 
-    private class SubSolver(val solver: Any, val method: Runnable) {
+    /**
+     * Holds the individual subsolver and the synchronization points associated with it.
+     * @param solver The underlying simulation.
+     * @param method The update method for the specific simulation.
+     * @param synchronizationPoints Events that are executed before and after the simulation is stepped.
+     * */
+    private class SubSolver(val solver: Any, val method: Runnable, val synchronizationPoints: Array<SynchronizationPoint>) {
         var lastExecutionTime = Quantity<Time>(0.0)
 
         fun execute() {
-            lastExecutionTime = measureDuration {
-                method.run()
+            val synchronizationPoints = synchronizationPoints
+
+            for (i in synchronizationPoints.indices){
+                synchronizationPoints[i].prepareForSubSolverStep()
+            }
+
+            try {
+                lastExecutionTime = measureDuration {
+                    method.run()
+                }
+            }
+            finally {
+                /**
+                 * Since this is used for locks, this makes sure we don't cause a deadlock even if the simulation step fails.
+                 * This is to make the failure pattern consistent with the rest of the code.
+                 * */
+                for (i in synchronizationPoints.indices){
+                    synchronizationPoints[i].endSubSolverStep()
+                }
             }
         }
     }
@@ -152,28 +234,86 @@ class SimulationExecutionSubgraph(val graph: CellGraph) {
         subSolvers.clear()
 
         requireIsOnServerThread {
-            "Cannot create SimulationExecutionSubgraph on current thread"
+            DEBUGGER_BREAK("Cannot create SimulationExecutionSubgraph on current thread")
+        }
+
+        /**
+         * Finds all synchronization points for cells and objects:
+         * */
+        val syncPointsBySubSolver = MutableSetMapMultiMap<Any, SynchronizationPoint>()
+        graph.forEach { cell ->
+            /**
+             * Registers the [SynchronizationPointObject]s:
+             * */
+            cell.objects.forEachObject { obj ->
+                if(obj is SynchronizationPointObject<*>) {
+                    obj.getSubSolvers().forEach { subSolver ->
+                        syncPointsBySubSolver[subSolver].add(object : SynchronizationPoint {
+                            override fun prepareForSubSolverStep() {
+                                obj.prepareForSubSolverStep(subSolver)
+                            }
+
+                            override fun endSubSolverStep() {
+                                obj.endSubSolverStep(subSolver)
+                            }
+                        })
+                    }
+                }
+            }
+
+            /**
+             * Registers the [SynchronizationPointCell]s:
+             * */
+            if(cell is SynchronizationPointCell<*>) {
+                cell.objects.forEachObject { obj ->
+                    if(cell.monitorsObject(obj)) {
+                        obj.getSubSolvers().forEach { subSolver ->
+                            syncPointsBySubSolver[subSolver].add(object : SynchronizationPoint {
+                                override fun prepareForSubSolverStep() {
+                                    cell.prepareForSubSolverStep(obj, subSolver)
+                                }
+
+                                override fun endSubSolverStep() {
+                                    cell.endSubSolverStep(obj, subSolver)
+                                }
+                            })
+                        }
+                    }
+                }
+            }
         }
 
         graph.electricalSubSolverSets.forEach { subSolverSet ->
             subSolverSet.solvers.forEach { electricalSimulation ->
-                subSolvers.add(SubSolver(
-                    electricalSimulation,
-                    electricalSimulation::step
-                ))
+                subSolvers.add(
+                    SubSolver(
+                        electricalSimulation,
+                        electricalSimulation::step,
+                        syncPointsBySubSolver[electricalSimulation].toTypedArray()
+                    )
+                )
             }
         }
 
         graph.thermalSims.forEach {
-            subSolvers.add(SubSolver(it) { it.step(CellGraph.DT) })
+            subSolvers.add(
+                SubSolver(
+                    it,
+                    { it.step(CellGraph.DT) },
+                    syncPointsBySubSolver[it].toTypedArray()
+                ),
+            )
         }
 
         graph.kineticSubSolverSets.forEach { subSolverSet ->
             subSolverSet.solvers.forEach { kineticSimulation ->
-                subSolvers.add(SubSolver(
-                    kineticSimulation,
-                    kineticSimulation::step
-                ))
+                subSolvers.add(
+                    SubSolver(
+                        kineticSimulation,
+                        kineticSimulation::step,
+                        syncPointsBySubSolver[kineticSimulation].toTypedArray()
+                    )
+                )
             }
         }
     }
@@ -617,8 +757,6 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
      * The execution graph for this cell graph, updated when [buildSolver] is called.
      * */
     val executionGraph = SimulationExecutionSubgraph(this)
-
-
 
     /**
      * Subscribers for the simulation steps.

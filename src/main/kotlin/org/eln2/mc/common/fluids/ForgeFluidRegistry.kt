@@ -15,12 +15,12 @@ import net.minecraftforge.fluids.ForgeFlowingFluid
 import net.minecraftforge.registries.DeferredRegister
 import net.minecraftforge.registries.ForgeRegistries
 import net.minecraftforge.registries.RegistryObject
+import org.ageseries.libage.data.ClosedInterval
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.MODID
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.fluids.foundation.BasicForgeFluidType
 import org.eln2.mc.common.fluids.foundation.BasicForgeFluidTypeClientOptions
-import org.joml.Vector2d
-import org.joml.Vector3f
 import java.util.function.Consumer
 import java.util.function.Supplier
 
@@ -110,12 +110,12 @@ object ForgeFluidRegistry {
 
     class BasicForgeFluidBuilder {
         var propertiesFactory: Supplier<FluidType.Properties> = Supplier { FluidType.Properties.create() }
-        var stillTexture: ResourceLocation? = null
-        var flowingTexture: ResourceLocation? = null
-        var overlayTexture: ResourceLocation? = null
+        var stillTexture: ResourceLocation = ResourceLocation.parse("minecraft:block/water_still")
+        var flowingTexture: ResourceLocation = ResourceLocation.parse("minecraft:block/water_flow")
+        var overlayTexture: ResourceLocation? = ResourceLocation.parse("minecraft:block/water_overlay")
         var tintColor: MyColor? = null
-        var fogColor: Vector3f? = null
-        var fog: Vector2d? = null
+        var fogColor: Vector3d? = null
+        var fog: ClosedInterval? = null
 
         var buildMethod: Consumer<ForgeFluidBuilder> = Consumer { }
 

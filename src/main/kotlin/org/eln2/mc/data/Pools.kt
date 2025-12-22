@@ -20,6 +20,19 @@ inline fun<reified T> ObjectPool<T>.using(block: (obj: T) -> Unit) {
     }
 }
 
+inline fun<reified T> ObjectPool<T>.using2(block: (obj1: T, obj2: T) -> Unit) {
+    val obj1 = this.get()
+    val obj2 = this.get()
+
+    try {
+        block.invoke(obj1, obj2)
+    }
+    finally {
+        this.release(obj1)
+        this.release(obj2)
+    }
+}
+
 interface PooledObjectPolicy<T> {
     fun create(): T
     fun release(obj: T): Boolean

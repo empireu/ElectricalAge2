@@ -6,30 +6,41 @@ import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.contents.LiteralContents
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.entity.BlockEntity
+import net.minecraft.world.phys.Vec2
+import net.minecraftforge.fluids.FluidStack
 import org.ageseries.libage.data.*
 import org.ageseries.libage.utils.sourceName
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.*
+import org.eln2.mc.common.chemistry.ThermalFluidManager
+import org.eln2.mc.common.content.processing.DistillationModuleBlock
+import org.eln2.mc.common.content.processing.DistillationModuleBlockEntity
+import org.eln2.mc.common.fluids.foundation.MultipleFluidTank
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.specs.foundation.CellSpec
 import org.eln2.mc.common.specs.foundation.GridSpec
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.extensions.forEachCompound
 import org.eln2.mc.extensions.formattedPercentNormalized
+import org.eln2.mc.extensions.getListTag
 import snownee.jade.api.*
 import snownee.jade.api.config.IPluginConfig
+import snownee.jade.api.fluid.JadeFluidObject
 import java.util.function.Supplier
 import kotlin.math.absoluteValue
 
 @WailaPlugin
 class Eln2WailaPlugin : IWailaPlugin {
     override fun register(registration: IWailaCommonRegistration) {
+        registration.registerBlockDataProvider(DistillationFluidProvider, DistillationModuleBlockEntity::class.java)
+
         registration.registerBlockDataProvider(ComponentDisplayProvider, BlockEntity::class.java)
     }
 
     override fun registerClient(registration: IWailaClientRegistration) {
-        registration.registerBlockComponent(ComponentDisplayProvider, Block::class.java)
+        registration.registerBlockComponent(DistillationFluidProvider, DistillationModuleBlock::class.java)
 
+        registration.registerBlockComponent(ComponentDisplayProvider, Block::class.java)
         registration.addRayTraceCallback { _, accessor, _ ->
             if (accessor is BlockAccessor) {
                 val representativePos = when {
@@ -146,6 +157,105 @@ class Eln2WailaPlugin : IWailaPlugin {
             }
         }
     }
+
+    private object DistillationFluidProvider : IBlockComponentProvider, IServerDataProvider<BlockAccessor> {
+        override fun getUid() = resource("distillation_fluids")
+
+        override fun appendServerData(data: CompoundTag, accessor: BlockAccessor) {
+            val module = accessor.blockEntity as? DistillationModuleBlockEntity
+                ?: return
+
+            val fluids = ListTag()
+
+            fun addTank(tank: MultipleFluidTank) {
+                tank.fluids.forEach { stack ->
+                    if (!stack.isEmpty) {
+                        fluids.add(stack.writeToNBT(CompoundTag()))
+                    }
+                }
+            }
+
+            addTank(module.liquidTank)
+            addTank(module.gasTank)
+
+            data.put("fluids", fluids)
+        }
+
+        /**
+         * Renders liquids and gases on two separate rows.
+         * */
+        override fun appendTooltip(tooltip: ITooltip, accessor: BlockAccessor, config: IPluginConfig) {
+            if (!accessor.serverData.contains("fluids")) {
+                return
+            }
+
+            val list = accessor.serverData.getListTag("fluids")
+            val helper = tooltip.elementHelper
+
+            val liquids = ArrayList<FluidStack>()
+            val gases = ArrayList<FluidStack>()
+
+            list.forEachCompound { tag ->
+                val stack = FluidStack.loadFluidStackFromNBT(tag)
+
+                if (!stack.isEmpty) {
+                    val thermalFluid = ThermalFluidManager.getThermalFluid(stack.fluid)
+
+                    if(thermalFluid != null) {
+                        if(thermalFluid.isGaseous) {
+                            gases.add(stack)
+                        }
+                        else {
+                            liquids.add(stack)
+                        }
+                    }
+                    else {
+                        if (stack.fluid.fluidType.density < 0 || stack.fluid.fluidType.isLighterThanAir) {
+                            gases.add(stack)
+                        }
+                        else {
+                            liquids.add(stack)
+                        }
+                    }
+                }
+            }
+
+            fun renderRow(stack: FluidStack) {
+                tooltip.add(
+                    helper
+                        .fluid(JadeFluidObject.of(stack.fluid, stack.amount.toLong()))
+                        .size(Vec2(12.0f, 12.0f)))
+
+                tooltip.append(
+                    helper.text(stack.displayName).apply {
+                        translate(Vec2(2.0f, 3.0f))
+                    }
+                )
+
+                tooltip.append(
+                    helper.text(Component.literal("${stack.amount}mB")).apply {
+                        translate(Vec2(4.0f, 3.0f))
+                    }
+                )
+            }
+
+            fun renderCollection(fluids: List<FluidStack>) {
+                if(fluids.isEmpty()) {
+                    return
+                }
+
+                fluids.forEach {
+                    renderRow(it)
+                    tooltip.add(helper.spacer(0, 2))
+                }
+
+                tooltip.add(helper.spacer(0, 5))
+            }
+
+            renderCollection(liquids)
+            renderCollection(gases)
+        }
+    }
 }
 
 /**
@@ -162,7 +272,7 @@ private const val JSON = "json"
 private fun unpackComponentList(tag: CompoundTag): List<Component> {
     val listTag = tag.get(ENTRIES) as? ListTag
 
-    if (listTag == null || listTag.size == 0) {
+    if (listTag == null || listTag.isEmpty()) {
         return emptyList()
     }
 

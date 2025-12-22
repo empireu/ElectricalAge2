@@ -1,6 +1,17 @@
 {
     "item_group.eln2.all": "Electrical Age",
 
+    // Forge Fluids:
+    "fluid_type.eln2.coal_tar": "Coal Tar",
+    "fluid_type.eln2.coal_gas": "Coal Gas",
+    "fluid_type.eln2.crude_oil": "Crude Oil",
+    "fluid_type.eln2.naphtha_gas": "Naphtha Gas",
+    "fluid_type.eln2.naphtha": "Naphtha",
+    "fluid_type.eln2.heavy_oil": "Heavy Oil",
+    "fluid_type.eln2.diesel_gas": "Diesel Gas",
+    "fluid_type.eln2.diesel": "Diesel",
+    "fluid_type.eln2.bitumen": "Bitumen",
+
     // Actual blocks:
     "block.eln2.heat_generator": "Heat Generator",
     "block.eln2.furnace": "Electrical Furnace",
@@ -127,6 +138,7 @@
     "waila.eln2.progress": "Progress",
     "waila.eln2.Irradiance": "Irradiance",
 
+    "config.jade.plugin_eln2.distillation_fluids": "ELN2",
     "config.jade.plugin_eln2.component_display": "ELN2",
 
     "key.eln2.category": "ELN2",

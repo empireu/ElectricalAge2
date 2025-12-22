@@ -278,7 +278,7 @@ open class MultipleFluidTank(val capacity: Int, val requireThermalFluid: Boolean
  * If there are multiple fluid stacks and one of them occupies more than [purityThreshold]`%` of the total amount in the tank, that *representative* fluid stack can be extracted, and this process voids part of the other fluids in the tank.
  * Check [drain] for more information (the details aren't exactly trivial due to the amounts being integers).
  * */
-class PurityBasedMultipleFluidTank(val parent: MultipleFluidTank, val purityThreshold: Double = 0.95) : IFluidHandler by parent {
+open class PurityBasedMultipleFluidTank(val parent: MultipleFluidTank, val purityThreshold: Double = 0.95) : IFluidHandler by parent {
     /**
      * Gets the index of the representative fluid (based on [purityThreshold]), or `-1` if no fluids match.
      * */
@@ -513,7 +513,7 @@ class PurityBasedMultipleFluidTank(val parent: MultipleFluidTank, val purityThre
  * - The phase with the highest density is selected
  * - If that phase is composed of only one fluid, then this is the fluid that will be extracted
  * */
-class GravityBasedMultipleFluidTank(val parent: MultipleFluidTank) : IFluidHandler by parent {
+open class GravityBasedMultipleFluidTank(val parent: MultipleFluidTank) : IFluidHandler by parent {
     companion object {
         private val pool = LinearObjectPool<ArrayList<FluidStack>>(object : PooledObjectPolicy<ArrayList<FluidStack>> {
             override fun create(): ArrayList<FluidStack> {
@@ -560,24 +560,25 @@ class GravityBasedMultipleFluidTank(val parent: MultipleFluidTank) : IFluidHandl
         /**
          * Builds the phases:
          * */
-        pool.using { queue ->
-            queue.addAll(parent.fluids)
+        pool.using { remaining ->
+            remaining.addAll(parent.fluids)
 
-            while (queue.isNotEmpty()) {
-                val front = queue.removeLast()
+            while (remaining.isNotEmpty()) {
+                val front = remaining.removeLast()
                 val a = ThermalFluidManager.requireThermalFluid(front.fluid)
 
                 val phase = pool.get()
                 phase.add(front)
 
-                parent.fluids.forEach { stack ->
-                    if(stack.fluid != front.fluid) {
-                        val b = ThermalFluidManager.requireThermalFluid(stack.fluid)
+                remaining.removeAll { candidate ->
+                    val b = ThermalFluidManager.requireThermalFluid(candidate.fluid)
 
-                        if(ThermalFluidManager.areMixable(a, b)) {
-                            phase.add(stack)
-                            queue.remove(stack)
-                        }
+                    if(ThermalFluidManager.areMixable(a, b)) {
+                        phase.add(candidate)
+                        true
+                    }
+                    else {
+                        false
                     }
                 }
 

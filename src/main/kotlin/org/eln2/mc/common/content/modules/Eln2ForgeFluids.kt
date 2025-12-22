@@ -3,27 +3,114 @@ package org.eln2.mc.common.content.modules
 import net.minecraft.client.renderer.ItemBlockRenderTypes
 import net.minecraft.client.renderer.RenderType
 import net.minecraftforge.fluids.FluidType
+import org.ageseries.libage.data.ClosedInterval
+import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.fluids.ForgeFluidRegistry.basicForgeFluid
 import org.eln2.mc.resource
+import org.joml.Vector3f
 
 object Eln2ForgeFluids : ContentModule() {
-    override fun setRenderLayers() {
-        ItemBlockRenderTypes.setRenderLayer(COAL_TAR.source.get(), RenderType.translucent())
-        ItemBlockRenderTypes.setRenderLayer(COAL_TAR.flowing.get(), RenderType.translucent())
+    private val renderLayerSetups = ArrayList<Pair<ForgeFluidRegistry.ForgeFluidRegistryItem, RenderType>>()
+
+    fun ForgeFluidRegistry.ForgeFluidRegistryItem.withRenderLayer(layer: RenderType) {
+        renderLayerSetups.add(Pair(this, layer))
     }
 
+    override fun setRenderLayers() {
+        renderLayerSetups.forEach { (fluid, renderLayer) ->
+            ItemBlockRenderTypes.setRenderLayer(fluid.source.get(), renderLayer)
+            ItemBlockRenderTypes.setRenderLayer(fluid.flowing.get(), renderLayer)
+        }
+    }
+
+    //#region Coal Products
+
     val COAL_TAR = basicForgeFluid("coal_tar") {
-        stillTexture = resource("block/fluid/coal_tar_still")
-        flowingTexture = resource("block/fluid/coal_tar_flowing")
+        tintColor = MyColor(255, 20, 20, 20) // Opaque Black
+        properties {
+            FluidType.Properties.create()
+                .density(1180) // Sinks in water
+                .viscosity(5000) // Thick
+        }
     }
 
     val COAL_GAS = basicForgeFluid("coal_gas") {
-        stillTexture = resource("block/fluid/coal_tar_still")
-        flowingTexture = resource("block/fluid/coal_tar_flowing")
-
+        tintColor = MyColor(100, 200, 200, 200) // Translucent Grey Vapor
         properties {
             FluidType.Properties.create()
-                .density(-1000)
+                .density(-1000) // Gas
+                .viscosity(100)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    //#endregion
+
+    //#region Oil Products
+
+    val CRUDE_OIL = basicForgeFluid("crude_oil") {
+        tintColor = MyColor(255, 30, 20, 10) // Opaque Dark Brown
+        properties {
+            FluidType.Properties.create()
+                .density(850)
+                .viscosity(2000)
         }
     }
+
+    val NAPHTHA_GAS = basicForgeFluid("naphtha_gas") {
+        tintColor = MyColor(100, 200, 240, 255) // Faint Blue Vapor
+            properties {
+            FluidType.Properties.create()
+                .density(-1000)
+                .viscosity(100)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val NAPHTHA = basicForgeFluid("naphtha") {
+        tintColor = MyColor(200, 255, 255, 220) // Transparent Pale Yellow
+        properties {
+            FluidType.Properties.create()
+                .density(700)
+                .viscosity(800)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val HEAVY_OIL = basicForgeFluid("heavy_oil") {
+        tintColor = MyColor(255, 40, 20, 10) // Opaque Deep Brown
+        properties {
+            FluidType.Properties.create()
+                .density(950)
+                .viscosity(4000)
+        }
+    }
+
+    val DIESEL_GAS = basicForgeFluid("diesel_gas") {
+        tintColor = MyColor(100, 220, 200, 150) // Faint Amber Vapor
+        properties {
+            FluidType.Properties.create()
+                .density(-500)
+                .viscosity(200)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val DIESEL = basicForgeFluid("diesel") {
+        tintColor = MyColor(200, 255, 200, 0) // Transparent Gold
+        properties {
+            FluidType.Properties.create()
+                .density(830)
+                .viscosity(1500)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val BITUMEN = basicForgeFluid("bitumen") {
+        tintColor = MyColor(255, 10, 10, 10) // Opaque Black
+        properties {
+            FluidType.Properties.create()
+                .density(1200) // Sinks
+                .viscosity(10000) // Very thick
+        }
+    }
+
+    //#endregion
 }
