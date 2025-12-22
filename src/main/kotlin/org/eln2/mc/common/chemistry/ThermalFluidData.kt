@@ -19,7 +19,7 @@ import org.eln2.mc.*
 import org.eln2.mc.extensions.*
 
 /**
- * Attaches properties to a Forge Fluid.
+ * Extra properties attached to a Forge Fluid.
  * @param cacheId Unique ID chosen by the [ThermalFluidManager].
  * @param specificHeatCapacity The specific heat capacity.
  * @param density The density of the fluid. Used for gravity separation.
@@ -34,7 +34,20 @@ class ThermalFluid(
     val density: Quantity<ForgeFluidDensity>,
     val isGaseous: Boolean,
     val mixabilityTags: List<String>
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as ThermalFluid
+
+        return cacheId == other.cacheId
+    }
+
+    override fun hashCode(): Int {
+        return cacheId
+    }
+}
 
 private fun resolveForgeFluid(id: ResourceLocation): Fluid {
     val result = ForgeRegistries.FLUIDS.getValue(id)
@@ -50,11 +63,11 @@ private fun resolveForgeFluid(id: ResourceLocation): Fluid {
  * Loader for all defined [ThermalFluid]s. Also has utility methods that cache results (to make use of the reload event).
  * */
 object ThermalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().create(), "thermal_fluid") {
-    private val thermalFluids = HashMap<Fluid, ThermalFluid>()
+    private var refs = References(HashMap(), Long2BooleanOpenHashMap())
 
     override fun apply(pObject: Map<ResourceLocation, JsonElement>, pResourceManager: ResourceManager, pProfiler: ProfilerFiller) {
-        thermalFluids.clear()
-        mixablePairs.clear()
+        val thermalFluids = HashMap<Fluid, ThermalFluid>()
+        val mixablePairs = Long2BooleanOpenHashMap()
 
         var cacheId = 0
         val fluids = ArrayList<ThermalFluid>()
@@ -85,6 +98,9 @@ object ThermalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().crea
             }
         }
 
+        /**
+         * Computes mixability table:
+         * */
         fluids.forEach { a ->
             fluids.forEach { b ->
                 if(a.cacheId < b.cacheId) {
@@ -92,13 +108,19 @@ object ThermalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().crea
                 }
             }
         }
+
+        refs = References(thermalFluids, mixablePairs)
     }
 
-    fun getThermalFluid(fluid: Fluid) = thermalFluids[fluid]
+    /**
+     * Gets the [ThermalFluid] for [fluid] or null, if the [fluid] doesn't have one attached.
+     * */
+    fun getThermalFluid(fluid: Fluid) = refs.thermalFluids[fluid]
 
+    /**
+     * Gets the [ThermalFluid] for [fluid] or throws, if the [fluid] doesn't have one attached.
+     * */
     fun requireThermalFluid(fluid: Fluid) = getThermalFluid(fluid) ?: error("$fluid was not a thermal fluid!")
-
-    private val mixablePairs = Long2BooleanOpenHashMap()
 
     @Suppress("NOTHING_TO_INLINE")
     private inline fun getPairKey(a: ThermalFluid, b: ThermalFluid) : Long {
@@ -119,11 +141,23 @@ object ThermalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().crea
 
     /**
      * Checks if [a] and [b] are mixable, based on their tags.
+     * This is a fast lookup into a hashtable (faster than comparing the actual tags).
+     * If [a] equals [b], then the result is `true`.
      * */
-    fun areMixable(a: ThermalFluid, b: ThermalFluid) = mixablePairs.get(getPairKey(a, b))
+    fun areMixable(a: ThermalFluid, b: ThermalFluid) = if(a == b) {
+        true
+    }
+    else {
+        refs.mixablePairs.get(getPairKey(a, b))
+    }
+
+    private class References(val thermalFluids: HashMap<Fluid, ThermalFluid>, val mixablePairs: Long2BooleanOpenHashMap)
 }
 
 /**
+ * Boils a liquid-phase fluid into a gas-phase fluid, optionally leaving behind a liquid-phase *residual* fluid.
+ * This splitting is used to implement fractional distillation.
+ * For example, oil could boil into Naphtha Vapor (the gas), and leave behind Heavy Oil (the residual liquid).
  * @param temperature The boiling point of the liquid.
  * @param enthalpy The heat of vaporization.
  * @param resultGas The resulting gas.
@@ -135,15 +169,17 @@ class BoilingTransformation(
     val enthalpy: Quantity<ForgeFluidEnergyDensity>,
     val resultGas: Fluid, val resultGasProportion: Int,
     val resultLiquidResidue: Fluid?
-    // We can also add an item, we'll see
 )
 
 /**
+ * Condenses a gas-phase fluid into a liquid-phase fluid, optionally leaving behind a gas-phase *residual* fluid.
+ * This splitting is used to implement fractional condensation.
+ * For example, coal gas could condense into Tar (the liquid), and leave behind hydrogen gas (the residual gas).
  * @param temperature The boiling point of the liquid.
  * @param enthalpy The heat of vaporization.
  * @param resultLiquid The resulting liquid ("quantity" mapped 1mB to 1mB).
  * @param resultLiquidProportion How many `mB` of [resultLiquid] are created from `1000 mB` of gas.
- * @param resultGasResidue The gas that remains in gas phase. The amount will be proportional to `100 - `[resultLiquidProportion]`.
+ * @param resultGasResidue The gas that remains in gas phase. The amount will be proportional to `1000 - `[resultLiquidProportion]`.
  * */
 class CondensationTransformation(
     val temperature: Quantity<Temperature>,
@@ -156,24 +192,28 @@ class CondensationTransformation(
  * Describes all phase changes a thermal fluid can undergo.
  * @param file The data file's ID.
  * @param fluid The fluid in question.
+ * In simple terms, the transformations show:
+ * - What the [fluid] splits into when it is boiled (following the chain of vapors and residuals, you can find the entire composition of [fluid]). Pure fluids usually wouldn't have a boiling transformation attached (right now, it is redundant), but they would have a condensation pathway attached.
+ * - The liquid form of [fluid], for condensation (if [fluid] is a gas). Usually only pure fluids have a gas form and a condensation pathway.
  * @param boiling The boiling pathway (when temperature is larger than the boiling point).
- * @param condensation The condensation pathway (when temperature is lower than the boiling point).
+ * @param condensation The condensation pathway (when temperature is lower than the condensation point).
  * */
 class ThermalFluidTransformation(
     val file: ResourceLocation,
     val fluid: Fluid,
     val boiling: BoilingTransformation?,
     val condensation: CondensationTransformation?
+    // Can add a freezing transformation
 )
 
 /**
  * Loader for all defined [ThermalFluidTransformation]s.
  * */
 object FluidTransformationManager : SimpleJsonResourceReloadListener(GsonBuilder().create(), "distillation") {
-    val transformationsByFluid = HashMap<Fluid, ThermalFluidTransformation>()
+    var transformationsByFluid = HashMap<Fluid, ThermalFluidTransformation>()
 
     override fun apply(pObject: Map<ResourceLocation, JsonElement>, pResourceManager: ResourceManager, pProfiler: ProfilerFiller, ) {
-        transformationsByFluid.clear()
+        val transformationsByFluid = HashMap<Fluid, ThermalFluidTransformation>()
 
         pObject.forEach { (file, json) ->
             json as JsonObject
@@ -217,6 +257,8 @@ object FluidTransformationManager : SimpleJsonResourceReloadListener(GsonBuilder
                 error(DEBUGGER_BREAK("Duplicate transformations for fluid $fluidId: \"${duplicate.file}\""))
             }
         }
+
+        this.transformationsByFluid = transformationsByFluid
     }
 
     fun getTransformations(fluid: Fluid) = transformationsByFluid[fluid]
