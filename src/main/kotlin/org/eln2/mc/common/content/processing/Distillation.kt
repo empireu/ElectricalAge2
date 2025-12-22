@@ -33,9 +33,13 @@ import org.eln2.mc.common.chemistry.FluidTransformationManager
 import org.eln2.mc.common.chemistry.ThermalFluidManager
 import org.eln2.mc.common.content.ThermalWireObject
 import org.eln2.mc.common.content.modules.Eln2Processing
+import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
 import org.eln2.mc.common.fluids.foundation.GravityBasedMultipleFluidTank
+import org.eln2.mc.common.fluids.foundation.GravityBasedMultipleFractionalFluidTank
 import org.eln2.mc.common.fluids.foundation.MultipleFluidTank
+import org.eln2.mc.common.fluids.foundation.MultipleFractionalFluidTank
 import org.eln2.mc.common.fluids.foundation.PurityBasedMultipleFluidTank
+import org.eln2.mc.common.fluids.foundation.PurityBasedMultipleFractionalFluidTank
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import java.util.concurrent.locks.ReentrantLock
@@ -116,20 +120,20 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
             pBlockEntity.serverTick()
         }
 
-        private const val PHASE_CHANGE_RATE = 5
+        private const val PHASE_CHANGE_RATE = 0.5
     }
 
     //#region Fluid Handling
 
-    val liquidTank = MultipleFluidTank(32000, true)
-    val gasTank = MultipleFluidTank(1024, true)
+    val liquidTank = MultipleFractionalFluidTank(32000.0, true)
+    val gasTank = MultipleFractionalFluidTank(1024.0, true)
 
     /**
      * Fluid handler for the bottom face:
      * - Allows extraction of residuals via [GravityBasedMultipleFluidTank]
      * - Allows insertion of gas and liquid
      * */
-    class BottomFaceHandler(val liquidTank: MultipleFluidTank, val gasTank: MultipleFluidTank) : GravityBasedMultipleFluidTank(liquidTank) {
+    class BottomFaceHandler(val liquidTank: MultipleFractionalFluidTank, val gasTank: MultipleFractionalFluidTank) : GravityBasedMultipleFractionalFluidTank(liquidTank) {
         override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction): Int {
             val thermalFluid = ThermalFluidManager.getThermalFluid(resource.fluid)
                 ?: return 0
@@ -151,7 +155,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
      * - Allows extraction of gas via [PurityBasedMultipleFluidTank]
      * - Allows insertion of liquid
      * */
-    class TopFaceHandler(val liquidTank: MultipleFluidTank, gasTank: MultipleFluidTank) : PurityBasedMultipleFluidTank(gasTank) {
+    class TopFaceHandler(val liquidTank: MultipleFractionalFluidTank, gasTank: MultipleFractionalFluidTank) : PurityBasedMultipleFractionalFluidTank(gasTank) {
         override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction): Int {
             val thermalFluid = ThermalFluidManager.getThermalFluid(resource.fluid)
                 ?: return 0
@@ -172,7 +176,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
      * - Allows extraction of liquids via [PurityBasedMultipleFluidTank]
      * - Allows insertion of liquids
      * */
-    class SideHandler(val liquidTank: MultipleFluidTank) : PurityBasedMultipleFluidTank(liquidTank) {
+    class SideHandler(val liquidTank: MultipleFractionalFluidTank) : PurityBasedMultipleFractionalFluidTank(liquidTank) {
         override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction): Int {
             val thermalFluid = ThermalFluidManager.getThermalFluid(resource.fluid)
                 ?: return 0
@@ -234,10 +238,10 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
         }
 
         for (stack in gases) {
-            val transfer = targetModule.gasTank.fill(stack, IFluidHandler.FluidAction.EXECUTE)
+            val transfer = targetModule.gasTank.fillFractional(stack, IFluidHandler.FluidAction.EXECUTE)
 
             if (transfer > 0) {
-                gasTank.drain(FluidStack(stack.fluid, transfer), IFluidHandler.FluidAction.EXECUTE)
+                gasTank.drainFractional(FractionalFluidStack(stack.fluid, transfer), IFluidHandler.FluidAction.EXECUTE)
             }
             else {
                 break
@@ -255,11 +259,11 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
         val body = cell.wire.thermalBody
         var remainingEvaporation = PHASE_CHANGE_RATE
 
-        while (remainingEvaporation > 0 && liquidTank.fluids.isNotEmpty() && gasTank.remainingCapacity > 0) {
+        while (remainingEvaporation > 0.0 && liquidTank.fluids.isNotEmpty() && gasTank.remainingCapacity > 0.0) {
             /**
              * Selects stack with the lowest boiling point:
              * */
-            var target: FluidStack? = null
+            var target: FractionalFluidStack? = null
             var boiling: BoilingTransformation? = null
             for (stack in liquidTank.fluids) {
                 if(phaseChangeVisited.contains(stack.fluid)) {
@@ -305,41 +309,40 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
             /**
              * Constrain by the energy limit:
              * */
-            amountToBoil = min(amountToBoil, floor(dT * !body.mass * !body.material.specificHeat / !boiling.enthalpy).toInt())
+            amountToBoil = min(amountToBoil, dT * !body.mass * !body.material.specificHeat / !boiling.enthalpy)
 
             /**
              * Constrain by the remaining capacity in the gas tank:
              * */
-            amountToBoil = min(amountToBoil, (gasTank.remainingCapacity.toLong() * 1000L / boiling.resultGasProportion.toLong()).toInt())
+            amountToBoil = min(amountToBoil, gasTank.remainingCapacity * 1000.0 / boiling.resultGasProportion)
 
-            if (amountToBoil == 0) {
+            if (amountToBoil < FractionalFluidStack.EPSILON) {
                 continue
             }
 
-            val gasGenerated = (amountToBoil.toLong() * boiling.resultGasProportion.toLong() / 1000L).toInt()
+            val gasGenerated = amountToBoil * boiling.resultGasProportion / 1000.0
 
-            if(gasGenerated == 0) {
+            if(gasGenerated < FractionalFluidStack.EPSILON) {
                 /**
                  * If the amount is too low, then it will round down to 0, so we can't do anything.
                  * */
                 continue
             }
 
-            check(liquidTank.drain(FluidStack(target.fluid, amountToBoil), IFluidHandler.FluidAction.EXECUTE).amount == amountToBoil) {
-                DEBUGGER_BREAK("Did not remove expected amount from liquid tank during evaporation")
-            }
-
-            check(gasTank.fill(FluidStack(boiling.resultGas, gasGenerated), IFluidHandler.FluidAction.EXECUTE) == gasGenerated) {
-                DEBUGGER_BREAK("Did not insert expected amount into gas tank during evaporation")
-            }
 
             if(boiling.resultLiquidResidue != null) {
                 val residue = amountToBoil - gasGenerated
 
-                check(liquidTank.fill(FluidStack(boiling.resultLiquidResidue, residue), IFluidHandler.FluidAction.EXECUTE) == residue) {
-                    DEBUGGER_BREAK("Did not insert expected amount of residue into liquid tank during evaporation")
+                if(residue < FractionalFluidStack.EPSILON) {
+                    continue
                 }
+
+                @Suppress("UNNECESSARY_NOT_NULL_ASSERTION")
+                liquidTank.fillFractional(FractionalFluidStack(boiling.resultLiquidResidue!!, residue), IFluidHandler.FluidAction.EXECUTE)
             }
+
+            liquidTank.drainFractional(FractionalFluidStack(target.fluid, amountToBoil), IFluidHandler.FluidAction.EXECUTE)
+            gasTank.fillFractional(FractionalFluidStack(boiling.resultGas, gasGenerated), IFluidHandler.FluidAction.EXECUTE)
 
             body.energy -= Quantity(!boiling.enthalpy * amountToBoil, JOULE)
             remainingEvaporation -= amountToBoil
@@ -356,11 +359,11 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
         val body = cell.wire.thermalBody
         var remainingCondensation = PHASE_CHANGE_RATE
 
-        while (remainingCondensation > 0 && gasTank.fluids.isNotEmpty() && liquidTank.remainingCapacity > 0) {
+        while (remainingCondensation > 0.0 && gasTank.fluids.isNotEmpty() && liquidTank.remainingCapacity > 0.0) {
             /**
              * Selects stack with the highest condensation point:
              * */
-            var target: FluidStack? = null
+            var target: FractionalFluidStack? = null
             var condensation: CondensationTransformation? = null
             for (stack in gasTank.fluids) {
                 if(phaseChangeVisited.contains(stack.fluid)) {
@@ -387,7 +390,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
             val dT = !condensation.temperature - !body.temperature
 
             if(dT <= 0.0) {
-                continue
+                break
             }
 
             /**
@@ -403,24 +406,19 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
             /**
              * Constrain by the energy limit:
              * */
-            amountToCondense = min(amountToCondense, floor(dT * !body.mass * !body.material.specificHeat / !condensation.enthalpy).toInt())
+            amountToCondense = min(amountToCondense, dT * !body.mass * !body.material.specificHeat / !condensation.enthalpy)
 
             /**
              * Constrain by remaining liquid capacity:
              * */
             amountToCondense = min(amountToCondense, liquidTank.remainingCapacity)
 
-            if(amountToCondense == 0) {
+            if(amountToCondense < FractionalFluidStack.EPSILON) {
                 continue
             }
 
-            check(gasTank.drain(FluidStack(target.fluid, amountToCondense), IFluidHandler.FluidAction.EXECUTE).amount == amountToCondense) {
-                DEBUGGER_BREAK("Did not remove expected amount from gas tank during condensation")
-            }
-
-            check(liquidTank.fill(FluidStack(condensation.resultLiquid, amountToCondense), IFluidHandler.FluidAction.EXECUTE) == amountToCondense) {
-                DEBUGGER_BREAK("Did not insert expected amount into liquid tank during condensation")
-            }
+            gasTank.drainFractional(FractionalFluidStack(target.fluid, amountToCondense), IFluidHandler.FluidAction.EXECUTE)
+            liquidTank.fillFractional(FractionalFluidStack(condensation.resultLiquid, amountToCondense), IFluidHandler.FluidAction.EXECUTE)
 
             body.energy += Quantity(!condensation.enthalpy * amountToCondense, JOULE)
             remainingCondensation -= amountToCondense
@@ -445,8 +443,8 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
     }
 
     fun serverTick() {
-        gasTransport()
         phaseChange()
+        gasTransport()
     }
 
     //#endregion

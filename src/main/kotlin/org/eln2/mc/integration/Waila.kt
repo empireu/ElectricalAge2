@@ -7,7 +7,6 @@ import net.minecraft.network.chat.contents.LiteralContents
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.phys.Vec2
-import net.minecraftforge.fluids.FluidStack
 import org.ageseries.libage.data.*
 import org.ageseries.libage.utils.sourceName
 import org.eln2.mc.*
@@ -15,7 +14,8 @@ import org.eln2.mc.common.blocks.foundation.*
 import org.eln2.mc.common.chemistry.ThermalFluidManager
 import org.eln2.mc.common.content.processing.DistillationModuleBlock
 import org.eln2.mc.common.content.processing.DistillationModuleBlockEntity
-import org.eln2.mc.common.fluids.foundation.MultipleFluidTank
+import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
+import org.eln2.mc.common.fluids.foundation.MultipleFractionalFluidTank
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.specs.foundation.CellSpec
 import org.eln2.mc.common.specs.foundation.GridSpec
@@ -28,6 +28,7 @@ import snownee.jade.api.config.IPluginConfig
 import snownee.jade.api.fluid.JadeFluidObject
 import java.util.function.Supplier
 import kotlin.math.absoluteValue
+import kotlin.reflect.KProperty
 
 @WailaPlugin
 class Eln2WailaPlugin : IWailaPlugin {
@@ -167,10 +168,10 @@ class Eln2WailaPlugin : IWailaPlugin {
 
             val fluids = ListTag()
 
-            fun addTank(tank: MultipleFluidTank) {
+            fun addTank(tank: MultipleFractionalFluidTank) {
                 tank.fluids.forEach { stack ->
                     if (!stack.isEmpty) {
-                        fluids.add(stack.writeToNBT(CompoundTag()))
+                        fluids.add(stack.toNbt())
                     }
                 }
             }
@@ -192,11 +193,11 @@ class Eln2WailaPlugin : IWailaPlugin {
             val list = accessor.serverData.getListTag("fluids")
             val helper = tooltip.elementHelper
 
-            val liquids = ArrayList<FluidStack>()
-            val gases = ArrayList<FluidStack>()
+            val liquids = ArrayList<FractionalFluidStack>()
+            val gases = ArrayList<FractionalFluidStack>()
 
             list.forEachCompound { tag ->
-                val stack = FluidStack.loadFluidStackFromNBT(tag)
+                val stack = FractionalFluidStack.fromNbt(tag)
 
                 if (!stack.isEmpty) {
                     val thermalFluid = ThermalFluidManager.getThermalFluid(stack.fluid)
@@ -220,26 +221,35 @@ class Eln2WailaPlugin : IWailaPlugin {
                 }
             }
 
-            fun renderRow(stack: FluidStack) {
+            val scale = Eln2Config.clientConfig.getScaleOverride(Volume::class.java)
+
+            fun renderRow(stack: FractionalFluidStack) {
                 tooltip.add(
                     helper
-                        .fluid(JadeFluidObject.of(stack.fluid, stack.amount.toLong()))
+                        .fluid(JadeFluidObject.of(stack.fluid, stack.unit().amount.toLong()))
                         .size(Vec2(12.0f, 12.0f)))
 
                 tooltip.append(
-                    helper.text(stack.displayName).apply {
+                    helper.text(stack.unit().displayName).apply {
                         translate(Vec2(2.0f, 3.0f))
                     }
                 )
 
+                val quantity = if(scale == null) {
+                    Quantity(stack.amount, LITER).classify()
+                }
+                else {
+                    classifyAuxiliary(scale, !Quantity(stack.amount, LITER))
+                }
+
                 tooltip.append(
-                    helper.text(Component.literal("${stack.amount}mB")).apply {
+                    helper.text(Component.literal(quantity)).apply {
                         translate(Vec2(4.0f, 3.0f))
                     }
                 )
             }
 
-            fun renderCollection(fluids: List<FluidStack>) {
+            fun renderCollection(fluids: List<FractionalFluidStack>) {
                 if(fluids.isEmpty()) {
                     return
                 }

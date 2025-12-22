@@ -845,6 +845,43 @@ open class MultipleFractionalFluidTank(val capacity: Double, val requireThermalF
     }
 
     /**
+     * Fractional fill implementation.
+     * */
+    fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): Double {
+        if(!isFluidAllowed(resource.fluid)) {
+            return 0.0
+        }
+
+        val resourceToFill = min(resource.amount, remainingCapacity)
+
+        if(resourceToFill < FractionalFluidStack.EPSILON) {
+            return 0.0
+        }
+
+        if(action != IFluidHandler.FluidAction.SIMULATE) {
+            val existingIndex = fluids.indexOfFirst { it.fluid == resource.fluid }
+
+            if(existingIndex == -1) {
+                /**
+                 * Insert new stack:
+                 * */
+                fluids.add(FractionalFluidStack(resource.fluid, resourceToFill))
+            }
+            else {
+                /**
+                 * Increase existing stack:
+                 * */
+                val newStack = FractionalFluidStack(resource.fluid, resourceToFill + fluids[existingIndex].amount)
+                fluids[existingIndex] = newStack
+            }
+
+            incrementVersion()
+        }
+
+        return resourceToFill
+    }
+
+    /**
      * Decrements the fluid at [index] or removes the stack entirely, if all fluid was removed (**using comparison with [FractionalFluidStack.EPSILON]!**)
      * */
     fun removeAmount(index: Int, fluidToDrain: Double) {
@@ -853,10 +890,6 @@ open class MultipleFractionalFluidTank(val capacity: Double, val requireThermalF
         }
 
         val stack = fluids[index]
-
-        require(fluidToDrain <= stack.roundedAmount) {
-            DEBUGGER_BREAK("Tried to remove $fluidToDrain from a stack with ${stack.amount}")
-        }
 
         /**
          * Checks if this drains the entire fluid, which means it needs to be removed. Slightly different from the integer implementation:
