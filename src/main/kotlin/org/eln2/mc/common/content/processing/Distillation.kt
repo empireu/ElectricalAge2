@@ -39,7 +39,7 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.chemistry.BoilingTransformation
 import org.eln2.mc.common.chemistry.CondensationTransformation
 import org.eln2.mc.common.chemistry.FluidTransformationManager
-import org.eln2.mc.common.chemistry.ThermalFluidManager
+import org.eln2.mc.common.chemistry.PhysicalFluidManager
 import org.eln2.mc.common.content.ThermalWireObject
 import org.eln2.mc.common.content.WrenchInteractable
 import org.eln2.mc.common.content.WrenchItem
@@ -166,7 +166,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
      * */
     class BottomFaceHandler(val liquidTank: MultipleFractionalFluidTank, val gasTank: MultipleFractionalFluidTank) : GravityBasedMultipleFractionalFluidTank(liquidTank) {
         override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction): Int {
-            val thermalFluid = ThermalFluidManager.getThermalFluid(resource.fluid)
+            val thermalFluid = PhysicalFluidManager.getThermalFluid(resource.fluid)
                 ?: return 0
 
             return if(thermalFluid.isGaseous) {
@@ -188,7 +188,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
      * */
     class TopFaceHandler(val liquidTank: MultipleFractionalFluidTank, gasTank: MultipleFractionalFluidTank) : PurityBasedMultipleFractionalFluidTank(gasTank) {
         override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction): Int {
-            val thermalFluid = ThermalFluidManager.getThermalFluid(resource.fluid)
+            val thermalFluid = PhysicalFluidManager.getThermalFluid(resource.fluid)
                 ?: return 0
 
             if(thermalFluid.isGaseous) {
@@ -209,7 +209,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
      * */
     class SideHandler(val liquidTank: MultipleFractionalFluidTank) : PurityBasedMultipleFractionalFluidTank(liquidTank) {
         override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction): Int {
-            val thermalFluid = ThermalFluidManager.getThermalFluid(resource.fluid)
+            val thermalFluid = PhysicalFluidManager.getThermalFluid(resource.fluid)
                 ?: return 0
 
             if(thermalFluid.isGaseous) {
@@ -305,7 +305,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
              * Order by lowest density first:
              * */
             val gases = gasTank.fluids.sortedBy {
-                ThermalFluidManager.requireThermalFluid(it.fluid).density
+                PhysicalFluidManager.requireThermalFluid(it.fluid).density
             }
 
             for (stack in gases) {

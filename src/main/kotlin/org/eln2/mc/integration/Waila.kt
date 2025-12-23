@@ -11,7 +11,7 @@ import org.ageseries.libage.data.*
 import org.ageseries.libage.utils.sourceName
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.*
-import org.eln2.mc.common.chemistry.ThermalFluidManager
+import org.eln2.mc.common.chemistry.PhysicalFluidManager
 import org.eln2.mc.common.content.processing.DistillationModuleBlock
 import org.eln2.mc.common.content.processing.DistillationModuleBlockEntity
 import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
@@ -28,7 +28,6 @@ import snownee.jade.api.config.IPluginConfig
 import snownee.jade.api.fluid.JadeFluidObject
 import java.util.function.Supplier
 import kotlin.math.absoluteValue
-import kotlin.reflect.KProperty
 
 @WailaPlugin
 class Eln2WailaPlugin : IWailaPlugin {
@@ -200,7 +199,7 @@ class Eln2WailaPlugin : IWailaPlugin {
                 val stack = FractionalFluidStack.fromNbt(tag)
 
                 if (!stack.isEmpty) {
-                    val thermalFluid = ThermalFluidManager.getThermalFluid(stack.fluid)
+                    val thermalFluid = PhysicalFluidManager.getThermalFluid(stack.fluid)
 
                     if(thermalFluid != null) {
                         if(thermalFluid.isGaseous) {

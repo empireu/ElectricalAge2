@@ -20,13 +20,13 @@ import org.eln2.mc.extensions.*
 
 /**
  * Extra properties attached to a Forge Fluid.
- * @param cacheId Unique ID chosen by the [ThermalFluidManager].
+ * @param cacheId Unique ID chosen by the [PhysicalFluidManager].
  * @param specificHeatCapacity The specific heat capacity.
  * @param density The density of the fluid. Used for gravity separation.
  * @param isGaseous Indicates if this fluid is treated as gaseous (usually for fluid handler routing).
  * @param mixabilityTags If this fluid shares any of the [mixabilityTags] with another fluid, these two fluids mix and cannot be separated by gravity.
  *  */
-class ThermalFluid(
+class PhysicalFluid(
     val forgeFluidId: ResourceLocation,
     val forgeFluid: Fluid,
     val cacheId: Int,
@@ -39,7 +39,7 @@ class ThermalFluid(
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
 
-        other as ThermalFluid
+        other as PhysicalFluid
 
         return cacheId == other.cacheId
     }
@@ -60,17 +60,17 @@ private fun resolveForgeFluid(id: ResourceLocation): Fluid {
 }
 
 /**
- * Loader for all defined [ThermalFluid]s. Also has utility methods that cache results (to make use of the reload event).
+ * Loader for all defined [PhysicalFluid]s. Also has utility methods that cache results (to make use of the reload event).
  * */
-object ThermalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().create(), "thermal_fluid") {
+object PhysicalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().create(), "physical_fluid") {
     private var refs = References(HashMap(), Long2BooleanOpenHashMap())
 
     override fun apply(pObject: Map<ResourceLocation, JsonElement>, pResourceManager: ResourceManager, pProfiler: ProfilerFiller) {
-        val thermalFluids = HashMap<Fluid, ThermalFluid>()
+        val physicalFluids = HashMap<Fluid, PhysicalFluid>()
         val mixablePairs = Long2BooleanOpenHashMap()
 
         var cacheId = 0
-        val fluids = ArrayList<ThermalFluid>()
+        val fluids = ArrayList<PhysicalFluid>()
         pObject.forEach { (id, json) ->
             json as JsonObject
 
@@ -81,7 +81,7 @@ object ThermalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().crea
             val isGaseous = json.getBool("isGaseous")
             val mixabilityTags = if(json.has("mixabilityTags")) json.getAsJsonArray("mixabilityTags").map { it.asString } else emptyList<String>()
 
-            val result = ThermalFluid(
+            val result = PhysicalFluid(
                 forgeFluidId,
                 forgeFluid,
                 cacheId++,
@@ -93,7 +93,7 @@ object ThermalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().crea
 
             fluids.add(result)
 
-            thermalFluids.putUnique(result.forgeFluid, result) {
+            physicalFluids.putUnique(result.forgeFluid, result) {
                 DEBUGGER_BREAK("Duplicate thermal fluid entry $id, ${result.forgeFluidId}")
             }
         }
@@ -109,23 +109,23 @@ object ThermalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().crea
             }
         }
 
-        refs = References(thermalFluids, mixablePairs)
+        refs = References(physicalFluids, mixablePairs)
     }
 
     /**
-     * Gets the [ThermalFluid] for [fluid] or null, if the [fluid] doesn't have one attached.
+     * Gets the [PhysicalFluid] for [fluid] or null, if the [fluid] doesn't have one attached.
      * */
-    fun getThermalFluid(fluid: Fluid) = refs.thermalFluids[fluid]
+    fun getThermalFluid(fluid: Fluid) = refs.physicalFluids[fluid]
 
     /**
-     * Gets the [ThermalFluid] for [fluid] or throws, if the [fluid] doesn't have one attached.
+     * Gets the [PhysicalFluid] for [fluid] or throws, if the [fluid] doesn't have one attached.
      * */
     fun requireThermalFluid(fluid: Fluid) = getThermalFluid(fluid) ?: error("$fluid was not a thermal fluid!")
 
     @Suppress("NOTHING_TO_INLINE")
-    private inline fun getPairKey(a: ThermalFluid, b: ThermalFluid) : Long {
-        val fluid1: ThermalFluid
-        val fluid2: ThermalFluid
+    private inline fun getPairKey(a: PhysicalFluid, b: PhysicalFluid) : Long {
+        val fluid1: PhysicalFluid
+        val fluid2: PhysicalFluid
 
         if(a.cacheId < b.cacheId) {
             fluid1 = a
@@ -144,14 +144,14 @@ object ThermalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().crea
      * This is a fast lookup into a hashtable (faster than comparing the actual tags).
      * If [a] equals [b], then the result is `true`.
      * */
-    fun areMixable(a: ThermalFluid, b: ThermalFluid) = if(a == b) {
+    fun areMixable(a: PhysicalFluid, b: PhysicalFluid) = if(a == b) {
         true
     }
     else {
         refs.mixablePairs.get(getPairKey(a, b))
     }
 
-    private class References(val thermalFluids: HashMap<Fluid, ThermalFluid>, val mixablePairs: Long2BooleanOpenHashMap)
+    private class References(val physicalFluids: HashMap<Fluid, PhysicalFluid>, val mixablePairs: Long2BooleanOpenHashMap)
 }
 
 /**
@@ -198,7 +198,7 @@ class CondensationTransformation(
  * @param boiling The boiling pathway (when temperature is larger than the boiling point).
  * @param condensation The condensation pathway (when temperature is lower than the condensation point).
  * */
-class ThermalFluidTransformation(
+class FluidTransformation(
     val file: ResourceLocation,
     val fluid: Fluid,
     val boiling: BoilingTransformation?,
@@ -207,13 +207,13 @@ class ThermalFluidTransformation(
 )
 
 /**
- * Loader for all defined [ThermalFluidTransformation]s.
+ * Loader for all defined [FluidTransformation]s.
  * */
-object FluidTransformationManager : SimpleJsonResourceReloadListener(GsonBuilder().create(), "distillation") {
-    var transformationsByFluid = HashMap<Fluid, ThermalFluidTransformation>()
+object FluidTransformationManager : SimpleJsonResourceReloadListener(GsonBuilder().create(), "physical_fluid_transformation") {
+    var transformationsByFluid = HashMap<Fluid, FluidTransformation>()
 
     override fun apply(pObject: Map<ResourceLocation, JsonElement>, pResourceManager: ResourceManager, pProfiler: ProfilerFiller, ) {
-        val transformationsByFluid = HashMap<Fluid, ThermalFluidTransformation>()
+        val transformationsByFluid = HashMap<Fluid, FluidTransformation>()
 
         pObject.forEach { (file, json) ->
             json as JsonObject
@@ -245,7 +245,7 @@ object FluidTransformationManager : SimpleJsonResourceReloadListener(GsonBuilder
                 CondensationTransformation(temperature, enthalpy, resultLiquid, resultLiquidProportion, resultGasResidue)
             }
 
-            val transformations = ThermalFluidTransformation(
+            val transformations = FluidTransformation(
                 file,
                 fluid,
                 boilingTransformation, condensationTransformation

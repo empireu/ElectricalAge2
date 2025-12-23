@@ -28,7 +28,7 @@ import org.eln2.mc.common.cells.foundation.CellGraphManager
 import org.eln2.mc.common.cells.foundation.SimulationExecutionSubgraph
 import org.eln2.mc.common.cells.foundation.SubscriberPhase
 import org.eln2.mc.common.chemistry.FluidTransformationManager
-import org.eln2.mc.common.chemistry.ThermalFluidManager
+import org.eln2.mc.common.chemistry.PhysicalFluidManager
 import org.eln2.mc.common.content.modules.ContentModuleManager
 import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.content.WindSystem
@@ -89,7 +89,7 @@ object ForgeEvents {
 
     @SubscribeEvent @JvmStatic
     fun onAddReloadListeners(event: AddReloadListenerEvent) {
-        event.addListener(ThermalFluidManager)
+        event.addListener(PhysicalFluidManager)
         event.addListener(FluidTransformationManager)
     }
 
