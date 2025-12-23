@@ -2,6 +2,9 @@ package org.eln2.mc.data
 
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.contracts.ExperimentalContracts
+import kotlin.contracts.InvocationKind
+import kotlin.contracts.contract
 
 interface ObjectPool<T> {
     fun get(): T
@@ -9,7 +12,12 @@ interface ObjectPool<T> {
     fun release(obj: T)
 }
 
+@OptIn(ExperimentalContracts::class)
 inline fun<reified T> ObjectPool<T>.using(block: (obj: T) -> Unit) {
+    contract {
+        callsInPlace(block, InvocationKind.EXACTLY_ONCE)
+    }
+
     val obj = this.get()
 
     try {
@@ -20,7 +28,12 @@ inline fun<reified T> ObjectPool<T>.using(block: (obj: T) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalContracts::class)
 inline fun<reified T> ObjectPool<T>.using2(block: (obj1: T, obj2: T) -> Unit) {
+    contract {
+        callsInPlace(block, InvocationKind.EXACTLY_ONCE)
+    }
+
     val obj1 = this.get()
     val obj2 = this.get()
 
