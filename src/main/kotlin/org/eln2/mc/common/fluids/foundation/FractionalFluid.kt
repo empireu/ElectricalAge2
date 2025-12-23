@@ -5,6 +5,7 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.level.material.Fluid
 import net.minecraft.world.level.material.Fluids
 import net.minecraftforge.fluids.FluidStack
+import net.minecraftforge.fluids.capability.IFluidHandler
 import net.minecraftforge.registries.ForgeRegistries
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.rounded
@@ -112,4 +113,35 @@ class FractionalFluidStack(val fluid: Fluid, var amount: Double) {
             return FractionalFluidStack(fluid, amount)
         }
     }
+}
+
+/**
+ * Extension of [IFluidHandler] that also works with fractional fluids.
+ * The normal [IFluidHandler] operations should use quantization, as implemented by [MultipleFractionalFluidTank].
+ * */
+interface IFractionalFluidHandler : IFluidHandler {
+    /**
+     * Fractional variant of [IFluidHandler.getFluidInTank].
+     * */
+    fun getFractionalFluidInTank(tank: Int): FractionalFluidStack
+
+    /**
+     * Fractional variant of [IFluidHandler.getTankCapacity].
+     * */
+    fun getFractionalTankCapacity(tank: Int): Double
+
+    /**
+     * Fractional variant of [IFluidHandler.fill]. If the [resource]'s amount is less than [FractionalFluidStack.EPSILON], the operation will be ignored.
+     * */
+    fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): Double
+
+    /**
+     * Fractional variant of [IFluidHandler.drain]. If the [resource]'s amount is less than [FractionalFluidStack.EPSILON], the operation will be ignored.
+     * */
+    fun drainFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): FractionalFluidStack
+
+    /**
+     * Fractional variant of [IFluidHandler.drain]. If the [maxDrain] is less than [FractionalFluidStack.EPSILON], the operation will be ignored.
+     * */
+    fun drainFractional(maxDrain: Double, action: IFluidHandler.FluidAction): FractionalFluidStack
 }

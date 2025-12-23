@@ -704,7 +704,7 @@ open class GravityBasedMultipleFluidTank(val parent: MultipleFluidTank) : IFluid
 /**
  * Re-implementation of [MultipleFluidTank] that uses [FractionalFluidStack]s.
  * */
-open class MultipleFractionalFluidTank(val capacity: Double, val requireThermalFluid: Boolean) : IFluidHandler {
+open class MultipleFractionalFluidTank(val capacity: Double, val requireThermalFluid: Boolean) : IFractionalFluidHandler {
     var version = 0
         private set
 
@@ -777,6 +777,22 @@ open class MultipleFractionalFluidTank(val capacity: Double, val requireThermalF
     override fun getTanks() = fluids.size + 1
 
     /**
+     * Gets the exact fluid stack in the [tank] slot. Returns an empty stack if the [tank] is outside the range of the [fluids] list.
+     * */
+    override fun getFractionalFluidInTank(tank: Int): FractionalFluidStack {
+        if(tank in fluids.indices) {
+            return fluids[tank]
+        }
+
+        return FractionalFluidStack.EMPTY
+    }
+
+    /**
+     * Gets the [remainingCapacity].
+     * */
+    override fun getFractionalTankCapacity(tank: Int) = remainingCapacity
+
+    /**
      * Gets the **quantized** fluid stack in the [tank] slot. Returns an empty stack if the [tank] is outside the range of the [fluids] list.
      * */
     override fun getFluidInTank(tank: Int): FluidStack {
@@ -847,7 +863,7 @@ open class MultipleFractionalFluidTank(val capacity: Double, val requireThermalF
     /**
      * Fractional fill implementation.
      * */
-    fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): Double {
+    override fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): Double {
         if(!isFluidAllowed(resource.fluid)) {
             return 0.0
         }
@@ -948,7 +964,7 @@ open class MultipleFractionalFluidTank(val capacity: Double, val requireThermalF
     /**
      * Fractional implementation of drain, with the same base behavior.
      * */
-    fun drainFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): FractionalFluidStack {
+    override fun drainFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): FractionalFluidStack {
         if(resource.amount <= 0.0) {
             return FractionalFluidStack.EMPTY
         }
@@ -1005,7 +1021,7 @@ open class MultipleFractionalFluidTank(val capacity: Double, val requireThermalF
     /**
      * Fractional implementation of drain, with the same base behavior.
      * */
-    fun drainFractional(maxDrain: Double, action: IFluidHandler.FluidAction): FractionalFluidStack {
+    override fun drainFractional(maxDrain: Double, action: IFluidHandler.FluidAction): FractionalFluidStack {
         if(maxDrain <= 0) {
             return FractionalFluidStack.EMPTY
         }
