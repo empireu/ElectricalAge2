@@ -32,6 +32,7 @@ import org.eln2.mc.common.chemistry.PhysicalFluidManager
 import org.eln2.mc.common.content.modules.ContentModuleManager
 import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.content.WindSystem
+import org.eln2.mc.common.content.fluid.FluidPipeNetworkManager
 import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.events.schedulePost
 import org.eln2.mc.common.grids.GridCollisions
@@ -184,6 +185,8 @@ object ForgeEvents {
             dispatchServerSubscribers(SubscriberPhase.Post)
             advanceServerFrames()
             BulkMessages.flush()
+
+            FluidPipeNetworkManager.update()
         }
     }
 

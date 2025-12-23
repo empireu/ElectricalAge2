@@ -20,7 +20,7 @@ import kotlin.math.floor
  * This is only used for internal algorithms. Actual [FluidStack]s are handed out to pipes, which is done using the [quantized] API.
  * */
 class FractionalFluidStack(val fluid: Fluid, var amount: Double) {
-    val isEmpty: Boolean get() = amount.approxEq(0.0, EPSILON)
+    val isEmpty: Boolean get() = fluid == Fluids.EMPTY || amount < EPSILON
     val isNotEmpty: Boolean get() = !isEmpty
 
     /**

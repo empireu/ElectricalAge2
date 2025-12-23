@@ -199,7 +199,7 @@ class Eln2WailaPlugin : IWailaPlugin {
                 val stack = FractionalFluidStack.fromNbt(tag)
 
                 if (!stack.isEmpty) {
-                    val thermalFluid = PhysicalFluidManager.getThermalFluid(stack.fluid)
+                    val thermalFluid = PhysicalFluidManager.getProperties(stack.fluid)
 
                     if(thermalFluid != null) {
                         if(thermalFluid.isGaseous) {

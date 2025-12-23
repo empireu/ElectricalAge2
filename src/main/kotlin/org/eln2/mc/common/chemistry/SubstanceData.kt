@@ -115,12 +115,12 @@ object PhysicalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().cre
     /**
      * Gets the [PhysicalFluid] for [fluid] or null, if the [fluid] doesn't have one attached.
      * */
-    fun getThermalFluid(fluid: Fluid) = refs.physicalFluids[fluid]
+    fun getProperties(fluid: Fluid) = refs.physicalFluids[fluid]
 
     /**
      * Gets the [PhysicalFluid] for [fluid] or throws, if the [fluid] doesn't have one attached.
      * */
-    fun requireThermalFluid(fluid: Fluid) = getThermalFluid(fluid) ?: error("$fluid was not a thermal fluid!")
+    fun requireProperties(fluid: Fluid) = getProperties(fluid) ?: error("$fluid was not a thermal fluid!")
 
     @Suppress("NOTHING_TO_INLINE")
     private inline fun getPairKey(a: PhysicalFluid, b: PhysicalFluid) : Long {

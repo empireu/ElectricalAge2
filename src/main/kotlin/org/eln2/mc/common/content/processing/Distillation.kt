@@ -166,7 +166,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
      * */
     class BottomFaceHandler(val liquidTank: MultipleFractionalFluidTank, val gasTank: MultipleFractionalFluidTank) : GravityBasedMultipleFractionalFluidTank(liquidTank) {
         override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction): Int {
-            val thermalFluid = PhysicalFluidManager.getThermalFluid(resource.fluid)
+            val thermalFluid = PhysicalFluidManager.getProperties(resource.fluid)
                 ?: return 0
 
             return if(thermalFluid.isGaseous) {
@@ -188,7 +188,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
      * */
     class TopFaceHandler(val liquidTank: MultipleFractionalFluidTank, gasTank: MultipleFractionalFluidTank) : PurityBasedMultipleFractionalFluidTank(gasTank) {
         override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction): Int {
-            val thermalFluid = PhysicalFluidManager.getThermalFluid(resource.fluid)
+            val thermalFluid = PhysicalFluidManager.getProperties(resource.fluid)
                 ?: return 0
 
             if(thermalFluid.isGaseous) {
@@ -209,7 +209,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
      * */
     class SideHandler(val liquidTank: MultipleFractionalFluidTank) : PurityBasedMultipleFractionalFluidTank(liquidTank) {
         override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction): Int {
-            val thermalFluid = PhysicalFluidManager.getThermalFluid(resource.fluid)
+            val thermalFluid = PhysicalFluidManager.getProperties(resource.fluid)
                 ?: return 0
 
             if(thermalFluid.isGaseous) {
@@ -305,7 +305,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
              * Order by lowest density first:
              * */
             val gases = gasTank.fluids.sortedBy {
-                PhysicalFluidManager.requireThermalFluid(it.fluid).density
+                PhysicalFluidManager.requireProperties(it.fluid).density
             }
 
             for (stack in gases) {

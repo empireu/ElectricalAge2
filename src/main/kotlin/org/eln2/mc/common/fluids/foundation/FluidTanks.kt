@@ -119,7 +119,7 @@ open class MultipleFluidTank(val capacity: Int, val requireThermalFluid: Boolean
             return true
         }
 
-        return PhysicalFluidManager.getThermalFluid(fluid) != null
+        return PhysicalFluidManager.getProperties(fluid) != null
     }
 
     override fun isFluidValid(tank: Int, stack: FluidStack) = isFluidAllowed(stack.fluid)
@@ -568,13 +568,13 @@ open class GravityBasedMultipleFluidTank(val parent: MultipleFluidTank) : IFluid
 
             while (remaining.isNotEmpty()) {
                 val front = remaining.removeLast()
-                val a = PhysicalFluidManager.requireThermalFluid(front.fluid)
+                val a = PhysicalFluidManager.requireProperties(front.fluid)
 
                 val phase = pool.get()
                 phase.add(front)
 
                 remaining.removeAll { candidate ->
-                    val b = PhysicalFluidManager.requireThermalFluid(candidate.fluid)
+                    val b = PhysicalFluidManager.requireProperties(candidate.fluid)
 
                     if(PhysicalFluidManager.areMixable(a, b)) {
                         phase.add(candidate)
@@ -601,7 +601,7 @@ open class GravityBasedMultipleFluidTank(val parent: MultipleFluidTank) : IFluid
             var volume = 0.0
 
             phase.forEach { stack ->
-                mass += !PhysicalFluidManager.requireThermalFluid(stack.fluid).density * stack.amount
+                mass += !PhysicalFluidManager.requireProperties(stack.fluid).density * stack.amount
                 volume += stack.amount
             }
 
@@ -816,7 +816,7 @@ open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalF
             return true
         }
 
-        return PhysicalFluidManager.getThermalFluid(fluid) != null
+        return PhysicalFluidManager.getProperties(fluid) != null
     }
 
     override fun isFluidValid(tank: Int, stack: FluidStack) = isFluidAllowed(stack.fluid)
@@ -1451,13 +1451,13 @@ open class GravityBasedMultipleFractionalFluidTank(val parent: MultipleFractiona
 
             while (remaining.isNotEmpty()) {
                 val front = remaining.removeLast()
-                val a = PhysicalFluidManager.requireThermalFluid(front.fluid)
+                val a = PhysicalFluidManager.requireProperties(front.fluid)
 
                 val phase = pool.get()
                 phase.add(front)
 
                 remaining.removeAll { candidate ->
-                    val b = PhysicalFluidManager.requireThermalFluid(candidate.fluid)
+                    val b = PhysicalFluidManager.requireProperties(candidate.fluid)
 
                     if(PhysicalFluidManager.areMixable(a, b)) {
                         phase.add(candidate)
@@ -1484,7 +1484,7 @@ open class GravityBasedMultipleFractionalFluidTank(val parent: MultipleFractiona
             var volume = 0.0
 
             phase.forEach { stack ->
-                mass += !PhysicalFluidManager.requireThermalFluid(stack.fluid).density * stack.amount
+                mass += !PhysicalFluidManager.requireProperties(stack.fluid).density * stack.amount
                 volume += stack.amount
             }
 

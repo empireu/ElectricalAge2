@@ -8,8 +8,10 @@ import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.content.fluid.FluidPipeBlock
 import org.eln2.mc.common.content.fluid.FluidPipeBlockEntity
+import org.eln2.mc.common.content.fluid.FluidPipeModuleItem
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.fluids.ForgeFluidRegistry.basicForgeFluid
+import org.eln2.mc.common.items.ItemRegistry.item
 
 object Eln2ForgeFluids : ContentModule() {
     private val renderLayerSetups = ArrayList<Pair<ForgeFluidRegistry.ForgeFluidRegistryItem, RenderType>>()
@@ -34,6 +36,9 @@ object Eln2ForgeFluids : ContentModule() {
         FLUID_PIPE_BLOCK,
         ::FluidPipeBlockEntity
     )
+
+    val FLUID_PIPE_PUMP_MODULE = item("fluid_pipe_pump_module", ::FluidPipeModuleItem)
+    val FLUID_PIPE_GATED_PUMP_MODULE = item("fluid_pipe_gated_pump_module", ::FluidPipeModuleItem)
 
     //#endregion
 
