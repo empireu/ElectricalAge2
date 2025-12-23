@@ -704,7 +704,7 @@ open class GravityBasedMultipleFluidTank(val parent: MultipleFluidTank) : IFluid
 /**
  * Re-implementation of [MultipleFluidTank] that uses [FractionalFluidStack]s.
  * */
-open class MultipleFractionalFluidTank(val capacity: Double, val requireThermalFluid: Boolean) : IFractionalFluidHandler {
+open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalFluid: Boolean) : IFractionalFluidHandler {
     var version = 0
         private set
 
@@ -1077,7 +1077,7 @@ open class MultipleFractionalFluidTank(val capacity: Double, val requireThermalF
 /**
  * Re-implementation of [PurityBasedMultipleFluidTank].
  * */
-open class PurityBasedMultipleFractionalFluidTank(val parent: MultipleFractionalFluidTank, val purityThreshold: Double = 0.95) : IFluidHandler by parent {
+open class PurityBasedMultipleFractionalFluidTank(val parent: MultipleFractionalFluidTank, val purityThreshold: Double = 0.95) : IFractionalFluidHandler by parent {
     /**
      * Gets the index of the representative fluid (based on [purityThreshold]), or `-1` if no fluids match.
      *
@@ -1157,7 +1157,7 @@ open class PurityBasedMultipleFractionalFluidTank(val parent: MultipleFractional
     /**
      * Fractional purity-based drain.
      * */
-    fun drainFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): FractionalFluidStack {
+    override fun drainFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): FractionalFluidStack {
         /**
          * Handles case 1:
          * */
@@ -1299,7 +1299,7 @@ open class PurityBasedMultipleFractionalFluidTank(val parent: MultipleFractional
     /**
      * Fractional purity-based drain.
      * */
-    fun drainFractional(maxDrain: Double, action: IFluidHandler.FluidAction): FractionalFluidStack {
+    override fun drainFractional(maxDrain: Double, action: IFluidHandler.FluidAction): FractionalFluidStack {
         /**
          * Handles case 1:
          * */
@@ -1399,7 +1399,7 @@ open class PurityBasedMultipleFractionalFluidTank(val parent: MultipleFractional
 /**
  * Re-implementation of [GravityBasedMultipleFluidTank].
  * */
-open class GravityBasedMultipleFractionalFluidTank(val parent: MultipleFractionalFluidTank) : IFluidHandler by parent {
+open class GravityBasedMultipleFractionalFluidTank(val parent: MultipleFractionalFluidTank) : IFractionalFluidHandler by parent {
     companion object {
         private val pool = LinearObjectPool<ArrayList<FractionalFluidStack>>(object : PooledObjectPolicy<ArrayList<FractionalFluidStack>> {
             override fun create(): ArrayList<FractionalFluidStack> {
@@ -1560,7 +1560,7 @@ open class GravityBasedMultipleFractionalFluidTank(val parent: MultipleFractiona
     /**
      * Fractional gravity separation.
      * */
-    fun drainFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): FractionalFluidStack {
+    override fun drainFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): FractionalFluidStack {
         if(resource.amount < FractionalFluidStack.EPSILON) {
             return FractionalFluidStack.EMPTY
         }
@@ -1598,7 +1598,7 @@ open class GravityBasedMultipleFractionalFluidTank(val parent: MultipleFractiona
         return parent.drain(FluidStack(targetStack.fluid, min(maxDrain, roundedAmount)), action)
     }
 
-    fun drainFractional(maxDrain: Double, action: IFluidHandler.FluidAction): FractionalFluidStack {
+    override fun drainFractional(maxDrain: Double, action: IFluidHandler.FluidAction): FractionalFluidStack {
         if(maxDrain < FractionalFluidStack.EPSILON) {
             return FractionalFluidStack.EMPTY
         }
