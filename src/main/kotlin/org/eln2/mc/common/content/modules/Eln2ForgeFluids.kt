@@ -3,13 +3,13 @@ package org.eln2.mc.common.content.modules
 import net.minecraft.client.renderer.ItemBlockRenderTypes
 import net.minecraft.client.renderer.RenderType
 import net.minecraftforge.fluids.FluidType
-import org.ageseries.libage.data.ClosedInterval
-import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
+import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
+import org.eln2.mc.common.content.fluid.FluidPipeBlock
+import org.eln2.mc.common.content.fluid.FluidPipeBlockEntity
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.fluids.ForgeFluidRegistry.basicForgeFluid
-import org.eln2.mc.resource
-import org.joml.Vector3f
 
 object Eln2ForgeFluids : ContentModule() {
     private val renderLayerSetups = ArrayList<Pair<ForgeFluidRegistry.ForgeFluidRegistryItem, RenderType>>()
@@ -24,6 +24,18 @@ object Eln2ForgeFluids : ContentModule() {
             ItemBlockRenderTypes.setRenderLayer(fluid.flowing.get(), renderLayer)
         }
     }
+
+    //#region Pipe
+
+    val FLUID_PIPE_BLOCK = blockAndItem("fluid_pipe", ::FluidPipeBlock)
+
+    val FLUID_PIPE_BLOCK_ENTITY = blockEntityOnly(
+        "fluid_pipe",
+        FLUID_PIPE_BLOCK,
+        ::FluidPipeBlockEntity
+    )
+
+    //#endregion
 
     //#region Coal Products
 

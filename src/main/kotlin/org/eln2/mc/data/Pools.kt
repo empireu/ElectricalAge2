@@ -34,7 +34,15 @@ inline fun<reified T> ObjectPool<T>.using2(block: (obj1: T, obj2: T) -> Unit) {
 }
 
 interface PooledObjectPolicy<T> {
+    /**
+     * Called to create a new instance of [T].
+     * */
     fun create(): T
+
+    /**
+     * Called when [obj] is returned to the pool, to clean its state for reuse.
+     * @return True if [obj] should be accepted back into the pool. If false, then [obj] will not be added back and will be collected by GC.
+     * */
     fun release(obj: T): Boolean
 }
 

@@ -17,6 +17,7 @@ import org.eln2.mc.common.parts.foundation.PartUpdateType
 import org.eln2.mc.common.specs.foundation.SpecUpdateType
 import org.eln2.mc.data.Locators
 import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.FacingDirection
 
 fun Inductor.saveNbt() : CompoundTag {
@@ -177,6 +178,20 @@ fun CompoundTag.putBase6Direction3d(key: String, direction: Base6Direction3d) {
     this.putInt(key, direction.id)
 }
 
+fun CompoundTag.getBase6Direction3d(key: String): Base6Direction3d {
+    val data = this.getInt(key)
+    return Base6Direction3d.entries[data]
+}
+
+fun CompoundTag.putBase6Direction3dMask(key: String, mask: Base6Direction3dMask) {
+    this.putInt(key, mask.value)
+}
+
+fun CompoundTag.getBase6Direction3dMask(key: String): Base6Direction3dMask {
+    val data = this.getInt(key)
+    return Base6Direction3dMask(data)
+}
+
 fun CompoundTag.putConnectionMode(key: String, mode: CellPartConnectionMode) {
     this.putInt(key, mode.index)
 }
@@ -184,11 +199,6 @@ fun CompoundTag.putConnectionMode(key: String, mode: CellPartConnectionMode) {
 fun CompoundTag.getConnectionMode(key: String): CellPartConnectionMode {
     val value = this.getInt(key)
     return CellPartConnectionMode.byId[value]
-}
-
-fun CompoundTag.getBase6Direction3d(key: String): Base6Direction3d {
-    val data = this.getInt(key)
-    return Base6Direction3d.entries[data]
 }
 
 fun CompoundTag.putPartUpdateType(key: String, type: PartUpdateType) {
