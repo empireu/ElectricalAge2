@@ -1,8 +1,21 @@
 package org.eln2.mc.common.content.fluid
 
+import dev.engine_room.flywheel.api.instance.Instance
+import dev.engine_room.flywheel.api.visual.DynamicVisual
+import dev.engine_room.flywheel.api.visualization.VisualizationContext
+import dev.engine_room.flywheel.lib.instance.InstanceTypes
+import dev.engine_room.flywheel.lib.instance.TransformedInstance
+import dev.engine_room.flywheel.lib.model.Models
+import dev.engine_room.flywheel.lib.model.baked.PartialModel
+import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
+import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.network.Connection
+import net.minecraft.network.protocol.Packet
+import net.minecraft.network.protocol.game.ClientGamePacketListener
+import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
@@ -14,7 +27,6 @@ import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.LevelReader
 import net.minecraft.world.level.block.Block
-import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.EntityBlock
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
@@ -34,6 +46,7 @@ import net.minecraftforge.fluids.capability.IFluidHandler
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
+import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.common.content.WrenchInteractable
 import org.eln2.mc.common.content.WrenchItem
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
@@ -45,6 +58,8 @@ import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import java.util.*
+import java.util.function.Consumer
+import java.util.function.Supplier
 
 // P.S. I load all chunks synchronously. It's up to the player to add chunk-loaders, for now...
 
@@ -98,13 +113,15 @@ object FluidPipeNetworkManager {
         private val networksByID = HashMap<UUID, FluidPipeNetwork>()
 
         private fun allocateNetwork() : FluidPipeNetwork {
-            val result = FluidPipeNetwork(level)
+            val result = FluidPipeNetwork(this, level)
             networksByID.putUnique(result.id, result)
             return result
         }
 
-        private fun freeNetwork(network: FluidPipeNetwork) {
-            check(networksByID.remove(network.id) != null)
+        fun freeNetwork(network: FluidPipeNetwork) {
+            check(networksByID.remove(network.id) != null) {
+                DEBUGGER_BREAK()
+            }
         }
 
         private fun isCommonNetwork(neighborList: List<FluidPipeBlockEntity>) : Boolean {
@@ -264,11 +281,19 @@ object FluidPipeNetworkManager {
 
     private val repositories = HashMap<ServerLevel, Repository>()
 
+    private fun validateUsage() {
+        requireIsOnServerThread {
+            "Tried to use fluid pipe network manager on non-server thread"
+        }
+    }
+
     /**
      * Gets the repository for the level.
      * */
     @OnServerThread
     fun getRepositoryFor(level: ServerLevel): Repository {
+        validateUsage()
+
         var result = repositories[level]
 
         if(result == null) {
@@ -280,9 +305,17 @@ object FluidPipeNetworkManager {
     }
 
     fun update() {
+        validateUsage()
+
         repositories.values.forEach {
             it.update()
         }
+    }
+
+    fun clear() {
+        validateUsage()
+
+        repositories.clear()
     }
 }
 
@@ -294,7 +327,7 @@ object FluidPipeNetworkManager {
  * The network building algorithm is very similar to the cell graph.
  * */
 @OnServerThread
-class FluidPipeNetwork(val level: ServerLevel) {
+class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val level: ServerLevel) {
     val id: UUID = UUID.randomUUID()
 
     val pipes = HashSet<FluidPipeBlockEntity>()
@@ -405,6 +438,7 @@ class FluidPipeNetwork(val level: ServerLevel) {
                     }
 
                     pipe.setChanged()
+                    pipe.onModuleChanged()
                 }
             }
 
@@ -670,6 +704,24 @@ class FluidPipeNetwork(val level: ServerLevel) {
             executePump(pipe, endpoints)
         }
     }
+
+    /**
+     * Removes the pipe from the data structures, but doesn't trigger a rebuild of the graph.
+     * Used when a chunk unloads.
+     */
+    fun unloadPipe(pipe: FluidPipeBlockEntity) {
+        if (!pipes.remove(pipe)) {
+            LOG.error("Pipe $pipe (${pipe.blockPos}) was not in network $id during unloading")
+        }
+
+        invalidateCaches()
+        importEndpointsByPipe.remove(pipe)
+        exportEndpointsByPipe.remove(pipe)
+
+        if(pipes.isEmpty()) {
+            repository.freeNetwork(this)
+        }
+    }
 }
 
 class FluidPipeBlock : Block(eln2StandardBlockProperties().noOcclusion().dynamicShape()), EntityBlock {
@@ -772,6 +824,13 @@ class FluidPipeBlock : Block(eln2StandardBlockProperties().noOcclusion().dynamic
         }
     }
 
+    @Deprecated("Deprecated in Java")
+    override fun onRemove(pState: BlockState, pLevel: Level, pPos: BlockPos, pNewState: BlockState, pIsMoving: Boolean) {
+        if (!pState.`is`(pNewState.block)) {
+            super.onRemove(pState, pLevel, pPos, pNewState, pIsMoving)
+        }
+    }
+
     //#region Collider
 
     @Suppress("OVERRIDE_DEPRECATION")
@@ -810,12 +869,10 @@ class FluidPipeBlock : Block(eln2StandardBlockProperties().noOcclusion().dynamic
         super.onNeighborChange(state, level, pos, neighbor)
 
         if(!level.isClientSide) {
-            Scheduler.scheduleWork(0, {
-                val blockEntity = level.getBlockEntity(pos) as? FluidPipeBlockEntity
-                    ?: return@scheduleWork
+            val blockEntity = level.getBlockEntity(pos) as? FluidPipeBlockEntity
+                ?: return
 
-                blockEntity.neighborChanged()
-            }, TickEvent.Phase.END)
+            blockEntity.neighborChanged()
         }
     }
 
@@ -880,7 +937,10 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
 
     override fun onChunkUnloaded() {
         if(level?.isClientSide == false) {
-            removeFromNetwork()
+            if(networkInternal != null) {
+                networkInternal!!.unloadPipe(this)
+                networkInternal = null
+            }
         }
 
         super.onChunkUnloaded()
@@ -906,27 +966,45 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
      * @param networkExportsToEndpoint True if the network actively pushes into the machine.
      * @param machineCanPushIntoNetwork True if the machine is allowed to push into the network.
      * */
-    enum class ModuleType(val item: RegistryObject<FluidPipeModuleItem>?, val networkImportsFromEndpoint: Boolean, val networkExportsToEndpoint: Boolean, val machineCanPushIntoNetwork: Boolean) {
+    enum class ModuleType(val item: RegistryObject<FluidPipeModuleItem>?, val networkImportsFromEndpoint: Boolean, val networkExportsToEndpoint: Boolean, val machineCanPushIntoNetwork: Boolean, val modelSupplier: Supplier<PartialModel>?) {
         /**
          * The default value. Both pushes and pulls.
          * - The network tries to pull fluid from the machine.
          * - The network tries to push fluid into the machine.
          * */
-        None(null, true, true, true),
+        None(
+            null,
+            true,
+            true,
+            true,
+            null
+        ),
 
         /**
          * Gate that prevents the machine from receiving fluid from the network.
          * - The network tries to pull fluid from the machine.
          * - The network doesn't push fluid into the machine.
          * */
-        ImportGate(Eln2ForgeFluids.FLUID_PIPE_IMPORT_GATE, true, false, true),
+        ImportGate(
+            Eln2ForgeFluids.FLUID_PIPE_IMPORT_GATE,
+            true,
+            false,
+            true,
+            { FlwModels.FLUID_PIPE_IMPORT_GATE_MODULE }
+        ),
 
         /**
          * Gate that prevents the network from receiving fluid from the machine.
          * - The network tries to push fluid into the machine.
          * - The network doesn't pull fluid from the machine.
          * */
-        ExportGate(Eln2ForgeFluids.FLUID_PIPE_EXPORT_GATE, false, true, false)
+        ExportGate(
+            Eln2ForgeFluids.FLUID_PIPE_EXPORT_GATE,
+            false,
+            true,
+            false,
+            { FlwModels.FLUID_PIPE_EXPORT_GATE_MODULE }
+        )
     }
 
     /**
@@ -1100,8 +1178,12 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
                 }
             }
 
+            removeFromNetwork()
             modules[picked.pipe.get3DDataValue()] = ModuleType.None
+            registerIntoNetwork()
+
             setChanged()
+            onModuleChanged()
 
             return true
         }
@@ -1113,9 +1195,6 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
             if(!removeModule()) {
                 return InteractionResult.FAIL
             }
-
-            setChanged()
-            reloadNetwork()
 
             return InteractionResult.SUCCESS
         }
@@ -1136,13 +1215,24 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
             }
 
             removeModule()
+
+            removeFromNetwork()
             modules[picked.pipe.get3DDataValue()] = targetModuleType
-            setChanged()
-            reloadNetwork()
+            registerIntoNetwork()
 
             itemInHand.eln2Consume(pPlayer)
+            onModuleChanged()
+
             return InteractionResult.CONSUME
         }
+    }
+
+    /**
+     * Called when a module changed, to sync.
+     * */
+    @OnServerThread
+    fun onModuleChanged() {
+        this.setSyncDirty()
     }
 
     /**
@@ -1172,9 +1262,10 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
                 return InteractionResult.FAIL
             }
 
+            removeFromNetwork()
             whitelist += face
+            registerIntoNetwork()
             setChanged()
-            reloadNetwork()
 
             return InteractionResult.SUCCESS
         }
@@ -1189,9 +1280,11 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
             return InteractionResult.FAIL
         }
 
+        removeFromNetwork()
         whitelist -= picked.pipe
+        registerIntoNetwork()
+
         setChanged()
-        reloadNetwork()
 
         return InteractionResult.SUCCESS
     }
@@ -1219,15 +1312,6 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
             repository.removePipe(this)
             networkInternal = null
         }
-    }
-
-    /**
-     * Called when the whitelist changed to re-register the pipe.
-     * */
-    @OnServerThread
-    private fun reloadNetwork() {
-        removeFromNetwork()
-        registerIntoNetwork()
     }
 
     /**
@@ -1287,25 +1371,110 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
         }
     }
 
-    //#region Saving
+    //#region Saving and Sync
 
-    override fun saveAdditional(pTag: CompoundTag) {
-        super.saveAdditional(pTag)
+    private fun saveToTag(pTag: CompoundTag) {
         pTag.putBase6Direction3dMask("pipeWhitelist", whitelist)
         pTag.putIntArray("modules", modules.map { it.ordinal })
     }
 
-    override fun load(pTag: CompoundTag) {
-        super.load(pTag)
+    private fun loadFromTag(pTag: CompoundTag) {
         whitelist = pTag.getBase6Direction3dMask("pipeWhitelist")
         pTag.getIntArray("modules").forEachIndexed { idx, module ->
             modules[idx] = ModuleType.entries[module]
         }
     }
 
+    override fun saveAdditional(pTag: CompoundTag) {
+        super.saveAdditional(pTag)
+        saveToTag(pTag)
+    }
+
+    override fun load(pTag: CompoundTag) {
+        super.load(pTag)
+        loadFromTag(pTag)
+    }
+
+    override fun getUpdateTag(): CompoundTag {
+        val tag = CompoundTag()
+        saveToTag(tag)
+        return tag
+    }
+
+    override fun getUpdatePacket(): Packet<ClientGamePacketListener?>? {
+        val tag = updateTag
+
+        return ClientboundBlockEntityDataPacket.create(this) { tag }
+    }
+
+    override fun onDataPacket(net: Connection?, pkt: ClientboundBlockEntityDataPacket?) {
+        val tag = pkt?.tag
+            ?: return
+
+        loadFromTag(tag)
+    }
+
     //#endregion
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         builder.debugInIDE { "Network: ${network.id}" }
+    }
+}
+
+/**
+ * Flywheel rendering for the modules only. I think there are other ways to inject the needed data into the block's rendering, but meh.
+ * */
+class FluidPipeBlockEntityVisual(ctx: VisualizationContext, blockEntity: FluidPipeBlockEntity, partialTick: Float) : AbstractBlockEntityVisual<FluidPipeBlockEntity>(ctx, blockEntity, partialTick), SimpleDynamicVisual {
+    data class InstanceData(var moduleType: FluidPipeBlockEntity.ModuleType, var instance: TransformedInstance?)
+
+    private val instances = Array<InstanceData>(6) {
+        InstanceData(FluidPipeBlockEntity.ModuleType.None, null)
+    }
+
+    override fun beginFrame(p0: DynamicVisual.Context?) {
+        for (i in 0 until 6) {
+            val renderedModule = instances[i]
+            val targetModule = blockEntity.modules[i]
+
+            if(renderedModule.moduleType == targetModule) {
+                continue
+            }
+
+            renderedModule.moduleType = targetModule
+            renderedModule.instance?.delete()
+            renderedModule.instance = if (targetModule.modelSupplier != null) {
+                val result = visualizationContext.instancerProvider()
+                    .instancer(InstanceTypes.TRANSFORMED, Models.partial(targetModule.modelSupplier.get()))
+                    .createInstance()
+                    .also {
+                        it.translate(visualPosition)
+                        it.center()
+                        it.rotateToFace(Direction.from3DDataValue(i))
+                        it.uncenter()
+                    }
+
+                relight(result)
+                result
+            }
+            else {
+                null
+            }
+        }
+    }
+
+    override fun updateLight(p0: Float) {
+        relight(instances.map { it.instance })
+    }
+
+    override fun collectCrumblingInstances(p0: Consumer<Instance?>) {
+        instances.forEach {
+            p0.accept(it.instance)
+        }
+    }
+
+    override fun _delete() {
+        instances.forEach {
+            it.instance?.delete()
+        }
     }
 }

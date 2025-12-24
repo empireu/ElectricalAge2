@@ -206,6 +206,9 @@ object FlwModels {
 
     val COKING_OVEN = partialBlock("coking_oven/coking_oven")
 
+    val FLUID_PIPE_EXPORT_GATE_MODULE = partialBlock("fluid_pipe/export_gate_module")
+    val FLUID_PIPE_IMPORT_GATE_MODULE = partialBlock("fluid_pipe/import_gate_module")
+
     fun partialBlock(path: String): PartialModel = PartialModel.of(resource("block/$path"))
     fun polarBlock(path: String): PolarModel = PolarModel(resource("block/$path"))
 

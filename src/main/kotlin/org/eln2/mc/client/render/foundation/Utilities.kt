@@ -626,16 +626,16 @@ value class MyColor(val data : Int) {
     operator fun not() = data
 }
 
-class DummyBlockEntityRendererProvider<T : BlockEntity> : BlockEntityRendererProvider<T> {
+class DummyBlockEntityRendererProvider<T : BlockEntity>(val expectsVanillaRenderCalls: Boolean = false) : BlockEntityRendererProvider<T> {
     companion object {
         private var warned = false
     }
 
     override fun create(p0: BlockEntityRendererProvider.Context): BlockEntityRenderer<T> {
-        return Impl()
+        return Impl(expectsVanillaRenderCalls)
     }
 
-    private class Impl<T : BlockEntity> : BlockEntityRenderer<T> {
+    private class Impl<T : BlockEntity>(val expectsVanillaRenderCalls: Boolean) : BlockEntityRenderer<T> {
         override fun render(
             p0: T,
             p1: Float,
@@ -644,6 +644,10 @@ class DummyBlockEntityRendererProvider<T : BlockEntity> : BlockEntityRendererPro
             p4: Int,
             p5: Int,
         ) {
+            if(expectsVanillaRenderCalls) {
+                return
+            }
+
             if(warned) {
                 return
             }

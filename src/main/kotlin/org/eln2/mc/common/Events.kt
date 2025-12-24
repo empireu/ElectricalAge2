@@ -238,6 +238,8 @@ object ForgeEvents {
 
         GridConnectionManagerServer.clear()
         SpecPlacementOverlayServer.clear()
+
+        FluidPipeNetworkManager.clear()
     }
 
     private fun scheduleWorldTrackingEventServer(event: BlockEvent, handler: (ServerLevel, BlockPos) -> Unit) {

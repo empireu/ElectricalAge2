@@ -1,19 +1,38 @@
 package org.eln2.mc.common.content.modules
 
+import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
+import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.minecraft.client.renderer.ItemBlockRenderTypes
 import net.minecraft.client.renderer.RenderType
+import net.minecraftforge.client.event.EntityRenderersEvent
 import net.minecraftforge.fluids.FluidType
+import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.blocks.BlockRegistry.blockAndItemAndDrop
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.content.fluid.FluidPipeBlock
 import org.eln2.mc.common.content.fluid.FluidPipeBlockEntity
+import org.eln2.mc.common.content.fluid.FluidPipeBlockEntityVisual
 import org.eln2.mc.common.content.fluid.FluidPipeModuleItem
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.fluids.ForgeFluidRegistry.basicForgeFluid
 import org.eln2.mc.common.items.ItemRegistry.item
 
 object Eln2ForgeFluids : ContentModule() {
+    override fun registerBlockEntityVisualizers() {
+        VisualizerRegistry.setVisualizer(
+            FLUID_PIPE_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::FluidPipeBlockEntityVisual) { false }
+        )
+    }
+
+    override fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
+        event.registerBlockEntityRenderer(
+            FLUID_PIPE_BLOCK_ENTITY.get(),
+            DummyBlockEntityRendererProvider(true)
+        )
+    }
+
     private val renderLayerSetups = ArrayList<Pair<ForgeFluidRegistry.ForgeFluidRegistryItem, RenderType>>()
 
     fun ForgeFluidRegistry.ForgeFluidRegistryItem.withRenderLayer(layer: RenderType) {
