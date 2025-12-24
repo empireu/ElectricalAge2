@@ -76,7 +76,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.function.Consumer
 
 class MultipartBlock : BaseEntityBlock(
-    Properties.copy(Blocks.STONE)
+    eln2StandardBlockProperties()
         .noOcclusion()
         .destroyTime(0.2f)
         .dynamicShape()

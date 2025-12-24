@@ -46,6 +46,7 @@ import org.eln2.mc.common.content.WrenchItem
 import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.content.processing.DistillationModuleBlockEntity.Companion.PHASE_CHANGE_RATE
 import org.eln2.mc.common.fluids.foundation.*
+import org.eln2.mc.extensions.eln2StandardBlockProperties
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import java.util.concurrent.locks.ReentrantLock
@@ -91,7 +92,7 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters) 
 /**
  * Acts as a pipe for gas to move up from modules. Doesn't have a block entity or tanks.
  * */
-class DistillationColumnBlock : HorizontalDirectionalBlock(Properties.of()) {
+class DistillationColumnBlock : HorizontalDirectionalBlock(eln2StandardBlockProperties()) {
     init {
         @Suppress("LeakingThis")
         registerDefaultState(getStateDefinition().any().setValue(

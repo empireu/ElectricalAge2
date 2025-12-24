@@ -282,7 +282,7 @@ object ReplaceVanillaParticlesBlockExtension : IClientBlockExtensions {
     }
 }
 
-open class MultiblockDelegateBlock(properties: Properties? = null) : BaseEntityBlock(properties ?: Properties.copy(Blocks.STONE).noOcclusion().destroyTime(0.2f)) {
+open class MultiblockDelegateBlock(properties: Properties? = null) : BaseEntityBlock(properties ?: eln2StandardBlockProperties().noOcclusion().destroyTime(0.2f)) {
     companion object {
         val SKIP_RENDERING: BooleanProperty = BooleanProperty.create("skip_rendering")
 

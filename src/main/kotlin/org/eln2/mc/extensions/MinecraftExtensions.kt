@@ -20,11 +20,7 @@ import net.minecraft.sounds.SoundEvent
 import net.minecraft.sounds.SoundSource
 import net.minecraft.util.Mth
 import net.minecraft.util.RandomSource
-import net.minecraft.world.Container
-import net.minecraft.world.InteractionHand
-import net.minecraft.world.InteractionResult
-import net.minecraft.world.MenuProvider
-import net.minecraft.world.SimpleContainer
+import net.minecraft.world.*
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.item.ItemEntity
@@ -41,7 +37,10 @@ import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.Rotation
 import net.minecraft.world.level.block.entity.BlockEntity
+import net.minecraft.world.level.block.state.BlockBehaviour
 import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.block.state.properties.NoteBlockInstrument
+import net.minecraft.world.level.material.MapColor
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.Vec3
@@ -66,6 +65,17 @@ import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
 import kotlin.math.PI
 import kotlin.math.cos
+
+fun eln2StandardBlockProperties(): BlockBehaviour.Properties = BlockBehaviour.Properties.of()
+    .mapColor(MapColor.STONE)
+    .instrument(NoteBlockInstrument.BASEDRUM)
+    .strength(0.2f)
+
+fun ItemStack.eln2Consume(pPlayer: Player, quantity: Int = 1) {
+    if (!pPlayer.abilities.instabuild) {
+        this.shrink(quantity)
+    }
+}
 
 fun JsonObject.asFluidStack() : FluidStack {
     val fluidId = ResourceLocation.parse(this.get("fluid").asString)
@@ -388,7 +398,7 @@ inline fun <reified TBlockEntity : BlockEntity> Level.constructMenuHelper(
         pBlockEntity: TBlockEntity,
         pContainerId: Int,
         pPlayerInventory: Inventory,
-        pPlayer: Player
+        pPlayer: Player,
     ) -> AbstractContainerMenu,
 ): InteractionResult {
 

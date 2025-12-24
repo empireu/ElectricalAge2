@@ -4,15 +4,27 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.InteractionHand
+import net.minecraft.world.InteractionResult
+import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.context.UseOnContext
+import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.LevelReader
 import net.minecraft.world.level.block.Block
+import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.EntityBlock
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.block.state.StateDefinition
+import net.minecraft.world.level.block.state.properties.BooleanProperty
 import net.minecraft.world.level.material.Fluids
+import net.minecraft.world.phys.BlockHitResult
+import net.minecraft.world.phys.shapes.CollisionContext
+import net.minecraft.world.phys.shapes.Shapes
+import net.minecraft.world.phys.shapes.VoxelShape
 import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
@@ -21,17 +33,14 @@ import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.fluids.capability.IFluidHandler
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.utils.putUnique
-import org.eln2.mc.DEBUGGER_BREAK
-import org.eln2.mc.OnServerThread
-import org.eln2.mc.ServerOnly
+import org.eln2.mc.*
+import org.eln2.mc.common.content.WrenchInteractable
+import org.eln2.mc.common.content.WrenchItem
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
 import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
 import org.eln2.mc.common.fluids.foundation.IFractionalFluidHandler
-import org.eln2.mc.extensions.addItem
-import org.eln2.mc.extensions.getBase6Direction3dMask
-import org.eln2.mc.extensions.plus
-import org.eln2.mc.extensions.putBase6Direction3dMask
+import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3dMask
@@ -40,12 +49,16 @@ import java.util.*
 // P.S. I load all chunks synchronously. It's up to the player to add chunk-loaders, for now...
 
 /**
- * mB/tick
+ * mB/tick. Integer here so it easily works with the integer handlers.
+ * If we wanted to go below 1mB/tick, we could easily do it for the fractional handlers, but for the integer handlers, we'd have to add a timer to wait between ticks.
+ * Not going to do so for now, I think 1mB/tick is less than all modded pipes, really. But in terms of ELN2 fluids, it's heck plenty.
+ *
+ * Automatic pumping is added as a convenience feature. I could add a config option that disables it, and add a pump block which needs energy.
  * */
 private const val PUMP_RATE = 1
 
 /**
- * Gets the neighbors of [pipe], by loading all required chunks.
+ * Gets (ready) the neighbors of [pipe].
  * */
 @Suppress("NOTHING_TO_INLINE")
 private inline fun getNeighborPipes(pipe: FluidPipeBlockEntity, results: ArrayList<FluidPipeBlockEntity>, exclude: FluidPipeBlockEntity?) {
@@ -64,7 +77,7 @@ private inline fun getNeighborPipes(pipe: FluidPipeBlockEntity, results: ArrayLi
             return@forEach
         }
 
-        if(neighborBlockEntity.whitelist.has(dirPipe.opposite)) {
+        if(neighborBlockEntity.isReadyForDiscovery() && neighborBlockEntity.whitelist.has(dirPipe.opposite)) {
             results.add(neighborBlockEntity)
         }
     }
@@ -321,6 +334,22 @@ class FluidPipeNetwork(val level: ServerLevel) {
     }
 
     /**
+     * Updates the colliders for the neighbors of [pipe], ignoring the whitelist.
+     * */
+    private fun notifyNeighborhood(pipe: FluidPipeBlockEntity) {
+        Base6Direction3dMask.FULL.forEach { dir ->
+            val targetBlockPos = pipe.blockPos + dir
+
+            if(level.isLoaded(targetBlockPos)) {
+                val neighborBlockEntity = level.getBlockEntity(targetBlockPos) as? FluidPipeBlockEntity
+                    ?: return@forEach
+
+                neighborBlockEntity.updateColliderVariant()
+            }
+        }
+    }
+
+    /**
      * Removes the [pipe] and all associated data.
      * */
     fun remove(pipe: FluidPipeBlockEntity) {
@@ -331,6 +360,8 @@ class FluidPipeNetwork(val level: ServerLevel) {
         invalidateCaches()
         importEndpointsByPipe.remove(pipe)
         exportEndpointsByPipe.remove(pipe)
+
+        notifyNeighborhood(pipe)
     }
 
     /**
@@ -351,6 +382,8 @@ class FluidPipeNetwork(val level: ServerLevel) {
         importEndpoints.clear()
         exportEndpoints.clear()
 
+        var mask = Base6Direction3dMask.EMPTY
+
         pipe.whitelist.forEach { dir ->
             val targetPos = pipe.blockPos + dir
             val targetBlockEntity = level.getBlockEntity(targetPos)
@@ -361,6 +394,7 @@ class FluidPipeNetwork(val level: ServerLevel) {
             fun dropModule() {
                 if(installedModule != FluidPipeBlockEntity.ModuleType.None) {
                     pipe.modules[moduleIndex] = FluidPipeBlockEntity.ModuleType.None
+
                     if(installedModule.item != null){
                         level.addItem(
                             pipe.blockPos.x + 0.5,
@@ -369,15 +403,25 @@ class FluidPipeNetwork(val level: ServerLevel) {
                             ItemStack(installedModule.item.get(), 1)
                         )
                     }
+
                     pipe.setChanged()
                 }
             }
 
-            if(targetBlockEntity == null || targetBlockEntity is FluidPipeBlockEntity) {
+            if(targetBlockEntity == null) {
                 /**
-                 * If the machine is gone, or a pipe somehow got connected quickly on that side, drop the module as an item:
+                 * The machine disappeared, drop the module:
                  * */
                 dropModule()
+                return@forEach
+            }
+
+            if(targetBlockEntity is FluidPipeBlockEntity) {
+                /**
+                 * Modules won't be allowed to exist between pipes because it'd be weird:
+                 * */
+                dropModule()
+                mask += dir
                 return@forEach
             }
 
@@ -390,6 +434,8 @@ class FluidPipeNetwork(val level: ServerLevel) {
                 dropModule()
                 return@forEach
             }
+
+            mask += dir
 
             val endpoint = capabilityLazy.resolve().get()
 
@@ -419,6 +465,9 @@ class FluidPipeNetwork(val level: ServerLevel) {
         else {
             exportEndpointsByPipe.remove(pipe)
         }
+
+        pipe.updateColliderVariant()
+        notifyNeighborhood(pipe)
     }
 
     /**
@@ -623,11 +672,139 @@ class FluidPipeNetwork(val level: ServerLevel) {
     }
 }
 
-class FluidPipeBlock : Block(Properties.of()), EntityBlock {
+class FluidPipeBlock : Block(eln2StandardBlockProperties().noOcclusion().dynamicShape()), EntityBlock {
+    companion object {
+        /**
+         * Can't encode e.g. the direction mask as an integer property.
+         * We need this bullshit for the JSON mojang model:
+         * */
+        val PROPERTIES = Array<BooleanProperty>(6) { dataValue ->
+            when(Direction.from3DDataValue(dataValue)) {
+                Direction.DOWN -> BooleanProperty.create("down")
+                Direction.UP ->  BooleanProperty.create("up")
+                Direction.NORTH -> BooleanProperty.create("north")
+                Direction.SOUTH ->  BooleanProperty.create("south")
+                Direction.WEST -> BooleanProperty.create("west")
+                Direction.EAST -> BooleanProperty.create("east")
+            }
+        }
+
+        val CENTER: VoxelShape = box(7.0, 7.0, 7.0, 9.0, 9.0, 9.0)
+
+        val PIPES: Map<Direction, VoxelShape> = mapOf(
+            Direction.NORTH to box(7.0, 7.0, 0.0, 9.0, 9.0, 7.0),
+            Direction.SOUTH to box(7.0, 7.0, 9.0, 9.0, 9.0, 16.0),
+            Direction.WEST  to box(0.0, 7.0, 7.0, 7.0, 9.0, 9.0),
+            Direction.EAST  to box(9.0, 7.0, 7.0, 16.0, 9.0, 9.0),
+            Direction.DOWN  to box(7.0, 0.0, 7.0, 9.0, 7.0, 9.0),
+            Direction.UP    to box(7.0, 9.0, 7.0, 9.0, 16.0, 9.0)
+        )
+
+        val COLLIDERS = Base6Direction3dMask.ALL_MASKS.associateWith { mask ->
+            var result = CENTER
+
+            mask.forEach { dir ->
+                result = Shapes.or(result, PIPES[dir]!!)
+            }
+
+            result.optimize()
+            result
+        }.let { map ->
+            Array(Base6Direction3dMask.FULL.value + 1) { idx ->
+                map[Base6Direction3dMask(idx)] ?: error(DEBUGGER_BREAK("Could not match mask $idx"))
+            }
+        }
+
+        fun getMask(state: BlockState): Base6Direction3dMask {
+            var result = Base6Direction3dMask.EMPTY
+
+            for (i in 0 until 6) {
+                val property = PROPERTIES[i]
+
+                if(state.getValue(property)) {
+                    result += Direction.from3DDataValue(i)
+                }
+            }
+
+            return result
+        }
+
+        fun getCollider(state: BlockState) : VoxelShape {
+            val mask = getMask(state)
+
+            return COLLIDERS[mask.value]
+        }
+    }
+
+    val blockStates: Array<BlockState>
+
+    init {
+        val defaultState = let {
+            var result = getStateDefinition().any()
+
+            PROPERTIES.forEach {
+                result = result.setValue(it, false)
+            }
+
+            result
+        }
+
+        registerDefaultState(defaultState)
+
+        blockStates = Array(Base6Direction3dMask.FULL.value + 1) { idx ->
+            var blockState = defaultState
+
+            Base6Direction3dMask(idx).forEach { dir ->
+                val property = PROPERTIES[dir.get3DDataValue()]
+
+                blockState = blockState.setValue(property, true)
+            }
+
+            blockState
+        }
+    }
+
+    override fun createBlockStateDefinition(pBuilder: StateDefinition.Builder<Block?, BlockState?>) {
+        super.createBlockStateDefinition(pBuilder)
+
+        PROPERTIES.forEach {
+            pBuilder.add(it)
+        }
+    }
+
+    //#region Collider
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun getCollisionShape(
+        pState: BlockState,
+        pLevel: BlockGetter,
+        pPos: BlockPos,
+        pContext: CollisionContext,
+    ): VoxelShape = getCollider(pState)
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun getShape(
+        pState: BlockState,
+        pLevel: BlockGetter,
+        pPos: BlockPos,
+        pContext: CollisionContext,
+    ): VoxelShape = getCollider(pState)
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun getVisualShape(
+        pState: BlockState,
+        pLevel: BlockGetter,
+        pPos: BlockPos,
+        pContext: CollisionContext,
+    ): VoxelShape = getCollider(pState)
+
+    //#endregion
+
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = FluidPipeBlockEntity(pPos, pState)
 
     /**
      * Schedules the [FluidPipeBlockEntity.neighborChanged] to execute on the server.
+     * I scheduled it because I'm not sure if it executes after everything has cleaned up or before, so meh.
      * */
     override fun onNeighborChange(state: BlockState, level: LevelReader, pos: BlockPos, neighbor: BlockPos) {
         super.onNeighborChange(state, level, pos, neighbor)
@@ -641,20 +818,50 @@ class FluidPipeBlock : Block(Properties.of()), EntityBlock {
             }, TickEvent.Phase.END)
         }
     }
+
+    @Deprecated("Deprecated in Java")
+    override fun use(
+        pState: BlockState,
+        pLevel: Level,
+        pPos: BlockPos,
+        pPlayer: Player,
+        pHand: InteractionHand,
+        pHit: BlockHitResult
+    ): InteractionResult {
+        if(pHand != InteractionHand.MAIN_HAND) {
+            return InteractionResult.FAIL
+        }
+
+        if(pPlayer.mainHandItem.item !is FluidPipeModuleItem && !pPlayer.mainHandItem.isEmpty) {
+            return InteractionResult.FAIL
+        }
+
+        val blockEntity = pLevel.getBlockEntity(pPos) as? FluidPipeBlockEntity
+            ?: return InteractionResult.FAIL
+
+        if(pLevel.isClientSide) {
+            return InteractionResult.SUCCESS
+        }
+
+        return blockEntity.moduleInteraction(pPlayer)
+    }
 }
 
 class FluidPipeModuleItem : Item(Properties())
 
-class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln2ForgeFluids.FLUID_PIPE_BLOCK_ENTITY.get(), pPos, pState), ComponentDisplay {
+class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln2ForgeFluids.FLUID_PIPE_BLOCK_ENTITY.get(), pPos, pState), WrenchInteractable, ComponentDisplay {
     //#region Block Entity Lifetime Hooks
 
     /**
      * Acquires the repository and registers the pipe into the network, if on the server.
+     *
+     * **P.S.** It seems [onLoad] is much safer than [setLevel].**
+     * I had logic that ran on insertion which eventually lead to trying to `getBlockEntity(...)` the block entity that was being inserted on `setLevel`, and it was breaking the game completely.
      * */
-    override fun setLevel(pLevel: Level) {
-        super.setLevel(pLevel)
+    override fun onLoad() {
+        super.onLoad()
 
-        if(!pLevel.isClientSide) {
+        if(level?.isClientSide == false) {
             val level = level as? ServerLevel
                 ?: error(DEBUGGER_BREAK("Could not cast level to ServerLevel for pipe"))
 
@@ -688,6 +895,11 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
     val network: FluidPipeNetwork get() = networkInternal ?: error(DEBUGGER_BREAK("Tried to get network for pipe at $blockPos before it was acquired"))
 
     /**
+     * Checks if this block entity has had [onLoad] called and is ready for discovery.
+     * */
+    fun isReadyForDiscovery(): Boolean = repositoryInternal != null
+
+    /**
      * Module item installed on the connection to a machine.
      * @param item The item corresponding to the module, or null, for the default value.
      * @param networkImportsFromEndpoint True if the network actively pulls from the machine.
@@ -696,28 +908,25 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
      * */
     enum class ModuleType(val item: RegistryObject<FluidPipeModuleItem>?, val networkImportsFromEndpoint: Boolean, val networkExportsToEndpoint: Boolean, val machineCanPushIntoNetwork: Boolean) {
         /**
-         * The default value.
+         * The default value. Both pushes and pulls.
+         * - The network tries to pull fluid from the machine.
          * - The network tries to push fluid into the machine.
-         * - The network allows the machine to push fluid.
-         * - The network doesn't extract fluid from the machine.
          * */
-        None(null, false, true, true),
+        None(null, true, true, true),
 
         /**
-         * Pumps from the machine into the network, but doesn't block the network from filling the machine.
-         * - The network tries to extract fluid from the machine.
-         * - The network tries to insert fluid into the machine.
-         * - The network allows the machine to push fluid.
-         * */
-        Pump(Eln2ForgeFluids.FLUID_PIPE_PUMP_MODULE, true, true, true),
-
-        /**
-         * Pumps from the machine into the network, and blocks the network from filling the machine.
-         * - The network tries to extract fluid from the machine.
+         * Gate that prevents the machine from receiving fluid from the network.
+         * - The network tries to pull fluid from the machine.
          * - The network doesn't push fluid into the machine.
-         * - The network allows the machine to push fluid.
          * */
-        GatedPump(Eln2ForgeFluids.FLUID_PIPE_GATED_PUMP_MODULE, true, false, true)
+        ImportGate(Eln2ForgeFluids.FLUID_PIPE_IMPORT_GATE, true, false, true),
+
+        /**
+         * Gate that prevents the network from receiving fluid from the machine.
+         * - The network tries to push fluid into the machine.
+         * - The network doesn't pull fluid from the machine.
+         * */
+        ExportGate(Eln2ForgeFluids.FLUID_PIPE_EXPORT_GATE, false, true, false)
     }
 
     /**
@@ -830,7 +1039,164 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
 
     //#endregion
 
-    //#region Network Lifetime
+    //#region Interaction
+
+    /**
+     * @param pipe The clicked pipe or null if the center was clicked.
+     * */
+    private class PickResult(val pipe: Direction?)
+
+    private fun pick(player: Player): PickResult? {
+        val mask = FluidPipeBlock.getMask(blockState)
+
+        val pipeObjects = FluidPipeBlock.PIPES
+            .filter { (dir, _) -> mask.has(dir) }
+            .flatMap { (dir, shape) ->
+                shape.toBoxList().map { box ->
+                    dir to box.move(blockPos)
+                }
+            }
+
+        val centerObjects = FluidPipeBlock.CENTER.toBoxList().map { box ->
+            null to box.move(blockPos)
+        }
+
+        val objects = pipeObjects.plus(centerObjects)
+
+        val pick = clipScene(player, { (dir, aabb) -> aabb }, objects)
+            ?: return null
+
+        return PickResult(pick.first)
+    }
+
+    /**
+     * Inserts a module or removes a module.
+     * */
+    @OnServerThread
+    fun moduleInteraction(pPlayer: Player) : InteractionResult {
+        requireIsOnServerThread()
+
+        val picked = pick(pPlayer)
+            ?: return InteractionResult.FAIL
+
+        if(picked.pipe == null) {
+            /**
+             * Ignored:
+             * */
+            return InteractionResult.FAIL
+        }
+
+        val existingModule = modules[picked.pipe.get3DDataValue()]
+        val itemInHand = pPlayer.mainHandItem
+
+        fun removeModule() : Boolean {
+            if(existingModule == ModuleType.None) {
+                return false
+            }
+
+            if(existingModule.item != null) {
+                if(!pPlayer.addItem(ItemStack(existingModule.item.get(), 1))) {
+                    return false
+                }
+            }
+
+            modules[picked.pipe.get3DDataValue()] = ModuleType.None
+            setChanged()
+
+            return true
+        }
+
+        /**
+         * Remove the installed module:
+         * */
+        if(itemInHand.item == null || itemInHand.isEmpty) {
+            if(!removeModule()) {
+                return InteractionResult.FAIL
+            }
+
+            setChanged()
+            reloadNetwork()
+
+            return InteractionResult.SUCCESS
+        }
+        /**
+         * Try to install a module:
+         * */
+        else {
+            val targetModuleType = ModuleType.entries.firstOrNull { module ->
+                module.item?.get() == itemInHand.item
+            }
+
+            if(targetModuleType == null) {
+                /**
+                 * Weird, we checked in the block handler if it's a good item.
+                 * */
+                LOG.error("Could not get pipe module type for ${itemInHand.item}")
+                return InteractionResult.FAIL
+            }
+
+            removeModule()
+            modules[picked.pipe.get3DDataValue()] = targetModuleType
+            setChanged()
+            reloadNetwork()
+
+            itemInHand.eln2Consume(pPlayer)
+            return InteractionResult.CONSUME
+        }
+    }
+
+    /**
+     * Removes a direction from the whitelist.
+     * */
+    override fun applyWrench(wrench: WrenchItem, context: UseOnContext): InteractionResult {
+        val player = context.player
+            ?: return InteractionResult.FAIL
+
+        if(context.level.isClientSide) {
+            return InteractionResult.SUCCESS
+        }
+
+        val picked = pick(player)
+            ?: return InteractionResult.FAIL
+
+        /**
+         * If we clicked the center, we will bring back a direction if it's not in the whitelist:
+         * */
+        if(picked.pipe == null) {
+            val face = context.clickedFace
+
+            if (whitelist.has(face)) {
+                /**
+                 * Ignored:
+                 * */
+                return InteractionResult.FAIL
+            }
+
+            whitelist += face
+            setChanged()
+            reloadNetwork()
+
+            return InteractionResult.SUCCESS
+        }
+
+        /**
+         * If we clicked a pipe, we will remove the direction from the whitelist:
+         * */
+        if(!whitelist.has(picked.pipe)) {
+            /**
+             * Ignored:
+             * */
+            return InteractionResult.FAIL
+        }
+
+        whitelist -= picked.pipe
+        setChanged()
+        reloadNetwork()
+
+        return InteractionResult.SUCCESS
+    }
+
+    //#endregion
 
     /**
      * Called when the block entity is added into the world.
@@ -856,6 +1222,15 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
     }
 
     /**
+     * Called when the whitelist changed to re-register the pipe.
+     * */
+    @OnServerThread
+    private fun reloadNetwork() {
+        removeFromNetwork()
+        registerIntoNetwork()
+    }
+
+    /**
      * Called when a neighbor has changed, and the connections may need to be updated.
      * Called by the scheduler, after the block receives the event (see the call site).
      * */
@@ -869,10 +1244,48 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
      * */
     @OnServerThread
     fun networkChanged(newNetwork: FluidPipeNetwork) {
+        check(repositoryInternal != null) {
+            DEBUGGER_BREAK()
+        }
         networkInternal = newNetwork
     }
 
-    //#endregion
+    /**
+     * Called by the network to update the collider variant.
+     * */
+    @OnServerThread
+    fun updateColliderVariant() {
+        var mask = Base6Direction3dMask.EMPTY
+
+        whitelist.forEach { dir ->
+            val targetBlockEntity = level!!.getBlockEntity(blockPos + dir)
+                ?: return@forEach
+
+            if(targetBlockEntity is FluidPipeBlockEntity) {
+                if(targetBlockEntity.isReadyForDiscovery()) {
+                    if(targetBlockEntity.whitelist.has(dir.opposite)) {
+                        mask += dir
+                    }
+                }
+            }
+            else {
+                if(targetBlockEntity.getCapability(ForgeCapabilities.FLUID_HANDLER, dir.opposite).isPresent) {
+                    mask += dir
+                }
+            }
+        }
+
+        val block = blockState.block as FluidPipeBlock
+        val targetBlockState = block.blockStates[mask.value]
+
+        if(targetBlockState != blockState) {
+            level!!.setBlock(
+                blockPos,
+                targetBlockState,
+                Block.UPDATE_ALL
+            )
+        }
+    }
 
     //#region Saving
 

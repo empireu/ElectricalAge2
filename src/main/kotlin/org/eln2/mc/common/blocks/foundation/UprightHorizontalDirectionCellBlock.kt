@@ -9,6 +9,7 @@ import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.context.BlockPlaceContext
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Block
+import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.EntityBlock
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.entity.BlockEntity
@@ -29,6 +30,7 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.grids.*
 import org.eln2.mc.common.specs.foundation.SpecGeometry
 import org.eln2.mc.data.Locators
+import org.eln2.mc.extensions.eln2StandardBlockProperties
 import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.toHorizontalFacing
@@ -37,7 +39,7 @@ import java.util.*
 /**
  * Base class for the cell block. Doesn't have any block state, like placement direction.
  * */
-abstract class CellBlock<C : Cell>(p : Properties? = null) : Block(p ?: Properties.of().noOcclusion()), EntityBlock {
+abstract class CellBlock<C : Cell>(p : Properties? = null) : Block(p ?: eln2StandardBlockProperties().noOcclusion()), EntityBlock {
     abstract fun getCellProvider(): CellProvider<C>
 
     /**

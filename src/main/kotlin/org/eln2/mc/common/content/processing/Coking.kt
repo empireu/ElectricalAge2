@@ -8,10 +8,8 @@ import dev.engine_room.flywheel.api.visualization.VisualizationContext
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
-import net.minecraft.core.SectionPos
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
@@ -76,7 +74,6 @@ import org.eln2.mc.common.recipes.foundation.*
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import java.util.*
 import java.util.function.Consumer
@@ -232,7 +229,7 @@ class CokeOvenDelegateBlockEntity(pPos: BlockPos, pBlockState: BlockState) : Mul
     }
 }
 
-class CokeOvenMainBlock : HorizontalDirectionalBlock(Properties.of().noOcclusion()), EntityBlock {
+class CokeOvenMainBlock : HorizontalDirectionalBlock(eln2StandardBlockProperties().noOcclusion()), EntityBlock {
     companion object {
         fun constructMenu(pLevel: Level, pPos: BlockPos, pPlayer: Player) = pLevel.constructMenuHelper2<CokeOvenMainBlockEntity>(
             pPos,

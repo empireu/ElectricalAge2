@@ -759,6 +759,7 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
                     Quantity(10.0, KILOGRAM)
                 )
 
+                stack.eln2Consume(player)
                 return InteractionResult.CONSUME
             }
 

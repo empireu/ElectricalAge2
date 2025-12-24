@@ -37,6 +37,7 @@ import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.LightLayer
 import net.minecraft.world.level.block.Block
+import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.EntityBlock
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.entity.BlockEntity
@@ -59,6 +60,8 @@ import org.eln2.mc.ServerOnly
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.content.processing.BlacksmithingToolItem.Companion.DEFAULT_VARIANT
+import org.eln2.mc.extensions.eln2Consume
+import org.eln2.mc.extensions.eln2StandardBlockProperties
 import org.eln2.mc.extensions.preserve
 import org.eln2.mc.extensions.setSyncDirty
 import org.eln2.mc.extensions.takeDurability
@@ -187,7 +190,7 @@ class BlacksmithingRecipe(
     }
 }
 
-class BlacksmithingStationBlock : HorizontalDirectionalBlock(Properties.of().noOcclusion()), EntityBlock {
+class BlacksmithingStationBlock : HorizontalDirectionalBlock(eln2StandardBlockProperties().noOcclusion()), EntityBlock {
     init {
         registerDefaultState(getStateDefinition().any().setValue(FACING, Direction.NORTH))
     }
@@ -396,6 +399,8 @@ class BlacksmithingStationBlockEntity(pPos: BlockPos, pState: BlockState) : Bloc
         }
 
         inventoryHandler.setStackInSlot(STATION_SLOT, stackInHand.copyWithCount(1))
+        stackInHand.eln2Consume(player)
+
         return InteractionResult.CONSUME
     }
 
