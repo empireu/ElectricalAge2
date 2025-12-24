@@ -4,7 +4,7 @@ import net.minecraft.client.renderer.ItemBlockRenderTypes
 import net.minecraft.client.renderer.RenderType
 import net.minecraftforge.fluids.FluidType
 import org.eln2.mc.client.render.foundation.MyColor
-import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
+import org.eln2.mc.common.blocks.BlockRegistry.blockAndItemAndDrop
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.content.fluid.FluidPipeBlock
 import org.eln2.mc.common.content.fluid.FluidPipeBlockEntity
@@ -29,7 +29,7 @@ object Eln2ForgeFluids : ContentModule() {
 
     //#region Pipe
 
-    val FLUID_PIPE_BLOCK = blockAndItem("fluid_pipe", ::FluidPipeBlock)
+    val FLUID_PIPE_BLOCK = blockAndItemAndDrop("fluid_pipe", ::FluidPipeBlock)
 
     val FLUID_PIPE_BLOCK_ENTITY = blockEntityOnly(
         "fluid_pipe",

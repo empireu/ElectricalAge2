@@ -29,6 +29,7 @@ import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
 import org.eln2.mc.common.blocks.BlockRegistry.defineDelegateMap
+import org.eln2.mc.common.blocks.BlockRegistry.withBlockDrop
 import org.eln2.mc.common.blocks.foundation.BigBlockItem
 import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.foundation.ElectricalSize
@@ -269,7 +270,7 @@ object Eln2Lights : ContentModule() {
 
     val LAMP_POLE_BLOCK = blockOnly("lamp_pole") {
         LampPoleBlock(POLAR_LIGHT_CELL_CONE_SPHERE, BlockPos(0, 5, 0))
-    }
+    }.withBlockDrop()
 
     val LAMP_POLE_BLOCK_ENTITY = blockEntityOnly("lamp_pole", LAMP_POLE_BLOCK) { pos, state ->
         LampPoleBlockEntity(pos, state)

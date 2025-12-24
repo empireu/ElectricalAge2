@@ -4,7 +4,6 @@ package org.eln2.mc.common.content.modules
 
 import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
-import net.minecraft.world.phys.AABB
 import net.minecraftforge.client.event.EntityRenderersEvent
 import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.HENRY
@@ -35,6 +34,7 @@ import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setPartVisuali
 import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setPartVisualizerMemoized
 import org.eln2.mc.client.render.foundation.ShaftDescription
 import org.eln2.mc.client.render.foundation.SingleNodeMultiShaftKineticPartVisual
+import org.eln2.mc.common.blocks.BlockRegistry.withBlockDrop
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
@@ -468,7 +468,7 @@ object Eln2Kinetic : ContentModule() {
                 FlwModels.BASIC_WIND_TURBINE_ROTOR
             )
         )
-    }
+    }.withBlockDrop()
 
     val BASIC_WIND_TURBINE_BLOCK_ITEM = blockItemOnly("basic_wind_turbine") {
         BigBlockItem(

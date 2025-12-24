@@ -1,9 +1,12 @@
 package org.eln2.mc.common
 
 import net.minecraft.core.BlockPos
+import net.minecraft.data.loot.LootTableProvider
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets
 import net.minecraftforge.client.event.EntityRenderersEvent
+import net.minecraftforge.data.event.GatherDataEvent
 import net.minecraftforge.event.AddReloadListenerEvent
 import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.level.BlockEvent
@@ -42,6 +45,7 @@ import org.eln2.mc.common.network.serverToClient.BulkMessages
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.foundation.SpecPlacementOverlayServer
 import org.eln2.mc.data.AveragingList
+import org.eln2.mc.datagen.Eln2BlockLoot
 import org.eln2.mc.extensions.formatted
 
 @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.MOD)
@@ -66,6 +70,26 @@ object ModEvents {
             BlockRegistry.finalize()
             PartRegistry.finalize()
         }
+    }
+
+    @SubscribeEvent @JvmStatic
+    fun onGatherData(event: GatherDataEvent) {
+        val generator = event.generator
+        val output = generator.packOutput
+
+        generator.addProvider(
+            event.includeServer(),
+            LootTableProvider(
+                output,
+                emptySet(), // What?
+                listOf(
+                    LootTableProvider.SubProviderEntry(
+                        ::Eln2BlockLoot,
+                        LootContextParamSets.BLOCK
+                    )
+                )
+            )
+        )
     }
 }
 
