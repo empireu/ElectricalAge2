@@ -120,6 +120,22 @@ class FractionalFluidStack(val fluid: Fluid, var amount: Double) {
     }
 }
 
+fun FluidStack.fractional() : FractionalFluidStack {
+    val fluid = this.fluid
+
+    if(fluid == Fluids.EMPTY) {
+        return FractionalFluidStack.EMPTY
+    }
+
+    val amount = this.amount
+
+    if(amount <= 0) {
+        return FractionalFluidStack.EMPTY
+    }
+
+    return FractionalFluidStack(fluid, amount.toDouble())
+}
+
 /**
  * Extension of [IFluidHandler] that also works with fractional fluids.
  * The normal [IFluidHandler] operations should use quantization, as implemented by [MultipleFractionalFluidTank].

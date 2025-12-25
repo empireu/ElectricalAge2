@@ -9,6 +9,7 @@ import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
+import it.unimi.dsi.fastutil.objects.Object2DoubleOpenHashMap
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
@@ -43,6 +44,7 @@ import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.fluids.capability.IFluidHandler
 import net.minecraftforge.registries.RegistryObject
+import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwModels
@@ -51,6 +53,7 @@ import org.eln2.mc.common.content.WrenchItem
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
 import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
 import org.eln2.mc.common.fluids.foundation.IFractionalFluidHandler
+import org.eln2.mc.common.fluids.foundation.fractional
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
@@ -58,6 +61,8 @@ import org.eln2.mc.mathematics.Base6Direction3dMask
 import java.util.*
 import java.util.function.Consumer
 import java.util.function.Supplier
+import kotlin.math.floor
+import kotlin.math.min
 
 // P.S. I load all chunks synchronously. It's up to the player to add chunk-loaders, for now...
 
@@ -341,18 +346,6 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
     val exportEndpointsByPipe = HashMap<FluidPipeBlockEntity, ArrayList<IFluidHandler>>()
 
     /**
-     * List of target machines sorted by distance (along pipes) from the key.
-     * */
-    val nearestExportEndpointCache = HashMap<FluidPipeBlockEntity, ArrayList<IFluidHandler>>()
-
-    /**
-     * Invalidates all caches. Called when pipes are added/removed and when endpoints are added/removed.
-     * */
-    private fun invalidateCaches() {
-        nearestExportEndpointCache.clear()
-    }
-
-    /**
      * Inserts the [pipe] and computes the endpoints.
      * */
     fun insert(pipe: FluidPipeBlockEntity) {
@@ -523,9 +516,21 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
     }
 
     /**
-     * Gets the endpoints sorted by distance from [source].
+     * List of target machines sorted by distance (along pipes) from the key. They order is mutated in the [fillDiscrete] call though.
      * */
-    private fun getOrderedEndpointList(source: FluidPipeBlockEntity) = nearestExportEndpointCache.computeIfAbsent(source) {
+    val endpointsCache = HashMap<FluidPipeBlockEntity, ArrayList<IFluidHandler>>()
+
+    /**
+     * Invalidates all caches. Called when pipes are added/removed and when endpoints are added/removed.
+     * */
+    private fun invalidateCaches() {
+        endpointsCache.clear()
+    }
+
+    /**
+     * Gets the endpoints with access to [source].
+     * */
+    private fun getEndpointList(source: FluidPipeBlockEntity) = endpointsCache.computeIfAbsent(source) {
         val result = ArrayList<IFluidHandler>()
 
         val neighborPipes = ArrayList<FluidPipeBlockEntity>(6)
@@ -558,41 +563,71 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
     }
 
     /**
-     * Called to move fluid from an endpoint to the rest of the endpoints.
-     * Distributes as much as possible to the endpoints, ordered by distance from [source].
+     * Called to move fluid from an endpoint to the rest of the endpoints by using [fillFractional].
+     * Tries to distribute evenly to all endpoints.
      * @param source The pipe attached to the endpoint.
      * */
     fun fillDiscrete(source: FluidPipeBlockEntity, resource: FluidStack, action: IFluidHandler.FluidAction) : Int {
-        if (resource.fluid == Fluids.EMPTY || resource.amount <= 0) {
+        if(resource.fluid == Fluids.EMPTY || resource.amount <= 0) {
             return 0
         }
 
-        val totalToFill = resource.amount
-        var remaining = totalToFill
-        var totalFilled = 0
+        val fractional = resource.fractional()
 
-        val targets = getOrderedEndpointList(source)
+        /**
+         * Simulates a fill to get the fractional amount we can transport:
+         * */
+        val simulation = fractional.copyWithAmount(fillFractional(source, fractional, IFluidHandler.FluidAction.SIMULATE))
 
-        for (i in targets.indices) {
-            val handler = targets[i]
+        /**
+         * Gets the integer amount we can transport:
+         * */
+        val quantizedSimulation = simulation.quantized()
 
-            val filled = handler.fill( FluidStack(resource.fluid, remaining), action)
+        if(quantizedSimulation.amount == 0) {
+            /**
+             * Can't transport anything:
+             * */
+            return 0
+        }
 
-            totalFilled += filled
-            remaining -= filled
+        if(action == IFluidHandler.FluidAction.EXECUTE) {
+            /**
+             * Execute fill with the amount closest to the target:
+             * */
+            val filled = fillFractional(source, quantizedSimulation.fractional(), IFluidHandler.FluidAction.EXECUTE)
 
-            if (remaining <= 0) {
-                break
+            if(!filled.approxEq(quantizedSimulation.amount.toDouble(), FractionalFluidStack.EPSILON)) {
+                LOG.error(DEBUGGER_BREAK("Did not fill expected amount: $filled, ${quantizedSimulation.amount}"))
             }
         }
 
-        return totalFilled
+        return quantizedSimulation.amount
+    }
+
+    private var fillFractionalSimulationTable = Object2DoubleOpenHashMap<IFluidHandler>().also {
+        it.defaultReturnValue(0.0)
     }
 
     /**
      * Called to move fluid from an endpoint to the rest of the endpoints.
-     * Distributes as much as possible to the endpoints, ordered by distance from [source].
-     * If a discrete handler is encountered and the quantity has dropped below `1mB`, the handler is skipped, but discrete handlers may still receive the rest of the request.
+     * Tries to distribute evenly to all endpoints. Of course, if there exist discrete handlers, it won't be completely fair.
+     *
+     * Algorithm description:
+     * The algorithm tries to distribute [resource] evenly to all handlers, regardless of:
+     * - Their current capacity (how much of the resource they can accept)
+     * - If they are fractional or discrete handlers
+     *
+     * The simplest possible case would be if all handlers are fractional, and they all have infinite capacity. Then, each one could receive [resource]` / count` fluid.
+     * But generally, we can have handlers which are full or almost full (and they cannot accept all of [resource]` / count`), and we can also have discrete handlers.
+     * To start with, we simulate inserting [resource] (all of it) into all handlers. If [resource] is less than `1mB`, we completely skip the discrete handlers.
+     * Anyway, we store the results in [fillFractionalSimulationTable] if the filled amount is larger than [FractionalFluidStack.EPSILON]. We also increment a counter of valid candidates if that's true.
+     * After this, we get the list of endpoints for [source], and we sort it *in-place* (from small to large) by comparing the values in [fillFractionalSimulationTable] that we just prepared.
+     * From moment to moment, the order doesn't actually change, so this is usually an `O(n)` operation.
+     * Then, we go through the list (looking only at valid handlers), and we calculate their share of the resource by ` min(remainingAmount / remainingCandidates, capacity)`, where `remainingAmount` was initially [resource], `remainingCandidates` was initially the number of valid candidates, and `capacity` is the value from the [fillFractionalSimulationTable].
+     * If the handler is integer, we quantize this result.
+     * If the result is larger than [FractionalFluidStack.EPSILON], we subtract the result from the `remainingAmount`, and we execute the transfer.
+     * At the end, we decrement the remaining candidates.
      * @param source The pipe attached to the endpoint.
      * */
     fun fillFractional(source: FluidPipeBlockEntity, resource: FractionalFluidStack, action: IFluidHandler.FluidAction) : Double {
@@ -600,41 +635,94 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
             return 0.0
         }
 
-        val totalToFill = resource.amount
-        var remaining = totalToFill
-        var totalFilled = 0.0
-        var skipDiscreteHandlers = false
+        val endpointList = getEndpointList(source)
 
-        val targets = getOrderedEndpointList(source)
-
-        for (i in targets.indices) {
-            val handler = targets[i]
-
-            if (remaining < FractionalFluidStack.EPSILON) {
-                break
-            }
-
-            if (handler is IFractionalFluidHandler) {
-                val filled = handler.fillFractional(FractionalFluidStack(resource.fluid, remaining), action)
-
-                totalFilled += filled
-                remaining -= filled
-            }
-            else if (!skipDiscreteHandlers) {
-                val quantizedStack =  FractionalFluidStack(resource.fluid, remaining).quantized()
-
-                if (quantizedStack.isEmpty) {
-                    skipDiscreteHandlers = true
-                }
-                else {
-                    val filled = handler.fill(quantizedStack, action)
-                    totalFilled += filled.toDouble()
-                    remaining -= filled
-                }
-            }
+        if (endpointList.isEmpty()) {
+            return 0.0
         }
 
-        return totalFilled
+        try {
+            val quantizedResource = resource.quantized()
+            var remainingCandidates = 0
+
+            /**
+             * Simulates inserting the [resource] into all handlers. This just gives us the upper bound on how much fluid they can accept.
+             * */
+            endpointList.forEach { handler ->
+                val simulatedFill = if(handler is IFractionalFluidHandler) {
+                    handler.fillFractional(resource, IFluidHandler.FluidAction.SIMULATE)
+                }
+                else {
+                    if (quantizedResource.amount > 0) {
+                        handler.fill(quantizedResource, IFluidHandler.FluidAction.SIMULATE).toDouble()
+                    }
+                    else {
+                        /**
+                         * Skip discrete handlers completely since the resource is less than 1mB:
+                         * */
+                        0.0
+                    }
+                }
+
+                if(simulatedFill >= FractionalFluidStack.EPSILON) {
+                    remainingCandidates++
+                    fillFractionalSimulationTable.put(handler, simulatedFill)
+                }
+            }
+
+            if(remainingCandidates == 0) {
+                return 0.0
+            }
+
+            /**
+             * Sorts handlers from the smallest capacity to the largest capacity.
+             * This ensures small tanks fill up, but the amount they rejected still can go to the large tanks fairly.
+             * */
+            endpointList.sortWith { a, b ->
+                fillFractionalSimulationTable.getDouble(a).compareTo(fillFractionalSimulationTable.getDouble(b))
+            }
+
+            var remainingAmount = resource.amount
+            var totalFilled = 0.0
+
+            for (handler in endpointList) {
+                val capacity = fillFractionalSimulationTable.getDouble(handler)
+
+                if (capacity < FractionalFluidStack.EPSILON) {
+                    continue
+                }
+
+                var transfer = min(remainingAmount / remainingCandidates, capacity)
+
+                /**
+                 * If the handler is discrete, we will quantize it:
+                 * */
+                if (handler !is IFractionalFluidHandler) {
+                    transfer = floor(transfer)
+                }
+
+                if (transfer >= FractionalFluidStack.EPSILON) {
+                    if (action == IFluidHandler.FluidAction.EXECUTE) {
+                        if (handler is IFractionalFluidHandler) {
+                            handler.fillFractional(resource.copyWithAmount(transfer), IFluidHandler.FluidAction.EXECUTE)
+                        }
+                        else {
+                            handler.fill(FluidStack(resource.fluid, transfer.toInt()), IFluidHandler.FluidAction.EXECUTE)
+                        }
+                    }
+
+                    totalFilled += transfer
+                    remainingAmount -= transfer
+                }
+
+                remainingCandidates--
+            }
+
+            return totalFilled
+        }
+        finally {
+            fillFractionalSimulationTable.clear()
+        }
     }
 
     /**
