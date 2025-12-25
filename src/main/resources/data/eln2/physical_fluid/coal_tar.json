@@ -1,6 +1,6 @@
 {
     "forgeFluid": "eln2:coal_tar",
-    "specificHeatCapacity": 1500.0,
+    "specificHeatCapacity": 1600.0,
     "density": 1.18,
     "isGaseous": false,
     "mixabilityTags": [

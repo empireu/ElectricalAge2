@@ -62,7 +62,7 @@ object Eln2ForgeFluids : ContentModule() {
     //#endregion
 
     val FUEL_GAS = basicForgeFluid("fuel_gas") {
-        tintColor = MyColor(100, 200, 200, 200) // Translucent Grey Vapor
+        tintColor = MyColor(50, 200, 200, 200) // Translucent Grey Vapor
         properties {
             FluidType.Properties.create()
                 .density(-100)
@@ -70,8 +70,26 @@ object Eln2ForgeFluids : ContentModule() {
         }
     }
 
+    val NAPHTHA_GAS = basicForgeFluid("naphtha_gas") {
+        tintColor = MyColor(100, 200, 240, 255) // Faint Blue Vapor
+        properties {
+            FluidType.Properties.create()
+                .density(-1000)
+                .viscosity(100)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val NAPHTHA = basicForgeFluid("naphtha") {
+        tintColor = MyColor(200, 255, 255, 220) // Transparent Pale Yellow
+        properties {
+            FluidType.Properties.create()
+                .density(700)
+                .viscosity(800)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
     val CREOSOTE = basicForgeFluid("creosote") {
-        tintColor = MyColor(255, 200, 200, 200) // Grey
+        tintColor = MyColor(200, 208, 218, 40)
         properties {
             FluidType.Properties.create()
                 .density(1200)
@@ -80,7 +98,7 @@ object Eln2ForgeFluids : ContentModule() {
     }
 
     val CREOSOTE_GAS = basicForgeFluid("creosote_gas") {
-        tintColor = MyColor(100, 200, 200, 200) // Grey
+        tintColor = MyColor(100, 208, 218, 40)
         FluidType.Properties.create()
             .density(-600)
             .viscosity(100)
@@ -89,7 +107,7 @@ object Eln2ForgeFluids : ContentModule() {
     //#region Coal Coking
 
     val COKE_GAS = basicForgeFluid("coke_gas") {
-        tintColor = MyColor(150, 200, 200, 200) // Translucent Grey Vapor
+        tintColor = MyColor(150, 216, 250, 8) // Yellow
         properties {
             FluidType.Properties.create()
                 .density(-500) // Gas
@@ -116,7 +134,7 @@ object Eln2ForgeFluids : ContentModule() {
     }
 
     val PITCH = basicForgeFluid("pitch") {
-        tintColor = MyColor(255, 10, 10, 10) // Opaque Black
+        tintColor = MyColor(255, 5, 5, 5) // Opaque Black
         properties {
             FluidType.Properties.create()
                 .density(2000) // Sinks in water
@@ -126,7 +144,7 @@ object Eln2ForgeFluids : ContentModule() {
 
     //#endregion
 
-    //#region Oil Products
+    //#region Oil
 
     val CRUDE_OIL = basicForgeFluid("crude_oil") {
         tintColor = MyColor(255, 30, 20, 10) // Opaque Dark Brown
@@ -136,24 +154,6 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(2000)
         }
     }
-
-    val NAPHTHA_GAS = basicForgeFluid("naphtha_gas") {
-        tintColor = MyColor(100, 200, 240, 255) // Faint Blue Vapor
-            properties {
-            FluidType.Properties.create()
-                .density(-1000)
-                .viscosity(100)
-        }
-    }.withRenderLayer(RenderType.translucent())
-
-    val NAPHTHA = basicForgeFluid("naphtha") {
-        tintColor = MyColor(200, 255, 255, 220) // Transparent Pale Yellow
-        properties {
-            FluidType.Properties.create()
-                .density(700)
-                .viscosity(800)
-        }
-    }.withRenderLayer(RenderType.translucent())
 
     val HEAVY_OIL = basicForgeFluid("heavy_oil") {
         tintColor = MyColor(255, 40, 20, 10) // Opaque Deep Brown

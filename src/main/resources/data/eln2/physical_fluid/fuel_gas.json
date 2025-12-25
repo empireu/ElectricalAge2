@@ -4,6 +4,6 @@
     "density": 0.0004,
     "isGaseous": true,
     "mixabilityTags": [
-        "oil_miscible"
+        "coke_gas_miscible"
     ]
 }
