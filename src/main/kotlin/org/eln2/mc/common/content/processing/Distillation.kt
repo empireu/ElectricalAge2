@@ -68,7 +68,6 @@ import org.eln2.mc.extensions.eln2StandardBlockProperties
 import org.eln2.mc.extensions.plus
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.FacingDirection
 import java.util.concurrent.locks.ReentrantLock
 import java.util.function.Consumer
@@ -364,62 +363,6 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
 
     // P.S. The algorithms may seem inefficient, but we are only dealing with 1-2 things at a time, so they are good for now.
 
-    /**
-     * Pushes [gasTank] into the module above (gas rises). Pushes the lighter gases first.
-     * Also follows [DistillationColumnBlock]s to find the module above them.
-     * */
-    private fun gasTransport() {
-        if (gasTank.fluids.isEmpty()) {
-            return
-        }
-
-        val currentPos = blockPos.mutable()
-
-        while (true) {
-            currentPos.y++
-
-            val block = level!!.getBlockState(currentPos).block
-
-            if(block is DistillationColumnBlock) {
-                /**
-                 * Move upward:
-                 * */
-                continue
-            }
-
-            if(block !is DistillationModuleBlock) {
-                /**
-                 * No module to transfer to:
-                 * */
-                break
-            }
-
-            val targetModule = level?.getBlockEntity(currentPos) as? DistillationModuleBlockEntity
-                ?: return
-
-            /**
-             * Order by lowest density first:
-             * */
-            val gases = gasTank.fluids.sortedBy {
-                PhysicalFluidManager.requireProperties(it.fluid).density
-            }
-
-            for (stack in gases) {
-                val transfer = targetModule.gasTank.fillFractional(stack, IFluidHandler.FluidAction.EXECUTE)
-
-                if (transfer > 0) {
-                    gasTank.drainFractional(FractionalFluidStack(stack.fluid, transfer), IFluidHandler.FluidAction.EXECUTE)
-                    setChanged()
-                }
-                else {
-                    break
-                }
-            }
-
-            break
-        }
-    }
-
     private val horizontalNeighbors = Array<DistillationModuleBlockEntity?>(4) { null }
     private val horizontalTransportAmounts = DoubleArray(4)
     private val horizontalTransportIndices = IntArray(4) { -1 }
@@ -428,7 +371,11 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
      * Distributes fluid with horizontally adjacent distillation modules.
      * This allows building multiblock distillation towers.
      * */
-    private fun horizontalTransport() {
+    private fun horizontalDistribution() {
+        if(liquidTank.fluids.isEmpty()) {
+            return
+        }
+
         val level = level as ServerLevel
         val horizontalNeighbors = horizontalNeighbors
 
@@ -589,6 +536,49 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
                 }
 
                 neighbor.setChanged()
+            }
+        }
+    }
+
+    /**
+     * Moves liquid to modules below (**ignoring columns**).
+     * This basically allows you to make a "module" multiple blocks tall, and separate them with columns.
+     * */
+    private fun reflux() {
+        if(liquidTank.fluids.isEmpty()) {
+            return
+        }
+
+        val target = level!!.getBlockEntity(blockPos.below()) as? DistillationModuleBlockEntity
+            ?: return
+
+        val targetTank = target.liquidTank
+
+        val totalAmount = liquidTank.amount
+        val fluidToTransfer = min(targetTank.remainingCapacity, totalAmount)
+
+        if(fluidToTransfer < FractionalFluidStack.EPSILON) {
+            return
+        }
+
+        val transferFactor = fluidToTransfer / totalAmount
+
+        val iterator = liquidTank.fluids.iterator()
+        while (iterator.hasNext()) {
+            val sourceStack = iterator.next()
+            val fluidToTransfer = sourceStack.amount * transferFactor
+
+            if(fluidToTransfer > FractionalFluidStack.EPSILON) {
+                val filledAmount = targetTank.fillFractional(sourceStack.copyWithAmount(fluidToTransfer), IFluidHandler.FluidAction.EXECUTE)
+
+                sourceStack.amount -= filledAmount
+
+                if(sourceStack.amount < FractionalFluidStack.EPSILON) {
+                    iterator.remove()
+                }
+
+                target.setChanged()
+                setChanged()
             }
         }
     }
@@ -834,13 +824,74 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
     }
 
     /**
+     * Pushes [gasTank] into the module above (gas rises). Pushes the lighter gases first.
+     * Also follows [DistillationColumnBlock]s to find the module above them.
+     * */
+    private fun gasOutflow() {
+        if (gasTank.fluids.isEmpty()) {
+            return
+        }
+
+        val currentPos = blockPos.mutable()
+
+        while (true) {
+            currentPos.y++
+
+            val block = level!!.getBlockState(currentPos).block
+
+            if(block is DistillationColumnBlock) {
+                /**
+                 * Move upward:
+                 * */
+                continue
+            }
+
+            if(block !is DistillationModuleBlock) {
+                /**
+                 * No module to transfer to:
+                 * */
+                break
+            }
+
+            val targetModule = level?.getBlockEntity(currentPos) as? DistillationModuleBlockEntity
+                ?: return
+
+            /**
+             * Order by lowest density first:
+             * */
+            val gases = gasTank.fluids.sortedBy {
+                PhysicalFluidManager.requireProperties(it.fluid).density
+            }
+
+            for (stack in gases) {
+                val transfer = targetModule.gasTank.fillFractional(stack, IFluidHandler.FluidAction.EXECUTE)
+
+                if (transfer > 0) {
+                    gasTank.drainFractional(FractionalFluidStack(stack.fluid, transfer), IFluidHandler.FluidAction.EXECUTE)
+                    setChanged()
+                }
+                else {
+                    break
+                }
+            }
+
+            break
+        }
+    }
+
+    /**
      * This order is important.
      * */
     fun serverTick() {
         /**
          * Transports liquids to neighbor modules.
          * */
-        horizontalTransport()
+        horizontalDistribution()
+
+        /**
+         * Moves fluid to modules below:
+         * */
+        reflux()
 
         /**
          * Performs evaporation/condensation.
@@ -850,7 +901,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
         /**
          * Pushes gas up into modules above.
          * */
-        gasTransport()
+        gasOutflow()
     }
 
     //#endregion

@@ -539,6 +539,8 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
 
         queue.add(source)
 
+        val importEndpoints = importEndpointsByPipe[source]
+
         while (queue.isNotEmpty()) {
             val front = queue.remove()
 
@@ -546,11 +548,15 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
                 continue
             }
 
-            if(front != source) {
-                val endpoints = exportEndpointsByPipe[front]
+            val exportEndpoints = exportEndpointsByPipe[front]
 
-                if(endpoints != null) {
-                    result.addAll(endpoints)
+            if(exportEndpoints != null) {
+                for (i in exportEndpoints.indices) {
+                    val exportEndpoint = exportEndpoints[i]
+
+                    if(importEndpoints == null || !importEndpoints.contains(exportEndpoint)) {
+                        result.add(exportEndpoint)
+                    }
                 }
             }
 
@@ -782,12 +788,42 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
         }
     }
 
+    private val pumpPairs = ArrayList<Map.Entry<FluidPipeBlockEntity, ArrayList<IFluidHandler>>>()
+    private val updateHandlers = ArrayList<IFluidHandler>()
+
     /**
      * Applies all automatic fluid transport, created by the pump module.
      * */
     fun update() {
-        importEndpointsByPipe.forEach { (pipe, endpoints) ->
-            executePump(pipe, endpoints)
+        /**
+         * I'm cloning the collections because it actually doesn't work without.
+         * I think me filling the mekanism tank causes a block update which triggers an endpoint re-compute on my end, which caues the error.
+         * */
+        try {
+            val pumpPairs = pumpPairs
+            val updateHandlers = updateHandlers
+
+            importEndpointsByPipe.forEach { entry: Map.Entry<FluidPipeBlockEntity, ArrayList<IFluidHandler>> ->
+                pumpPairs.add(entry)
+            }
+
+            for (pairIndex in pumpPairs.indices) {
+                val entry = pumpPairs[pairIndex]
+                val pipe = entry.key
+                val source = entry.value
+
+                for (endpointIndex in source.indices) {
+                    updateHandlers.add(entry.value[endpointIndex])
+                }
+
+                executePump(pipe, updateHandlers)
+
+                updateHandlers.clear()
+            }
+        }
+        finally {
+            updateHandlers.clear()
+            pumpPairs.clear()
         }
     }
 
