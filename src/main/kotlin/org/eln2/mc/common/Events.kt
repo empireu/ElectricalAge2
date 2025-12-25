@@ -3,9 +3,12 @@ package org.eln2.mc.common
 import net.minecraft.core.BlockPos
 import net.minecraft.data.loot.LootTableProvider
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.item.BucketItem
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets
 import net.minecraftforge.client.event.EntityRenderersEvent
+import net.minecraftforge.client.event.RegisterColorHandlersEvent
+import net.minecraftforge.client.extensions.common.IClientFluidTypeExtensions
 import net.minecraftforge.data.event.GatherDataEvent
 import net.minecraftforge.event.AddReloadListenerEvent
 import net.minecraftforge.event.TickEvent
@@ -25,6 +28,7 @@ import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.ELN2_LOG_STATS
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.DebugVisualizer
+import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityLevelRendererProvider
 import org.eln2.mc.common.cells.foundation.CellGraphManager
@@ -38,6 +42,7 @@ import org.eln2.mc.common.content.WindSystem
 import org.eln2.mc.common.content.fluid.FluidPipeNetworkManager
 import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.events.schedulePost
+import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.grids.GridCollisions
 import org.eln2.mc.common.grids.GridConnectionManagerClient
 import org.eln2.mc.common.grids.GridConnectionManagerServer
@@ -46,6 +51,7 @@ import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.foundation.SpecPlacementOverlayServer
 import org.eln2.mc.data.AveragingList
 import org.eln2.mc.datagen.Eln2BlockLoot
+import org.eln2.mc.datagen.Eln2BucketModels
 import org.eln2.mc.extensions.formatted
 
 @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.MOD)
@@ -64,6 +70,26 @@ object ModEvents {
     }
 
     @SubscribeEvent @JvmStatic
+    fun registerItemColors(event: RegisterColorHandlersEvent.Item) {
+        ForgeFluidRegistry.FORGE_FLUID_BUCKETS.entries.forEach { bucketEntry ->
+            val item = bucketEntry.get() as BucketItem
+
+            /**
+             * Tint Index:
+             * - `0` is the bucket
+             * - `1` is the fluid
+             * */
+            event.register({ stack, tintIndex ->
+                if (tintIndex == 1) {
+                    return@register IClientFluidTypeExtensions.of(item.fluid).tintColor
+                }
+
+                return@register MyColor.WHITE.data
+            }, item)
+        }
+    }
+
+    @SubscribeEvent @JvmStatic
     fun loadCompletedEvent(event: FMLLoadCompleteEvent) {
         event.enqueueWork {
             isFullyLoaded = true
@@ -76,6 +102,7 @@ object ModEvents {
     fun onGatherData(event: GatherDataEvent) {
         val generator = event.generator
         val output = generator.packOutput
+        val existingFileHelper = event.existingFileHelper
 
         generator.addProvider(
             event.includeServer(),
@@ -89,6 +116,11 @@ object ModEvents {
                     )
                 )
             )
+        )
+
+        generator.addProvider(
+            event.includeClient(),
+            Eln2BucketModels(output, existingFileHelper)
         )
     }
 }

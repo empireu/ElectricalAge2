@@ -5,13 +5,16 @@ package org.eln2.mc.common.content.modules
 import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.minecraft.client.gui.screens.MenuScreens
+import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.phys.AABB
 import net.minecraftforge.client.event.EntityRenderersEvent
+import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.*
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.FrictionNodeDescription
+import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
 import org.eln2.mc.client.screens.BasicProgressScreen
 import org.eln2.mc.common.blocks.BlockRegistry.blockAndItemAndDrop
@@ -72,6 +75,16 @@ object Eln2Processing : ContentModule() {
             COKE_OVEN_MAIN_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::CokeOvenMainBlockEntityVisual) { true }
         )
+
+        VisualizerRegistry.setVisualizer(
+            INSULATED_DISTILLATION_MODULE_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::DistillationModuleBlockEntityVisual) { true }
+        )
+
+        VisualizerRegistry.setVisualizer(
+            CONDENSER_DISTILLATION_MODULE_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::DistillationModuleBlockEntityVisual) { true }
+        )
     }
 
     override fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
@@ -107,6 +120,16 @@ object Eln2Processing : ContentModule() {
 
         event.registerBlockEntityRenderer(
             VULCANIZING_AUTOCLAVE_MAIN_BLOCK_ENTITY.get(),
+            DummyBlockEntityRendererProvider()
+        )
+
+        event.registerBlockEntityRenderer(
+            INSULATED_DISTILLATION_MODULE_BLOCK_ENTITY.get(),
+            DummyBlockEntityRendererProvider()
+        )
+
+        event.registerBlockEntityRenderer(
+            CONDENSER_DISTILLATION_MODULE_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
     }
@@ -219,7 +242,7 @@ object Eln2Processing : ContentModule() {
         val topBack = specialDelegate(
             0.0, 0.0, 0.0,
             1.0, 1.0 - 4.0 / 16.0, 1.0,
-            Base6Direction3dMask.FRONT
+            Base6Direction3d.Back + Base6Direction3d.Front
         )
 
         val leftTop = specialDelegate(
@@ -284,15 +307,21 @@ object Eln2Processing : ContentModule() {
         val leakage = ConnectionParameters(conductance = Quantity(0.1, WATT_PER_KELVIN))
 
         CellFactory {
-            DistillationModuleCell(it, leakage)
+            DistillationModuleCell(it, leakage, false)
         }
     }
 
     val INSULATED_DISTILLATION_MODULE_BLOCK = blockAndItemAndDrop("insulated_distillation_module") {
-        DistillationModuleBlock(INSULATED_DISTILLATION_MODULE_CELL)
+        DistillationModuleBlock(
+            INSULATED_DISTILLATION_MODULE_CELL,
+            INSULATED_DISTILLATION_MODULE_BLOCK_ENTITY,
+            DistillationModuleModel(false) {
+                FlwModels.INSULATED_DISTILLATION_MODULE
+            }
+        )
     }
 
-    val INSULATED_DISTILLATION_MODULE_BLOCK_ENTITY = blockEntityOnly(
+    val INSULATED_DISTILLATION_MODULE_BLOCK_ENTITY: RegistryObject<BlockEntityType<DistillationModuleBlockEntity>> = blockEntityOnly(
         "insulated_distillation_module",
         INSULATED_DISTILLATION_MODULE_BLOCK,
         ::DistillationModuleBlockEntity
@@ -302,15 +331,21 @@ object Eln2Processing : ContentModule() {
         val leakage = ConnectionParameters(conductance = Quantity(5.0, WATT_PER_KELVIN))
 
         CellFactory {
-            DistillationModuleCell(it, leakage)
+            DistillationModuleCell(it, leakage, true)
         }
     }
 
     val CONDENSER_DISTILLATION_MODULE_BLOCK = blockAndItemAndDrop("condenser_distillation_module") {
-        DistillationModuleBlock(CONDENSER_DISTILLATION_MODULE_CELL)
+        DistillationModuleBlock(
+            CONDENSER_DISTILLATION_MODULE_CELL,
+            CONDENSER_DISTILLATION_MODULE_BLOCK_ENTITY,
+            DistillationModuleModel(true) {
+                FlwModels.CONDENSER_DISTILLATION_MODULE
+            }
+        )
     }
 
-    val CONDENSER_DISTILLATION_MODULE_BLOCK_ENTITY = blockEntityOnly(
+    val CONDENSER_DISTILLATION_MODULE_BLOCK_ENTITY: RegistryObject<BlockEntityType<DistillationModuleBlockEntity>> = blockEntityOnly(
         "condenser_distillation_module",
         CONDENSER_DISTILLATION_MODULE_BLOCK,
         ::DistillationModuleBlockEntity

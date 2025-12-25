@@ -2,7 +2,7 @@
     "type": "eln2:coking",
     "inputItems": [
         {
-            "requiredValue": 16,
+            "requiredValue": 72,
             "options": [
                 {
                     "ingredient": { "item": "minecraft:coal" },
@@ -21,5 +21,5 @@
         "fluid": "eln2:coke_gas",
         "amount": 1000
     },
-    "duration": 2400
+    "duration": 24000
 }

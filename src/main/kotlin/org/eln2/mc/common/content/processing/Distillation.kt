@@ -1,5 +1,12 @@
 package org.eln2.mc.common.content.processing
 
+import dev.engine_room.flywheel.api.instance.Instance
+import dev.engine_room.flywheel.api.visual.DynamicVisual
+import dev.engine_room.flywheel.api.visualization.VisualizationContext
+import dev.engine_room.flywheel.lib.model.Models
+import dev.engine_room.flywheel.lib.model.baked.PartialModel
+import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
+import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
@@ -23,15 +30,24 @@ import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.fluids.capability.IFluidHandler
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.JOULE
+import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.KILOGRAM
 import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.data.WATT
+import org.ageseries.libage.data.WATT_PER_KELVIN
+import org.ageseries.libage.data.WATT_PER_METER_KELVIN
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMass
+import org.eln2.mc.ClientOnly
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
+import org.eln2.mc.OnSimulationThread
 import org.eln2.mc.ServerOnly
+import org.eln2.mc.client.render.foundation.FlwInstanceTypes
+import org.eln2.mc.client.render.foundation.ThermalTint
+import org.eln2.mc.client.render.foundation.TransformedLightOverrideInstance
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.blocks.foundation.ReplaceVanillaParticlesBlockExtension
 import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
@@ -43,20 +59,23 @@ import org.eln2.mc.common.chemistry.PhysicalFluidManager
 import org.eln2.mc.common.content.ThermalWireObject
 import org.eln2.mc.common.content.WrenchInteractable
 import org.eln2.mc.common.content.WrenchItem
-import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.content.processing.DistillationModuleBlockEntity.Companion.PHASE_CHANGE_RATE
 import org.eln2.mc.common.fluids.foundation.*
+import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
+import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
+import org.eln2.mc.common.network.serverToClient.sendBulkPacket
 import org.eln2.mc.extensions.eln2StandardBlockProperties
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import java.util.concurrent.locks.ReentrantLock
 import java.util.function.Consumer
+import java.util.function.Supplier
 import kotlin.math.min
 
 /**
  * Thermal body. Has a synchronization point around the execution of the subsolver. It is used to execute the distillation logic on the server thread.
  * */
-class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters) :
+class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, val replicatesTemperature: Boolean) :
     Cell(ci),
     SidedThermalFLBR<DistillationModuleCell>,
     SimulationExecutionSubgraph.SynchronizationPointCell<DistillationModuleCell>
@@ -68,7 +87,9 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters) 
     val wire = ThermalWireObject(
         this,
         ThermalMass(
-            ChemicalElement.Copper.asMaterial,
+            ChemicalElement.Copper.asMaterial.copy(
+                thermalConductivity = Quantity(3159.0, WATT_PER_METER_KELVIN)
+            ),
             mass = Quantity(50.0, KILOGRAM)
         ),
         leakage
@@ -86,6 +107,16 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters) 
 
     override fun endSubSolverStep(obj: SimulationObject<*>, subSolver: Any) {
         sync.unlock()
+    }
+
+    @Replicator
+    fun replicator(target: InternalTemperatureConsumer) = if(replicatesTemperature) {
+        InternalTemperatureReplicatorBehavior(target) {
+            !wire.thermalBody.temperature
+        }
+    }
+    else {
+        null
     }
 }
 
@@ -114,7 +145,19 @@ class DistillationColumnBlock : HorizontalDirectionalBlock(eln2StandardBlockProp
     }
 }
 
-class DistillationModuleBlock(val cell: RegistryObject<CellProvider<DistillationModuleCell>>) : UprightHorizontalDirectionCellBlock<DistillationModuleCell>() {
+data class DistillationModuleModel(
+    val isIncandescent: Boolean,
+    val modelSupplier: Supplier<PartialModel>
+)
+
+class DistillationModuleBlock(
+    val cell: RegistryObject<CellProvider<DistillationModuleCell>>,
+    val blockEntityType: RegistryObject<BlockEntityType<DistillationModuleBlockEntity>>,
+    val model: DistillationModuleModel
+) : UprightHorizontalDirectionCellBlock<DistillationModuleCell>() {
+    @Deprecated("Deprecated in Java")
+    override fun skipRendering(pState: BlockState, pAdjacentState: BlockState, pDirection: Direction) = true
+
     override fun initializeClient(consumer: Consumer<IClientBlockExtensions?>) {
         consumer.accept(ReplaceVanillaParticlesBlockExtension)
     }
@@ -133,9 +176,11 @@ class DistillationModuleBlock(val cell: RegistryObject<CellProvider<Distillation
 }
 
 class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
-    CellBlockEntity<DistillationModuleCell>(pos, state, Eln2Processing.INSULATED_DISTILLATION_MODULE_BLOCK_ENTITY.get()),
+    CellBlockEntity<DistillationModuleCell>(pos, state, (state.block as DistillationModuleBlock).blockEntityType.get()),
     ComponentDisplay,
-    WrenchInteractable
+    WrenchInteractable,
+    InternalTemperatureConsumer,
+    BulkPacketHandlerBlockEntity
 {
     companion object {
         fun tick(pLevel: Level?, pPos: BlockPos?, pState: BlockState?, pBlockEntity: BlockEntity?) {
@@ -177,6 +222,18 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
                 liquidTank.fill(resource, action)
             }
         }
+
+        override fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): Double {
+            val thermalFluid = PhysicalFluidManager.getProperties(resource.fluid)
+                ?: return 0.0
+
+            return if(thermalFluid.isGaseous) {
+                gasTank.fillFractional(resource, action)
+            }
+            else {
+                liquidTank.fillFractional(resource, action)
+            }
+        }
     }
 
     val bottomFaceHandler = BottomFaceHandler(liquidTank, gasTank)
@@ -198,6 +255,19 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
 
             return liquidTank.fill(resource, action)
         }
+
+        override fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): Double {
+            val thermalFluid = PhysicalFluidManager.getProperties(resource.fluid)
+                ?: return 0.0
+
+            if(thermalFluid.isGaseous) {
+                return 0.0
+            }
+
+            return liquidTank.fillFractional(resource, action)
+        }
+
+
     }
 
     val topFaceHandler = TopFaceHandler(liquidTank, gasTank)
@@ -207,21 +277,35 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
      * Fluid handler for the 4 sides:
      * - Allows extraction of liquids via [PurityBasedMultipleFluidTank]
      * - Allows insertion of liquids
+     * - Allows insertion of gas
      * */
-    class SideHandler(val liquidTank: MultipleFractionalFluidTank) : PurityBasedMultipleFractionalFluidTank(liquidTank) {
+    class SideHandler(val liquidTank: MultipleFractionalFluidTank, val gasTank: MultipleFractionalFluidTank) : PurityBasedMultipleFractionalFluidTank(liquidTank) {
         override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction): Int {
             val thermalFluid = PhysicalFluidManager.getProperties(resource.fluid)
                 ?: return 0
 
-            if(thermalFluid.isGaseous) {
-                return 0
+            return if(thermalFluid.isGaseous) {
+                gasTank.fill(resource, action)
             }
+            else {
+                liquidTank.fill(resource, action)
+            }
+        }
 
-            return liquidTank.fill(resource, action)
+        override fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): Double {
+            val thermalFluid = PhysicalFluidManager.getProperties(resource.fluid)
+                ?: return 0.0
+
+            return if(thermalFluid.isGaseous) {
+                gasTank.fillFractional(resource, action)
+            }
+            else {
+                liquidTank.fillFractional(resource, action)
+            }
         }
     }
 
-    val sideHandler = SideHandler(liquidTank)
+    val sideHandler = SideHandler(liquidTank, gasTank)
     val sideHandlerLazy: LazyOptional<SideHandler> = LazyOptional.of { sideHandler }
 
     override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T?> {
@@ -576,6 +660,52 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
 
     //#endregion
 
+    //#region Rendering and Sync
+
+    @ClientOnly
+    override val clientSidePacketHandlerLazy = createClientSideHandler()
+
+    class RenderState {
+        var temperature = 0.0
+    }
+
+    @ClientOnly
+    var renderState: RenderState? = null
+        private set
+
+    /**
+     * Creates the [renderState] if needed.
+     * */
+    override fun setLevel(pLevel: Level) {
+        super.setLevel(pLevel)
+
+        if(pLevel.isClientSide) {
+            renderState = RenderState()
+        }
+    }
+
+    @ClientOnly
+    override fun setupPacketsOnClient(handler: ClientSidePacketHandlerBuilder) {
+        handler.withHandler<InternalTemperatureReplicatorBehavior.InternalTemperaturePacket> { packet ->
+            renderState!!.temperature = packet.temperature
+        }
+    }
+
+    @ServerOnly @OnSimulationThread
+    override fun onInternalTemperatureChange(temperature: Quantity<Temperature>) {
+        sendBulkPacket(InternalTemperatureReplicatorBehavior.InternalTemperaturePacket(!temperature))
+    }
+
+    // onSyncSuggested
+    override fun getUpdateTag(): CompoundTag {
+        sendBulkPacket(InternalTemperatureReplicatorBehavior.InternalTemperaturePacket(!cell.wire.thermalBody.temperature))
+        return super.getUpdateTag()
+    }
+
+    //#endregion
+
+    //#region Saving
+
     override fun saveAdditional(pTag: CompoundTag) {
         super.saveAdditional(pTag)
         pTag.put("liquidTank", liquidTank.serializeNBT())
@@ -588,10 +718,56 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
         gasTank.deserializeNBT(pTag.getCompound("gasTank"))
     }
 
+    //#endregion
+
     @ServerOnly
     override fun submitDisplay(builder: ComponentDisplayList) {
         bottomFaceHandler.debugView(builder)
         builder.quantity(cell.wire.thermalBody.temperature)
         builder.quantity(Quantity(thermalPower, WATT))
+    }
+}
+
+class DistillationModuleBlockEntityVisual(ctx: VisualizationContext, blockEntity: DistillationModuleBlockEntity, partialTick: Float) :
+    AbstractBlockEntityVisual<DistillationModuleBlockEntity>(ctx, blockEntity, partialTick),
+    SimpleDynamicVisual
+{
+    val model = (blockState.block as DistillationModuleBlock).model
+
+    val instance: TransformedLightOverrideInstance = visualizationContext.instancerProvider()
+        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, Models.partial(model.modelSupplier.get()))
+        .createInstance()
+        .also {
+            it.translate(visualPosition)
+            it.center()
+            it.rotateToFace(blockState.getValue(HorizontalDirectionalBlock.FACING))
+            it.uncenter()
+        }
+
+    private var lastTemperature = 0.0
+
+    override fun beginFrame(p0: DynamicVisual.Context?) {
+        if(!model.isIncandescent) {
+            return
+        }
+
+        val targetTemperature = blockEntity.renderState!!.temperature
+
+        if(targetTemperature != lastTemperature) {
+            lastTemperature = targetTemperature
+            instance.colorWithOverride(ThermalTint.DEFAULT_LIGHT_OVERRIDE, Quantity(targetTemperature, KELVIN))
+        }
+    }
+
+    override fun updateLight(p0: Float) {
+        relight(instance)
+    }
+
+    override fun collectCrumblingInstances(p0: Consumer<Instance?>) {
+        p0.accept(instance)
+    }
+
+    override fun _delete() {
+        instance.delete()
     }
 }

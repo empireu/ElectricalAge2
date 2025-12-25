@@ -17,6 +17,7 @@ import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.content.modules.Eln2BasicComponents
+import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.SpecRegistry
 import java.util.function.Supplier
@@ -81,6 +82,7 @@ object CreativeTabRegistry {
                 map(BlockRegistry.BLOCK_ITEMS)
                 map(PartRegistry.PART_ITEMS)
                 map(SpecRegistry.SPEC_ITEMS)
+                map(ForgeFluidRegistry.FORGE_FLUID_BUCKETS)
 
                 if(variantLookup.map.isNotEmpty()) {
                     LOG.error("Did not map variants $variantLookup")

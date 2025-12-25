@@ -144,6 +144,9 @@ class InternalTemperatureReplicatorBehavior(val consumer: InternalTemperatureCon
         tracked = temperature
         consumer.onInternalTemperatureChange(Quantity(temperature))
     }
+
+    @Serializable
+    class InternalTemperaturePacket(val temperature: Double)
 }
 
 fun interface ExternalTemperatureConsumer {
