@@ -10,6 +10,7 @@ import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.context.BlockPlaceContext
 import net.minecraft.world.item.context.UseOnContext
@@ -35,7 +36,6 @@ import org.ageseries.libage.data.KILOGRAM
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.data.WATT
-import org.ageseries.libage.data.WATT_PER_KELVIN
 import org.ageseries.libage.data.WATT_PER_METER_KELVIN
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
@@ -65,8 +65,11 @@ import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.sendBulkPacket
 import org.eln2.mc.extensions.eln2StandardBlockProperties
+import org.eln2.mc.extensions.plus
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.mathematics.Base6Direction3dMask
+import org.eln2.mc.mathematics.FacingDirection
 import java.util.concurrent.locks.ReentrantLock
 import java.util.function.Consumer
 import java.util.function.Supplier
@@ -197,10 +200,18 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
             pBlockEntity.serverTick()
         }
 
+        /**
+         * The maximum condensation and evaporation rate (they are independent).
+         * */
         private const val PHASE_CHANGE_RATE = 0.5
+
+        /**
+         * The total max fluid leaving the module to distribute to horizontal neighbors.
+         * */
+        private const val MAX_HORIZONTAL_FLOW_RATE = 5.0
     }
 
-    //#region Fluid Handling
+    //#region Capability
 
     val liquidTank = MultipleFractionalFluidTank(1000.0, true, this::setChanged)
     val gasTank = MultipleFractionalFluidTank(1000.0, true, this::setChanged)
@@ -406,6 +417,179 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
             }
 
             break
+        }
+    }
+
+    private val horizontalNeighbors = Array<DistillationModuleBlockEntity?>(4) { null }
+    private val horizontalTransportAmounts = DoubleArray(4)
+    private val horizontalTransportIndices = IntArray(4) { -1 }
+
+    /**
+     * Distributes fluid with horizontally adjacent distillation modules.
+     * This allows building multiblock distillation towers.
+     * */
+    private fun horizontalTransport() {
+        val level = level as ServerLevel
+        val horizontalNeighbors = horizontalNeighbors
+
+        /**
+         * Fetches neighbors.
+         * P.S. we can make a cache and invalidate with [Block.neighborChanged], but we don't expect many distillation modules in the world:
+         * */
+        var hasNeighbors = false
+        for (i in 0 until 4) {
+            val targetPos = blockPos + FacingDirection.byIndex(i).direction
+
+            horizontalNeighbors[i] = if(level.isLoaded(targetPos)) {
+                hasNeighbors = true
+                level.getBlockEntity(targetPos) as? DistillationModuleBlockEntity
+            }
+            else {
+                null
+            }
+        }
+
+        if(!hasNeighbors) {
+            return
+        }
+
+        val horizontalTransportAmounts = horizontalTransportAmounts
+        val horizontalTransportIndices = horizontalTransportIndices
+
+        /**
+         * Algorithm: For each fluid we have, we calculate the 4 transfers toward each neighbor so we equalize.
+         * */
+        val iterator = liquidTank.fluids.iterator()
+        while (iterator.hasNext()) {
+            val sourceStack = iterator.next()
+            val fluid = sourceStack.fluid
+
+            /**
+             * The number of neighbors we are transferring to:
+             * */
+            var transferCount = 0
+
+            for(i in 0 until 4) {
+                val neighbor = horizontalNeighbors[i]
+                    ?: continue
+
+                val neighborTank = neighbor.liquidTank
+
+                val targetStackIndex = neighborTank.fluids.indexOfFirst {
+                    it.fluid == fluid
+                }
+
+                horizontalTransportIndices[i] = targetStackIndex
+
+                if(targetStackIndex == -1) {
+                    /**
+                     * Split in half:
+                     * */
+                    val amountToTransfer = 0.5 * sourceStack.amount
+
+                    horizontalTransportAmounts[i] = if(amountToTransfer < FractionalFluidStack.EPSILON) {
+                        /**
+                         * Special case. We will skip transport:
+                         * */
+                        0.0
+                    }
+                    else {
+                        transferCount++
+                        amountToTransfer
+                    }
+                }
+                else {
+                    /**
+                     * Equalize if we have more than the target:
+                     * */
+                    val amountToTransfer = 0.5 * (sourceStack.amount - neighborTank.fluids[targetStackIndex].amount)
+
+                    horizontalTransportAmounts[i] = if(amountToTransfer < FractionalFluidStack.EPSILON) {
+                        /**
+                         * We only transfer if we have more than the neighbor. We will skip transport:
+                         * */
+                        0.0
+                    }
+                    else {
+                        transferCount++
+                        amountToTransfer
+                    }
+                }
+            }
+
+            if(transferCount == 0) {
+                /**
+                 * Nothing to transfer:
+                 * */
+                continue
+            }
+
+            val recip = 1.0 / transferCount.toDouble()
+
+            /**
+             * Calculates the total transfer out of our stack:
+             * */
+            var totalTransfer = 0.0
+            for (i in 0 until 4) {
+                val amount = horizontalTransportAmounts[i] * recip
+
+                if(amount < FractionalFluidStack.EPSILON) {
+                    horizontalTransportAmounts[i] = 0.0
+                }
+                else {
+                    horizontalTransportAmounts[i] = amount
+                    totalTransfer += amount
+                }
+            }
+
+            if(totalTransfer < FractionalFluidStack.EPSILON) {
+                /**
+                 * Nothing to transfer:
+                 * */
+                continue
+            }
+
+            if(totalTransfer > MAX_HORIZONTAL_FLOW_RATE) {
+                val factor = MAX_HORIZONTAL_FLOW_RATE / totalTransfer
+
+                for (i in 0 until 4) {
+                    horizontalTransportAmounts[i] *= factor
+                }
+
+                totalTransfer = MAX_HORIZONTAL_FLOW_RATE
+            }
+
+            /**
+             * Remove from source:
+             * */
+            sourceStack.amount -= totalTransfer
+            if(sourceStack.amount < FractionalFluidStack.EPSILON) {
+                iterator.remove()
+            }
+
+            setChanged()
+
+            for (i in 0 until 4) {
+                val neighbor = horizontalNeighbors[i]
+                    ?: continue
+
+                val quantity = horizontalTransportAmounts[i]
+
+                if(quantity < FractionalFluidStack.EPSILON) {
+                    continue
+                }
+
+                val targetIndex = horizontalTransportIndices[i]
+
+                if(targetIndex == -1) {
+                    neighbor.liquidTank.fluids.add(FractionalFluidStack(fluid, quantity))
+                }
+                else {
+                    neighbor.liquidTank.fluids[targetIndex].amount += quantity
+                }
+
+                neighbor.setChanged()
+            }
         }
     }
 
@@ -650,11 +834,22 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
     }
 
     /**
-     * Performs phase changes *first*, and then transports gas.
      * This order is important.
      * */
     fun serverTick() {
+        /**
+         * Transports liquids to neighbor modules.
+         * */
+        horizontalTransport()
+
+        /**
+         * Performs evaporation/condensation.
+         * */
         phaseChange()
+
+        /**
+         * Pushes gas up into modules above.
+         * */
         gasTransport()
     }
 
