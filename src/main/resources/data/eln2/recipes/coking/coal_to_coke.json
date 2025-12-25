@@ -7,10 +7,6 @@
                 {
                     "ingredient": { "item": "minecraft:coal" },
                     "value": 8
-                },
-                {
-                    "ingredient": { "item": "minecraft:charcoal" },
-                    "value": 8
                 }
             ]
         }
@@ -22,8 +18,8 @@
         }
     ],
     "outputFluid": {
-        "fluid": "eln2:coal_gas",
+        "fluid": "eln2:coke_gas",
         "amount": 1000
     },
-    "duration": 100
+    "duration": 2400
 }

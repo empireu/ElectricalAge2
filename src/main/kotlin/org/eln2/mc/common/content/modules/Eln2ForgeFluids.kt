@@ -61,7 +61,41 @@ object Eln2ForgeFluids : ContentModule() {
 
     //#endregion
 
-    //#region Coal Products
+    val FUEL_GAS = basicForgeFluid("fuel_gas") {
+        tintColor = MyColor(100, 200, 200, 200) // Translucent Grey Vapor
+        properties {
+            FluidType.Properties.create()
+                .density(-100)
+                .viscosity(50)
+        }
+    }
+
+    val CREOSOTE = basicForgeFluid("creosote") {
+        tintColor = MyColor(255, 200, 200, 200) // Grey
+        properties {
+            FluidType.Properties.create()
+                .density(1200)
+                .viscosity(400)
+        }
+    }
+
+    val CREOSOTE_GAS = basicForgeFluid("creosote_gas") {
+        tintColor = MyColor(100, 200, 200, 200) // Grey
+        FluidType.Properties.create()
+            .density(-600)
+            .viscosity(100)
+    }
+
+    //#region Coal Coking
+
+    val COKE_GAS = basicForgeFluid("coke_gas") {
+        tintColor = MyColor(150, 200, 200, 200) // Translucent Grey Vapor
+        properties {
+            FluidType.Properties.create()
+                .density(-500) // Gas
+                .viscosity(100)
+        }
+    }.withRenderLayer(RenderType.translucent())
 
     val COAL_TAR = basicForgeFluid("coal_tar") {
         tintColor = MyColor(255, 20, 20, 20) // Opaque Black
@@ -72,14 +106,23 @@ object Eln2ForgeFluids : ContentModule() {
         }
     }
 
-    val COAL_GAS = basicForgeFluid("coal_gas") {
-        tintColor = MyColor(100, 200, 200, 200) // Translucent Grey Vapor
+    val HEAVY_COAL_TAR = basicForgeFluid("heavy_coal_tar") {
+        tintColor = MyColor(255, 10, 10, 10) // Opaque Black
         properties {
             FluidType.Properties.create()
-                .density(-1000) // Gas
-                .viscosity(100)
+                .density(1510) // Sinks in water
+                .viscosity(5500) // Thick
         }
-    }.withRenderLayer(RenderType.translucent())
+    }
+
+    val PITCH = basicForgeFluid("pitch") {
+        tintColor = MyColor(255, 10, 10, 10) // Opaque Black
+        properties {
+            FluidType.Properties.create()
+                .density(2000) // Sinks in water
+                .viscosity(6000) // Thick
+        }
+    }
 
     //#endregion
 

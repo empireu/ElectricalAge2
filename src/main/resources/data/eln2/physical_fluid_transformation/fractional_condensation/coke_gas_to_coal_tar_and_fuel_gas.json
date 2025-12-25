@@ -1,0 +1,10 @@
+{
+    "fluid": "eln2:coke_gas",
+    "condensation": {
+        "temperature": 181.59,
+        "enthalpy": 210591.0,
+        "resultLiquid": "eln2:coal_tar",
+        "resultLiquidProportion": 250,
+        "resultGasResidue": "eln2:fuel_gas"
+    }
+}

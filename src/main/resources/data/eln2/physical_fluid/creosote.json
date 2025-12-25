@@ -1,0 +1,9 @@
+{
+    "forgeFluid": "eln2:creosote",
+    "specificHeatCapacity": 1700.0,
+    "density": 1.08,
+    "isGaseous": false,
+    "mixabilityTags": [
+        "creosote_miscible"
+    ]
+}

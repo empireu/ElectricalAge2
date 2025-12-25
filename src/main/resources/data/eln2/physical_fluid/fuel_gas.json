@@ -1,0 +1,9 @@
+{
+    "forgeFluid": "eln2:fuel_gas",
+    "specificHeatCapacity": 2400.0,
+    "density": 0.0004,
+    "isGaseous": true,
+    "mixabilityTags": [
+        "oil_miscible"
+    ]
+}
