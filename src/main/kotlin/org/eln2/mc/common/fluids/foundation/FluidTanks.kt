@@ -9,11 +9,7 @@ import net.minecraftforge.fluids.capability.IFluidHandler
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.classify
 import org.ageseries.libage.mathematics.approxEq
-import org.eln2.mc.DEBUGGER_BREAK
-import org.eln2.mc.ELN2_DEBUG
-import org.eln2.mc.KILOGRAM_PER_MILLIBUCKET
-import org.eln2.mc.LOG
-import org.eln2.mc.OnServerThread
+import org.eln2.mc.*
 import org.eln2.mc.common.chemistry.PhysicalFluidManager
 import org.eln2.mc.data.LinearObjectPool
 import org.eln2.mc.data.PooledObjectPolicy
@@ -704,7 +700,7 @@ open class GravityBasedMultipleFluidTank(val parent: MultipleFluidTank) : IFluid
 /**
  * Re-implementation of [MultipleFluidTank] that uses [FractionalFluidStack]s.
  * */
-open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalFluid: Boolean) : IFractionalFluidHandler {
+open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalFluid: Boolean, val versionChangedHandler: Runnable? = null) : IFractionalFluidHandler {
     var version = 0
         private set
 
@@ -730,6 +726,7 @@ open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalF
 
     open fun incrementVersion() {
         version++
+        versionChangedHandler?.run()
     }
 
     /**
@@ -1038,6 +1035,44 @@ open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalF
         }
 
         return result
+    }
+
+    /**
+     * Fills the tank with as much of [resource] as possible (limited by [capacity]), by displacing existing fluids (voiding).
+     * @return The amount of [resource] that was filled.
+     *  */
+    fun fillWithDisplacement(resource: FractionalFluidStack, action: IFluidHandler.FluidAction) : Double {
+        if(resource.isEmpty) {
+            return 0.0
+        }
+
+        val amountToFill = min(resource.amount, capacity)
+
+        if(amountToFill < FractionalFluidStack.EPSILON) {
+            return 0.0
+        }
+
+        if(amountToFill <= remainingCapacity || fluids.isEmpty()) {
+            return fillFractional(resource.copyWithAmount(amountToFill), action)
+        }
+
+        if(action == IFluidHandler.FluidAction.EXECUTE) {
+            val amountToVoidPerStack = (amountToFill - remainingCapacity) / fluids.size
+
+            val iterator = fluids.iterator()
+            while (iterator.hasNext()) {
+                val stack = iterator.next()
+
+                stack.amount -= amountToVoidPerStack
+                if(stack.amount < FractionalFluidStack.EPSILON) {
+                    iterator.remove()
+                }
+            }
+
+            fillFractional(resource.copyWithAmount(amountToFill), IFluidHandler.FluidAction.EXECUTE)
+        }
+
+        return amountToFill
     }
 
     fun serializeNBT() : CompoundTag {

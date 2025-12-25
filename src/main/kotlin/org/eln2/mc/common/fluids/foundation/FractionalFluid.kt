@@ -29,6 +29,11 @@ class FractionalFluidStack(val fluid: Fluid, var amount: Double) {
     fun copy(): FractionalFluidStack = FractionalFluidStack(fluid, amount)
 
     /**
+     * Copies the [fluid] into a stack with the specified [amount].
+     * */
+    fun copyWithAmount(amount: Double): FractionalFluidStack = FractionalFluidStack(fluid, amount)
+
+    /**
      * Rounds the [amount] to an integer, taking into account numerical errors using [EPSILON].
      * */
     val roundedAmount : Int get() {

@@ -47,7 +47,6 @@ import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.fluids.capability.IFluidHandler
-import net.minecraftforge.fluids.capability.templates.FluidTank
 import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.items.SlotItemHandler
 import org.ageseries.libage.mathematics.geometry.Vector2di
@@ -70,6 +69,9 @@ import org.eln2.mc.common.containers.ContainerHelper
 import org.eln2.mc.common.containers.ProgressContainerData
 import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
 import org.eln2.mc.common.content.modules.Eln2Processing
+import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
+import org.eln2.mc.common.fluids.foundation.MultipleFractionalFluidTank
+import org.eln2.mc.common.fluids.foundation.PurityBasedMultipleFractionalFluidTank
 import org.eln2.mc.common.recipes.foundation.*
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
@@ -77,6 +79,7 @@ import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import java.util.*
 import java.util.function.Consumer
+import kotlin.jvm.optionals.getOrNull
 
 private const val COKING_INPUT_SLOT_COUNT = 4
 private const val COKING_OUTPUT_SLOT_COUNT = 4
@@ -408,13 +411,14 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
 
     //#endregion
 
-    //#region Inventory
+    //#region Capability
 
-    val inventoryHandler = InventoryHandlerImpl(this)
-    val inventoryHandlerLazy: LazyOptional<InventoryHandlerImpl> = LazyOptional.of { inventoryHandler }
+    val inventoryHandler = InventoryHandler(this)
+    val inventoryHandlerLazy: LazyOptional<InventoryHandler> = LazyOptional.of { inventoryHandler }
 
-    val fluidHandler = FluidHandlerImpl(this)
-    val fluidHandlerLazy: LazyOptional<FluidTank> = LazyOptional.of { fluidHandler }
+    val tank = MultipleFractionalFluidTank(1000.0, false, this::setChanged)
+    val fluidHandler = FluidHandler(tank, this)
+    val fluidHandlerLazy: LazyOptional<FluidHandler> = LazyOptional.of { fluidHandler }
 
     override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
         if (cap == ForgeCapabilities.ITEM_HANDLER) {
@@ -434,7 +438,7 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
         fluidHandlerLazy.invalidate()
     }
 
-    class InventoryHandlerImpl(val blockEntity: CokeOvenMainBlockEntity) : ItemStackHandler(COKING_INPUT_SLOT_COUNT + COKING_OUTPUT_SLOT_COUNT) {
+    class InventoryHandler(val blockEntity: CokeOvenMainBlockEntity) : ItemStackHandler(COKING_INPUT_SLOT_COUNT + COKING_OUTPUT_SLOT_COUNT) {
         val inputRange = 0 until COKING_INPUT_SLOT_COUNT
         val outputRange = COKING_INPUT_SLOT_COUNT until (COKING_INPUT_SLOT_COUNT + COKING_OUTPUT_SLOT_COUNT)
 
@@ -454,14 +458,13 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
             )
         }
 
-        fun execute(recipe: CokingRecipe) {
-            /**
-             * Consumes the items:
-             * */
+        fun consumeInputs(recipe: CokingRecipe) {
             check(stacks.take(COKING_INPUT_SLOT_COUNT).applyRecipeWeighted(recipe.inputItems, true)) {
                 DEBUGGER_BREAK("Could not apply the previously verified recipe (input items) $recipe ${blockEntity.blockPos}")
             }
+        }
 
+        fun placeOutputs(recipe: CokingRecipe) {
             /**
              * Creates the results:
              * */
@@ -471,7 +474,7 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
                 }
 
                 check(handler.insertRange(recipe.outputItems, outputRange)) {
-                    DEBUGGER_BREAK("Could not apply the previously verified recipe (output items) $recipe ${blockEntity.blockPos}")
+                    DEBUGGER_BREAK("Could not apply the previously verified coking recipe (output items) $recipe ${blockEntity.blockPos}")
                 }
             }
 
@@ -492,45 +495,31 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
         }
     }
 
-    class FluidHandlerImpl(val blockEntity: CokeOvenMainBlockEntity) : FluidTank(8000) {
+    class FluidHandler(tank: MultipleFractionalFluidTank, val blockEntity: CokeOvenMainBlockEntity) : PurityBasedMultipleFractionalFluidTank(tank) {
         override fun fill(resource: FluidStack?, action: IFluidHandler.FluidAction?): Int {
             return 0
         }
 
-        fun execute(recipe: CokingRecipe) {
-            val increment = recipe.outputFluid?.copy()
-                ?: return
-
-            /**
-             * Directly increases the fluid in the tank (if the generated fluid is compatible with the current fluid):
-             * */
-            if(isEmpty || fluid.isFluidEqual(increment)) {
-                super.fill(increment, IFluidHandler.FluidAction.EXECUTE)
-                return
-            }
-
-            /**
-             * Voids the previous fluid type and adds the increment:
-             * */
-            fluid = FluidStack.EMPTY
-            super.fill(increment, IFluidHandler.FluidAction.EXECUTE)
-        }
-
-        override fun onContentsChanged() {
-            blockEntity.setChanged()
-            super.onContentsChanged()
+        override fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): Double {
+            return 0.0
         }
     }
 
     //#endregion
 
+    /**
+     * Represents a coking operation in progress.
+     * @param elapsedTime The number of ticks elapsed.
+     * */
     private class Operation(val recipe: CokingRecipe, var elapsedTime: Int)
 
     @ServerOnly
     private var operation: Operation? = null
 
+    data class OperationLoadingData(val operationId: ResourceLocation, val progress: Int)
+
     @ServerOnly
-    private var savedProgress: Int? = null
+    private var savedOperationData: OperationLoadingData? = null
 
     override val delegateMap: MultiblockDelegateMap
         get() = Eln2Processing.COKE_OVEN_DELEGATE_MAP.value
@@ -539,18 +528,22 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
         super.setLevel(pLevel)
 
         if(!pLevel.isClientSide) {
-            if(savedProgress != null) {
-                val recipe = inventoryHandler.searchForRecipe()
+            if(savedOperationData != null) {
+                val optional = pLevel.recipeManager.byKey(savedOperationData!!.operationId)
 
-                if(recipe.isEmpty) {
-                    LOG.error(DEBUGGER_BREAK("Failed to restore saved recipe with progress $savedProgress in $level at $blockPos"))
+                if(optional.isEmpty || optional.get() !is CokingRecipe) {
+                    LOG.error("Failed to restore coking recipe \"${savedOperationData!!.operationId}\": ${optional.getOrNull()}")
                 }
                 else {
-                    inventoryHandler.dirty = false
-                    operation = Operation(recipe.get(), savedProgress!!)
+                    operation = Operation(optional.get() as CokingRecipe, savedOperationData!!.progress)
                 }
 
-                savedProgress = null
+                savedOperationData = null
+
+                /**
+                 * We didn't persist this flag, so we set it here to make sure we check for a new recipe:
+                 * */
+                inventoryHandler.dirty = true
             }
         }
     }
@@ -558,40 +551,37 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
     @ServerOnly
     fun serverTick() {
         /**
-         * If required, stops/starts the operation:
+         * Tries to start the operation:
          * */
-        if(inventoryHandler.dirty) {
-            val targetRecipe = inventoryHandler.searchForRecipe()
+        if(operation == null) {
+            if(inventoryHandler.dirty) {
+                inventoryHandler.dirty = false
 
-            if(targetRecipe.isEmpty) {
-                operation = null
-            }
-            else {
-                /**
-                 * Checks if we have space for export:
-                 * */
-                if(targetRecipe.get().outputItems != null && !(IItemHandler_insertItem(inventoryHandler.bind()::insertItem)).insertRange(targetRecipe.get().outputItems!!, inventoryHandler.outputRange)) {
-                    operation = null // Cannot do anything
-                }
-                /**
-                 * Can do this recipe:
-                 * */
-                else {
-                    if(operation == null || operation!!.recipe != targetRecipe.get()) {
+                val optional = inventoryHandler.searchForRecipe()
+
+                if(!optional.isEmpty) {
+                    val recipe = optional.get()
+
+                    /**
+                     * Checks if we have space for export:
+                     * */
+                    if (recipe.outputItems == null || (IItemHandler_insertItem(inventoryHandler.bind()::insertItem)).insertRange(recipe.outputItems, inventoryHandler.outputRange)) {
                         /**
-                         * Restart only if recipe changed:
+                         * Consumes the items:
                          * */
-                        operation = null
-                        operation = Operation(targetRecipe.get(), 0)
+                        inventoryHandler.consumeInputs(recipe)
+
+                        /**
+                         * Start:
+                         * */
+                        operation = Operation(recipe, 0)
                     }
                 }
             }
-
-            inventoryHandler.dirty = false
         }
 
         /**
-         * Progresses the recipe:
+         * Progresses the operation:
          * */
         if(operation != null) {
             val operation = operation!!
@@ -599,12 +589,20 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
 
             data.progress = operation.elapsedTime / operation.recipe.duration.toFloat()
 
+            if(operation.recipe.outputFluid != null) {
+                val fluidToExport = FractionalFluidStack(
+                    operation.recipe.outputFluid.fluid,
+                    operation.recipe.outputFluid.amount.toDouble() / operation.recipe.duration
+                )
+
+                tank.fillWithDisplacement(fluidToExport, IFluidHandler.FluidAction.EXECUTE)
+            }
+
             /**
              * Try to finish the operation:
              * */
             if(operation.elapsedTime >= operation.recipe.duration) {
-                inventoryHandler.execute(operation.recipe)
-                fluidHandler.execute(operation.recipe)
+                inventoryHandler.placeOutputs(operation.recipe)
                 this.operation = null
             }
 
@@ -640,10 +638,15 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
         super.saveAdditional(pTag)
 
         pTag.put("inventory", inventoryHandler.serializeNBT())
-        fluidHandler.writeToNBT(pTag)
+        pTag.put("tank", tank.serializeNBT())
 
         if(operation != null) {
-            pTag.putInt("progress", operation!!.elapsedTime)
+            val operationTag = CompoundTag()
+
+            operationTag.putResourceLocation("recipe", operation!!.recipe.recipeId)
+            operationTag.putInt("progress", operation!!.elapsedTime)
+
+            pTag.put("operation", operationTag)
         }
     }
 
@@ -651,10 +654,15 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
         super.load(pTag)
 
         inventoryHandler.deserializeNBT(pTag.getCompound("inventory"))
-        fluidHandler.readFromNBT(pTag)
+        tank.deserializeNBT(pTag.getCompound("tank"))
 
-        if(pTag.contains("progress")) {
-            savedProgress = pTag.getInt("progress")
+        if(pTag.contains("operation")) {
+            val operationTag = pTag.getCompound("operation")
+
+            val recipe = operationTag.getResourceLocation("recipe")
+            val progress = operationTag.getInt("progress")
+
+            savedOperationData = OperationLoadingData(recipe, progress)
         }
     }
 }

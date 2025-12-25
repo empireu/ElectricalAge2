@@ -157,8 +157,8 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
 
     //#region Fluid Handling
 
-    val liquidTank = MultipleFractionalFluidTank(1000.0, true)
-    val gasTank = MultipleFractionalFluidTank(1000.0, true)
+    val liquidTank = MultipleFractionalFluidTank(1000.0, true, this::setChanged)
+    val gasTank = MultipleFractionalFluidTank(1000.0, true, this::setChanged)
 
     /**
      * Fluid handler for the bottom face:

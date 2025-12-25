@@ -219,7 +219,7 @@ object Eln2Processing : ContentModule() {
         val topBack = specialDelegate(
             0.0, 0.0, 0.0,
             1.0, 1.0 - 4.0 / 16.0, 1.0,
-            Base6Direction3dMask.BACK
+            Base6Direction3dMask.FRONT
         )
 
         val leftTop = specialDelegate(

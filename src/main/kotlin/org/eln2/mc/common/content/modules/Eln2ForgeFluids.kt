@@ -56,8 +56,8 @@ object Eln2ForgeFluids : ContentModule() {
         ::FluidPipeBlockEntity
     )
 
-    val FLUID_PIPE_IMPORT_GATE = item("fluid_pipe_import_gate", ::FluidPipeModuleItem)
-    val FLUID_PIPE_EXPORT_GATE = item("fluid_pipe_export_gate", ::FluidPipeModuleItem)
+    val FLUID_PIPE_EXTRACTION_VALVE = item("fluid_pipe_extraction_valve", ::FluidPipeModuleItem)
+    val FLUID_PIPE_INSERTION_VALVE = item("fluid_pipe_insertion_valve", ::FluidPipeModuleItem)
 
     //#endregion
 

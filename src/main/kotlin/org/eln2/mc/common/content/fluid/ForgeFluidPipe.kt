@@ -40,7 +40,6 @@ import net.minecraft.world.phys.shapes.VoxelShape
 import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
-import net.minecraftforge.event.TickEvent
 import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.fluids.capability.IFluidHandler
 import net.minecraftforge.registries.RegistryObject
@@ -50,7 +49,6 @@ import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.common.content.WrenchInteractable
 import org.eln2.mc.common.content.WrenchItem
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
-import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
 import org.eln2.mc.common.fluids.foundation.IFractionalFluidHandler
 import org.eln2.mc.extensions.*
@@ -985,8 +983,8 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
          * - The network tries to pull fluid from the machine.
          * - The network doesn't push fluid into the machine.
          * */
-        ImportGate(
-            Eln2ForgeFluids.FLUID_PIPE_IMPORT_GATE,
+        ExtractionValve(
+            Eln2ForgeFluids.FLUID_PIPE_EXTRACTION_VALVE,
             true,
             false,
             true,
@@ -998,8 +996,8 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
          * - The network tries to push fluid into the machine.
          * - The network doesn't pull fluid from the machine.
          * */
-        ExportGate(
-            Eln2ForgeFluids.FLUID_PIPE_EXPORT_GATE,
+        InsertionValve(
+            Eln2ForgeFluids.FLUID_PIPE_INSERTION_VALVE,
             false,
             true,
             false,
