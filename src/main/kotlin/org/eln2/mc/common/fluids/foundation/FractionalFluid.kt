@@ -193,12 +193,16 @@ interface IThermalFluidHandler : IFractionalFluidHandler {
     /**
      * Drains [resource], also yielding information about its temperature.
      * If [action] is [IFluidHandler.FluidAction.EXECUTE], then this request should change the thermal state of the underlying machine.
+     *
+     * @return The thermal stack or null, **if the result is empty or rejected**. If not null, the result must be nonempty.
      * */
     fun drainThermal(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): ThermalFluidStack?
 
     /**
      * Drains some fluid, also yielding information about its temperature.
      * If [action] is [IFluidHandler.FluidAction.EXECUTE], then this request should change the thermal state of the underlying machine.
+     *
+     * @return The thermal stack or null, **if the result is empty or rejected**. If not null, the result must be nonempty.
      * */
     fun drainThermal(maxDrain: Double, action: IFluidHandler.FluidAction): ThermalFluidStack?
 }

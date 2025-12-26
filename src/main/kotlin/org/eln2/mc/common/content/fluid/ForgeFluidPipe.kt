@@ -44,6 +44,7 @@ import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.fluids.capability.IFluidHandler
 import net.minecraftforge.registries.RegistryObject
+import org.ageseries.libage.data.OptionalDouble
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
@@ -53,6 +54,8 @@ import org.eln2.mc.common.content.WrenchItem
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
 import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
 import org.eln2.mc.common.fluids.foundation.IFractionalFluidHandler
+import org.eln2.mc.common.fluids.foundation.IThermalFluidHandler
+import org.eln2.mc.common.fluids.foundation.ThermalFluidStack
 import org.eln2.mc.common.fluids.foundation.fractional
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
@@ -569,7 +572,7 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
     }
 
     /**
-     * Called to move fluid from an endpoint to the rest of the endpoints by using [fillFractional].
+     * Called to move fluid from an endpoint to the rest of the endpoints by using [fillFused].
      * Tries to distribute evenly to all endpoints.
      * @param source The pipe attached to the endpoint.
      * */
@@ -583,7 +586,14 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
         /**
          * Simulates a fill to get the fractional amount we can transport:
          * */
-        val simulation = fractional.copyWithAmount(fillFractional(source, fractional, IFluidHandler.FluidAction.SIMULATE))
+        val simulation = fractional.copyWithAmount(
+            fillFused(
+                source,
+                fractional,
+                OptionalDouble.EMPTY,
+                IFluidHandler.FluidAction.SIMULATE
+            )
+        )
 
         /**
          * Gets the integer amount we can transport:
@@ -601,7 +611,12 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
             /**
              * Execute fill with the amount closest to the target:
              * */
-            val filled = fillFractional(source, quantizedSimulation.fractional(), IFluidHandler.FluidAction.EXECUTE)
+            val filled = fillFused(
+                source,
+                quantizedSimulation.fractional(),
+                OptionalDouble.EMPTY,
+                IFluidHandler.FluidAction.EXECUTE
+            )
 
             if(!filled.approxEq(quantizedSimulation.amount.toDouble(), FractionalFluidStack.EPSILON)) {
                 LOG.error(DEBUGGER_BREAK("Did not fill expected amount: $filled, ${quantizedSimulation.amount}"))
@@ -636,7 +651,7 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
      * At the end, we decrement the remaining candidates.
      * @param source The pipe attached to the endpoint.
      * */
-    fun fillFractional(source: FluidPipeBlockEntity, resource: FractionalFluidStack, action: IFluidHandler.FluidAction) : Double {
+    fun fillFused(source: FluidPipeBlockEntity, resource: FractionalFluidStack, resourceTemperature: OptionalDouble, action: IFluidHandler.FluidAction) : Double {
         if (resource.isEmpty) {
             return 0.0
         }
@@ -656,7 +671,12 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
              * */
             endpointList.forEach { handler ->
                 val simulatedFill = if(handler is IFractionalFluidHandler) {
-                    handler.fillFractional(resource, IFluidHandler.FluidAction.SIMULATE)
+                    if(handler is IThermalFluidHandler) {
+                        handler.fillThermal(resource, resourceTemperature, IFluidHandler.FluidAction.SIMULATE)
+                    }
+                    else {
+                        handler.fillFractional(resource, IFluidHandler.FluidAction.SIMULATE)
+                    }
                 }
                 else {
                     if (quantizedResource.amount > 0) {
@@ -710,7 +730,12 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
                 if (transfer >= FractionalFluidStack.EPSILON) {
                     if (action == IFluidHandler.FluidAction.EXECUTE) {
                         if (handler is IFractionalFluidHandler) {
-                            handler.fillFractional(resource.copyWithAmount(transfer), IFluidHandler.FluidAction.EXECUTE)
+                            if(handler is IThermalFluidHandler) {
+                                handler.fillThermal(resource.copyWithAmount(transfer), resourceTemperature, IFluidHandler.FluidAction.EXECUTE)
+                            }
+                            else {
+                                handler.fillFractional(resource.copyWithAmount(transfer), IFluidHandler.FluidAction.EXECUTE)
+                            }
                         }
                         else {
                             handler.fill(FluidStack(resource.fluid, transfer.toInt()), IFluidHandler.FluidAction.EXECUTE)
@@ -743,31 +768,103 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
      * */
     private fun executePump(pipe: FluidPipeBlockEntity, endpoints: ArrayList<IFluidHandler>) {
         for (endpoint in endpoints) {
+            /**
+             * Fused logic for both dumb sources and thermal sources.
+             * */
             if(endpoint is IFractionalFluidHandler) {
-                val drainSimulation = endpoint.drainFractional(PUMP_RATE.toDouble(), IFluidHandler.FluidAction.SIMULATE)
+                val drainSimulation: FractionalFluidStack
+                val drainSimulationTemperature: OptionalDouble
+
+                if(endpoint is IThermalFluidHandler) {
+                    val thermalStack = endpoint.drainThermal(
+                        PUMP_RATE.toDouble(),
+                        IFluidHandler.FluidAction.SIMULATE
+                    ) ?: continue
+
+                    drainSimulation = thermalStack.packet
+                    drainSimulationTemperature = OptionalDouble.wrap(thermalStack.temperature)
+                }
+                else {
+                    drainSimulation = endpoint.drainFractional(PUMP_RATE.toDouble(), IFluidHandler.FluidAction.SIMULATE)
+                    drainSimulationTemperature = OptionalDouble.EMPTY
+                }
 
                 if(drainSimulation.isEmpty) {
                     continue
                 }
 
-                val fillSimulation = fillFractional(pipe, drainSimulation, IFluidHandler.FluidAction.SIMULATE)
+                val fillSimulation = fillFused(
+                    pipe,
+                    drainSimulation,
+                    drainSimulationTemperature,
+                    IFluidHandler.FluidAction.SIMULATE
+                )
 
                 if(fillSimulation < FractionalFluidStack.EPSILON) {
                     continue
                 }
 
-                val drain = endpoint.drainFractional(FractionalFluidStack(drainSimulation.fluid, fillSimulation), IFluidHandler.FluidAction.EXECUTE)
+                val drain: FractionalFluidStack
+                val drainTemperature: OptionalDouble
 
-                if(drain.isEmpty) {
-                    continue
+                if(endpoint is IThermalFluidHandler) {
+                    val thermalStack = endpoint.drainThermal(
+                        FractionalFluidStack(drainSimulation.fluid, fillSimulation),
+                        IFluidHandler.FluidAction.EXECUTE
+                    )
+
+                    if(thermalStack == null) {
+                        LOG.error(DEBUGGER_BREAK("Thermal handler didn't yield anything on execute, but simulation did yield: $endpoint"))
+                        continue
+                    }
+
+                    drain = thermalStack.packet
+                    drainTemperature = OptionalDouble.wrap(thermalStack.temperature)
+
+                    if(drainTemperature != drainSimulationTemperature) {
+                        /**
+                         * We take exact equality here, based on our implementation.
+                         * */
+                        LOG.error(DEBUGGER_BREAK("Thermal handler simulation temperature is not equal to execution temperature: $drainSimulationTemperature, $drainTemperature"))
+                    }
+                }
+                else {
+                    drain = endpoint.drainFractional(
+                        FractionalFluidStack(drainSimulation.fluid, fillSimulation),
+                        IFluidHandler.FluidAction.EXECUTE
+                    )
+
+                    if(drain.isEmpty) {
+                        LOG.error(DEBUGGER_BREAK("Fractional handler didn't yield anything on execute, but simulation did yield: $endpoint"))
+                        continue
+                    }
+
+                    drainTemperature = OptionalDouble.EMPTY
                 }
 
-                fillFractional(pipe, drain, IFluidHandler.FluidAction.EXECUTE)
+                if(drain != drainSimulation) {
+                    LOG.error(DEBUGGER_BREAK("Fused drain simulation and drain yielded different results for $endpoint"))
+                }
+
+                val filled = fillFused(
+                    pipe,
+                    drain,
+                    drainTemperature,
+                    IFluidHandler.FluidAction.EXECUTE
+                )
+
+                if(filled != fillSimulation) {
+                    // Can't really get much information in the logs, it concerns the entire network
+                    LOG.error(DEBUGGER_BREAK("Fused fill simulation yielded different results ($endpoint): $fillSimulation, $filled"))
+                }
             }
+            /**
+             * Non-thermal source (thermal handlers are, by definition, fractional):
+             * */
             else {
                 val drainSimulation = endpoint.drain(PUMP_RATE, IFluidHandler.FluidAction.SIMULATE)
 
-                if(drainSimulation.fluid == Fluids.EMPTY || drainSimulation.amount <= 0) {
+                if(drainSimulation.isEmpty) {
                     continue
                 }
 
@@ -777,13 +874,26 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
                     continue
                 }
 
-                val drain = endpoint.drain(FluidStack(drainSimulation.fluid, fillSimulation), IFluidHandler.FluidAction.EXECUTE)
+                val drain = endpoint.drain(
+                    FluidStack(drainSimulation.fluid, fillSimulation),
+                    IFluidHandler.FluidAction.EXECUTE
+                )
 
-                if(drain.fluid == Fluids.EMPTY || drain.amount <= 0) {
+                if(drain.isEmpty) {
+                    LOG.error(DEBUGGER_BREAK("Discrete handler didn't yield anything on execute, but simulation did yield: $endpoint"))
                     continue
                 }
 
-                fillDiscrete(pipe, drain, IFluidHandler.FluidAction.EXECUTE)
+                if(drain.fluid != drainSimulation.fluid || drain.amount != drainSimulation.amount) {
+                    LOG.error(DEBUGGER_BREAK("Discrete drain simulation and drain yielded different results for $endpoint"))
+                }
+
+                val filled = fillDiscrete(pipe, drain, IFluidHandler.FluidAction.EXECUTE)
+
+                if(filled != fillSimulation) {
+                    // Can't really get much information in the logs, it concerns the entire network
+                    LOG.error(DEBUGGER_BREAK("Discrete fill simulation yielded different results ($endpoint): $fillSimulation, $filled"))
+                }
             }
         }
     }
@@ -1147,7 +1257,7 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
     /**
      * Capability for a specific side. The side basically decides if `fill` is allowed based on the installed module.
      * */
-    class Handler(val pipe: FluidPipeBlockEntity, val side: Direction) : IFractionalFluidHandler {
+    class Handler(val pipe: FluidPipeBlockEntity, val side: Direction) : IThermalFluidHandler {
         //#region Dummy Implementation
 
         /**
@@ -1174,6 +1284,8 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
         override fun drain(maxDrain: Int, action: IFluidHandler.FluidAction): FluidStack = FluidStack.EMPTY
         override fun drainFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction) = FractionalFluidStack.EMPTY
         override fun drainFractional(maxDrain: Double, action: IFluidHandler.FluidAction) = FractionalFluidStack.EMPTY
+        override fun drainThermal(resource: FractionalFluidStack, action: IFluidHandler.FluidAction) = null
+        override fun drainThermal(maxDrain: Double, action: IFluidHandler.FluidAction) = null
 
         //#endregion
 
@@ -1209,7 +1321,15 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
                 return 0.0
             }
 
-            return pipe.network.fillFractional(pipe, resource, action)
+            return pipe.network.fillFused(pipe, resource, OptionalDouble.EMPTY, action)
+        }
+
+        override fun fillThermal(resource: FractionalFluidStack, temperature: OptionalDouble, action: IFluidHandler.FluidAction): Double {
+            if(!module.machineCanPushIntoNetwork) {
+                return 0.0
+            }
+
+            return pipe.network.fillFused(pipe, resource, temperature, action)
         }
     }
 
