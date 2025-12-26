@@ -7,6 +7,7 @@ import net.minecraft.world.level.material.Fluids
 import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.fluids.capability.IFluidHandler
 import net.minecraftforge.registries.ForgeRegistries
+import org.ageseries.libage.data.OptionalDouble
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.rounded
 import org.eln2.mc.common.fluids.foundation.FractionalFluidStack.Companion.EPSILON
@@ -165,4 +166,39 @@ interface IFractionalFluidHandler : IFluidHandler {
      * Fractional variant of [IFluidHandler.drain]. If the [maxDrain] is less than [FractionalFluidStack.EPSILON], the operation will be ignored.
      * */
     fun drainFractional(maxDrain: Double, action: IFluidHandler.FluidAction): FractionalFluidStack
+}
+
+/**
+ * Homogenous mass packet with a certain temperature.
+ * The [temperature] will always have a meaningful value.
+ * */
+data class ThermalFluidStack(val packet: FractionalFluidStack, val temperature: Double)
+
+/**
+ * Extension of [IFractionalFluidHandler] that supports exchange of heat during fluid transfer.
+ * It's implemented by some thermal machines. The following rules are set:
+ * - Fluid instantly equalizes in temperature with the machine and other fluids (so the mixture stays homogenous)
+ * - The thermal mass and energy of the machine is the constant thermal mass and energy of the "hull", combined with whatever fluids exist in the machine.
+ * - If no information is available on fill requests, it is assumed that fluid is entering at ambient temperature.
+ * */
+interface IThermalFluidHandler : IFractionalFluidHandler {
+    /**
+     * Fills a fluid ([resource]) that has a [temperature].
+     * If the [temperature] is not present, then the request came from a dumb source.
+     * It's best to consider the fluid entering at ambient temperature at the handler's location.
+     * If [action] is [IFluidHandler.FluidAction.EXECUTE], then this request should change the thermal state of the underlying machine.
+     * */
+    fun fillThermal(resource: FractionalFluidStack, temperature: OptionalDouble, action: IFluidHandler.FluidAction): Double
+
+    /**
+     * Drains [resource], also yielding information about its temperature.
+     * If [action] is [IFluidHandler.FluidAction.EXECUTE], then this request should change the thermal state of the underlying machine.
+     * */
+    fun drainThermal(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): ThermalFluidStack?
+
+    /**
+     * Drains some fluid, also yielding information about its temperature.
+     * If [action] is [IFluidHandler.FluidAction.EXECUTE], then this request should change the thermal state of the underlying machine.
+     * */
+    fun drainThermal(maxDrain: Double, action: IFluidHandler.FluidAction): ThermalFluidStack?
 }

@@ -6,9 +6,17 @@ import net.minecraft.world.level.material.Fluid
 import net.minecraft.world.level.material.Fluids
 import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.fluids.capability.IFluidHandler
+import org.ageseries.libage.data.JOULE
+import org.ageseries.libage.data.JOULE_PER_KILOGRAM_KELVIN
+import org.ageseries.libage.data.KILOGRAM
+import org.ageseries.libage.data.Mass
+import org.ageseries.libage.data.OptionalDouble
 import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.data.classify
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.sim.Material
+import org.ageseries.libage.sim.ThermalMass
 import org.eln2.mc.*
 import org.eln2.mc.common.chemistry.PhysicalFluidManager
 import org.eln2.mc.data.LinearObjectPool
@@ -17,6 +25,7 @@ import org.eln2.mc.data.using
 import org.eln2.mc.extensions.forEachCompound
 import org.eln2.mc.extensions.getListTag
 import org.eln2.mc.integration.ComponentDisplayList
+import java.util.concurrent.locks.ReentrantLock
 import kotlin.math.floor
 import kotlin.math.min
 
@@ -1659,6 +1668,337 @@ open class GravityBasedMultipleFractionalFluidTank(val parent: MultipleFractiona
                 Quantity(density, KILOGRAM_PER_MILLIBUCKET).classify()
             }
         }
+    }
+}
+
+//#endregion
+
+//#region Thermal Extension
+
+/**
+ * Wrapper around [parent], which applies some extra logic to handle thermal transfers, and bridges the non-thermal transfers with the thermal transfers.
+ * The latter is done by assuming non-thermal fill requests insert fluid at room temperature, and non-thermal drain requests **void energy.**
+ * This wrapper just redirects **all** calls to the thermal calls, so the relevant [fillThermal] and [drainThermal] calls are left up to the implementation.
+ * */
+interface ThermalTankExtension : IThermalFluidHandler {
+    /**
+     * Gets the underlying fluid handler, which has the fill and drain behavior. It could be:
+     * - [MultipleFractionalFluidTank]
+     * - [PurityBasedMultipleFractionalFluidTank]
+     * - [GravityBasedMultipleFractionalFluidTank]
+     * - Another custom handler
+     * */
+    val parent: IFractionalFluidHandler
+
+    //#region Redirect
+
+    override fun getFractionalFluidInTank(tank: Int) = parent.getFractionalFluidInTank(tank)
+    override fun getFractionalTankCapacity(tank: Int) = parent.getFractionalTankCapacity(tank)
+    override fun getTanks() = parent.tanks
+    override fun getFluidInTank(tank: Int) = parent.getFluidInTank(tank)
+    override fun getTankCapacity(tank: Int) = parent.getTankCapacity(tank)
+    override fun isFluidValid(tank: Int, stack: FluidStack) = parent.isFluidValid(tank, stack)
+
+    //#endregion
+
+    /**
+     * Redirects the discrete handlers to **[fillFractional]** and **[drainFractional]**, since those should be handling temperature ambienting correctly.
+     * */
+    //#region Discrete Redirect
+
+    override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction): Int {
+        if(resource.isEmpty) {
+            return 0
+        }
+
+        val fractional = resource.fractional()
+        val simulation = fractional.copyWithAmount(fillFractional(fractional, IFluidHandler.FluidAction.SIMULATE))
+        val quantizedSimulation = simulation.quantized()
+
+        if(quantizedSimulation.isEmpty) {
+            return 0
+        }
+
+        if(action == IFluidHandler.FluidAction.SIMULATE) {
+            return quantizedSimulation.amount
+        }
+
+        val filled = fillFractional(quantizedSimulation.fractional(), IFluidHandler.FluidAction.EXECUTE)
+        if(!filled.approxEq(quantizedSimulation.amount.toDouble(), FractionalFluidStack.EPSILON)) {
+            LOG.error(DEBUGGER_BREAK("Fluid handler $parent $this didn't behave well on fill(resource, action) quantization"))
+        }
+
+        return quantizedSimulation.amount
+    }
+
+    override fun drain(resource: FluidStack, action: IFluidHandler.FluidAction): FluidStack {
+        if(resource.isEmpty) {
+            return FluidStack.EMPTY
+        }
+
+        val fractional = resource.fractional()
+        val simulation = drainFractional(fractional, IFluidHandler.FluidAction.SIMULATE)
+
+        if(simulation.isEmpty) {
+            return FluidStack.EMPTY
+        }
+
+        val quantizedSimulation = simulation.quantized()
+
+        if(quantizedSimulation.isEmpty) {
+            return FluidStack.EMPTY
+        }
+
+        if(action == IFluidHandler.FluidAction.SIMULATE) {
+            return quantizedSimulation
+        }
+
+        val drained = drainFractional(quantizedSimulation.fractional(), IFluidHandler.FluidAction.EXECUTE)
+        if(!drained.amount.approxEq(quantizedSimulation.amount.toDouble(), FractionalFluidStack.EPSILON)) {
+            LOG.error(DEBUGGER_BREAK("Fluid handler $parent $this didn't behave well on drain(resource, action) quantization"))
+        }
+
+        return quantizedSimulation
+    }
+
+    override fun drain(maxDrain: Int, action: IFluidHandler.FluidAction): FluidStack {
+        if(maxDrain <= 0) {
+            return FluidStack.EMPTY
+        }
+
+        val simulation = drainFractional(maxDrain.toDouble(), IFluidHandler.FluidAction.SIMULATE)
+
+        if(simulation.isEmpty) {
+            return FluidStack.EMPTY
+        }
+
+        val quantizedSimulation = simulation.quantized()
+
+        if(quantizedSimulation.isEmpty) {
+            return FluidStack.EMPTY
+        }
+
+        if(action == IFluidHandler.FluidAction.SIMULATE) {
+            return quantizedSimulation
+        }
+
+        val drained = drainFractional(quantizedSimulation.fractional(), IFluidHandler.FluidAction.EXECUTE)
+        if(!drained.amount.approxEq(quantizedSimulation.amount.toDouble(), FractionalFluidStack.EPSILON)) {
+            LOG.error(DEBUGGER_BREAK("Fluid handler $parent $this didn't behave well on drain(maxDrain, action) quantization"))
+        }
+
+        return quantizedSimulation
+    }
+
+    //#endregion
+
+    /**
+     * Redirects the dumb fractional handlers to [fillThermal] and [drainThermal], which should be assuming ambient conditions and dropping energies respectively for these requests.
+     * */
+    //#region Fractional Redirect
+
+    override fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): Double {
+        return fillThermal(resource, OptionalDouble.EMPTY, action)
+    }
+
+    override fun drainFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): FractionalFluidStack {
+        return drainThermal(resource, action)?.packet ?: FractionalFluidStack.EMPTY
+    }
+
+    override fun drainFractional(maxDrain: Double, action: IFluidHandler.FluidAction): FractionalFluidStack {
+        return drainThermal(maxDrain, action)?.packet ?: FractionalFluidStack.EMPTY
+    }
+
+    //#endregion
+}
+
+/**
+ * Implementation of [ThermalTankExtension] that accesses and mutates a thermodynamic state owned by a simulation object.
+ * Every fill and drain operation will acquire a lock to mutate the thermal body.
+ * It should be fast because we lock around the execution of the thermal sim, which is very fast.
+ * */
+interface SimulationSynchronizedThermalTank : ThermalTankExtension {
+    /**
+     * Handle to a [ThermalMass] with locking.
+     * @param body The actual body involved in the simulation, which will be mutated.
+     * @param hullMaterial The immutable material the hull is made of.
+     * @param hullMass The immutable mass of the hull.
+     * */
+    class ThermalBodyHandle(private val body: ThermalMass, val hullMaterial: Material, val hullMass: Quantity<Mass>, val lock: ReentrantLock) {
+        /**
+         * Does any necessary locking and gets a reference to the thermal mass currently in the simulation.
+         * The result can be mutated for the thermal transfers.
+         * */
+        @OnServerThread
+        fun acquire() : ThermalMass {
+            lock.lock()
+            return body
+        }
+
+        /**
+         * Gets the temperature as an atomic operation.
+         * */
+        @CrossThreadAccess
+        fun getTemperature() : Quantity<Temperature> {
+            return body.temperature
+        }
+
+        /**
+         * Called after [acquire] to release the lock on the object.
+         * */
+        @OnServerThread
+        fun release() {
+            lock.unlock()
+        }
+    }
+
+    /**
+     * Gets the handle for the thermal body. This should be instanced in the cell or the object, and the same instance always returned.
+     * */
+    val handle: ThermalBodyHandle
+
+    /**
+     * Gets the ambient temperature at the machine (usually accesses the cell's ambient temperature).
+     * */
+    val ambientTemperature: Quantity<Temperature>
+
+    /**
+     * Gets the thermal properties of [fluid] with fallback (water).
+     * */
+    fun getFluidProperties(fluid: Fluid) = PhysicalFluidManager.getProperties(fluid)
+        ?: PhysicalFluidManager.requireProperties(Fluids.WATER)
+
+    /**
+     * Gets all fluid stacks. Needed to re-calculate the thermal properties.
+     * */
+    fun getLiquidStacks() : Iterable<FractionalFluidStack>
+
+    /**
+     * Calculates the lumped heat capacity that should be used in the thermal body, based on the fluids in the tank and the hull's base specs.
+     * */
+    fun calculateDerivativeMaterialAndMass() : Pair<Material, Quantity<Mass>> {
+        val hullMass = !handle.hullMass
+        val hullCp = !handle.hullMaterial.specificHeat
+
+        var totalFluidMass = 0.0
+        var totalFluidCp = 0.0
+        getLiquidStacks().forEach { stack ->
+            val fluid = stack.fluid
+            val amount = stack.amount
+
+            if(amount < FractionalFluidStack.EPSILON) {
+                return@forEach
+            }
+
+            val properties = getFluidProperties(fluid)
+            val mass = amount * !properties.density
+
+            totalFluidMass += mass
+            totalFluidCp += amount * !properties.specificHeatCapacity
+        }
+
+        if(totalFluidMass.approxEq(0.0)) {
+            return Pair(handle.hullMaterial, handle.hullMass)
+        }
+
+        val totalMass = hullMass + totalFluidMass
+        val totalHeatCapacity = (hullMass * hullCp) + totalFluidCp
+        val effectiveCp = totalHeatCapacity / totalMass
+
+        return Pair(
+            handle.hullMaterial.copy(specificHeat = Quantity(effectiveCp, JOULE_PER_KILOGRAM_KELVIN)),
+            Quantity(totalMass, KILOGRAM)
+        )
+    }
+
+    override fun fillThermal(resource: FractionalFluidStack, temperature: OptionalDouble, action: IFluidHandler.FluidAction): Double {
+        val parent = parent
+
+        val filled = parent.fillFractional(resource, action)
+
+        if(filled < FractionalFluidStack.EPSILON) {
+            return 0.0
+        }
+
+        /**
+         * Execute thermal transfer:
+         * */
+        if(action == IFluidHandler.FluidAction.EXECUTE) {
+            val incomingTemperature = if(temperature.isPresent) {
+                temperature.unwrap()
+            }
+            else {
+                !ambientTemperature
+            }
+
+            val properties = getFluidProperties(resource.fluid)
+            val energy = filled * !properties.specificHeatCapacity * incomingTemperature
+            val (newMaterial, newMass) = calculateDerivativeMaterialAndMass()
+
+            val thermalBody = handle.acquire()
+            thermalBody.energy += Quantity(energy, JOULE)
+            thermalBody.material = newMaterial
+            thermalBody.mass = newMass
+            handle.release()
+        }
+
+        return filled
+    }
+
+    override fun drainThermal(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): ThermalFluidStack? {
+        val drained = parent.drainFractional(resource, action)
+
+        if (drained.isEmpty) {
+            return null
+        }
+
+        var exportTemperature: Double
+
+        if (action == IFluidHandler.FluidAction.EXECUTE) {
+            val (newMaterial, newMass) = calculateDerivativeMaterialAndMass()
+
+            val properties = getFluidProperties(drained.fluid)
+            val amount = drained.amount
+
+            val body = handle.acquire()
+            exportTemperature = !body.temperature
+            body.energy -= Quantity(amount * !properties.specificHeatCapacity * exportTemperature, JOULE)
+            body.material = newMaterial
+            body.mass = newMass
+            handle.release()
+        }
+        else {
+            exportTemperature = !handle.getTemperature()
+        }
+
+        return ThermalFluidStack(drained, exportTemperature)
+    }
+
+    override fun drainThermal(maxDrain: Double, action: IFluidHandler.FluidAction): ThermalFluidStack? {
+        val drained = parent.drainFractional(maxDrain, action)
+
+        if (drained.isEmpty) {
+            return null
+        }
+
+        var exportTemperature: Double
+
+        if (action == IFluidHandler.FluidAction.EXECUTE) {
+            val (newMaterial, newMass) = calculateDerivativeMaterialAndMass()
+            val properties = getFluidProperties(drained.fluid)
+            val amount = drained.amount
+            val body = handle.acquire()
+            exportTemperature = !body.temperature
+            body.energy -= Quantity( amount * !properties.specificHeatCapacity * exportTemperature, JOULE)
+            body.material = newMaterial
+            body.mass = newMass
+            handle.release()
+        }
+        else {
+            exportTemperature = !handle.getTemperature()
+        }
+
+        return ThermalFluidStack(drained, exportTemperature)
     }
 }
 
