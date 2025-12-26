@@ -15,6 +15,22 @@ import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.common.cells.foundation.CellGraph
 import kotlin.math.*
 
+class ListCombination<T>(val a: List<T>, val b: List<T>) : Iterable<T> {
+    override fun iterator(): Iterator<T> = object : Iterator<T> {
+        private var index = 0
+
+        override fun hasNext() = index < (a.size + b.size)
+
+        override fun next(): T {
+            if (!hasNext()) {
+                throw NoSuchElementException()
+            }
+
+            return if (index < a.size) a[index++] else b[index++ - a.size]
+        }
+    }
+}
+
 class FramerateIndependentSmoother1dA(val tau: Double) {
     var value = 0.0
 

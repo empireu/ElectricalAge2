@@ -122,6 +122,12 @@ object PhysicalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().cre
      * */
     fun requireProperties(fluid: Fluid) = getProperties(fluid) ?: error("$fluid was not a thermal fluid!")
 
+    /**
+     * Gets the [PhysicalFluid] for [fluid], or falls back into [fallback] (or water if left null).
+     * */
+    fun getPropertiesWithFallback(fluid: Fluid, fallback: Fluid? = null) = getProperties(fluid)
+        ?: requireProperties(fallback ?: Fluids.WATER)
+
     @Suppress("NOTHING_TO_INLINE")
     private inline fun getPairKey(a: PhysicalFluid, b: PhysicalFluid) : Long {
         val fluid1: PhysicalFluid

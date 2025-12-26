@@ -12,6 +12,7 @@ import org.ageseries.libage.data.KILOGRAM
 import org.ageseries.libage.data.Mass
 import org.ageseries.libage.data.OptionalDouble
 import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.SpecificHeatCapacity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.data.classify
 import org.ageseries.libage.mathematics.approxEq
@@ -1824,6 +1825,52 @@ interface FractionalFluidHandlerThermalExtension : IThermalFluidHandler {
     //#endregion
 }
 
+object ThermalFluidHandlerHelper {
+    /**
+     * Calculates the lumped heat capacity that should be used in the thermal body, based on the fluids in the tank and the hull's base specs.
+     * The machine is modeled as a hull with fluid inside. Based on the fluid, we calculate a new heat capacity, but keep the other properties the same.
+     * @param hullMass The base mass of the hull.
+     * @param hullMaterial The base material of the hull.
+     * @param fluidStacks All fluids inside the hull.
+     * @return The lumped material and the total mass (in standard units) of the machine with fluids.
+     * */
+    fun calculateDerivativeMaterialAndMass(hullMass: Quantity<Mass>, hullMaterial: Material, fluidStacks: Iterable<FractionalFluidStack>) : Pair<Material, Quantity<Mass>> {
+        var totalFluidMass = 0.0
+        var totalFluidCp = 0.0
+
+        fluidStacks.forEach { stack ->
+            val fluid = stack.fluid
+            val amount = stack.amount
+
+            if(amount < FractionalFluidStack.EPSILON) {
+                return@forEach
+            }
+
+            val properties = PhysicalFluidManager.getPropertiesWithFallback(fluid)
+            val mass = amount * !properties.density
+
+            totalFluidMass += mass
+            totalFluidCp += amount * !properties.specificHeatCapacity
+        }
+
+        if(totalFluidMass.approxEq(0.0)) {
+            return Pair(hullMaterial, hullMass)
+        }
+
+        val totalMass = !hullMass + totalFluidMass
+        val totalHeatCapacity = (!hullMass * !hullMaterial.specificHeat) + totalFluidCp
+        val effectiveCp = totalHeatCapacity / totalMass
+
+        return Pair(
+            hullMaterial.copy(
+                label = "Synthetic Object",
+                specificHeat = Quantity(effectiveCp, JOULE_PER_KILOGRAM_KELVIN)
+            ),
+            Quantity(totalMass, KILOGRAM)
+        )
+    }
+}
+
 /**
  * Implementation of [FractionalFluidHandlerThermalExtension] which adds the thermal fill/drain methods, by accessing and mutating a [ThermalMass] directly involved in a [org.eln2.mc.common.cells.foundation.ThermalObject]'s simulation.
  * Every fill and drain operation will acquire a lock to mutate the thermal body.
@@ -1880,12 +1927,6 @@ interface ThermalObjectBasedFractionalFluidHandlerThermalExpansion : FractionalF
     val ambientTemperature: Quantity<Temperature>
 
     /**
-     * Gets the thermal properties of [fluid] with fallback (water).
-     * */
-    fun getFluidProperties(fluid: Fluid) = PhysicalFluidManager.getProperties(fluid)
-        ?: PhysicalFluidManager.requireProperties(Fluids.WATER)
-
-    /**
      * Gets **all fluid stacks** inside the machine. Needed to re-calculate the thermal properties.
      * */
     fun getFluidStacks() : Iterable<FractionalFluidStack>
@@ -1894,38 +1935,11 @@ interface ThermalObjectBasedFractionalFluidHandlerThermalExpansion : FractionalF
      * Calculates the lumped heat capacity that should be used in the thermal body, based on the fluids in the tank and the hull's base specs.
      * */
     fun calculateDerivativeMaterialAndMass() : Pair<Material, Quantity<Mass>> {
-        val hullMass = !handle.hullMass
-        val hullCp = !handle.hullMaterial.specificHeat
+        val hullMass = handle.hullMass
+        val hullMaterial = handle.hullMaterial
+        val fluids = getFluidStacks()
 
-        var totalFluidMass = 0.0
-        var totalFluidCp = 0.0
-        getFluidStacks().forEach { stack ->
-            val fluid = stack.fluid
-            val amount = stack.amount
-
-            if(amount < FractionalFluidStack.EPSILON) {
-                return@forEach
-            }
-
-            val properties = getFluidProperties(fluid)
-            val mass = amount * !properties.density
-
-            totalFluidMass += mass
-            totalFluidCp += amount * !properties.specificHeatCapacity
-        }
-
-        if(totalFluidMass.approxEq(0.0)) {
-            return Pair(handle.hullMaterial, handle.hullMass)
-        }
-
-        val totalMass = hullMass + totalFluidMass
-        val totalHeatCapacity = (hullMass * hullCp) + totalFluidCp
-        val effectiveCp = totalHeatCapacity / totalMass
-
-        return Pair(
-            handle.hullMaterial.copy(specificHeat = Quantity(effectiveCp, JOULE_PER_KILOGRAM_KELVIN)),
-            Quantity(totalMass, KILOGRAM)
-        )
+        return ThermalFluidHandlerHelper.calculateDerivativeMaterialAndMass(hullMass, hullMaterial, fluids)
     }
 
     /**
@@ -1934,7 +1948,7 @@ interface ThermalObjectBasedFractionalFluidHandlerThermalExpansion : FractionalF
      *
      * P.S. Called right before the handle is released.
      * */
-    fun setSimulationChanged()
+    fun onMutated()
 
     override fun fillThermal(resource: FractionalFluidStack, temperature: OptionalDouble, action: IFluidHandler.FluidAction): Double {
         val parent = parent
@@ -1956,7 +1970,7 @@ interface ThermalObjectBasedFractionalFluidHandlerThermalExpansion : FractionalF
                 !ambientTemperature
             }
 
-            val properties = getFluidProperties(resource.fluid)
+            val properties = PhysicalFluidManager.getPropertiesWithFallback(resource.fluid)
             val energy = filled * !properties.specificHeatCapacity * incomingTemperature
             val (newMaterial, newMass) = calculateDerivativeMaterialAndMass()
 
@@ -1964,7 +1978,7 @@ interface ThermalObjectBasedFractionalFluidHandlerThermalExpansion : FractionalF
             thermalBody.energy += Quantity(energy, JOULE)
             thermalBody.material = newMaterial
             thermalBody.mass = newMass
-            setSimulationChanged()
+            onMutated()
             handle.release()
         }
 
@@ -1982,8 +1996,7 @@ interface ThermalObjectBasedFractionalFluidHandlerThermalExpansion : FractionalF
 
         if (action == IFluidHandler.FluidAction.EXECUTE) {
             val (newMaterial, newMass) = calculateDerivativeMaterialAndMass()
-
-            val properties = getFluidProperties(drained.fluid)
+            val properties = PhysicalFluidManager.getPropertiesWithFallback(drained.fluid)
             val amount = drained.amount
 
             val body = handle.acquire()
@@ -1991,7 +2004,7 @@ interface ThermalObjectBasedFractionalFluidHandlerThermalExpansion : FractionalF
             body.energy -= Quantity(amount * !properties.specificHeatCapacity * exportTemperature, JOULE)
             body.material = newMaterial
             body.mass = newMass
-            setSimulationChanged()
+            onMutated()
             handle.release()
         }
         else {
@@ -2012,14 +2025,15 @@ interface ThermalObjectBasedFractionalFluidHandlerThermalExpansion : FractionalF
 
         if (action == IFluidHandler.FluidAction.EXECUTE) {
             val (newMaterial, newMass) = calculateDerivativeMaterialAndMass()
-            val properties = getFluidProperties(drained.fluid)
+            val properties = PhysicalFluidManager.getPropertiesWithFallback(drained.fluid)
             val amount = drained.amount
+
             val body = handle.acquire()
             exportTemperature = !body.temperature
             body.energy -= Quantity( amount * !properties.specificHeatCapacity * exportTemperature, JOULE)
             body.material = newMaterial
             body.mass = newMass
-            setSimulationChanged()
+            onMutated()
             handle.release()
         }
         else {

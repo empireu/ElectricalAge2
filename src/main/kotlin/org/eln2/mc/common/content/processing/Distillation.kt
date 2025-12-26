@@ -42,6 +42,7 @@ import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMass
 import org.eln2.mc.ClientOnly
+import org.eln2.mc.ListCombination
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
 import org.eln2.mc.OnSimulationThread
@@ -245,6 +246,11 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
     val gasTank = MultipleFractionalFluidTank(1000.0, true, this::setChanged)
 
     /**
+     * Gets an iterable over all fluids in the hull, for thermal calculations.
+     * */
+    private fun getFluids() = ListCombination(liquidTank.fluids, gasTank.fluids)
+
+    /**
      * Final wrapper around [parent] that accounts for the thermal exchanges.
      * The fill and drain behavior is implemented by [parent], and the thermal fill and drain are implemented by this wrapper, by delegating the actual fluid ops to [parent] and then doing the thermal changes here.
      * @param parent The wrapper that implements the filling/draining behavior.
@@ -258,25 +264,16 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
      * Now, the [ThermalObjectBasedFractionalFluidHandlerThermalExpansion] will compose the thermal transfer logic on top of the transfer logic from [parent].
      * The thermal transfer logic will just mutate our thermal object.
      * */
-    class ThermalLayer<P : IFractionalFluidHandler>(val blockEntity: DistillationModuleBlockEntity, override val parent: P) : ThermalObjectBasedFractionalFluidHandlerThermalExpansion {
+    class ThermalLayer<Handler : IFractionalFluidHandler>(val blockEntity: DistillationModuleBlockEntity, override val parent: Handler) : ThermalObjectBasedFractionalFluidHandlerThermalExpansion {
         override val handle: ThermalObjectBasedFractionalFluidHandlerThermalExpansion.ThermalBodyHandle
             get() = blockEntity.cell.handle
 
         override val ambientTemperature: Quantity<Temperature>
             get() = blockEntity.cell.environmentData.ambientTemperature
 
-        override fun setSimulationChanged() {
-            blockEntity.cell.setChanged()
-        }
+        override fun onMutated() = blockEntity.cell.setChanged()
 
-        /**
-         * Gets all lumped fluid in the module, to calculate the thermal properties.
-         * */
-        override fun getFluidStacks(): Iterable<FractionalFluidStack> =
-            blockEntity
-                .liquidTank.fluids.asSequence()
-                .plus(blockEntity.gasTank.fluids)
-                .asIterable()
+        override fun getFluidStacks() = blockEntity.getFluids()
     }
 
     /**
