@@ -33,7 +33,6 @@ import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.level.block.state.properties.BooleanProperty
-import net.minecraft.world.level.material.Fluids
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.shapes.CollisionContext
 import net.minecraft.world.phys.shapes.Shapes
@@ -55,7 +54,6 @@ import org.eln2.mc.common.content.modules.Eln2ForgeFluids
 import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
 import org.eln2.mc.common.fluids.foundation.IFractionalFluidHandler
 import org.eln2.mc.common.fluids.foundation.IThermalFluidHandler
-import org.eln2.mc.common.fluids.foundation.ThermalFluidStack
 import org.eln2.mc.common.fluids.foundation.fractional
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
@@ -70,11 +68,9 @@ import kotlin.math.min
 // P.S. I load all chunks synchronously. It's up to the player to add chunk-loaders, for now...
 
 /**
- * mB/tick. Integer here so it easily works with the integer handlers.
- * If we wanted to go below 1mB/tick, we could easily do it for the fractional handlers, but for the integer handlers, we'd have to add a timer to wait between ticks.
- * Not going to do so for now, I think 1mB/tick is less than all modded pipes, really. But in terms of ELN2 fluids, it's heck plenty.
- *
- * Automatic pumping is added as a convenience feature. I could add a config option that disables it, and add a pump block which needs energy.
+ * mB/tick of automated pumping.
+ * Automatic pumping is added as a convenience feature (and because all pipe mods also have free extraction).
+ * I could add a config option that disables it, and add a pump block which needs energy.
  * */
 private const val PUMP_RATE = 1
 
@@ -339,14 +335,22 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
     val pipes = HashSet<FluidPipeBlockEntity>()
 
     /**
+     * Fluid handler external to the network. It's a machine, usually.
+     * @param capability The remote machine's capability.
+     * @param pipe The pipe attached to the machine.
+     * @param pipeSide The side of the pipe connected to the machine.
+     * */
+    data class Endpoint(val capability: IFluidHandler, val pipe: FluidPipeBlockEntity, val pipeSide: Direction)
+
+    /**
      * List of machines connected to a pipe. The network will automatically extract fluid from these machines (pump module).
      * */
-    val importEndpointsByPipe = HashMap<FluidPipeBlockEntity, ArrayList<IFluidHandler>>()
+    val importEndpointsByPipe = HashMap<FluidPipeBlockEntity, ArrayList<Endpoint>>()
 
     /**
      * List of machines connected to a pipe. The network will automatically push fluid into these machines.
      * */
-    val exportEndpointsByPipe = HashMap<FluidPipeBlockEntity, ArrayList<IFluidHandler>>()
+    val exportEndpointsByPipe = HashMap<FluidPipeBlockEntity, ArrayList<Endpoint>>()
 
     /**
      * Inserts the [pipe] and computes the endpoints.
@@ -465,7 +469,7 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
 
             mask += dir
 
-            val endpoint = capabilityLazy.resolve().get()
+            val endpoint = Endpoint(capabilityLazy.resolve().get(), pipe, dir)
 
             if(installedModule.networkImportsFromEndpoint) {
                 importEndpoints.add(endpoint)
@@ -506,9 +510,9 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
          * P.S. Iterating the jagged array shouldn't be an issue, we expect like 10 of those endpoints to exist per network.
          * */
         for (endpoints in importEndpointsByPipe.values) {
-            for (handler in endpoints) {
-                for (i in 0 until handler.tanks) {
-                    if(handler.isFluidValid(i, fluid)) {
+            for (endpoint in endpoints) {
+                for (i in 0 until endpoint.capability.tanks) {
+                    if(endpoint.capability.isFluidValid(i, fluid)) {
                         return true
                     }
                 }
@@ -521,7 +525,7 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
     /**
      * List of target machines sorted by distance (along pipes) from the key. They order is mutated in the [fillDiscrete] call though.
      * */
-    val endpointsCache = HashMap<FluidPipeBlockEntity, ArrayList<IFluidHandler>>()
+    val endpointsCache = HashMap<FluidPipeBlockEntity, ArrayList<Endpoint>>()
 
     /**
      * Invalidates all caches. Called when pipes are added/removed and when endpoints are added/removed.
@@ -534,15 +538,13 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
      * Gets the endpoints with access to [source].
      * */
     private fun getEndpointList(source: FluidPipeBlockEntity) = endpointsCache.computeIfAbsent(source) {
-        val result = ArrayList<IFluidHandler>()
+        val result = ArrayList<Endpoint>()
 
         val neighborPipes = ArrayList<FluidPipeBlockEntity>(6)
         val visited = HashSet<FluidPipeBlockEntity>()
         val queue = ArrayDeque<FluidPipeBlockEntity>()
 
         queue.add(source)
-
-        val importEndpoints = importEndpointsByPipe[source]
 
         while (queue.isNotEmpty()) {
             val front = queue.remove()
@@ -557,9 +559,7 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
                 for (i in exportEndpoints.indices) {
                     val exportEndpoint = exportEndpoints[i]
 
-                    if(importEndpoints == null || !importEndpoints.contains(exportEndpoint)) {
-                        result.add(exportEndpoint)
-                    }
+                    result.add(exportEndpoint)
                 }
             }
 
@@ -574,10 +574,11 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
     /**
      * Called to move fluid from an endpoint to the rest of the endpoints by using [fillFused].
      * Tries to distribute evenly to all endpoints.
-     * @param source The pipe attached to the endpoint.
+     * @param sourcePipe The pipe attached to the endpoint.
+     * @param sourceSide The side of [sourcePipe] [resource] came from (used to prevent inserting the resource back).
      * */
-    fun fillDiscrete(source: FluidPipeBlockEntity, resource: FluidStack, action: IFluidHandler.FluidAction) : Int {
-        if(resource.fluid == Fluids.EMPTY || resource.amount <= 0) {
+    fun fillDiscrete(sourcePipe: FluidPipeBlockEntity, sourceSide: Direction, resource: FluidStack, action: IFluidHandler.FluidAction) : Int {
+        if(resource.isEmpty) {
             return 0
         }
 
@@ -588,7 +589,8 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
          * */
         val simulation = fractional.copyWithAmount(
             fillFused(
-                source,
+                sourcePipe,
+                sourceSide,
                 fractional,
                 OptionalDouble.EMPTY,
                 IFluidHandler.FluidAction.SIMULATE
@@ -612,7 +614,8 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
              * Execute fill with the amount closest to the target:
              * */
             val filled = fillFused(
-                source,
+                sourcePipe,
+                sourceSide,
                 quantizedSimulation.fractional(),
                 OptionalDouble.EMPTY,
                 IFluidHandler.FluidAction.EXECUTE
@@ -643,20 +646,21 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
      * But generally, we can have handlers which are full or almost full (and they cannot accept all of [resource]` / count`), and we can also have discrete handlers.
      * To start with, we simulate inserting [resource] (all of it) into all handlers. If [resource] is less than `1mB`, we completely skip the discrete handlers.
      * Anyway, we store the results in [fillFractionalSimulationTable] if the filled amount is larger than [FractionalFluidStack.EPSILON]. We also increment a counter of valid candidates if that's true.
-     * After this, we get the list of endpoints for [source], and we sort it *in-place* (from small to large) by comparing the values in [fillFractionalSimulationTable] that we just prepared.
+     * After this, we get the list of endpoints for [sourcePipe], and we sort it *in-place* (from small to large) by comparing the values in [fillFractionalSimulationTable] that we just prepared.
      * From moment to moment, the order doesn't actually change, so this is usually an `O(n)` operation.
      * Then, we go through the list (looking only at valid handlers), and we calculate their share of the resource by ` min(remainingAmount / remainingCandidates, capacity)`, where `remainingAmount` was initially [resource], `remainingCandidates` was initially the number of valid candidates, and `capacity` is the value from the [fillFractionalSimulationTable].
      * If the handler is integer, we quantize this result.
      * If the result is larger than [FractionalFluidStack.EPSILON], we subtract the result from the `remainingAmount`, and we execute the transfer.
      * At the end, we decrement the remaining candidates.
-     * @param source The pipe attached to the endpoint.
+     * @param sourcePipe The pipe attached to the endpoint.
+     * @param sourceSide The side of [sourcePipe] [resource] came from (used to prevent inserting the resource back).
      * */
-    fun fillFused(source: FluidPipeBlockEntity, resource: FractionalFluidStack, resourceTemperature: OptionalDouble, action: IFluidHandler.FluidAction) : Double {
+    fun fillFused(sourcePipe: FluidPipeBlockEntity, sourceSide: Direction, resource: FractionalFluidStack, resourceTemperature: OptionalDouble, action: IFluidHandler.FluidAction) : Double {
         if (resource.isEmpty) {
             return 0.0
         }
 
-        val endpointList = getEndpointList(source)
+        val endpointList = getEndpointList(sourcePipe)
 
         if (endpointList.isEmpty()) {
             return 0.0
@@ -669,24 +673,31 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
             /**
              * Simulates inserting the [resource] into all handlers. This just gives us the upper bound on how much fluid they can accept.
              * */
-            endpointList.forEach { handler ->
-                val simulatedFill = if(handler is IFractionalFluidHandler) {
-                    if(handler is IThermalFluidHandler) {
-                        handler.fillThermal(resource, resourceTemperature, IFluidHandler.FluidAction.SIMULATE)
-                    }
-                    else {
-                        handler.fillFractional(resource, IFluidHandler.FluidAction.SIMULATE)
-                    }
+            endpointList.forEach { destinationEndpoint ->
+                val handler = destinationEndpoint.capability
+
+                val simulatedFill = if(destinationEndpoint.pipe == sourcePipe && destinationEndpoint.pipeSide == sourceSide) {
+                    0.0
                 }
                 else {
-                    if (quantizedResource.amount > 0) {
-                        handler.fill(quantizedResource, IFluidHandler.FluidAction.SIMULATE).toDouble()
+                    if(handler is IFractionalFluidHandler) {
+                        if(handler is IThermalFluidHandler) {
+                            handler.fillThermal(resource, resourceTemperature, IFluidHandler.FluidAction.SIMULATE)
+                        }
+                        else {
+                            handler.fillFractional(resource, IFluidHandler.FluidAction.SIMULATE)
+                        }
                     }
                     else {
-                        /**
-                         * Skip discrete handlers completely since the resource is less than 1mB:
-                         * */
-                        0.0
+                        if (quantizedResource.amount > 0) {
+                            handler.fill(quantizedResource, IFluidHandler.FluidAction.SIMULATE).toDouble()
+                        }
+                        else {
+                            /**
+                             * Skip discrete handlers completely since the resource is less than 1mB:
+                             * */
+                            0.0
+                        }
                     }
                 }
 
@@ -711,7 +722,8 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
             var remainingAmount = resource.amount
             var totalFilled = 0.0
 
-            for (handler in endpointList) {
+            for (destinationEndpoint in endpointList) {
+                val handler = destinationEndpoint.capability
                 val capacity = fillFractionalSimulationTable.getDouble(handler)
 
                 if (capacity < FractionalFluidStack.EPSILON) {
@@ -766,17 +778,20 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
      *
      * This prevents mass duplication but will allow voiding if handler logic is bad.
      * */
-    private fun executePump(pipe: FluidPipeBlockEntity, endpoints: ArrayList<IFluidHandler>) {
-        for (endpoint in endpoints) {
+    private fun executePump(pipe: FluidPipeBlockEntity, endpoints: ArrayList<Endpoint>) {
+        for (sourceEndpoint in endpoints) {
+            val fluidSource = sourceEndpoint.capability
+            val sourceSide = sourceEndpoint.pipeSide
+
             /**
              * Fused logic for both dumb sources and thermal sources.
              * */
-            if(endpoint is IFractionalFluidHandler) {
+            if(fluidSource is IFractionalFluidHandler) {
                 val drainSimulation: FractionalFluidStack
                 val drainSimulationTemperature: OptionalDouble
 
-                if(endpoint is IThermalFluidHandler) {
-                    val thermalStack = endpoint.drainThermal(
+                if(fluidSource is IThermalFluidHandler) {
+                    val thermalStack = fluidSource.drainThermal(
                         PUMP_RATE.toDouble(),
                         IFluidHandler.FluidAction.SIMULATE
                     ) ?: continue
@@ -785,7 +800,7 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
                     drainSimulationTemperature = OptionalDouble.wrap(thermalStack.temperature)
                 }
                 else {
-                    drainSimulation = endpoint.drainFractional(PUMP_RATE.toDouble(), IFluidHandler.FluidAction.SIMULATE)
+                    drainSimulation = fluidSource.drainFractional(PUMP_RATE.toDouble(), IFluidHandler.FluidAction.SIMULATE)
                     drainSimulationTemperature = OptionalDouble.EMPTY
                 }
 
@@ -795,6 +810,7 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
 
                 val fillSimulation = fillFused(
                     pipe,
+                    sourceSide,
                     drainSimulation,
                     drainSimulationTemperature,
                     IFluidHandler.FluidAction.SIMULATE
@@ -807,14 +823,14 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
                 val drain: FractionalFluidStack
                 val drainTemperature: OptionalDouble
 
-                if(endpoint is IThermalFluidHandler) {
-                    val thermalStack = endpoint.drainThermal(
+                if(fluidSource is IThermalFluidHandler) {
+                    val thermalStack = fluidSource.drainThermal(
                         FractionalFluidStack(drainSimulation.fluid, fillSimulation),
                         IFluidHandler.FluidAction.EXECUTE
                     )
 
                     if(thermalStack == null) {
-                        LOG.error(DEBUGGER_BREAK("Thermal handler didn't yield anything on execute, but simulation did yield: $endpoint"))
+                        LOG.error(DEBUGGER_BREAK("Thermal handler didn't yield anything on execute, but simulation did yield: $fluidSource"))
                         continue
                     }
 
@@ -829,25 +845,22 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
                     }
                 }
                 else {
-                    drain = endpoint.drainFractional(
+                    drain = fluidSource.drainFractional(
                         FractionalFluidStack(drainSimulation.fluid, fillSimulation),
                         IFluidHandler.FluidAction.EXECUTE
                     )
 
                     if(drain.isEmpty) {
-                        LOG.error(DEBUGGER_BREAK("Fractional handler didn't yield anything on execute, but simulation did yield: $endpoint"))
+                        LOG.error(DEBUGGER_BREAK("Fractional handler didn't yield anything on execute, but simulation did yield: $fluidSource"))
                         continue
                     }
 
                     drainTemperature = OptionalDouble.EMPTY
                 }
 
-                if(drain != drainSimulation) {
-                    LOG.error(DEBUGGER_BREAK("Fused drain simulation and drain yielded different results for $endpoint"))
-                }
-
                 val filled = fillFused(
                     pipe,
+                    sourceSide,
                     drain,
                     drainTemperature,
                     IFluidHandler.FluidAction.EXECUTE
@@ -855,51 +868,57 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
 
                 if(filled != fillSimulation) {
                     // Can't really get much information in the logs, it concerns the entire network
-                    LOG.error(DEBUGGER_BREAK("Fused fill simulation yielded different results ($endpoint): $fillSimulation, $filled"))
+                    LOG.error(DEBUGGER_BREAK("Fused fill simulation yielded different results ($fluidSource): $fillSimulation, $filled"))
                 }
             }
             /**
              * Non-thermal source (thermal handlers are, by definition, fractional):
              * */
             else {
-                val drainSimulation = endpoint.drain(PUMP_RATE, IFluidHandler.FluidAction.SIMULATE)
+                val drainSimulation = fluidSource.drain(PUMP_RATE, IFluidHandler.FluidAction.SIMULATE)
 
                 if(drainSimulation.isEmpty) {
                     continue
                 }
 
-                val fillSimulation = fillDiscrete(pipe, drainSimulation, IFluidHandler.FluidAction.SIMULATE)
+                val fillSimulation = fillDiscrete(
+                    pipe,
+                    sourceSide,
+                    drainSimulation,
+                    IFluidHandler.FluidAction.SIMULATE
+                )
 
                 if(fillSimulation <= 0) {
                     continue
                 }
 
-                val drain = endpoint.drain(
+                val drain = fluidSource.drain(
                     FluidStack(drainSimulation.fluid, fillSimulation),
                     IFluidHandler.FluidAction.EXECUTE
                 )
 
                 if(drain.isEmpty) {
-                    LOG.error(DEBUGGER_BREAK("Discrete handler didn't yield anything on execute, but simulation did yield: $endpoint"))
+                    LOG.error(DEBUGGER_BREAK("Discrete handler didn't yield anything on execute, but simulation did yield: $fluidSource"))
                     continue
                 }
 
-                if(drain.fluid != drainSimulation.fluid || drain.amount != drainSimulation.amount) {
-                    LOG.error(DEBUGGER_BREAK("Discrete drain simulation and drain yielded different results for $endpoint"))
-                }
-
-                val filled = fillDiscrete(pipe, drain, IFluidHandler.FluidAction.EXECUTE)
+                val filled = fillDiscrete(
+                    pipe,
+                    sourceSide,
+                    drain,
+                    IFluidHandler.FluidAction.EXECUTE
+                )
 
                 if(filled != fillSimulation) {
                     // Can't really get much information in the logs, it concerns the entire network
-                    LOG.error(DEBUGGER_BREAK("Discrete fill simulation yielded different results ($endpoint): $fillSimulation, $filled"))
+                    LOG.error(DEBUGGER_BREAK("Discrete fill simulation yielded different results ($fluidSource): $fillSimulation, $filled"))
                 }
             }
         }
     }
 
-    private val pumpPairs = ArrayList<Map.Entry<FluidPipeBlockEntity, ArrayList<IFluidHandler>>>()
-    private val updateHandlers = ArrayList<IFluidHandler>()
+    private val pumpPairs = ArrayList<Map.Entry<FluidPipeBlockEntity, ArrayList<Endpoint>>>()
+    private val updateHandlers = ArrayList<Endpoint>()
 
     /**
      * Applies all automatic fluid transport, created by the pump module.
@@ -913,7 +932,7 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
             val pumpPairs = pumpPairs
             val updateHandlers = updateHandlers
 
-            importEndpointsByPipe.forEach { entry: Map.Entry<FluidPipeBlockEntity, ArrayList<IFluidHandler>> ->
+            importEndpointsByPipe.forEach { entry: Map.Entry<FluidPipeBlockEntity, ArrayList<Endpoint>> ->
                 pumpPairs.add(entry)
             }
 
@@ -1310,7 +1329,7 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
                 return 0
             }
 
-            return pipe.network.fillDiscrete(pipe, resource, action)
+            return pipe.network.fillDiscrete(pipe, side, resource, action)
         }
 
         /**
@@ -1321,7 +1340,7 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
                 return 0.0
             }
 
-            return pipe.network.fillFused(pipe, resource, OptionalDouble.EMPTY, action)
+            return pipe.network.fillFused(pipe, side, resource, OptionalDouble.EMPTY, action)
         }
 
         override fun fillThermal(resource: FractionalFluidStack, temperature: OptionalDouble, action: IFluidHandler.FluidAction): Double {
@@ -1329,7 +1348,7 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
                 return 0.0
             }
 
-            return pipe.network.fillFused(pipe, resource, temperature, action)
+            return pipe.network.fillFused(pipe, side, resource, temperature, action)
         }
     }
 

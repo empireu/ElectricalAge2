@@ -1676,17 +1676,29 @@ open class GravityBasedMultipleFractionalFluidTank(val parent: MultipleFractiona
 //#region Thermal Extension
 
 /**
- * Wrapper around [parent], which applies some extra logic to handle thermal transfers, and bridges the non-thermal transfers with the thermal transfers.
+ * Wrapper around [parent], which applies some extra logic on fills/drains to handle thermal transfers, and bridges the non-thermal transfers with the thermal transfers.
  * The latter is done by assuming non-thermal fill requests insert fluid at room temperature, and non-thermal drain requests **void energy.**
  * This wrapper just redirects **all** calls to the thermal calls, so the relevant [fillThermal] and [drainThermal] calls are left up to the implementation.
- * */
-interface ThermalTankExtension : IThermalFluidHandler {
+ *
+ * More relevant description:
+ * - Everything except the fill/drain methods is redirected without changes to [parent]
+ * - Discrete fill and drain redirect to this extension's fractional implementations (they are special, see below). Basically finds the integer transfer normally, with quantization, and no thermal logic
+ * - The fractional fill and drain are redirected to the thermal methods, which aren't implemented in this interface. The fill redirection passes null temperature (which is the rule that states fluids coming from non-thermal handlers come at room temperature), and the drain redirection ignores the output temperature (destroys energy)
+ *
+ * The thermal fill and drain methods are not implemented. But they need to do the following:
+ * - The actual mass transfer should be simulated/executed with [parent]'s fractional fill and drain methods
+ * - If the action is execute, then, using the mass transfer given by the [parent]'s fractional fill and drain, the energy transfer is calculated and applied to whatever underlying thermal state there is.
+ * So, simply put, this interface attaches the extra energy exchange logic to the normal operations of [parent] (the methods in [IFluidHandler] and [IFractionalFluidHandler]) by redirecting them to the methods in [IThermalFluidHandler].
+ */
+interface FractionalFluidHandlerThermalExtension : IThermalFluidHandler {
     /**
      * Gets the underlying fluid handler, which has the fill and drain behavior. It could be:
      * - [MultipleFractionalFluidTank]
      * - [PurityBasedMultipleFractionalFluidTank]
      * - [GravityBasedMultipleFractionalFluidTank]
-     * - Another custom handler
+     * - A custom handler
+     *
+     * What it **mustn't be** is an [IThermalFluidHandler] (then the pattern we're trying to implement is a nonsense).
      * */
     val parent: IFractionalFluidHandler
 
@@ -1813,13 +1825,18 @@ interface ThermalTankExtension : IThermalFluidHandler {
 }
 
 /**
- * Implementation of [ThermalTankExtension] that accesses and mutates a thermodynamic state owned by a simulation object.
+ * Implementation of [FractionalFluidHandlerThermalExtension] which adds the thermal fill/drain methods, by accessing and mutating a [ThermalMass] directly involved in a [org.eln2.mc.common.cells.foundation.ThermalObject]'s simulation.
  * Every fill and drain operation will acquire a lock to mutate the thermal body.
- * It should be fast because we lock around the execution of the thermal sim, which is very fast.
+ * It should be fast because we lock around the execution of the thermal sim, which doesn't take almost any execution time.
+ * To understand the role of this, see the documentation of [FractionalFluidHandlerThermalExtension].
+ *
+ * To handle the thermal transfers, this extension treats the thermal body as the lumped machine + liquids inside it.
+ * On each thermal fill/drain, we will re-calculate the average composition of the machine + liquids, and update the thermal body with that.
+ * Of course, we also move energy into/out of the thermal body with each request.
  * */
-interface SimulationSynchronizedThermalTank : ThermalTankExtension {
+interface ThermalObjectBasedFractionalFluidHandlerThermalExpansion : FractionalFluidHandlerThermalExtension {
     /**
-     * Handle to a [ThermalMass] with locking.
+     * Handle to a [ThermalMass] for locking. This allows us to mutate the thermal body from the game thread (needed because all capability fluid transfers happen there).
      * @param body The actual body involved in the simulation, which will be mutated.
      * @param hullMaterial The immutable material the hull is made of.
      * @param hullMass The immutable mass of the hull.
@@ -1853,7 +1870,7 @@ interface SimulationSynchronizedThermalTank : ThermalTankExtension {
     }
 
     /**
-     * Gets the handle for the thermal body. This should be instanced in the cell or the object, and the same instance always returned.
+     * Gets the handle for the thermal body. This should be instanced in the cell or the object, and the **same instance always returned**.
      * */
     val handle: ThermalBodyHandle
 
@@ -1869,9 +1886,9 @@ interface SimulationSynchronizedThermalTank : ThermalTankExtension {
         ?: PhysicalFluidManager.requireProperties(Fluids.WATER)
 
     /**
-     * Gets all fluid stacks. Needed to re-calculate the thermal properties.
+     * Gets **all fluid stacks** inside the machine. Needed to re-calculate the thermal properties.
      * */
-    fun getLiquidStacks() : Iterable<FractionalFluidStack>
+    fun getFluidStacks() : Iterable<FractionalFluidStack>
 
     /**
      * Calculates the lumped heat capacity that should be used in the thermal body, based on the fluids in the tank and the hull's base specs.
@@ -1882,7 +1899,7 @@ interface SimulationSynchronizedThermalTank : ThermalTankExtension {
 
         var totalFluidMass = 0.0
         var totalFluidCp = 0.0
-        getLiquidStacks().forEach { stack ->
+        getFluidStacks().forEach { stack ->
             val fluid = stack.fluid
             val amount = stack.amount
 
@@ -1910,6 +1927,14 @@ interface SimulationSynchronizedThermalTank : ThermalTankExtension {
             Quantity(totalMass, KILOGRAM)
         )
     }
+
+    /**
+     * Called when the thermal mass was mutated.
+     * Should call [org.eln2.mc.common.cells.foundation.Cell.setChanged], for example.
+     *
+     * P.S. Called right before the handle is released.
+     * */
+    fun setSimulationChanged()
 
     override fun fillThermal(resource: FractionalFluidStack, temperature: OptionalDouble, action: IFluidHandler.FluidAction): Double {
         val parent = parent
@@ -1939,6 +1964,7 @@ interface SimulationSynchronizedThermalTank : ThermalTankExtension {
             thermalBody.energy += Quantity(energy, JOULE)
             thermalBody.material = newMaterial
             thermalBody.mass = newMass
+            setSimulationChanged()
             handle.release()
         }
 
@@ -1965,6 +1991,7 @@ interface SimulationSynchronizedThermalTank : ThermalTankExtension {
             body.energy -= Quantity(amount * !properties.specificHeatCapacity * exportTemperature, JOULE)
             body.material = newMaterial
             body.mass = newMass
+            setSimulationChanged()
             handle.release()
         }
         else {
@@ -1992,6 +2019,7 @@ interface SimulationSynchronizedThermalTank : ThermalTankExtension {
             body.energy -= Quantity( amount * !properties.specificHeatCapacity * exportTemperature, JOULE)
             body.material = newMaterial
             body.mass = newMass
+            setSimulationChanged()
             handle.release()
         }
         else {

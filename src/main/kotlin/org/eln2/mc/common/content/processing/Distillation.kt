@@ -33,6 +33,7 @@ import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.JOULE
 import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.KILOGRAM
+import org.ageseries.libage.data.Mass
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.data.WATT
@@ -65,7 +66,11 @@ import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.sendBulkPacket
 import org.eln2.mc.extensions.eln2StandardBlockProperties
+import org.eln2.mc.extensions.getMaterial
+import org.eln2.mc.extensions.getQuantity
 import org.eln2.mc.extensions.plus
+import org.eln2.mc.extensions.putQuantity
+import org.eln2.mc.extensions.saveNbt
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.FacingDirection
@@ -75,25 +80,30 @@ import java.util.function.Supplier
 import kotlin.math.min
 
 /**
- * Thermal body. Has a synchronization point around the execution of the subsolver. It is used to execute the distillation logic on the server thread.
+ * Thermal body.
+ * Has a synchronization point around the execution of the subsolver. It is used to execute the distillation logic on the server thread.
+ * Also persists the material (which is mutated by the thermal fluid handler).
  * */
 class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, val replicatesTemperature: Boolean) :
     Cell(ci),
     SidedThermalFLBR<DistillationModuleCell>,
     SimulationExecutionSubgraph.SynchronizationPointCell<DistillationModuleCell>
 {
+    companion object {
+        val HULL_MATERIAL = ChemicalElement.Copper.asMaterial.copy(
+            thermalConductivity = Quantity(3159.0, WATT_PER_METER_KELVIN)
+        )
+
+        val HULL_MASS = Quantity(50.0, KILOGRAM)
+    }
+
     override val thermalSize: ThermalSize
         get() = ThermalSize.Any
 
     @SimObject
     val wire = ThermalWireObject(
         this,
-        ThermalMass(
-            ChemicalElement.Copper.asMaterial.copy(
-                thermalConductivity = Quantity(3159.0, WATT_PER_METER_KELVIN)
-            ),
-            mass = Quantity(50.0, KILOGRAM)
-        ),
+        ThermalMass(HULL_MATERIAL, mass = HULL_MASS),
         leakage
     )
 
@@ -119,6 +129,25 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
     }
     else {
         null
+    }
+
+    val handle = ThermalObjectBasedFractionalFluidHandlerThermalExpansion.ThermalBodyHandle(
+        wire.thermalBody,
+        HULL_MATERIAL,
+        HULL_MASS,
+        sync
+    )
+
+    override fun saveCellData() : CompoundTag {
+        val tag = CompoundTag()
+        tag.put("material", wire.thermalBody.material.saveNbt())
+        tag.putQuantity("mass", wire.thermalBody.mass)
+        return tag
+    }
+
+    override fun loadCellData(tag: CompoundTag) {
+        wire.thermalBody.material = tag.getCompound("material").getMaterial()
+        wire.thermalBody.mass = tag.getQuantity<Mass>("mass")
     }
 }
 
@@ -216,6 +245,41 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
     val gasTank = MultipleFractionalFluidTank(1000.0, true, this::setChanged)
 
     /**
+     * Final wrapper around [parent] that accounts for the thermal exchanges.
+     * The fill and drain behavior is implemented by [parent], and the thermal fill and drain are implemented by this wrapper, by delegating the actual fluid ops to [parent] and then doing the thermal changes here.
+     * @param parent The wrapper that implements the filling/draining behavior.
+     *
+     * If you're reading this as a reference (heh, another contributor?), then the idea here is this:
+     * - We implement normal [IFractionalFluidHandler]s for the faces (that have whatever filtering logic we need).
+     * They could be [PurityBasedMultipleFractionalFluidTank] or [GravityBasedMultipleFractionalFluidTank].
+     * In our case, [BottomFaceHandler], [SideHandler], [TopFaceHandler].
+     * - Pass an instance of that as the [parent].
+     *
+     * Now, the [ThermalObjectBasedFractionalFluidHandlerThermalExpansion] will compose the thermal transfer logic on top of the transfer logic from [parent].
+     * The thermal transfer logic will just mutate our thermal object.
+     * */
+    class ThermalLayer<P : IFractionalFluidHandler>(val blockEntity: DistillationModuleBlockEntity, override val parent: P) : ThermalObjectBasedFractionalFluidHandlerThermalExpansion {
+        override val handle: ThermalObjectBasedFractionalFluidHandlerThermalExpansion.ThermalBodyHandle
+            get() = blockEntity.cell.handle
+
+        override val ambientTemperature: Quantity<Temperature>
+            get() = blockEntity.cell.environmentData.ambientTemperature
+
+        override fun setSimulationChanged() {
+            blockEntity.cell.setChanged()
+        }
+
+        /**
+         * Gets all lumped fluid in the module, to calculate the thermal properties.
+         * */
+        override fun getFluidStacks(): Iterable<FractionalFluidStack> =
+            blockEntity
+                .liquidTank.fluids.asSequence()
+                .plus(blockEntity.gasTank.fluids)
+                .asIterable()
+    }
+
+    /**
      * Fluid handler for the bottom face:
      * - Allows extraction of residuals via [GravityBasedMultipleFluidTank]
      * - Allows insertion of gas and liquid
@@ -246,8 +310,8 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
         }
     }
 
-    val bottomFaceHandler = BottomFaceHandler(liquidTank, gasTank)
-    val bottomFaceHandlerLazy: LazyOptional<BottomFaceHandler> = LazyOptional.of { bottomFaceHandler }
+    val bottomFaceHandler = ThermalLayer(this, BottomFaceHandler(liquidTank, gasTank))
+    val bottomFaceHandlerLazy: LazyOptional<ThermalLayer<BottomFaceHandler>> = LazyOptional.of { bottomFaceHandler }
 
     /**
      * Fluid handler for the top face:
@@ -280,8 +344,8 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
 
     }
 
-    val topFaceHandler = TopFaceHandler(liquidTank, gasTank)
-    val topFaceHandlerLazy: LazyOptional<TopFaceHandler> = LazyOptional.of { topFaceHandler }
+    val topFaceHandler = ThermalLayer(this, TopFaceHandler(liquidTank, gasTank))
+    val topFaceHandlerLazy: LazyOptional<ThermalLayer<TopFaceHandler>> = LazyOptional.of { topFaceHandler }
 
     /**
      * Fluid handler for the 4 sides:
@@ -315,8 +379,8 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
         }
     }
 
-    val sideHandler = SideHandler(liquidTank, gasTank)
-    val sideHandlerLazy: LazyOptional<SideHandler> = LazyOptional.of { sideHandler }
+    val sideHandler = ThermalLayer(this, SideHandler(liquidTank, gasTank))
+    val sideHandlerLazy: LazyOptional<ThermalLayer<SideHandler>> = LazyOptional.of { sideHandler }
 
     override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T?> {
         if(cap == ForgeCapabilities.FLUID_HANDLER) {
@@ -339,25 +403,33 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
         sideHandlerLazy.invalidate()
     }
 
+    //#endregion
+
     /**
      * Voids the tanks.
      * */
     override fun applyWrench(wrench: WrenchItem, context: UseOnContext): InteractionResult {
         liquidTank.fluids.clear()
         gasTank.fluids.clear()
+
+        val body = cell.handle.acquire()
+        val temperature = body.temperature
+        body.material = DistillationModuleCell.HULL_MATERIAL
+        body.mass = DistillationModuleCell.HULL_MASS
+        body.temperature = temperature
+        cell.handle.release()
+
         setChanged()
 
         return InteractionResult.SUCCESS
     }
-
-    //#endregion
 
     /**
      * Thermal power calculated from enthalpy.
      * For boiling modules, it describes the power input that goes into driving evaporation.
      * */
     @ServerOnly
-    private var thermalPower = 0.0
+    private var phaseChangeThermalPower = 0.0
 
     //#region Distillation Loop
 
@@ -686,7 +758,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
 
             val enthalpy = Quantity(!boiling.enthalpy * amountToBoil, JOULE)
 
-            thermalPower += !enthalpy
+            phaseChangeThermalPower += !enthalpy
             body.energy -= enthalpy
             remainingEvaporation -= amountToBoil
 
@@ -794,7 +866,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
 
             val enthalpy = Quantity(!condensation.enthalpy * amountToCondense, JOULE)
 
-            thermalPower -= !enthalpy
+            phaseChangeThermalPower -= !enthalpy
             body.energy += enthalpy
             remainingCondensation -= amountToCondense
 
@@ -808,7 +880,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
      * Executes evaporation and condensation.
      * */
     private fun phaseChange() {
-        thermalPower = 0.0
+        phaseChangeThermalPower = 0.0
 
         cell.sync.lock()
 
@@ -820,7 +892,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
             cell.sync.unlock()
         }
 
-        thermalPower /= 1.0 / 20.0
+        phaseChangeThermalPower /= 1.0 / 20.0
     }
 
     /**
@@ -968,9 +1040,9 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
 
     @ServerOnly
     override fun submitDisplay(builder: ComponentDisplayList) {
-        bottomFaceHandler.debugView(builder)
+        bottomFaceHandler.parent.debugView(builder)
         builder.quantity(cell.wire.thermalBody.temperature)
-        builder.quantity(Quantity(thermalPower, WATT))
+        builder.quantity(Quantity(phaseChangeThermalPower, WATT))
     }
 }
 
@@ -1002,6 +1074,7 @@ class DistillationModuleBlockEntityVisual(ctx: VisualizationContext, blockEntity
         if(targetTemperature != lastTemperature) {
             lastTemperature = targetTemperature
             instance.colorWithOverride(ThermalTint.DEFAULT_LIGHT_OVERRIDE, Quantity(targetTemperature, KELVIN))
+            instance.setChanged()
         }
     }
 

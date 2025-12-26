@@ -5,10 +5,12 @@ import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.resources.ResourceLocation
 import org.ageseries.libage.data.Locator
+import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.mathematics.geometry.Pose2d
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Vector2d
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.electrical.Capacitor
 import org.ageseries.libage.sim.electrical.Inductor
 import org.ageseries.libage.sim.electrical.LinearDiode
@@ -19,6 +21,31 @@ import org.eln2.mc.data.Locators
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.FacingDirection
+
+fun Material.saveNbt() : CompoundTag {
+    val tag = CompoundTag()
+    tag.putString("label", this.label)
+    tag.putDouble("electricalResistivity", !this.electricalResistivity)
+    tag.putDouble("thermalConductivity", !this.thermalConductivity)
+    tag.putDouble("specificHeat", !this.specificHeat)
+    tag.putDouble("density", !this.density)
+    return tag
+}
+
+fun CompoundTag.getMaterial(): Material {
+    val label = this.getString("label")
+    val electricalResistivity = this.getDouble("electricalResistivity")
+    val thermalConductivity = this.getDouble("thermalConductivity")
+    val specificHeat = this.getDouble("specificHeat")
+    val density = this.getDouble("density")
+    return Material(
+        label,
+        Quantity(electricalResistivity),
+        Quantity(thermalConductivity),
+        Quantity(specificHeat),
+        Quantity(density)
+    )
+}
 
 fun Inductor.saveNbt() : CompoundTag {
     val tag = CompoundTag()
