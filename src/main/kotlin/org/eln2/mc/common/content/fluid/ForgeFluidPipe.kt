@@ -866,7 +866,7 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
                     IFluidHandler.FluidAction.EXECUTE
                 )
 
-                if(filled != fillSimulation) {
+                if(!filled.approxEq(fillSimulation, FractionalFluidStack.EPSILON)) {
                     // Can't really get much information in the logs, it concerns the entire network
                     LOG.error(DEBUGGER_BREAK("Fused fill simulation yielded different results ($fluidSource): $fillSimulation, $filled"))
                 }

@@ -25,7 +25,6 @@ import org.ageseries.libage.utils.Stopwatch
 import org.ageseries.libage.utils.addUnique
 import org.ageseries.libage.utils.measureDuration
 import org.ageseries.libage.utils.putUnique
-import org.eln2.mc.CrossThreadAccess
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.ELN2_DEBUG
 import org.eln2.mc.Eln2Config
@@ -87,121 +86,72 @@ class CellMap : Iterable<Cell> {
  * */
 class SimulationExecutionSubgraph(val graph: CellGraph) {
     /**
-     * Finely-grained events for each individual sub-solver.
+     * Synchronization primitive with a globally unique ID, used for structured concurrency.
      * */
-    private interface SynchronizationPoint {
-        /**
-         * Called right before the work thread steps the subsolver.
-         * */
-        fun prepareForSubSolverStep()
+    abstract class SynchronizationPrimitive private constructor() {
+        companion object {
+            val GLOBAL_ID_GENERATOR = AtomicInteger()
+        }
 
         /**
-         * Called right after the work thread stepped the subsolver.
+         * Globally unique ID, used to sort the locking order.
          * */
-        fun endSubSolverStep()
-    }
-
-    /**
-     * Implemented by simulation objects that wish to execute code before and after their sub solvers are stepped.
-     * **Calls are coming in parallel from the work threads.**
-     * */
-    interface SynchronizationPointObject<Self> where Self : SimulationObject<*>, Self : SynchronizationPointObject<Self> {
-        /**
-         * Called right before the [subSolver] is stepped by the execution system.
-         * */
-        @CrossThreadAccess
-        fun prepareForSubSolverStep(subSolver: Any)
+        val globalId = GLOBAL_ID_GENERATOR.getAndIncrement()
 
         /**
-         * Called right after the [subSolver] is stepped by the execution system.
+         * Called before the subsolver steps and when a transaction starts.
          * */
-        @CrossThreadAccess
-        fun endSubSolverStep(subSolver: Any)
-    }
-
-    /**
-     * Implemented by cells that wish to execute code before and after the sub-solvers for their objects are stepped.
-     * **Calls are coming in parallel from the work threads.**
-     * */
-    interface SynchronizationPointCell<Self> where Self : Cell, Self : SynchronizationPointCell<Self> {
-        /**
-         * Called when the execution graph is being built. Determines if the simulation object [obj] should be monitored for the [prepareForSubSolverStep] and [endSubSolverStep] events.
-         * @return True if events for [obj]'s sub solvers should be received by this [SynchronizationPointCell]. Otherwise, false.
-         * */
-        @OnServerThread
-        fun monitorsObject(obj: SimulationObject<*>) : Boolean
+        abstract fun acquire()
 
         /**
-         * Called right before the [subSolver] for the object [obj] is stepped by the execution system.
+         * Called after the subsolver finished the step and when a transaction ends.
          * */
-        @CrossThreadAccess
-        fun prepareForSubSolverStep(obj: SimulationObject<*>, subSolver: Any)
+        abstract fun release()
 
-        /**
-         * Called right after the [subSolver] for the object [obj] is stepped by the execution system.
-         * */
-        @CrossThreadAccess
-        fun endSubSolverStep(obj: SimulationObject<*>, subSolver: Any)
-    }
-
-    companion object {
-        /**
-         * The approximate maximum tick time an execution group is given.
-         * */
-        val TIME_THRESHOLD = Quantity(0.25, MILLI * SECOND)
-
-        private fun getThreadCount() : Int {
-            val threadCount = Eln2Config.serverConfig.simulationThreadCount.get()
-
-            // We do get an exception from thread pool creation, but explicit handling is better here.
-            if (threadCount <= 0) {
-                error("Simulation threads is $threadCount")
+        class Reentrant(val sync: ReentrantLock = ReentrantLock()) : SynchronizationPrimitive() {
+            override fun acquire() {
+                sync.lock()
             }
 
-            LOG.info("Using $threadCount ELN2 simulation threads")
-
-            return threadCount
+            override fun release() {
+                sync.unlock()
+            }
         }
+    }
 
-        private val threadNumber = AtomicInteger()
+    /**
+     * Implemented by cells that will do locking with the subsolvers.
+     * */
+    interface SynchronizationPointCell<Self> where Self : Cell, Self : SynchronizationPointCell<Self> {
+        // P.S. we can implement points for subscriber steps
 
-        private fun createThread(pool: ForkJoinPool) : ForkJoinWorkerThread {
-            val thread = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool)
-            thread.name = "eln-pool-${threadNumber.getAndIncrement()}"
-            return thread
-        }
-
-        private fun exceptionHandler(t: Thread, e: Throwable) {
-            LOG.error("ELN2 SIMULATION ERROR ($t): $e")
-        }
-
-        private val pool = ForkJoinPool(
-            getThreadCount(),
-            ::createThread,
-            ::exceptionHandler,
-            true
-        )
-
-        fun makePool() {
-            requireIsOnServerThread()
-            pool
-        }
+        /**
+         * Gets a synchronization primitive for each needed subsolver of [obj].
+         * This is called each time the graph is built.
+         * @return A map of the [subSolvers] and the synchronization primitive the subsolvers should lock on execute.
+         * */
+        fun createSynchronizationMapForSubSolvers(obj: SimulationObject<*>, subSolvers: List<Any>) : Map<Any, SynchronizationPrimitive>?
     }
 
     /**
      * Holds the individual subsolver and the synchronization points associated with it.
      * @param solver The underlying simulation.
      * @param method The update method for the specific simulation.
-     * @param synchronizationPoints Events that are executed before and after the simulation is stepped.
+     * @param primitives The synchronization primitives, in no particular order.
      * */
-    private class SubSolver(val solver: Any, val method: Runnable, val synchronizationPoints: Array<SynchronizationPoint>) {
+    private class SubSolver(val solver: Any, val method: Runnable, primitives: Iterable<SynchronizationPrimitive>) {
+        val sortedPrimitives: Array<SynchronizationPrimitive> = primitives
+            .distinct()
+            .sortedBy { it.globalId }
+            .toTypedArray()
+
         var lastExecutionTime = Quantity<Time>(0.0)
 
         fun execute() {
-            val synchronizationPoints = synchronizationPoints
+            val synchronizationPoints = sortedPrimitives
 
             for (i in synchronizationPoints.indices){
-                synchronizationPoints[i].prepareForSubSolverStep()
+                synchronizationPoints[i].acquire()
             }
 
             try {
@@ -215,7 +165,7 @@ class SimulationExecutionSubgraph(val graph: CellGraph) {
                  * This is to make the failure pattern consistent with the rest of the code.
                  * */
                 for (i in synchronizationPoints.indices){
-                    synchronizationPoints[i].endSubSolverStep()
+                    synchronizationPoints[i].release()
                 }
             }
         }
@@ -240,43 +190,26 @@ class SimulationExecutionSubgraph(val graph: CellGraph) {
         /**
          * Finds all synchronization points for cells and objects:
          * */
-        val syncPointsBySubSolver = MutableSetMapMultiMap<Any, SynchronizationPoint>()
+        val syncPrimitivesBySubSolver = MutableSetMapMultiMap<Any, SynchronizationPrimitive>()
         graph.forEach { cell ->
-            /**
-             * Registers the [SynchronizationPointObject]s:
-             * */
-            cell.objects.forEachObject { obj ->
-                if(obj is SynchronizationPointObject<*>) {
-                    obj.getSubSolvers().forEach { subSolver ->
-                        syncPointsBySubSolver[subSolver].add(object : SynchronizationPoint {
-                            override fun prepareForSubSolverStep() {
-                                obj.prepareForSubSolverStep(subSolver)
-                            }
-
-                            override fun endSubSolverStep() {
-                                obj.endSubSolverStep(subSolver)
-                            }
-                        })
-                    }
-                }
-            }
-
             /**
              * Registers the [SynchronizationPointCell]s:
              * */
             if(cell is SynchronizationPointCell<*>) {
                 cell.objects.forEachObject { obj ->
-                    if(cell.monitorsObject(obj)) {
-                        obj.getSubSolvers().forEach { subSolver ->
-                            syncPointsBySubSolver[subSolver].add(object : SynchronizationPoint {
-                                override fun prepareForSubSolverStep() {
-                                    cell.prepareForSubSolverStep(obj, subSolver)
-                                }
+                    val subSolvers = obj.getSubSolvers().toList()
+                    val map = cell.createSynchronizationMapForSubSolvers(obj, subSolvers)
 
-                                override fun endSubSolverStep() {
-                                    cell.endSubSolverStep(obj, subSolver)
-                                }
-                            })
+                    if(map != null && map.isNotEmpty()) {
+                        check(map.keys.all { subSolver -> subSolvers.contains(subSolver) }) {
+                            DEBUGGER_BREAK("Invalid synchronization map $cell")
+                        }
+
+                        for (subSolver in subSolvers) {
+                            val primitive = map[subSolver]
+                                ?: continue
+
+                            syncPrimitivesBySubSolver[subSolver].add(primitive)
                         }
                     }
                 }
@@ -289,7 +222,7 @@ class SimulationExecutionSubgraph(val graph: CellGraph) {
                     SubSolver(
                         electricalSimulation,
                         electricalSimulation::step,
-                        syncPointsBySubSolver[electricalSimulation].toTypedArray()
+                        syncPrimitivesBySubSolver[electricalSimulation]
                     )
                 )
             }
@@ -300,7 +233,7 @@ class SimulationExecutionSubgraph(val graph: CellGraph) {
                 SubSolver(
                     it,
                     { it.step(CellGraph.DT) },
-                    syncPointsBySubSolver[it].toTypedArray()
+                    syncPrimitivesBySubSolver[it]
                 ),
             )
         }
@@ -311,7 +244,7 @@ class SimulationExecutionSubgraph(val graph: CellGraph) {
                     SubSolver(
                         kineticSimulation,
                         kineticSimulation::step,
-                        syncPointsBySubSolver[kineticSimulation].toTypedArray()
+                        syncPrimitivesBySubSolver[kineticSimulation]
                     )
                 )
             }
@@ -674,6 +607,98 @@ class SimulationExecutionSubgraph(val graph: CellGraph) {
 
         frame!!.get()
         frame = null
+    }
+
+    /**
+     * Structured lock over multiple synchronization primitives.
+     * Allows completely freezing the execution of the subsolvers involved, for mutating their state from e.g. the game thread.
+     * */
+    class StructuredLock private constructor(val sortedPrimitives: List<SynchronizationPrimitive>) {
+        init {
+            if(ELN2_DEBUG) {
+                for(i in 1 until sortedPrimitives.size) {
+                    val a = sortedPrimitives[i - 1]
+                    val b = sortedPrimitives[i]
+
+                    if(a.globalId >= b.globalId) {
+                        DEBUGGER_BREAK()
+                    }
+                }
+            }
+        }
+
+        fun beginTransaction() {
+            for (i in sortedPrimitives.indices) {
+                val primitive = sortedPrimitives[i]
+                primitive.acquire()
+            }
+        }
+
+        fun endTransaction() {
+            for (i in sortedPrimitives.indices) {
+                val primitive = sortedPrimitives[i]
+                primitive.release()
+            }
+        }
+
+        inline fun executeTransaction(body: () -> Unit) {
+            beginTransaction()
+
+            try {
+                body()
+            }
+            finally {
+                endTransaction()
+            }
+        }
+
+        companion object {
+            fun create(source: Iterable<SynchronizationPrimitive>) = StructuredLock(source.sortedBy { it.globalId })
+        }
+    }
+
+    companion object {
+        /**
+         * The approximate maximum tick time an execution group is given.
+         * */
+        val TIME_THRESHOLD = Quantity(0.25, MILLI * SECOND)
+
+        private fun getThreadCount() : Int {
+            val threadCount = Eln2Config.serverConfig.simulationThreadCount.get()
+
+            // We do get an exception from thread pool creation, but explicit handling is better here.
+            if (threadCount <= 0) {
+                error("Simulation threads is $threadCount")
+            }
+
+            LOG.info("Using $threadCount ELN2 simulation threads")
+
+            return threadCount
+        }
+
+        private val threadNumber = AtomicInteger()
+
+        private fun createThread(pool: ForkJoinPool) : ForkJoinWorkerThread {
+            val thread = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool)
+            thread.name = "eln-pool-${threadNumber.getAndIncrement()}"
+            return thread
+        }
+
+        private fun exceptionHandler(t: Thread, e: Throwable) {
+            LOG.error("ELN2 SIMULATION ERROR ($t): $e")
+        }
+
+        private val pool = ForkJoinPool(
+            getThreadCount(),
+            ::createThread,
+            ::exceptionHandler,
+            true
+        )
+
+        fun makePool() {
+            requireIsOnServerThread()
+            pool
+        }
     }
 }
 

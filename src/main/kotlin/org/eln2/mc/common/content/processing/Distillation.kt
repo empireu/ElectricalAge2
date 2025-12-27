@@ -10,7 +10,6 @@ import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
-import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.context.BlockPlaceContext
 import net.minecraft.world.item.context.UseOnContext
@@ -108,18 +107,16 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
         leakage
     )
 
-    val sync = ReentrantLock()
+    val solverPoint = SimulationExecutionSubgraph.SynchronizationPrimitive.Reentrant()
 
-    override fun monitorsObject(obj: SimulationObject<*>) : Boolean {
-        return obj == wire
-    }
+    override fun createSynchronizationMapForSubSolvers(obj: SimulationObject<*>, subSolvers: List<Any>): Map<Any, SimulationExecutionSubgraph.SynchronizationPrimitive>? {
+        if(obj == wire) {
+            check(subSolvers.size == 1)
 
-    override fun prepareForSubSolverStep(obj: SimulationObject<*>, subSolver: Any) {
-        sync.lock()
-    }
+            return mapOf(subSolvers.first() to solverPoint)
+        }
 
-    override fun endSubSolverStep(obj: SimulationObject<*>, subSolver: Any) {
-        sync.unlock()
+        return DEBUGGER_BREAK(null)
     }
 
     @Replicator
@@ -136,7 +133,7 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
         wire.thermalBody,
         HULL_MATERIAL,
         HULL_MASS,
-        sync
+        solverPoint.sync
     )
 
     override fun saveCellData() : CompoundTag {
@@ -428,11 +425,88 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
     @ServerOnly
     private var phaseChangeThermalPower = 0.0
 
+    class NeighborReader(val blockEntity: DistillationModuleBlockEntity) {
+        var refluxNeighbor: DistillationModuleBlockEntity? = null
+        var outflowNeighbor: DistillationModuleBlockEntity? = null
+        val horizontalNeighbors = Array<DistillationModuleBlockEntity?>(4) { null }
+        private val allTargetLocks = ArrayList<SimulationExecutionSubgraph.SynchronizationPrimitive>(6)
+
+        /**
+         * Acquires all required neighbors and creates the structured lock.
+         * */
+        fun acquire() : SimulationExecutionSubgraph.StructuredLock {
+            val level = blockEntity.level!!
+            val blockPos = blockEntity.blockPos
+
+            refluxNeighbor = (level.getBlockEntity(blockPos.below()) as? DistillationModuleBlockEntity)?.also {
+                allTargetLocks.add(it.cell.solverPoint)
+            }
+
+            for (i in 0 until 4) {
+                val targetPos = blockPos + FacingDirection.byIndex(i).direction
+
+                val targetModule = if(level.isLoaded(targetPos)) {
+                    level.getBlockEntity(targetPos) as? DistillationModuleBlockEntity
+                }
+                else {
+                    null
+                }
+
+                horizontalNeighbors[i] = targetModule
+
+                if(targetModule != null) {
+                    allTargetLocks.add(targetModule.cell.solverPoint)
+                }
+            }
+
+            val currentPos = blockPos.mutable()
+            while (true) {
+                currentPos.y++
+                val block = level.getBlockState(currentPos).block
+
+                if(block is DistillationColumnBlock) {
+                    /**
+                     * Move upward:
+                     * */
+                    continue
+                }
+
+                if(block !is DistillationModuleBlock) {
+                    /**
+                     * No module to transfer to:
+                     * */
+                    break
+                }
+
+                outflowNeighbor = (level.getBlockEntity(currentPos) as? DistillationModuleBlockEntity)?.also {
+                    allTargetLocks.add(it.cell.solverPoint)
+                }
+
+                break
+            }
+
+            return SimulationExecutionSubgraph.StructuredLock.create(allTargetLocks)
+        }
+
+        /**
+         * Clears all data.
+         * */
+        fun clear() {
+            refluxNeighbor = null
+            outflowNeighbor = null
+
+            for (i in 0 until 4) {
+                horizontalNeighbors[i] = null
+            }
+
+            allTargetLocks.clear()
+        }
+    }
+
+    private val neighborReader = NeighborReader(this)
+
     //#region Distillation Loop
 
-    // P.S. The algorithms may seem inefficient, but we are only dealing with 1-2 things at a time, so they are good for now.
-
-    private val horizontalNeighbors = Array<DistillationModuleBlockEntity?>(4) { null }
     private val horizontalTransportAmounts = DoubleArray(4)
     private val horizontalTransportIndices = IntArray(4) { -1 }
 
@@ -445,27 +519,9 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
             return
         }
 
-        val level = level as ServerLevel
-        val horizontalNeighbors = horizontalNeighbors
+        val horizontalNeighbors = neighborReader.horizontalNeighbors
 
-        /**
-         * Fetches neighbors.
-         * P.S. we can make a cache and invalidate with [Block.neighborChanged], but we don't expect many distillation modules in the world:
-         * */
-        var hasNeighbors = false
-        for (i in 0 until 4) {
-            val targetPos = blockPos + FacingDirection.byIndex(i).direction
-
-            horizontalNeighbors[i] = if(level.isLoaded(targetPos)) {
-                hasNeighbors = true
-                level.getBlockEntity(targetPos) as? DistillationModuleBlockEntity
-            }
-            else {
-                null
-            }
-        }
-
-        if(!hasNeighbors) {
+        if(horizontalNeighbors.all { it == null }) {
             return
         }
 
@@ -618,7 +674,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
             return
         }
 
-        val target = level!!.getBlockEntity(blockPos.below()) as? DistillationModuleBlockEntity
+        val target = neighborReader.refluxNeighbor
             ?: return
 
         val targetTank = target.liquidTank
@@ -879,15 +935,8 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
     private fun phaseChange() {
         phaseChangeThermalPower = 0.0
 
-        cell.sync.lock()
-
-        try {
-            evaporation()
-            condensation()
-        }
-        finally {
-            cell.sync.unlock()
-        }
+        evaporation()
+        condensation()
 
         phaseChangeThermalPower /= 1.0 / 20.0
     }
@@ -901,50 +950,26 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
             return
         }
 
-        val currentPos = blockPos.mutable()
+        val targetModule = neighborReader.outflowNeighbor
+            ?: return
 
-        while (true) {
-            currentPos.y++
+        /**
+         * Order by lowest density first:
+         * */
+        val gases = gasTank.fluids.sortedBy {
+            PhysicalFluidManager.requireProperties(it.fluid).density
+        }
 
-            val block = level!!.getBlockState(currentPos).block
+        for (stack in gases) {
+            val transfer = targetModule.gasTank.fillFractional(stack, IFluidHandler.FluidAction.EXECUTE)
 
-            if(block is DistillationColumnBlock) {
-                /**
-                 * Move upward:
-                 * */
-                continue
+            if (transfer > 0) {
+                gasTank.drainFractional(FractionalFluidStack(stack.fluid, transfer), IFluidHandler.FluidAction.EXECUTE)
+                setChanged()
             }
-
-            if(block !is DistillationModuleBlock) {
-                /**
-                 * No module to transfer to:
-                 * */
+            else {
                 break
             }
-
-            val targetModule = level?.getBlockEntity(currentPos) as? DistillationModuleBlockEntity
-                ?: return
-
-            /**
-             * Order by lowest density first:
-             * */
-            val gases = gasTank.fluids.sortedBy {
-                PhysicalFluidManager.requireProperties(it.fluid).density
-            }
-
-            for (stack in gases) {
-                val transfer = targetModule.gasTank.fillFractional(stack, IFluidHandler.FluidAction.EXECUTE)
-
-                if (transfer > 0) {
-                    gasTank.drainFractional(FractionalFluidStack(stack.fluid, transfer), IFluidHandler.FluidAction.EXECUTE)
-                    setChanged()
-                }
-                else {
-                    break
-                }
-            }
-
-            break
         }
     }
 
@@ -952,25 +977,31 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
      * This order is important.
      * */
     fun serverTick() {
-        /**
-         * Transports liquids to neighbor modules.
-         * */
-        horizontalDistribution()
+        val lock = neighborReader.acquire()
 
-        /**
-         * Moves fluid to modules below:
-         * */
-        reflux()
+        lock.executeTransaction {
+            /**
+             * Transports liquids to neighbor modules.
+             * */
+            horizontalDistribution()
 
-        /**
-         * Performs evaporation/condensation.
-         * */
-        phaseChange()
+            /**
+             * Moves fluid to modules below:
+             * */
+            reflux()
 
-        /**
-         * Pushes gas up into modules above.
-         * */
-        gasOutflow()
+            /**
+             * Performs evaporation/condensation.
+             * */
+            phaseChange()
+
+            /**
+             * Pushes gas up into modules above.
+             * */
+            gasOutflow()
+        }
+
+        neighborReader.clear()
     }
 
     //#endregion
