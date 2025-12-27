@@ -71,7 +71,7 @@ import org.eln2.mc.common.cells.foundation.Node
 import org.eln2.mc.common.cells.foundation.SidedElectricalMonoMapped
 import org.eln2.mc.common.cells.foundation.SimObject
 import org.eln2.mc.common.cells.foundation.SubscriberCollection
-import org.eln2.mc.common.cells.foundation.SubscriberPhase
+import org.eln2.mc.common.cells.foundation.SimulationPhase
 import org.eln2.mc.common.cells.foundation.addPost
 import org.eln2.mc.common.containers.MyAbstractContainerScreen
 import org.eln2.mc.common.content.modules.Eln2Signal
@@ -455,12 +455,12 @@ class OscilloscopeCell(ci: CellCreateInfo, override val electricalMap: MonopoleM
 
     private var listener: OscilloscopeSampleConsumer? = null
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         super.subscribe(subscribers)
         subscribers.addPost(this::sampleAndRaiseEvent)
     }
 
-    private fun sampleAndRaiseEvent(dt: Double, phase: SubscriberPhase) {
+    private fun sampleAndRaiseEvent(dt: Double, phase: SimulationPhase) {
         val consumer = listener
             ?: return
 

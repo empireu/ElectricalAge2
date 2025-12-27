@@ -138,19 +138,19 @@ abstract class PassthroughElectricalProbeObject(
         signalSource.build(map)
     }
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPost(this::tick)
     }
 
     /**
      * Gets the quantity passed to the [signalMap] every tick.
      * */
-    abstract fun getMeasuredQuantity(dt: Double, subscriberPhase: SubscriberPhase) : Double
+    abstract fun getMeasuredQuantity(dt: Double, subscriberPhase: SimulationPhase) : Double
 
     /**
      * Sets the signal with the measurements from the [internalResistor].
      * */
-    fun tick(dt: Double, subscriberPhase: SubscriberPhase) {
+    fun tick(dt: Double, subscriberPhase: SimulationPhase) {
         val quantity = getMeasuredQuantity(dt, subscriberPhase)
         val signal = signalMap.getSignal(quantity)
         signalSource.signal = signal
@@ -165,7 +165,7 @@ class PotentialProbeObject(
 ) : PassthroughElectricalProbeObject(cell, comparerMap, outputMap, signalMap) {
     init { internalResistor.resistance = 1e7 }
 
-    override fun getMeasuredQuantity(dt: Double, subscriberPhase: SubscriberPhase) = internalResistor.potential
+    override fun getMeasuredQuantity(dt: Double, subscriberPhase: SimulationPhase) = internalResistor.potential
 }
 
 class PotentialProbeCell(

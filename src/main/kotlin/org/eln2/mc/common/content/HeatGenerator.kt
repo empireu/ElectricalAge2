@@ -480,7 +480,7 @@ abstract class BurnerCell(ci: CellCreateInfo, val burnerCellOptions: BurnerCellO
     var lastOutputOxygenMassFlowRate = 0.0
         private set
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPre(this::tick)
     }
 
@@ -489,7 +489,7 @@ abstract class BurnerCell(ci: CellCreateInfo, val burnerCellOptions: BurnerCellO
      * */
     protected abstract fun calculateFlow(dt: Double)
 
-    protected fun tick(dt: Double, phase: SubscriberPhase) {
+    protected fun tick(dt: Double, phase: SimulationPhase) {
         ignitionUpdate.consume {
             ignition = it
         }
@@ -1165,9 +1165,9 @@ class FuelBurnerBehavior(val cell: Cell, val body: ThermalMass) : CellBehavior {
 
     val isBurning get() = thermalPower > 10.0
 
-    override fun subscribe(subscribers: SubscriberCollection) = subscribers.addPre(this::simulationTick)
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) = subscribers.addPre(this::simulationTick)
 
-    private fun simulationTick(dt: Double, phase: SubscriberPhase) {
+    private fun simulationTick(dt: Double, phase: SimulationPhase) {
         updates.consume {
             fuel = it
             pid.reset()

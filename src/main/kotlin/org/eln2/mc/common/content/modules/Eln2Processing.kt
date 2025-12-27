@@ -301,7 +301,15 @@ object Eln2Processing : ContentModule() {
 
     //#region Distillation
 
+    val DISTILLATION_COLUMN_CELL = cellImmediate("distillation_column", ::DistillationColumnCell)
+
     val DISTILLATION_COLUMN_BLOCK = blockAndItemAndDrop("distillation_column", ::DistillationColumnBlock)
+
+    val DISTILLATION_COLUMN_BLOCK_ENTITY = blockEntityOnly(
+        "distillation_column",
+        DISTILLATION_COLUMN_BLOCK,
+        ::DistillationColumnBlockEntity
+    )
 
     val INSULATED_DISTILLATION_MODULE_CELL = cellMemoize("insulated_distillation_module") {
         val leakage = ConnectionParameters(conductance = Quantity(0.1, WATT_PER_KELVIN))

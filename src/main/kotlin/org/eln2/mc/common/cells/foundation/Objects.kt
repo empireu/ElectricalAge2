@@ -47,14 +47,14 @@ abstract class SimulationObject<C : Cell>(val cell: C) {
      * Called when subscribers should be added, after the graph changes.
      * This is called after [Cell.subscribe]
      * */
-    protected open fun subscribe(subscribers: SubscriberCollection) { }
+    protected open fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) { }
 
     /**
      * Called when subscribers should be added, after the graph changes.
      * These subscribers are for the game thread.
      * This is called after [Cell.subscribeServerThread]
      * */
-    protected open fun subscribeServerThread(subscribers: SubscriberCollection) { }
+    protected open fun subscribeServerThread(subscribers: SubscriberCollection<ServerPhase>) { }
 
     /**
      * Called when the solver is being built.
@@ -530,14 +530,14 @@ class ThermalBipoleObject<C : Cell>(
         b2.temperature = tag.getQuantity(B2)
     }
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addSubscriber(
-            SubscriberOptions(100, SubscriberPhase.Post),
+            SubscriberOptions(100, SimulationPhase.Post),
             this::simulationTick
         )
     }
 
-    private fun simulationTick(dt: Double, phase: SubscriberPhase) {
+    private fun simulationTick(dt: Double, phase: SimulationPhase) {
         val flag = !b1.temperature.value.approxEq(lastTemperatureB1) || !b2.temperature.value.approxEq(lastTemperatureB2)
 
         cell.setChangedIf(flag) {

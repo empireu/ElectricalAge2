@@ -102,14 +102,14 @@ class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass, val environmen
 
     override fun getContactTemperature(other: Cell) = thermalBody.temperature
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addSubscriber(
-            SubscriberOptions(100, SubscriberPhase.Post),
+            SubscriberOptions(100, SimulationPhase.Post),
             this::simulationTick
         )
     }
 
-    private fun simulationTick(dt: Double, phase: SubscriberPhase) {
+    private fun simulationTick(dt: Double, phase: SimulationPhase) {
         cell.setChangedIf(!thermalBody.temperature.value.approxEq(lastTemperature)) {
             lastTemperature = thermalBody.temperature.value
         }

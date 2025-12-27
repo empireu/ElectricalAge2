@@ -44,7 +44,7 @@ interface CellBehavior {
      * Subscribers can be added here.
      * */
     @OnServerThread
-    fun subscribe(subscribers: SubscriberCollection) { }
+    fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) { }
 
     /**
      * Called when the subscriber collection is being set up.
@@ -54,7 +54,7 @@ interface CellBehavior {
      * - The `Post` updates are executed just after the simulations have finished and just before the bulk data is dispatched, which means this is the ideal place to synchronize.
      * */
     @OnServerThread
-    fun subscribeServerThread(subscribers: SubscriberCollection) { }
+    fun subscribeServerThread(subscribers: SubscriberCollection<ServerPhase>) { }
 
     /**
      * Called when the behavior is destroyed.
@@ -114,11 +114,11 @@ class CellBehaviorContainer {
  * Converts dissipated electrical energy to thermal energy.
  * */
 class PowerHeatingBehavior(private val power: () -> Double, val body: ThermalMass) : CellBehavior {
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPre(this::simulationTick)
     }
 
-    private fun simulationTick(dt: Double, p: SubscriberPhase) {
+    private fun simulationTick(dt: Double, p: SimulationPhase) {
         body.energy += Quantity(power() * dt, JOULE)
     }
 }
@@ -297,7 +297,7 @@ private fun<T> addToleranceQ(q: Quantity<T>, index: Int, locator: Locator) = Qua
 
 abstract class ExplosionBehavior(private val consumer: ExplosionConsumer) : CellBehavior {
     var interval = 10
-    var phase = SubscriberPhase.Post
+    var phase = SimulationPhase.Post
 
     // Not saved, I didn't think it would be worthwhile
     // Only some weird chunk unloading could cause this to matter
@@ -314,14 +314,14 @@ abstract class ExplosionBehavior(private val consumer: ExplosionConsumer) : Cell
     private val explosionResult = AtomicReference<State>(null)
     private var isGameObjectExploded = false
 
-    final override fun subscribe(subscribers: SubscriberCollection) {
+    final override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addSubscriber(
             SubscriberOptions(interval, phase),
             this::simulationTick
         )
     }
 
-    private fun simulationTick(dt: Double, phase: SubscriberPhase) {
+    private fun simulationTick(dt: Double, phase: SimulationPhase) {
         if(isTriggered) {
             updateTriggeredState()
         }
@@ -342,7 +342,7 @@ abstract class ExplosionBehavior(private val consumer: ExplosionConsumer) : Cell
         }
     }
 
-    protected abstract fun updateScore(dt: Double, phase: SubscriberPhase)
+    protected abstract fun updateScore(dt: Double, phase: SimulationPhase)
 
     private fun updateTriggeredState() {
         if(isGameObjectExploded) {
@@ -391,7 +391,7 @@ class ThermalBreakdownBehavior private constructor(
     val options: TemperatureExplosionBehaviorOptions,
     consumer: ExplosionConsumer,
 ) : ExplosionBehavior(consumer) {
-    override fun updateScore(dt: Double, phase: SubscriberPhase) {
+    override fun updateScore(dt: Double, phase: SimulationPhase) {
         val temperature = temperatureAccessor()
 
         if (temperature > options.temperatureThreshold) {
@@ -465,7 +465,7 @@ class DielectricBreakdownBehavior private constructor(val locator: Locator, val 
         i = 0
     }
 
-    override fun updateScore(dt: Double, phase: SubscriberPhase) {
+    override fun updateScore(dt: Double, phase: SimulationPhase) {
         if(examined.size > options.maxObjects) {
             error("Lingering dielectric breakdowns! ${examined.size}")
         }
@@ -582,7 +582,7 @@ class OverPowerBehavior private constructor(
     val options: OverPowerBehaviorOptions,
     consumer: ExplosionConsumer,
 ) : ExplosionBehavior(consumer) {
-    override fun updateScore(dt: Double, phase: SubscriberPhase) {
+    override fun updateScore(dt: Double, phase: SimulationPhase) {
         val power = abs(powerAccessor())
 
         if (power > !options.powerThreshold) {
@@ -615,7 +615,7 @@ class KineticBreakdownBehavior private constructor(
         interval = 0
     }
 
-    override fun updateScore(dt: Double, phase: SubscriberPhase) {
+    override fun updateScore(dt: Double, phase: SimulationPhase) {
         val speed = abs(omegaAccessor())
 
         if(speed > !options.angularVelocityThreshold) {
@@ -654,7 +654,7 @@ class KineticStressBehavior private constructor(
         interval = 0
     }
 
-    override fun updateScore(dt: Double, phase: SubscriberPhase) {
+    override fun updateScore(dt: Double, phase: SimulationPhase) {
         val torque = abs(torqueAccessor())
 
         if(torque > !options.torqueThreshold) {
@@ -746,16 +746,16 @@ class RadiantEmissionBehavior private constructor(val cell: Cell, bodies: Map<Th
     }
 
     var interval = 10
-    var phase = SubscriberPhase.Post
+    var phase = SimulationPhase.Post
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addSubscriber(
             SubscriberOptions(interval, phase),
             this::simulationTick
         )
     }
 
-    private fun simulationTick(dt: Double, phase: SubscriberPhase) {
+    private fun simulationTick(dt: Double, phase: SimulationPhase) {
         val commandList = Scheduler.begin()
 
         commandList.terminateIf {

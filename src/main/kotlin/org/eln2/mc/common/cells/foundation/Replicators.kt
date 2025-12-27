@@ -84,16 +84,16 @@ fun interface InternalMultiThermalBodyTemperatureConsumer {
  * */
 class InternalMultiThermalBodyTemperatureReplicatorBehavior(val bodies: List<ThermalMass>, val consumer: InternalMultiThermalBodyTemperatureConsumer) : ReplicatorBehavior {
     var scanInterval = 5
-    var scanPhase = SubscriberPhase.Pre
+    var scanPhase = SimulationPhase.Pre
     var tolerance = 1.0
 
     private val tracked = Reference2DoubleArrayMap<ThermalMass>()
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addSubscriber(SubscriberOptions(scanInterval, scanPhase), this::scan)
     }
 
-    private fun scan(dt: Double, phase: SubscriberPhase) {
+    private fun scan(dt: Double, phase: SimulationPhase) {
         val dirty = bodies.filter {
             !tracked.getDouble(it).approxEq(!it.temperature, tolerance)
         }
@@ -125,16 +125,16 @@ fun interface InternalTemperatureConsumer {
  * */
 class InternalTemperatureReplicatorBehavior(val consumer: InternalTemperatureConsumer, val supplier: Supplier<Double>) : ReplicatorBehavior {
     var scanInterval = 5
-    var scanPhase = SubscriberPhase.Pre
+    var scanPhase = SimulationPhase.Pre
     var tolerance = 1.0
 
     private var tracked = 0.0
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addSubscriber(SubscriberOptions(scanInterval, scanPhase), this::scan)
     }
 
-    private fun scan(dt: Double, phase: SubscriberPhase) {
+    private fun scan(dt: Double, phase: SimulationPhase) {
         val temperature = supplier.get()
 
         if(temperature.approxEq(tracked, tolerance)) {
@@ -165,7 +165,7 @@ fun interface ExternalTemperatureConsumer {
  * */
 class ExternalTemperatureReplicatorBehavior(val cell: Cell, val consumer: ExternalTemperatureConsumer) : ReplicatorBehavior {
     var scanInterval = 5
-    var scanPhase = SubscriberPhase.Pre
+    var scanPhase = SimulationPhase.Pre
     var tolerance = 1.0
 
     /**
@@ -186,11 +186,11 @@ class ExternalTemperatureReplicatorBehavior(val cell: Cell, val consumer: Extern
      * */
     private val dirty = HashMap<ThermalObject<*>, Double>()
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addSubscriber(SubscriberOptions(scanInterval, scanPhase), this::scan)
     }
 
-    private fun scan(dt: Double, phase: SubscriberPhase) {
+    private fun scan(dt: Double, phase: SimulationPhase) {
         lostObjects.clear()
         lostObjects.addAll(trackedObjects.keys)
         dirty.clear()
@@ -296,15 +296,15 @@ class InternalKineticReplicatorBehavior(
 
     private var simulationTime = 0.0
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPost { dt, phase ->
             simulationTime += dt
         }
     }
 
-    override fun subscribeServerThread(subscribers: SubscriberCollection) {
-        subscribers.addPre(this::updatePreServer)
-        subscribers.addPost(this::updatePostServer)
+    override fun subscribeServerThread(subscribers: SubscriberCollection<ServerPhase>) {
+        subscribers.addStart(this::updatePreServer)
+        subscribers.addEnd(this::updatePostServer)
     }
 
     private var isDirty = false
@@ -314,7 +314,7 @@ class InternalKineticReplicatorBehavior(
      * Sets [isDirty] and sets [KineticReSyncFlag] (if the [simulationSupplier] is not null).
      * */
     @OnServerThread
-    private fun updatePreServer(dt: Double, phase: SubscriberPhase) {
+    private fun updatePreServer(dt: Double, phase: ServerPhase) {
         val currentState = stateSupplier.get()
 
         val trackedRotation = Rotation2d.exp(trackedAngle + trackedVelocity * simulationTime)
@@ -338,7 +338,7 @@ class InternalKineticReplicatorBehavior(
      * Checks if [isDirty] was set or if the sub-solver has [KineticReSyncFlag] (if the [simulationSupplier] is not null).
      * */
     @OnServerThread
-    private fun updatePostServer(dt: Double, phase: SubscriberPhase) {
+    private fun updatePostServer(dt: Double, phase: ServerPhase) {
         val subSolver = simulationSupplier?.get()
 
         if(!isDirty && (subSolver == null || !cell.graph.kineticFlagsSimulation.isSet(subSolver, KineticReSyncFlag))) {

@@ -149,12 +149,12 @@ abstract class LightCell(ci: CellCreateInfo, val lightVariantType: LightVariantT
         renderBrightnessConsumer = null
     }
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPre(this::simulationTick) // maybe reduce interval
     }
 
     @OnSimulationThread
-    private fun simulationTick(dt: Double, phase: SubscriberPhase) {
+    private fun simulationTick(dt: Double, phase: SimulationPhase) {
         val lightModel = this.lightBulb?.model
 
         if(lightModel == null || life approxEq 0.0) {

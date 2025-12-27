@@ -66,7 +66,7 @@ class DoubleJointObject(cell: DoubleJointCell, friction: FrictionNodeDescription
 
     override fun offerExtension(remote: KineticObject<*>) = node.chooseExtension(cell.map, remote)
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         if(thermalBody != null) {
             subscribers.addPost { dt, phase ->
                 thermalBody.energy += Quantity(node.deltaHeatFromFriction, JOULE)
@@ -172,7 +172,7 @@ class TripleJointObject(cell: TripleJointCell, friction: FrictionNodeDescription
         return null
     }
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         if(thermalBody != null) {
             subscribers.addPost { dt, phase ->
                 thermalBody.energy += Quantity(node.deltaHeatFromFriction, JOULE)

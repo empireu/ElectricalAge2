@@ -127,7 +127,7 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
         )
     }
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPre(this::tickPre)
         subscribers.addPost(this::tickPost)
     }
@@ -160,7 +160,7 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
         outputSource.maxPotential = !setpointPotential
     }
 
-    private fun tickPre(dt: Double, phase: SubscriberPhase) {
+    private fun tickPre(dt: Double, phase: SimulationPhase) {
         setTargetPowerInput(dt)
         setTargetOutput(dt)
     }
@@ -213,7 +213,7 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
         return (consumedFromBuffer - deliveredEnergy).coerceAtLeast(0.0)
     }
 
-    private fun tickPost(dt: Double, phase: SubscriberPhase) {
+    private fun tickPost(dt: Double, phase: SimulationPhase) {
         acceptInputEnergy(dt)
 
         var rejectedEnergy = drainDeliveredEnergy(dt)

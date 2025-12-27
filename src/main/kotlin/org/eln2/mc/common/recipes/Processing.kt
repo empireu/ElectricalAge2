@@ -150,7 +150,7 @@ class MotorProcessingElectricalObject(cell: MotorProcessingCell) : ElectricalObj
         map.join(armatureInductor.negative, potentialSource.positive)
     }
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPre(this::tickPre)
         subscribers.addPost(this::tickPost)
     }
@@ -158,7 +158,7 @@ class MotorProcessingElectricalObject(cell: MotorProcessingCell) : ElectricalObj
     /**
      * Applies load friction, sets the armature resistance and Back-EMF.
      * */
-    private fun tickPre(dt: Double, subscriberPhase: SubscriberPhase) {
+    private fun tickPre(dt: Double, subscriberPhase: SimulationPhase) {
         val options = cell.options.electrical
 
         /**
@@ -203,7 +203,7 @@ class MotorProcessingElectricalObject(cell: MotorProcessingCell) : ElectricalObj
     /**
      * Applies the motor torque, and calculates the processing speed.
      * */
-    private fun tickPost(dt: Double, subscriberPhase: SubscriberPhase) {
+    private fun tickPost(dt: Double, subscriberPhase: SimulationPhase) {
         val options = cell.options
 
         // Torque for the current across the device:
@@ -617,7 +617,7 @@ class KineticProcessingKineticObject(cell: KineticProcessingCell) : KineticObjec
      * */
     var processingSpeed = 0.0
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPre(this::tick)
     }
 
@@ -628,7 +628,7 @@ class KineticProcessingKineticObject(cell: KineticProcessingCell) : KineticObjec
     /**
      * Converts the input power into some thermal power and updates the [processingSpeed].
      * */
-    private fun tick(dt: Double, subscriberPhase: SubscriberPhase) {
+    private fun tick(dt: Double, subscriberPhase: SimulationPhase) {
         val options = cell.options
 
         if(options.thermal != null) {

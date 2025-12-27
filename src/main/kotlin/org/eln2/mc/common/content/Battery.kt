@@ -348,7 +348,7 @@ abstract class BatteryCell(
         deserializeNbt(tag)
     }
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPre(this::simulationTick)
     }
 
@@ -402,7 +402,7 @@ abstract class BatteryCell(
         return true
     }
 
-    private fun simulationTick(elapsed: Double, phase: SubscriberPhase) {
+    private fun simulationTick(elapsed: Double, phase: SimulationPhase) {
         setChangedIf(appliesExternalUpdates())
         setChangedIf(transfersEnergy(elapsed))
 

@@ -129,7 +129,7 @@ interface CellLifetime {
      * For more information, see [CellBehavior.subscribe].
      * Calling the super method is not needed, by convention.
      * */
-    fun subscribe(subscribers: SubscriberCollection) {
+    fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         requireIsOnServerThread {
             "subscribe non-server"
         }
@@ -139,7 +139,7 @@ interface CellLifetime {
      * For more information, see [CellBehavior.subscribeServerThread].
      * Calling the super method is not needed, by convention.
      * */
-    fun subscribeServerThread(subscribers: SubscriberCollection) {
+    fun subscribeServerThread(subscribers: SubscriberCollection<ServerPhase>) {
         requireIsOnServerThread {
             "subscribeServerThread server non-server"
         }
@@ -244,12 +244,12 @@ data class Cell_onUpdate(val connectionsChanged: Boolean, val graphChanged: Bool
  * This is called before [SimulationObject.subscribe].
  * Calling the super method is not needed, by convention.
  * */
-data class Cell_subscribe(val subscribers: SubscriberCollection) : CellLifetimeEvent
+data class Cell_subscribe(val subscribers: SubscriberCollection<SimulationPhase>) : CellLifetimeEvent
 
 /**
  * Called when subscribers for the server thread should be added, after the graph changes.
  * */
-data class Cell_subscribeServer(val subscribers: SubscriberCollection) : CellLifetimeEvent
+data class Cell_subscribeServer(val subscribers: SubscriberCollection<ServerPhase>) : CellLifetimeEvent
 
 /**
  * Called when the build started, right after the connections were cleared.

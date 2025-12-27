@@ -524,7 +524,7 @@ class SimulationExecutionSubgraph(val graph: CellGraph) {
                 /**
                  * Dispatches the pre-update sequentially:
                  * */
-                graph.simulationThreadSubscribers.update(CellGraph.DT, SubscriberPhase.Pre)
+                graph.simulationThreadSubscribers.update(CellGraph.DT, SimulationPhase.Pre)
 
                 /**
                  * Dispatches the sub-solvers in parallel and awaits completion:
@@ -534,7 +534,7 @@ class SimulationExecutionSubgraph(val graph: CellGraph) {
                 /**
                  * Dispatches the post-update sequentially:
                  * */
-                graph.simulationThreadSubscribers.update(CellGraph.DT, SubscriberPhase.Post)
+                graph.simulationThreadSubscribers.update(CellGraph.DT, SimulationPhase.Post)
 
                 ++updates
             }
@@ -787,13 +787,13 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
      * Subscribers for the simulation steps.
      * */
     @OnSimulationThread
-    val simulationThreadSubscribers = SubscriberPool()
+    val simulationThreadSubscribers = SubscriberPool<SimulationPhase>()
 
     /**
      * Subscribers for the server thread tick events.
      * */
     @OnServerThread
-    val serverThreadSubscribers = SubscriberPool()
+    val serverThreadSubscribers = SubscriberPool<ServerPhase>()
 
     var isLoading = false
         private set

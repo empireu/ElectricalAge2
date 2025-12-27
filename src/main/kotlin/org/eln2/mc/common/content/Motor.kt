@@ -180,12 +180,12 @@ class DcMotorCell(
     var lastAppliedTorque = 0.0
         private set
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPre(this::tickPre)
         subscribers.addPost(this::tickPost)
     }
 
-    private fun tickPre(dt: Double, phase: SubscriberPhase) {
+    private fun tickPre(dt: Double, phase: SimulationPhase) {
         // Back-EMF calculation.
         // The back-EMF opposes the applied potential.
         electrical.voltageSource.potential = !options.backEmfConstant * kinetic.node.angularVelocity
@@ -221,7 +221,7 @@ class DcMotorCell(
         thermal.thermalBody.energy += Quantity(wasteHeat, JOULE)
     }
 
-    private fun tickPost(dt: Double, phase: SubscriberPhase) {
+    private fun tickPost(dt: Double, phase: SimulationPhase) {
         driveKineticNode()
         convertLosses(dt)
     }
@@ -245,14 +245,14 @@ class DcMotorCell(
         private var replicatedAngularVelocity = 0.0
         private var replicatedPower = 0.0
 
-        override fun subscribe(subscribers: SubscriberCollection) {
+        override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
             subscribers.addSubscriber(
-                SubscriberOptions(interval, SubscriberPhase.Post),
+                SubscriberOptions(interval, SimulationPhase.Post),
                 this::scan
             )
         }
 
-        private fun scan(dt: Double, subscriberPhase: SubscriberPhase) {
+        private fun scan(dt: Double, subscriberPhase: SimulationPhase) {
             val targetAngularVelocity = kinetic.node.angularVelocity
             val targetPower = electrical.voltageSource.power
 

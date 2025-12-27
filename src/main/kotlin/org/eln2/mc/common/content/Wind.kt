@@ -28,15 +28,12 @@ import org.ageseries.libage.data.NEWTON_METER
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.put
 import org.ageseries.libage.data.requireLocator
-import org.ageseries.libage.mathematics.RotationUpdateProfile2d
-import org.ageseries.libage.mathematics.computeRotationUpdateAccelerationProfileWithAccelerationEstimate
 import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.mathematics.lerp
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.kinetic.KineticMono
 import org.ageseries.libage.sim.kinetic.KineticNodeSet
-import org.ageseries.libage.utils.Stopwatch
 import org.ageseries.libage.utils.addUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.DebugVisualizer
@@ -64,7 +61,7 @@ import org.eln2.mc.common.cells.foundation.RotatingKineticState
 import org.eln2.mc.common.cells.foundation.SidedKinetic
 import org.eln2.mc.common.cells.foundation.SimObject
 import org.eln2.mc.common.cells.foundation.SubscriberCollection
-import org.eln2.mc.common.cells.foundation.SubscriberPhase
+import org.eln2.mc.common.cells.foundation.SimulationPhase
 import org.eln2.mc.common.cells.foundation.addPre
 import org.eln2.mc.common.cells.foundation.pipelikeCellScan
 import org.eln2.mc.common.content.modules.Eln2Kinetic
@@ -759,11 +756,11 @@ class WindTurbineCell(ci: CellCreateInfo, val options: WindTurbineOptions) : Cel
         super.onDestroyed()
     }
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPre(this::tick)
     }
 
-    private fun tick(dt: Double, phase: SubscriberPhase) {
+    private fun tick(dt: Double, phase: SimulationPhase) {
         val handle = handle
             ?: return
 

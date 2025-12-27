@@ -161,23 +161,23 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
      * - Transient - these subscribers live as long as players are watching the game object
      * */
     class SeparatedSubscriberCollections {
-        class Implementation : SubscriberCollection {
-            var wrappedCollection: SubscriberCollection? = null
+        class Implementation<Phase> : SubscriberCollection<Phase> {
+            var wrappedCollection: SubscriberCollection<Phase>? = null
 
             private val underlyingCollection get() = wrappedCollection ?: error("Wrapped collection was not set")
 
-            private val subscribers = HashMap<SimulationSubscriber, SubscriberOptions>()
+            private val subscribers = HashMap<SimulationSubscriber<Phase>, SubscriberOptions<Phase>>()
 
-            fun wrap(targetCollection: SubscriberCollection) {
+            fun wrap(targetCollection: SubscriberCollection<Phase>) {
                 wrappedCollection = targetCollection
             }
 
-            override fun addSubscriber(parameters: SubscriberOptions, subscriber: SimulationSubscriber) {
+            override fun addSubscriber(parameters: SubscriberOptions<Phase>, subscriber: SimulationSubscriber<Phase>) {
                 require(subscribers.put(subscriber, parameters) == null) { "Duplicate subscriber $subscriber" }
                 underlyingCollection.addSubscriber(parameters, subscriber)
             }
 
-            override fun remove(subscriber: SimulationSubscriber) {
+            override fun remove(subscriber: SimulationSubscriber<Phase>) {
                 require(subscribers.remove(subscriber) != null) { "Subscriber $subscriber was never added" }
                 underlyingCollection.remove(subscriber)
             }
@@ -211,22 +211,22 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
         /**
          * Persistent pool dispatched on the simulation thread.
          * */
-        val persistentSimulation = Implementation()
+        val persistentSimulation = Implementation<SimulationPhase>()
 
         /**
          * Persistent pool dispatched on the server thread.
          * */
-        val persistentServer = Implementation()
+        val persistentServer = Implementation<ServerPhase>()
 
         /**
          * Transient pool dispatched on the simulation thread.
          * */
-        val transientSimulation = Implementation()
+        val transientSimulation = Implementation<SimulationPhase>()
 
         /**
          * Transient pool dispatched on the server thread.
          * */
-        val transientServer = Implementation()
+        val transientServer = Implementation<ServerPhase>()
     }
 
     val subscribers = SeparatedSubscriberCollections()
@@ -298,12 +298,12 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
         dispatchLifetime(Cell_onBeginDestroy)
     }
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         super.subscribe(subscribers)
         dispatchLifetime(Cell_subscribe(subscribers))
     }
 
-    override fun subscribeServerThread(subscribers: SubscriberCollection) {
+    override fun subscribeServerThread(subscribers: SubscriberCollection<ServerPhase>) {
         super.subscribeServerThread(subscribers)
         dispatchLifetime(Cell_subscribeServer(subscribers))
     }
@@ -375,7 +375,7 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
 
         // Discuss with me if you want more info
         if(!result && connections.contains(remote)) {
-            LOG.warn("Forcing connection rule")
+            LOG.warn(DEBUGGER_BREAK("Forcing connection rule"))
             return true
         }
 
@@ -514,7 +514,7 @@ abstract class Cell(val locator: Locator, val id: ResourceLocation, val environm
     /**
      * Counts the number of object connections that will happen between this cell and the other cell.
      * */
-    fun countPossibleConnections(remote: Cell) : Int {
+    open fun countPossibleConnections(remote: Cell) : Int {
         var count = 0
 
         this.objects.forEachObject { localObj ->

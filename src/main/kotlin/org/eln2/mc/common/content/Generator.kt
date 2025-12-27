@@ -289,18 +289,18 @@ class ElectricalHeatEngineCell(
         null
     )
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPre(this::preTick)
         subscribers.addPost(this::postTick)
     }
 
-    private fun preTick(dt: Double, phase: SubscriberPhase) {
+    private fun preTick(dt: Double, phase: SimulationPhase) {
         generator.preTick(dt)
         source.generator.maxPotential = !generator.potentialOpenCircuit
         source.generator.targetPower = !generator.availablePower
     }
 
-    private fun postTick(dt: Double, phase: SubscriberPhase) {
+    private fun postTick(dt: Double, phase: SimulationPhase) {
         val power = source.generator.power
 
         if(power < 0.0) {

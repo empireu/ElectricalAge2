@@ -32,14 +32,14 @@ import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityLevelRendererProvider
 import org.eln2.mc.common.cells.foundation.CellGraphManager
+import org.eln2.mc.common.cells.foundation.ServerPhase
 import org.eln2.mc.common.cells.foundation.SimulationExecutionSubgraph
-import org.eln2.mc.common.cells.foundation.SubscriberPhase
 import org.eln2.mc.common.chemistry.FluidTransformationManager
 import org.eln2.mc.common.chemistry.PhysicalFluidManager
-import org.eln2.mc.common.content.modules.ContentModuleManager
 import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.content.WindSystem
 import org.eln2.mc.common.content.fluid.FluidPipeNetworkManager
+import org.eln2.mc.common.content.modules.ContentModuleManager
 import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.events.schedulePost
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
@@ -180,7 +180,7 @@ object ForgeEvents {
         lastTickStopwatch.resetTotal()
     }
 
-    private fun dispatchServerSubscribers(phase: SubscriberPhase) {
+    private fun dispatchServerSubscribers(phase: ServerPhase) {
         forEachGraphManager { manager ->
             manager.forEachGraph { graph ->
                 graph.serverThreadSubscribers.update(1.0 / 20.0, phase)
@@ -222,7 +222,9 @@ object ForgeEvents {
             Scheduler.onServerTick(event)
 
             // Schedule the simulations after those subscribers ran, so they don't get a torn frame:
-            dispatchServerSubscribers(SubscriberPhase.Pre)
+            dispatchServerSubscribers(ServerPhase.Start)
+            dispatchServerSubscribers(ServerPhase.AfterStart1)
+            dispatchServerSubscribers(ServerPhase.AfterStart2)
             dispatchAllSimulations()
         }
         else {
@@ -238,7 +240,8 @@ object ForgeEvents {
 
             // Await simulation completion, dispatch those subscribers, clear simulation flags, then flush messages:
             awaitAllSimulations()
-            dispatchServerSubscribers(SubscriberPhase.Post)
+            dispatchServerSubscribers(ServerPhase.End)
+            dispatchServerSubscribers(ServerPhase.AfterEnd)
             advanceServerFrames()
             BulkMessages.flush()
 

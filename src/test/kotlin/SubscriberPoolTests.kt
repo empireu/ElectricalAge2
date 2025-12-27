@@ -1,34 +1,34 @@
 import org.eln2.mc.common.cells.foundation.SubscriberPool
 import org.eln2.mc.common.cells.foundation.SubscriberOptions
-import org.eln2.mc.common.cells.foundation.SubscriberPhase
+import org.eln2.mc.common.cells.foundation.SimulationPhase
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.fail
 
 class SubscriberPoolTests {
     @Test
     fun testIntervalAddRemove(){
-        val collection = SubscriberPool()
+        val collection = SubscriberPool<SimulationPhase>()
 
-        val instantParams = SubscriberOptions(0, SubscriberPhase.Pre)
-        val slowParams = SubscriberOptions(10, SubscriberPhase.Pre)
-        val slowPostParams = SubscriberOptions(10, SubscriberPhase.Post)
+        val instantParams = SubscriberOptions(0, SimulationPhase.Pre)
+        val slowParams = SubscriberOptions(10, SimulationPhase.Pre)
+        val slowPostParams = SubscriberOptions(10, SimulationPhase.Post)
 
         var instantHits = 0
         var slowHits = 0
         var slowHitsPost = 0
 
-        fun instant(dt: Double, phase: SubscriberPhase){
-            if(phase != SubscriberPhase.Pre){
+        fun instant(dt: Double, phase: SimulationPhase){
+            if(phase != SimulationPhase.Pre){
                 fail("Invalid phase")
             }
 
             instantHits++
         }
 
-        fun slow(dt: Double, phase: SubscriberPhase){
+        fun slow(dt: Double, phase: SimulationPhase){
             when(phase){
-                SubscriberPhase.Pre -> slowHits++
-                SubscriberPhase.Post -> slowHitsPost++
+                SimulationPhase.Pre -> slowHits++
+                SimulationPhase.Post -> slowHitsPost++
             }
         }
 
@@ -39,9 +39,9 @@ class SubscriberPoolTests {
         assert(collection.subscriberCount == 2)
 
         repeat(100 * slowParams.interval){ iter10 ->
-            collection.update(0.0, SubscriberPhase.Pre)
-            collection.update(0.0, SubscriberPhase.Pre)
-            collection.update(0.0, SubscriberPhase.Post)
+            collection.update(0.0, SimulationPhase.Pre)
+            collection.update(0.0, SimulationPhase.Pre)
+            collection.update(0.0, SimulationPhase.Post)
 
             val count = iter10 + 1
 
@@ -56,11 +56,11 @@ class SubscriberPoolTests {
 
         val previousHit = instantHits
 
-        collection.update(0.0, SubscriberPhase.Pre)
+        collection.update(0.0, SimulationPhase.Pre)
 
         assert(previousHit == instantHits)
 
-        fun removeWhilstIterating(dt: Double, phase: SubscriberPhase){
+        fun removeWhilstIterating(dt: Double, phase: SimulationPhase){
             collection.remove(::removeWhilstIterating)
         }
 
@@ -68,7 +68,7 @@ class SubscriberPoolTests {
 
         assert(collection.subscriberCount == 2)
 
-        collection.update(0.0, SubscriberPhase.Pre)
+        collection.update(0.0, SimulationPhase.Pre)
 
         assert(collection.subscriberCount == 1)
 

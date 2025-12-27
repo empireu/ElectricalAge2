@@ -514,7 +514,7 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci), GridConnectionOwner {
         thermal.initialize()
     }
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPre(this::simulationTick)
     }
 
@@ -522,7 +522,7 @@ class GridConnectionCell(ci: CellCreateInfo) : Cell(ci), GridConnectionOwner {
     private var sentTemperature: Quantity<Temperature> = Quantity(-1.0, KELVIN)
     private var isMelting = false
 
-    private fun simulationTick(dt: Double, phase: SubscriberPhase) {
+    private fun simulationTick(dt: Double, phase: SimulationPhase) {
         if(isMelting) {
             return
         }

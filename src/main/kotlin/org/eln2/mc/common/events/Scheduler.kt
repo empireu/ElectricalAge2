@@ -77,7 +77,8 @@ interface CommandList {
  * */
 @Mod.EventBusSubscriber
 object Scheduler {
-    private var timeStamp = 0L
+    var timeStamp = 0L
+        private set
     private val eventQueues = HashMap<EventListener, EventQueueImplementation>()
     private val lock = ReentrantReadWriteLock()
 

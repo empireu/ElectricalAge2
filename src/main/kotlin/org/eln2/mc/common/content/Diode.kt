@@ -77,11 +77,11 @@ class DiodeCell(
         it.addPort(electrical.diode, !model.dielectricBreakdown, !model.dielectricBreakdown)
     }
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPost(this::tickPost)
     }
 
-    private fun tickPost(dt: Double, phase: SubscriberPhase) {
+    private fun tickPost(dt: Double, phase: SimulationPhase) {
         thermal.thermalBody.energy += Quantity(electrical.diode.power * dt, JOULE)
     }
 }

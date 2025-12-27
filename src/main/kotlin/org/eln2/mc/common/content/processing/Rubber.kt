@@ -12,12 +12,10 @@ import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet
 import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue
-import it.unimi.dsi.fastutil.longs.LongArraySet
 import kotlinx.serialization.Serializable
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.RegistryAccess
-import net.minecraft.core.SectionPos
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
@@ -79,7 +77,6 @@ import org.eln2.mc.data.MonopoleMap
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.BlockPosInt
 import java.util.*
@@ -545,7 +542,7 @@ class VulcanizingAutoclaveMainCell(ci: CellCreateInfo) : Cell(ci) {
         }
     }
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPre(this::tick)
     }
 
@@ -572,7 +569,7 @@ class VulcanizingAutoclaveMainCell(ci: CellCreateInfo) : Cell(ci) {
     /**
      * Applies thermal loss due to the recipe and, if the door is open, applies a large penalty.
      * */
-    private fun tick(dt: Double, phase: SubscriberPhase) {
+    private fun tick(dt: Double, phase: SimulationPhase) {
         if(!isFormed) {
             return
         }

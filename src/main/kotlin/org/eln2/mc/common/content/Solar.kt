@@ -74,11 +74,11 @@ class PhotovoltaicGeneratorObject(cell: PhotovoltaicGeneratorCell) : ElectricalO
         map.join(powerSource.positive, seriesResistor.negative)
     }
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPre(this::tick)
     }
 
-    private fun tick(dt: Double, phase: SubscriberPhase) {
+    private fun tick(dt: Double, phase: SimulationPhase) {
         val irradiance = cell.irradianceFactor()
 
         /**

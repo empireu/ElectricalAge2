@@ -125,11 +125,11 @@ class FurnaceCell(ci: CellCreateInfo, override val electricalMap: PoleMap) : Cel
      * */
     var isActive = false
 
-    override fun subscribe(subscribers: SubscriberCollection) {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPre(this::simulationTick)
     }
 
-    private fun simulationTick(elapsed: Double, phase: SubscriberPhase) {
+    private fun simulationTick(elapsed: Double, phase: SimulationPhase) {
         resistorThermalMass.energy += abs(resistor.component.power) * elapsed
         environmentSimulator.step(elapsed)
 
