@@ -49,7 +49,14 @@ import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.fluids.capability.IFluidHandler
 import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.items.SlotItemHandler
+import org.ageseries.libage.data.CELSIUS
+import org.ageseries.libage.data.OptionalDouble
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.Temperature
+import org.ageseries.libage.data.classify
+import org.ageseries.libage.data.put
 import org.ageseries.libage.mathematics.geometry.Vector2di
+import org.ageseries.libage.mathematics.map
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
@@ -65,18 +72,24 @@ import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockWithCustomCol
 import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
 import org.eln2.mc.common.blocks.foundation.MultiblockTransformations
 import org.eln2.mc.common.blocks.foundation.ReplaceVanillaParticlesBlockExtension
+import org.eln2.mc.common.cells.foundation.CellEnvironment
 import org.eln2.mc.common.containers.ContainerHelper
 import org.eln2.mc.common.containers.ProgressContainerData
 import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
 import org.eln2.mc.common.content.modules.Eln2Processing
+import org.eln2.mc.common.fluids.foundation.EscapingMultipleFractionalFluidTank
 import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
-import org.eln2.mc.common.fluids.foundation.MultipleFractionalFluidTank
+import org.eln2.mc.common.fluids.foundation.IFractionalFluidHandler
+import org.eln2.mc.common.fluids.foundation.IThermalFluidHandler
 import org.eln2.mc.common.fluids.foundation.PurityBasedMultipleFractionalFluidTank
+import org.eln2.mc.common.fluids.foundation.ThermalFluidStack
 import org.eln2.mc.common.recipes.foundation.*
+import org.eln2.mc.data.Locators
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3dMask
+import org.joml.SimplexNoise
 import java.util.*
 import java.util.function.Consumer
 import kotlin.jvm.optionals.getOrNull
@@ -394,9 +407,43 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
         }
     }
 
+    override fun setLevel(pLevel: Level) {
+        super.setLevel(pLevel)
+
+        if(!pLevel.isClientSide) {
+            environment = CellEnvironment.evaluate(
+                pLevel,
+                Locators.buildLocator {
+                    it.put(BLOCK, blockPos)
+                }
+            )
+
+            if(savedOperationData != null) {
+                val optional = pLevel.recipeManager.byKey(savedOperationData!!.operationId)
+
+                if(optional.isEmpty || optional.get() !is CokingRecipe) {
+                    LOG.error("Failed to restore coking recipe \"${savedOperationData!!.operationId}\": ${optional.getOrNull()}")
+                }
+                else {
+                    operation = Operation(optional.get() as CokingRecipe, savedOperationData!!.progress)
+                }
+
+                savedOperationData = null
+
+                /**
+                 * We didn't persist this flag, so we set it here to make sure we check for a new recipe:
+                 * */
+                inventoryHandler.dirty = true
+            }
+        }
+    }
+
     val data = ProgressContainerData()
 
     //#region Multiblock Setup
+
+    override val delegateMap: MultiblockDelegateMap
+        get() = Eln2Processing.COKE_OVEN_DELEGATE_MAP.value
 
     override fun onDelegateUse(
         delegate: BlockEntity,
@@ -412,31 +459,6 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
     //#endregion
 
     //#region Capability
-
-    val inventoryHandler = InventoryHandler(this)
-    val inventoryHandlerLazy: LazyOptional<InventoryHandler> = LazyOptional.of { inventoryHandler }
-
-    val tank = MultipleFractionalFluidTank(1000.0, false, this::setChanged)
-    val fluidHandler = FluidHandler(tank, this)
-    val fluidHandlerLazy: LazyOptional<FluidHandler> = LazyOptional.of { fluidHandler }
-
-    override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
-        if (cap == ForgeCapabilities.ITEM_HANDLER) {
-            return inventoryHandlerLazy.cast()
-        }
-
-        if (cap == ForgeCapabilities.FLUID_HANDLER) {
-            return fluidHandlerLazy.cast()
-        }
-
-        return super.getCapability(cap, side)
-    }
-
-    override fun invalidateCaps() {
-        super.invalidateCaps()
-        inventoryHandlerLazy.invalidate()
-        fluidHandlerLazy.invalidate()
-    }
 
     class InventoryHandler(val blockEntity: CokeOvenMainBlockEntity) : ItemStackHandler(COKING_INPUT_SLOT_COUNT + COKING_OUTPUT_SLOT_COUNT) {
         val inputRange = 0 until COKING_INPUT_SLOT_COUNT
@@ -495,17 +517,71 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
         }
     }
 
-    class FluidHandler(tank: MultipleFractionalFluidTank, val blockEntity: CokeOvenMainBlockEntity) : PurityBasedMultipleFractionalFluidTank(tank) {
-        override fun fill(resource: FluidStack?, action: IFluidHandler.FluidAction?): Int {
-            return 0
+    val inventoryHandler = InventoryHandler(this)
+    val inventoryHandlerLazy: LazyOptional<InventoryHandler> = LazyOptional.of { inventoryHandler }
+
+    val tank = EscapingMultipleFractionalFluidTank(
+        20,
+        5.0,
+        false
+    )
+
+    /**
+     * Wraps the extraction of the [parent] with the [blockEntity]'s [org.eln2.mc.common.content.processing.CokeOvenMainBlockEntity.fluidHandlerTemperature].
+     * */
+    class ThermalHandler(val parent: PurityBasedMultipleFractionalFluidTank, val blockEntity: CokeOvenMainBlockEntity) : IFractionalFluidHandler by parent, IThermalFluidHandler {
+        override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction) = 0
+        override fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction) = 0.0
+        override fun fillThermal(resource: FractionalFluidStack, temperature: OptionalDouble, action: IFluidHandler.FluidAction) = 0.0
+
+        override fun drainThermal(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): ThermalFluidStack? {
+            val drain = parent.drainFractional(resource, action)
+
+            if(drain.isEmpty) {
+                return null
+            }
+
+            return ThermalFluidStack(drain, !blockEntity.fluidHandlerTemperature)
         }
 
-        override fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): Double {
-            return 0.0
+        override fun drainThermal(maxDrain: Double, action: IFluidHandler.FluidAction): ThermalFluidStack? {
+            val drain = parent.drainFractional(maxDrain, action)
+
+            if(drain.isEmpty) {
+                return null
+            }
+
+            return ThermalFluidStack(drain, !blockEntity.fluidHandlerTemperature)
         }
     }
 
+    /**
+     * Wraps the [EscapingMultipleFractionalFluidTank.extractionEnd] of [tank] with the [ThermalHandler].
+     * */
+    val fluidHandler = ThermalHandler(PurityBasedMultipleFractionalFluidTank(tank.extractionEnd), this)
+    val fluidHandlerLazy: LazyOptional<ThermalHandler> = LazyOptional.of { fluidHandler }
+
+    override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
+        if (cap == ForgeCapabilities.ITEM_HANDLER) {
+            return inventoryHandlerLazy.cast()
+        }
+
+        if (cap == ForgeCapabilities.FLUID_HANDLER) {
+            return fluidHandlerLazy.cast()
+        }
+
+        return super.getCapability(cap, side)
+    }
+
+    override fun invalidateCaps() {
+        super.invalidateCaps()
+        inventoryHandlerLazy.invalidate()
+        fluidHandlerLazy.invalidate()
+    }
+
     //#endregion
+
+    //#region Recipe State
 
     /**
      * Represents a coking operation in progress.
@@ -518,38 +594,51 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
 
     data class OperationLoadingData(val operationId: ResourceLocation, val progress: Int)
 
+    /**
+     * Used during loading. We need the level to read the recipe from the serialized ID.
+     * */
     @ServerOnly
     private var savedOperationData: OperationLoadingData? = null
 
-    override val delegateMap: MultiblockDelegateMap
-        get() = Eln2Processing.COKE_OVEN_DELEGATE_MAP.value
+    //#endregion
 
-    override fun setLevel(pLevel: Level) {
-        super.setLevel(pLevel)
+    /**
+     * The environment corresponding to the [blockPos] and [level], loaded in [setLevel].
+     * */
+    @ServerOnly
+    var environment: CellEnvironment? = null
 
-        if(!pLevel.isClientSide) {
-            if(savedOperationData != null) {
-                val optional = pLevel.recipeManager.byKey(savedOperationData!!.operationId)
+    /**
+     * Output temperature when burning, evaluated from some smooth noise in [serverTick].
+     * */
+    @ServerOnly
+    private var noisedBurnTemperature = OptionalDouble.EMPTY
 
-                if(optional.isEmpty || optional.get() !is CokingRecipe) {
-                    LOG.error("Failed to restore coking recipe \"${savedOperationData!!.operationId}\": ${optional.getOrNull()}")
-                }
-                else {
-                    operation = Operation(optional.get() as CokingRecipe, savedOperationData!!.progress)
-                }
+    /**
+     * Gets the output temperature of the gas. Ambient if the oven is not running, and [noisedBurnTemperature] if it is running.
+     * */
+    @ServerOnly
+    val fluidHandlerTemperature: Quantity<Temperature> get() {
+        val environment = environment
+            ?: error(DEBUGGER_BREAK("Tried to get oven output temperature before the environment was fetched"))
 
-                savedOperationData = null
-
-                /**
-                 * We didn't persist this flag, so we set it here to make sure we check for a new recipe:
-                 * */
-                inventoryHandler.dirty = true
-            }
+        if(operation == null) {
+            return environment.ambientTemperature
         }
+
+        if(noisedBurnTemperature.isPresent) {
+            return Quantity(noisedBurnTemperature.unwrap())
+        }
+
+        return environment.ambientTemperature
     }
 
     @ServerOnly
     fun serverTick() {
+        if(tank.flow()) {
+            setChanged()
+        }
+
         /**
          * Tries to start the operation:
          * */
@@ -581,9 +670,24 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
         }
 
         /**
-         * Progresses the operation:
+         * Progresses the operation and sets the [noisedBurnTemperature]:
          * */
         if(operation != null) {
+            val noise = SimplexNoise
+                .noise((level!!.gameTime * 0.0001).toFloat(), level!!.rainLevel).toDouble()
+                .coerceIn(-1.0, 1.0)
+
+            val temperature = !Quantity(
+                map(
+                    noise,
+                    -1.0, 1.0,
+                    270.0, 350.0
+                ),
+                CELSIUS
+            )
+
+            noisedBurnTemperature = OptionalDouble.wrap(temperature)
+
             val operation = operation!!
             operation.elapsedTime++
 
@@ -595,7 +699,7 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
                     operation.recipe.outputFluid.amount.toDouble() / operation.recipe.duration
                 )
 
-                tank.fillWithDisplacement(fluidToExport, IFluidHandler.FluidAction.EXECUTE)
+                tank.insertionEnd.fillFractional(fluidToExport, IFluidHandler.FluidAction.EXECUTE)
             }
 
             /**
@@ -632,6 +736,8 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
             builder.debugInIDE { "Recipe: ${operation.recipe.recipeId}" }
             builder.progress(operation.elapsedTime / operation.recipe.duration.toDouble())
         }
+
+        builder.debugInIDE { "Handler temp: ${fluidHandlerTemperature.classify()}" }
     }
 
     override fun saveAdditional(pTag: CompoundTag) {

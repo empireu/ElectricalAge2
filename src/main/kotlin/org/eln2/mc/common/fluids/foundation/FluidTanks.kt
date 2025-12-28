@@ -760,40 +760,50 @@ open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalF
     }
 
     /**
-     * Removes stacks with sub-epsilon amounts.
+     * Merges the [resource] with the fluids in the tank. It's like the fill methods, but ignores capacity and the amount of fluid in [resource] (so [resource] could be empty; you need to handle that at the call site).
+     * **Doesn't increment the version and doesn't notify!**
+     * @param copyOnInsert If there wasn't a matching stack in [fluids] that we can increment, `true` will clone the [resource] and add it, and `false` will add the [resource] directly.
+     * @return The index of the existing stack matching the fluid of [resource] or `-1` if there wasn't one.
      * */
-    fun trim() {
+    @Suppress("NOTHING_TO_INLINE")
+    inline fun mergeStack(resource: FractionalFluidStack, copyOnInsert: Boolean) : Int {
+        var i = 0
+        val fluids = fluids
+        val count = fluids.size
+        while (i < count) {
+            val stack = fluids[i]
+
+            if(stack.fluid == resource.fluid) {
+                stack.amount += resource.amount
+                return i
+            }
+
+            i++
+        }
+
+        if(copyOnInsert) {
+            fluids.add(resource.copy())
+        }
+        else {
+            fluids.add(resource)
+        }
+
+        return -1
+    }
+
+    /**
+     * Removes stacks with sub-epsilon amounts.
+     * @param epsilon If needed, uses this epsilon instead of the conventional one.
+     * */
+    fun trim(epsilon: Double = FractionalFluidStack.EPSILON) {
         val iterator = fluids.iterator()
         while (iterator.hasNext()) {
             val stack = iterator.next()
 
-            if(stack.isEmpty) {
+            if(stack.fluid == Fluids.EMPTY || stack.amount < epsilon) {
                 iterator.remove()
             }
         }
-    }
-
-    /**
-     * Rearranges the data so it obeys the first 2 rules. After this, the entries in [fluids] will be non-empty, all distinct fluid types.
-     * Should only be used if [fluids] were modified by an algorithm externally, and the fluids don't respect the rules anymore.
-     * */
-    fun compact() {
-        val temp = LinkedHashMap<Fluid, Double>()
-
-        fluids.forEach { stack ->
-            if(!stack.isEmpty && stack.fluid != Fluids.EMPTY && stack.amount > 0.0) {
-                temp.merge(stack.fluid, stack.amount) { a, b -> a + b }
-            }
-        }
-
-        fluids.clear()
-
-        temp.forEach { (fluid, amount) ->
-            val stack = FractionalFluidStack(fluid, amount)
-            fluids.add(stack)
-        }
-
-        temp.clear()
 
         incrementVersion()
     }
@@ -2065,3 +2075,117 @@ interface ThermalObjectBasedFractionalFluidHandlerThermalExpansion : FractionalF
 }
 
 //#endregion
+
+/**
+ * Thermal tank for machines that output fluid through a port, but they have an internal volume which allows some fluid to exist.
+ * The inserted fluid will leave after a predetermined time window in ticks, unless it is piped out.
+ * */
+class EscapingMultipleFractionalFluidTank(cellCount: Int, cellCapacity: Double, requireThermalFluid: Boolean) : IFractionalFluidHandler {
+    val cells = Array(cellCount) {
+        MultipleFractionalFluidTank(cellCapacity, requireThermalFluid)
+    }
+
+    val insertionEnd get() = cells[0]
+    val extractionEnd get() = cells[cells.size - 1]
+
+    /**
+     * Voids the [extractionEnd] and shifts the fluids from the [insertionEnd] to the [extractionEnd].
+     * @return True if the content has changed. Otherwise, false.
+     * */
+    fun flow() : Boolean {
+        var changed = false
+
+        val extractionEnd = extractionEnd
+        if(extractionEnd.fluids.isNotEmpty()) {
+            val totalAmount = extractionEnd.amount
+
+            /**
+             * Void fluids:
+             * */
+            if(totalAmount > extractionEnd.capacity) {
+                val amountToVoid = totalAmount - extractionEnd.capacity
+                val iterator = extractionEnd.fluids.iterator()
+                while (iterator.hasNext()) {
+                    val stack = iterator.next()
+                    val amountToRemove = amountToVoid * (stack.amount / totalAmount)
+
+                    if(amountToRemove > FractionalFluidStack.EPSILON) {
+                        stack.amount -= amountToRemove
+                        changed = true
+
+                        if(stack.amount < FractionalFluidStack.EPSILON) {
+                            iterator.remove()
+                        }
+                    }
+                }
+
+                if(changed) {
+                    extractionEnd.incrementVersion()
+                }
+            }
+        }
+
+        for (i in cells.size - 1 downTo 1) {
+            val source = cells[i - 1]
+            val destination = cells[i]
+
+            val sourceFluids = source.fluids
+            for(j in 0 until sourceFluids.size) {
+                val stack = sourceFluids[j]
+                destination.mergeStack(stack, false)
+                destination.incrementVersion()
+                changed = true
+            }
+
+            sourceFluids.clear()
+        }
+
+        return changed
+    }
+
+    override fun getTanks() = extractionEnd.tanks
+    override fun getFluidInTank(tank: Int) = extractionEnd.getFluidInTank(tank)
+    override fun getTankCapacity(tank: Int) = extractionEnd.getTankCapacity(tank)
+    override fun isFluidValid(tank: Int, stack: FluidStack) = insertionEnd.isFluidValid(tank, stack)
+
+    override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction) = insertionEnd.fill(resource, action)
+    override fun drain(resource: FluidStack, action: IFluidHandler.FluidAction) = extractionEnd.drain(resource, action)
+    override fun drain(maxDrain: Int, action: IFluidHandler.FluidAction) = extractionEnd.drain(maxDrain, action)
+
+    override fun getFractionalFluidInTank(tank: Int) = extractionEnd.getFractionalFluidInTank(tank)
+    override fun getFractionalTankCapacity(tank: Int) = extractionEnd.getFractionalTankCapacity(tank)
+
+    override fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction) = insertionEnd.fillFractional(resource, action)
+    override fun drainFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction) = extractionEnd.drainFractional(resource, action)
+    override fun drainFractional(maxDrain: Double, action: IFluidHandler.FluidAction) = extractionEnd.drainFractional(maxDrain, action)
+
+    fun serializeNBT() : CompoundTag {
+        val tag = CompoundTag()
+        val list = ListTag()
+
+        cells.forEach { cell ->
+            val cellTag = cell.serializeNBT()
+
+            list.add(cellTag)
+        }
+
+        tag.put("cells", list)
+        return tag
+    }
+
+    fun deserializeNBT(tag: CompoundTag) {
+        if(!tag.contains("cells")) {
+            return
+        }
+
+        val list = tag.getListTag("cells")
+
+        if(list.size != cells.size) {
+            return
+        }
+
+        list.forEachIndexed { index, cellTag ->
+            cells[index].deserializeNBT(cellTag as CompoundTag)
+        }
+    }
+}
