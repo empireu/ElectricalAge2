@@ -1033,7 +1033,7 @@ open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalF
                 continue
             }
 
-            val result = FluidStack(stack.fluid, roundedAmount)
+            val result = FluidStack(stack.fluid, min(roundedAmount, maxDrain))
 
             if(action != IFluidHandler.FluidAction.SIMULATE) {
                 removeAmount(0, result.amount.toDouble())
