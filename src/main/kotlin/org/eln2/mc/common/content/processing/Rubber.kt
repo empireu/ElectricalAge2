@@ -907,7 +907,8 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
         stateMachine.changeLoadState(StateMachine.LoadState.Ingredients)
         setChanged()
 
-        return InteractionResult.CONSUME // Consumes 1 (as copied above)
+        stackInHand.eln2Consume(pPlayer)
+        return InteractionResult.CONSUME
     }
 
     //#endregion
@@ -999,8 +1000,6 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
 
             if(operation != null) {
                 if(stateMachine.doorState == StateMachine.DoorState.Closed) {
-                    cell.isOperating = true
-
                     val temperature = cell.heatPort.thermalWire.thermalBody.temperature
 
                     /**
@@ -1008,6 +1007,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
                      * */
                     if(!temperature in operation.recipe.minTemperature..operation.recipe.maxTemperature) {
                         stateMachine.isProcessing = true
+                        cell.isOperating = true
 
                         if(stateMachine.progressOperation()) {
                             inventoryHandler.setStackInSlot(INPUT_SLOT, ItemStack.EMPTY)

@@ -89,13 +89,8 @@ class FractionalFluidStack(val fluid: Fluid, var amount: Double) {
         return true
     }
 
-    /**
-     * Computes the hash code, only considering the **rounded amount**.
-     * */
     override fun hashCode(): Int {
-        var result = roundedAmount
-        result = 31 * result + fluid.hashCode()
-        return result
+        return fluid.hashCode()
     }
 
     override fun toString() = "FractionalFluidStack[$fluid, ${amount.rounded(4)}]"

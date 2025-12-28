@@ -716,7 +716,7 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
              * This ensures small tanks fill up, but the amount they rejected still can go to the large tanks fairly.
              * */
             endpointList.sortWith { a, b ->
-                fillFractionalSimulationTable.getDouble(a).compareTo(fillFractionalSimulationTable.getDouble(b))
+                fillFractionalSimulationTable.getDouble(a.capability).compareTo(fillFractionalSimulationTable.getDouble(b.capability))
             }
 
             var remainingAmount = resource.amount
@@ -724,7 +724,10 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
 
             for (destinationEndpoint in endpointList) {
                 val handler = destinationEndpoint.capability
-                val capacity = fillFractionalSimulationTable.getDouble(handler)
+                /**
+                 * Remove so it doesn't get double-counted:
+                 * */
+                val capacity = fillFractionalSimulationTable.removeDouble(handler)
 
                 if (capacity < FractionalFluidStack.EPSILON) {
                     continue
