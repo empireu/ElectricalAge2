@@ -326,7 +326,7 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
         //#region Setup State
 
         /**
-         * Temperature stored at the start of the simulation. All fluids exiting will be exiting at this temperature.
+         * Temperature stored at the start of the simulation, after the phase change has occurred. All fluids exiting will be exiting at this temperature.
          * */
         var transferTemperature = Quantity<Temperature>(Double.NaN)
             private set
@@ -405,8 +405,6 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
          * If our block entity is not in scope, we will [skipSimulation].
          * */
         fun prepareForSimulation() {
-            transferTemperature = cell.wire.thermalBody.temperature
-
             skipSimulation = true
 
             if(cell.container == null) {
@@ -727,88 +725,68 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
             }
 
             /**
+             * Checks if we should be refluxing.
+             * We only do so if the connection to the neighbor below is direct.
+             * */
+            val refluxes = targetBlockEntities[Direction.DOWN.get3DDataValue()].let {
+                if(it == null) {
+                    false
+                }
+                else {
+                    it.locator.requireLocator(Locators.BLOCK) == cell.locator.requireLocator(Locators.BLOCK).below()
+                }
+            }
+
+            /**
              * Algorithm: For each fluid we have, we calculate the 5 transfers toward each neighbor. For the horizontals, we try to equalize with them, and for downward, we try to push all.
              * We need a temporary buffer, where we write the liquid to transfer to each neighbor not taking into account the previous transfers we calculated.
              * When we have all of those, we can normalize them so they add up to, at most, the amount of fluid we have, and we also apply the transfer rate limit.
              * */
             val transferList = DoubleArray(5)
             for (fluidIdx in 0 until liquidTank.fluids.size) {
-                transferList.fill(0.0)
-
                 val sourceStack = liquidTank.fluids[fluidIdx]
                 val fluid = sourceStack.fluid
 
                 /**
-                 * The number of neighbors we are transferring to, used to normalize:
+                 * Calculates the upper bound on the fluid leaving our stack toward neighbors:
                  * */
-                var transferCount = 0
+                var candidateTotalOutflow = 0.0
                 for (j in 0 until 5) {
                     val neighbor = targetBlockEntities[LIQUID_TARGETS[j]]
-                        ?: continue
 
-                    val neighborTank = neighbor.liquidTank
-                    var amountInNeighbor = 0.0
-                    for (i in neighborTank.fluids.indices) {
-                        val stack = neighborTank.fluids[i]
-
-                        if(stack.fluid == fluid) {
-                            amountInNeighbor = stack.amount
-                            break
-                        }
+                    if(neighbor == null) {
+                        transferList[j] = 0.0
+                        continue
                     }
 
-                    /**
-                     * For the reflux tank, transfer regardless:
-                     * */
-                    if(j == 4) {
-                        ++transferCount
-                        transferList[j] = sourceStack.amount
-                    }
-                    /**
-                     * For everything else, try to equalize:
-                     * */
-                    else {
-                        val transfer = 0.5 * (sourceStack.amount - amountInNeighbor)
-
-                        transferList[j] = if(transfer < FractionalFluidStack.EPSILON) {
+                    val transferToNeighbor = if(j == 4) {
+                        if(refluxes) {
                             /**
-                             * We only transfer if we have more than the neighbor. We will skip transport:
+                             * For the reflux tank, transfer regardless:
                              * */
-                            0.0
+                            sourceStack.amount
                         }
                         else {
-                            transferCount++
-                            transfer
+                            0.0
                         }
                     }
-                }
+                    else {
+                        /**
+                         * For everything else, try to equalize:
+                         * */
+                        0.5 * (sourceStack.amount - neighbor.liquidTank.getAmountOf(fluid))
+                    }
 
-                if(transferCount == 0) {
-                    /**
-                     * Nothing to transfer:
-                     * */
-                    continue
-                }
-
-                val recip = 1.0 / transferCount.toDouble()
-
-                /**
-                 * Calculates the total transfer out of our stack:
-                 * */
-                var totalTransfer = 0.0
-                for (j in 0 until 5) {
-                    val amount = transferList[j] * recip
-
-                    if(amount < FractionalFluidStack.EPSILON) {
-                        transferList[j] = 0.0
+                    if(transferToNeighbor > FractionalFluidStack.EPSILON) {
+                        candidateTotalOutflow += transferToNeighbor
+                        transferList[j] = transferToNeighbor
                     }
                     else {
-                        transferList[j] = amount
-                        totalTransfer += amount
+                        transferList[j] = 0.0
                     }
                 }
 
-                if(totalTransfer < FractionalFluidStack.EPSILON) {
+                if(candidateTotalOutflow < FractionalFluidStack.EPSILON) {
                     /**
                      * Nothing to transfer:
                      * */
@@ -816,28 +794,22 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
                 }
 
                 /**
-                 * Calculates factor to cap by:
+                 * Calculates a scale factor so the outflow doesn't exceed the amount in the stack and the max flow rate:
                  * */
-                val flowRateFactor = if(totalTransfer > MAX_LIQUID_FLOW_RATE) {
-                    MAX_LIQUID_FLOW_RATE / totalTransfer
-                }
-                else {
-                    1.0
-                }
+                val scaleFactor = min(min(candidateTotalOutflow, sourceStack.amount), MAX_LIQUID_FLOW_RATE) / candidateTotalOutflow
 
                 /**
                  * Push valid transfers to buffer:
                  * */
-                for(j in 0 until 5) {
-                    val amount = transferList[j] * flowRateFactor
+                for (j in 0 until 5) {
+                    val amount = transferList[j] * scaleFactor
 
-                    if(amount < FractionalFluidStack.EPSILON) {
-                        continue
+                    if(amount >= FractionalFluidStack.EPSILON) {
+                        val buffer = outboundBuffers[LIQUID_TARGETS[j]]
+
+                        buffer.push(fluid, amount, TransferBuffer.TargetTank.Liquid)
                     }
 
-                    val buffer = outboundBuffers[LIQUID_TARGETS[j]]
-
-                    buffer.push(fluid, amount, TransferBuffer.TargetTank.Liquid)
                 }
             }
         }
@@ -884,6 +856,8 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
          * Calculates the transfers to each neighbor (upper bound, we can't calculate them exactly since multiple modules might push into that neighbor, and we can scrape against the fluid capacity) and stores them in [outboundBuffers].
          * */
         fun initialPass() {
+            transferTemperature = cell.wire.thermalBody.temperature
+
             if(skipSimulation) {
                 return
             }
@@ -988,17 +962,19 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
                     }
 
                     /**
-                     * Execute mass transfer:
+                     * Execute mass transfer. Also, it's not strictly necessary to use the amount given by drain, but jrddunbr recommends it:
                      * */
-                    val resource = FractionalFluidStack(incomingBuffer.fluidArray[message], amount)
+                    var resource = FractionalFluidStack(incomingBuffer.fluidArray[message], amount)
                     when(type) {
                         TransferBuffer.TargetTank.Liquid -> {
+                            resource = neighbor.liquidTank.drainFractional(resource, IFluidHandler.FluidAction.EXECUTE)
+                            amount = resource.amount
                             liquidTank.fillFractional(resource, IFluidHandler.FluidAction.EXECUTE)
-                            neighbor.liquidTank.drainFractional(resource, IFluidHandler.FluidAction.EXECUTE)
                         }
                         TransferBuffer.TargetTank.Gas -> {
+                            resource = neighbor.gasTank.drainFractional(resource, IFluidHandler.FluidAction.EXECUTE)
+                            amount = resource.amount
                             gasTank.fillFractional(resource, IFluidHandler.FluidAction.EXECUTE)
-                            neighbor.gasTank.drainFractional(resource, IFluidHandler.FluidAction.EXECUTE)
                         }
                     }
 

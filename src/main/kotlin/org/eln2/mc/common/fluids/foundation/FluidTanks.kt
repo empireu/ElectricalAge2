@@ -12,7 +12,6 @@ import org.ageseries.libage.data.KILOGRAM
 import org.ageseries.libage.data.Mass
 import org.ageseries.libage.data.OptionalDouble
 import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.SpecificHeatCapacity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.data.classify
 import org.ageseries.libage.mathematics.approxEq
@@ -737,6 +736,27 @@ open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalF
     open fun incrementVersion() {
         version++
         versionChangedHandler?.run()
+    }
+
+    /**
+     * Gets the amount of [fluid], assuming the structure is correct.
+     * */
+    @Suppress("NOTHING_TO_INLINE")
+    inline fun getAmountOf(fluid: Fluid) : Double {
+        var i = 0
+        val fluids = fluids
+        val count = fluids.size
+        while (i < count) {
+            val stack = fluids[i]
+
+            if(stack.fluid == fluid) {
+                return stack.amount
+            }
+
+            i++
+        }
+
+        return 0.0
     }
 
     /**
