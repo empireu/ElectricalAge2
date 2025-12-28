@@ -1,5 +1,6 @@
 {
-	"format_version": "1.9.0",
+    "parent": "eln2:block/displays/standard_block",
+    "format_version": "1.9.0",
 	"credit": "Made with Blockbench",
 	"texture_size": [64, 64],
 	"textures": {
@@ -539,36 +540,6 @@
 			}
 		}
 	],
-	"display": {
-		"thirdperson_righthand": {
-			"translation": [0, 0, -1.75],
-			"scale": [0.25, 0.25, 0.25]
-		},
-		"thirdperson_lefthand": {
-			"translation": [0, 0, -1.75],
-			"scale": [0.25, 0.25, 0.25]
-		},
-		"firstperson_righthand": {
-			"translation": [0, -0.25, 0],
-			"scale": [0.5, 0.5, 0.5]
-		},
-		"firstperson_lefthand": {
-			"translation": [0, -0.25, 0],
-			"scale": [0.5, 0.5, 0.5]
-		},
-		"ground": {
-			"translation": [0, 1, 0],
-			"scale": [0.25, 0.25, 0.25]
-		},
-		"gui": {
-			"rotation": [25, -25, 0],
-			"scale": [0.5, 0.5, 0.5]
-		},
-		"fixed": {
-			"translation": [0, 0, -2.75],
-			"scale": [0.5, 0.5, 0.5]
-		}
-	},
 	"groups": [
 		0,
 		1,
