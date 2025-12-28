@@ -1,0 +1,7 @@
+{
+    "forgeFluid": "eln2:butane",
+    "specificHeatCapacity": 1020.0,
+    "density": 0.60,
+    "isGaseous": true,
+    "mixabilityTags": ["lpg_miscible"]
+}

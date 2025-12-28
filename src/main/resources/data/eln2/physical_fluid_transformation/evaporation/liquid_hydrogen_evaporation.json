@@ -1,0 +1,9 @@
+{
+    "fluid": "eln2:liquid_hydrogen",
+    "boiling": {
+        "temperature": 20.28,
+        "enthalpy": 32000.0,
+        "resultGas": "eln2:hydrogen",
+        "resultGasProportion": 1000
+    }
+}

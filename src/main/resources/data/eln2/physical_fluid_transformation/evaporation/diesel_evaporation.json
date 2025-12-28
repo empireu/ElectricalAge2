@@ -1,0 +1,9 @@
+{
+    "fluid": "eln2:diesel",
+    "boiling": {
+        "temperature": 450.0,
+        "enthalpy": 300000.0,
+        "resultGas": "eln2:diesel_gas",
+        "resultGasProportion": 1000
+    }
+}

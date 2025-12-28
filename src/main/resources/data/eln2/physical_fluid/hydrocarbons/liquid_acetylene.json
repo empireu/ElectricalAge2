@@ -1,0 +1,7 @@
+{
+    "forgeFluid": "eln2:liquid_acetylene",
+    "specificHeatCapacity": 1500.0,
+    "density": 0.62,
+    "isGaseous": false,
+    "mixabilityTags": ["acetylene_miscible"]
+}

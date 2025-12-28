@@ -1,9 +1,0 @@
-{
-    "forgeFluid": "eln2:coke_gas",
-    "specificHeatCapacity": 2200.0,
-    "density": 0.0006,
-    "isGaseous": true,
-    "mixabilityTags": [
-        "coke_gas_miscible"
-    ]
-}

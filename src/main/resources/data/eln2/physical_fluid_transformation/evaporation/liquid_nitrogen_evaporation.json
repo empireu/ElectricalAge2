@@ -1,0 +1,9 @@
+{
+    "fluid": "eln2:liquid_nitrogen",
+    "boiling": {
+        "temperature": 77.0,
+        "enthalpy": 161000.0,
+        "resultGas": "eln2:nitrogen",
+        "resultGasProportion": 1000
+    }
+}

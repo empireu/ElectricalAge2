@@ -61,6 +61,15 @@ object Eln2ForgeFluids : ContentModule() {
 
     //#endregion
 
+    val STEAM = basicForgeFluid("steam") {
+        tintColor = MyColor(150, 240, 240, 240) // Translucent White
+        properties {
+            FluidType.Properties.create()
+                .density(-1000) // Gas
+                .viscosity(100)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
     val FUEL_GAS = basicForgeFluid("fuel_gas") {
         tintColor = MyColor(50, 200, 200, 200) // Translucent Grey Vapor
         properties {
@@ -70,21 +79,21 @@ object Eln2ForgeFluids : ContentModule() {
         }
     }
 
-    val NAPHTHA_GAS = basicForgeFluid("naphtha_gas") {
-        tintColor = MyColor(100, 200, 240, 255) // Faint Blue Vapor
-        properties {
-            FluidType.Properties.create()
-                .density(-1000)
-                .viscosity(100)
-        }
-    }.withRenderLayer(RenderType.translucent())
-
     val NAPHTHA = basicForgeFluid("naphtha") {
         tintColor = MyColor(200, 255, 255, 220) // Transparent Pale Yellow
         properties {
             FluidType.Properties.create()
                 .density(700)
                 .viscosity(800)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val NAPHTHA_GAS = basicForgeFluid("naphtha_gas") {
+        tintColor = MyColor(100, 200, 240, 255) // Faint Blue Vapor
+        properties {
+            FluidType.Properties.create()
+                .density(-1000)
+                .viscosity(100)
         }
     }.withRenderLayer(RenderType.translucent())
 
@@ -103,8 +112,6 @@ object Eln2ForgeFluids : ContentModule() {
             .density(-600)
             .viscosity(100)
     }
-
-    //#region Coal Coking
 
     val COKE_GAS = basicForgeFluid("coke_gas") {
         tintColor = MyColor(150, 216, 250, 8) // Yellow
@@ -142,10 +149,6 @@ object Eln2ForgeFluids : ContentModule() {
         }
     }
 
-    //#endregion
-
-    //#region Oil
-
     val CRUDE_OIL = basicForgeFluid("crude_oil") {
         tintColor = MyColor(255, 30, 20, 10) // Opaque Dark Brown
         properties {
@@ -164,21 +167,21 @@ object Eln2ForgeFluids : ContentModule() {
         }
     }
 
-    val DIESEL_GAS = basicForgeFluid("diesel_gas") {
-        tintColor = MyColor(100, 220, 200, 150) // Faint Amber Vapor
-        properties {
-            FluidType.Properties.create()
-                .density(-500)
-                .viscosity(200)
-        }
-    }.withRenderLayer(RenderType.translucent())
-
     val DIESEL = basicForgeFluid("diesel") {
         tintColor = MyColor(200, 255, 200, 0) // Transparent Gold
         properties {
             FluidType.Properties.create()
                 .density(830)
                 .viscosity(1500)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val DIESEL_GAS = basicForgeFluid("diesel_gas") {
+        tintColor = MyColor(100, 220, 200, 150) // Faint Amber Vapor
+        properties {
+            FluidType.Properties.create()
+                .density(-500)
+                .viscosity(200)
         }
     }.withRenderLayer(RenderType.translucent())
 
@@ -191,5 +194,111 @@ object Eln2ForgeFluids : ContentModule() {
         }
     }
 
-    //#endregion
+    val LIQUID_METHANE = basicForgeFluid("liquid_methane") {
+        tintColor = MyColor(180, 100, 100, 255) // Blueish
+        properties {
+            FluidType.Properties.create()
+                .density(420)
+                .viscosity(500) // Very thin
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val METHANE = basicForgeFluid("methane") {
+        tintColor = MyColor(100, 200, 200, 255) // Faint Blue gas
+        properties {
+            FluidType.Properties.create()
+                .density(-500)
+                .viscosity(100)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val LIQUID_PROPANE = basicForgeFluid("liquid_propane") {
+        tintColor = MyColor(180, 255, 255, 255) // Clear/White
+        properties {
+            FluidType.Properties.create()
+                .density(580)
+                .viscosity(600)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val PROPANE = basicForgeFluid("propane") {
+        tintColor = MyColor(100, 255, 255, 255) // Faint White gas
+        properties {
+            FluidType.Properties.create()
+                .density(-600)
+                .viscosity(100)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val LIQUID_BUTANE = basicForgeFluid("liquid_butane") {
+        tintColor = MyColor(180, 255, 240, 220) // Off-white
+        properties {
+            FluidType.Properties.create()
+                .density(600)
+                .viscosity(700)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val BUTANE = basicForgeFluid("butane") {
+        tintColor = MyColor(100, 255, 250, 230) // Faint Off-white
+        properties {
+            FluidType.Properties.create()
+                .density(-600)
+                .viscosity(100)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val LIQUID_HYDROGEN = basicForgeFluid("liquid_hydrogen") {
+        tintColor = MyColor(180, 200, 180, 255) // Very faint purple/blue
+        properties {
+            FluidType.Properties.create()
+                .density(70) // Extremely light liquid
+                .viscosity(200)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val HYDROGEN = basicForgeFluid("hydrogen") {
+        tintColor = MyColor(80, 220, 200, 255) // Faint purple gas
+        properties {
+            FluidType.Properties.create()
+                .density(-1000) // Rises fast
+                .viscosity(50)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val LIQUID_NITROGEN = basicForgeFluid("liquid_nitrogen") {
+        tintColor = MyColor(180, 200, 240, 255) // Cold Blue (Visual convention)
+        properties {
+            FluidType.Properties.create()
+                .density(810)
+                .viscosity(400)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val NITROGEN = basicForgeFluid("nitrogen") {
+        tintColor = MyColor(100, 220, 240, 255) // Faint Blue fog
+        properties {
+            FluidType.Properties.create()
+                .density(-800)
+                .viscosity(100)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val LIQUID_ACETYLENE = basicForgeFluid("liquid_acetylene") {
+        tintColor = MyColor(180, 230, 230, 230) // Light Grey
+        properties {
+            FluidType.Properties.create()
+                .density(620)
+                .viscosity(500)
+        }
+    }.withRenderLayer(RenderType.translucent())
+
+    val ACETYLENE = basicForgeFluid("acetylene") {
+        tintColor = MyColor(100, 230, 230, 230) // Faint Grey
+        properties {
+            FluidType.Properties.create()
+                .density(-600)
+                .viscosity(100)
+        }
+    }.withRenderLayer(RenderType.translucent())
 }

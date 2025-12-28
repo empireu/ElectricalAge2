@@ -1,0 +1,7 @@
+{
+    "forgeFluid": "eln2:nitrogen",
+    "specificHeatCapacity": 840.0,
+    "density": 0.81,
+    "isGaseous": true,
+    "mixabilityTags": ["nitrogen_miscible"]
+}

@@ -1,0 +1,9 @@
+{
+    "fluid": "eln2:liquid_butane",
+    "boiling": {
+        "temperature": 272.5,
+        "enthalpy": 231000.0,
+        "resultGas": "eln2:butane",
+        "resultGasProportion": 1000
+    }
+}

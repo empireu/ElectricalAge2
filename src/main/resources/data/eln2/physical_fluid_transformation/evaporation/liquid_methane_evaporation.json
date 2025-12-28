@@ -1,0 +1,9 @@
+{
+    "fluid": "eln2:liquid_methane",
+    "boiling": {
+        "temperature": 111.6,
+        "enthalpy": 214000.0,
+        "resultGas": "eln2:methane",
+        "resultGasProportion": 1000
+    }
+}

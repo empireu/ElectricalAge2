@@ -1,0 +1,8 @@
+{
+    "fluid": "eln2:propane",
+    "condensation": {
+        "temperature": 231.0,
+        "enthalpy": 246000.0,
+        "resultLiquid": "eln2:liquid_propane"
+    }
+}

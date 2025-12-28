@@ -1,0 +1,8 @@
+{
+    "fluid": "eln2:nitrogen",
+    "condensation": {
+        "temperature": 77.0,
+        "enthalpy": 161000.0,
+        "resultLiquid": "eln2:liquid_nitrogen"
+    }
+}

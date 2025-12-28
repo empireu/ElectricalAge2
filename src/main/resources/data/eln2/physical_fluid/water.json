@@ -1,0 +1,7 @@
+{
+    "forgeFluid": "minecraft:water",
+    "specificHeatCapacity": 4186.0,
+    "density": 1.0,
+    "isGaseous": false,
+    "mixabilityTags": ["water_miscible"]
+}
