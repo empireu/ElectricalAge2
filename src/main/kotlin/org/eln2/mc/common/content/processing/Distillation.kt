@@ -58,39 +58,42 @@ import java.util.function.Consumer
 import java.util.function.Supplier
 import kotlin.math.min
 
-/*
- * This system uses a novel architecture: exploiting the cell graph's construction to build a multiblock and execute finely-grained server thread logic.
- * I'm basically getting an event-based, non-polling incremental structure builder. This is done by listening to new connections in the cells and building the structure incrementally.
- * The structure is made of cells, which are always persistent and not subject to chunk unloads. When we want to execute logic, we simply exclude the elements that are unloaded.
+/**
+ * This system uses a novel architecture: exploiting the [CellGraph]'s construction to build a pseudo-multiblock and execute finely-grained server thread logic.
+ * The structure is a sixtuply-linked list of [DistillationModuleCell]s, which are always persistent and not subject to chunk unloads.
+ * Each [DistillationModuleCell] holds a list of (at most) 6 other module cells. When columns are placed/remove or neighbors change, or the graph loads from disk, the lists for the affected cells are rebuilt.
+ * When we want to execute the actual logic, we simply exclude the cells whose block entities are not loaded.
  *
- * The distillation tower itself is a pseudo-multiblock, in the sense that each block is aware of neighbors (see below what neighbors are), and exchanges mass and energy with them.
- * Neighbors are other distillation module block entities. Given a module, its neighbors may or may not be direct in-world neighbors (the 6 adjacent blocks in the Moore neighborhood).
- * That distinction happens when distillation columns are used. Those don't simulate or hold anything; they are structural elements that connect modules vertically. They act as perfectly insulated and volume-less pipes.
- * Internally, we build a sixtuply-linked grid, where each cell is a distillation module. Each module cell has 6 pointers to each neighbor, and they are fetched when the graph loads or when the structure changes.
- * We can find when the structure changes based only on cell add/remove events. See how it's done in the column block entity and module block entity.
+ * The distillation tower is a pseudo-multiblock in the sense that each module exchanges mass and energy with neighbor (see below what the neighbors are), but there isn't a pre-set structure. It's more like a cellular automata.
+ * Neighbors are other distillation module block entities. Given a module, its neighbors may or may not be direct in-world neighbors. That distinction happens when distillation columns are used. Those don't simulate or hold anything; they are structural elements that connect modules vertically.
+ * They act as perfectly insulated and volume-less pipes. They are improper cells, since they don't have simulation objects. The default connection logic doesn't allow them to connect to anything, but we override the logic to allow specifically connecting to distillation modules and other columns.
  *
- * Also, the column cell is a "symbolic cell", that doesn't have any simulation objects. To get it to connect, we override the connection rules to inject connections between the column cells other column cells, or module cells.
+ * The [DistillationModuleCell] has a thermal body, which participates in the thermal simulation.
+ * The cell does the distillation and multiblock transfer logic, by subscribing to [ServerPhase] events.
+ * It allows us to execute logic in multiple passes before the simulations are dispatched on the pool (see the documentation of [ServerPhase.Start]).
+ * This also means we don't need locking during the simulation.
+ * We still set up a solver synchronization point, that is acquired when the thermal handler capability is accessed, to mutate the thermal body.
+ * That happens during block entity ticks and whatnot (when machines try to access the tanks, for example).
  *
- * The distillation module cell has a thermal body, which participates in the thermal simulation.
- * It also does the distillation and multiblock transfer logic, which are done on the server thread.
- * To accomplish that, we use the finely grained server thread subscriber pool. It allows us to execute logic in multiple passes before the simulations are dispatched on the pool.
- * This also means we don't need locking during the simulation (though we still set up a solver synchronization point, that is acquired when the thermal handler capability is accessed, to mutate the thermal body. That happens during block entity ticks and whatnot, so we need it).
  * We do the simulation in 3 phases:
- *
  * 1. Evaporation/Condensation and Transfer Recording
- *  - Phase change occurs (internal process, that basically transforms liquids into gases and gases into liquids within the module, and also twiddles with the thermal body's energy and composition)
- *  - All fluid transfers to neighbors are recorded in a buffer
+ *  - Phase change occurs. It is an internal process (doesn't involve neighbors), that basically transforms liquids into gases and gases into liquids within the module, and modifies the thermal energy and composition.
+ *  - All outgoing fluid transfers to neighbors are recorded in a buffer
  * 2. Execute Transfers
- *  - All mass transfers are scaled based on the capacity in each receiving tank
- *  - Then, mass transfers and energy transfers are executed
+ *  - Mass transfers are scaled based on the capacity in each receiving tank and then executed. Cells that changed are marked.
  * 3. Recompute Properties
  *  - If a module received/sent any fluid in the second phase, it recalculates the thermal body's composition and mass.
  * */
 
 /**
- * Symbolic cell, used only to facilitate the linkage between [DistillationModuleCell].
+ * Improper cell, used only to facilitate the linkage between [DistillationModuleCell].
+ * But when a series of columns links two modules, the modules won't act as if they are adjacent; there is a separate rule for that.
+ * See the module itself for more information.
  * */
 class DistillationColumnCell(ci: CellCreateInfo) : Cell(ci) {
+    /**
+     * Overrides the connection logic to allow the linkage.
+     * */
     override fun allowsConnection(remote: Cell): Boolean {
         if(remote !is DistillationColumnCell && remote !is DistillationModuleCell) {
             return false
@@ -103,14 +106,14 @@ class DistillationColumnCell(ci: CellCreateInfo) : Cell(ci) {
     }
 }
 
-/**
- * Acts as a pipe for gas to move up from modules.
- * */
 class DistillationColumnBlock : UprightHorizontalDirectionCellBlock<DistillationColumnCell>() {
     override fun getCellProvider() = Eln2Processing.DISTILLATION_COLUMN_CELL.get()
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = DistillationColumnBlockEntity(pPos, pState)
 
+    /**
+     * Overrides the scan logic to allow the linkage.
+     * */
     override fun spatialNeighborScan(level: Level, results: HashSet<CellAndContainerHandle>, cell: Cell) {
         val pos = cell.locator.requireLocator(Locators.BLOCK)
 
@@ -128,11 +131,17 @@ class DistillationColumnBlock : UprightHorizontalDirectionCellBlock<Distillation
     }
 }
 
+/**
+ * Listens for cells connecting to this column to incrementally construct the linked grid.
+ * */
 class DistillationColumnBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<DistillationColumnCell>(pos, state, Eln2Processing.DISTILLATION_COLUMN_BLOCK_ENTITY.get()), ComponentDisplay {
     override fun submitDisplay(builder: ComponentDisplayList) {
         builder.debugInIDE { "Graph: ${cell.graph.id}" }
     }
 
+    /**
+     * Since a column may not be a direct neighbor of the affected modules, we need to traverse the columns to reach those modules.
+     * */
     private fun sendNotification() {
         val visited = HashSet<Cell>()
         val queue = ArrayDeque<Cell>()
@@ -166,6 +175,16 @@ class DistillationColumnBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
     }
 }
 
+/**
+ * Handles the distillation and pseudo-multiblock interaction. The distillation is not special, but the interactions are:
+ * - The module will try to equalize liquid level with the horizontally adjacent modules (this also transfers heat, at least during the equalization)
+ * - The module pushes all its liquid to the module below (reflux), **but doesn't follow columns to do that**. It allows making different sections separated by columns, where the products of each section accumulate at the bottom layer of the section. This also transfers heat.
+ * - The module pushes gas into the module above (this does follow the columns). This also transfers heat.
+ *
+ * The distillation and the interactions are executed in [ServerPhase.Start] and its second and third passes, before the simulation runs.
+ *
+ * Also, thermal connections are only done horizontally. This might allow for more interesting builds (the modules adjacent above and below won't receive heat via conduction).
+ * */
 class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, val replicatesTemperature: Boolean) :
     Cell(ci),
     SidedThermalFLBR<DistillationModuleCell>,
@@ -191,7 +210,10 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
 
     /**
      * Used when the block entity's capability is accessed.
+     * Needed to change the mass and composition of the thermal body.
      * */
+    //#region Solver Lock
+
     val solverLock = SimulationExecutionSubgraph
         .SynchronizationPrimitive
         .Reentrant()
@@ -212,6 +234,8 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
 
         return DEBUGGER_BREAK(null)
     }
+
+    //#endregion
 
     @Replicator
     fun replicator(target: InternalTemperatureConsumer) = if(replicatesTemperature) {
@@ -236,7 +260,7 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
     }
 
     /**
-     * Permit connections with the columns.
+     * Permits connections with the columns, on top of the default logic.
      * */
     override fun allowsConnection(remote: Cell): Boolean {
         if(remote is DistillationColumnCell) {
@@ -251,6 +275,9 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
 
     //#region Server Thread Code
 
+    /**
+     * Fetches the neighbor module cells.
+     * */
     @OnServerThread
     override fun onWorldLoadedPreSim() {
         markForRebuild()
@@ -260,6 +287,17 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
     @OnServerThread
     private var markedForRebuildLinks = false
 
+    /**
+     * Marks that the structure of the multiblock has changed, and the linked modules will be rebuilt on the next [serverTickStart].
+     * */
+    @OnServerThread
+    fun markForRebuild() {
+        markedForRebuildLinks = true
+    }
+
+    /**
+     * The neighbor cells, indexed by [Direction.get3DDataValue].
+     * */
     @OnServerThread
     var linkedCells = Array<DistillationModuleCell?>(6) { null }
 
@@ -364,7 +402,7 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
 
         /**
          * Fetches the block entity associated with [cell] into [blockEntity] and, if that's all good and in scope, fetches the target block entities that are in scope and loads them into [targetBlockEntities].
-         * If [blockEntity] is loaded and there is at least one neighbor in [targetBlockEntities], sets [skipSimulation] to `false`.
+         * If our block entity is not in scope, we will [skipSimulation].
          * */
         fun prepareForSimulation() {
             transferTemperature = cell.wire.thermalBody.temperature
@@ -986,16 +1024,13 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
         /**
          * Third and final pass.
          * If we transferred anything, then we need to recalculate the thermal body's material and mass.
+         * Also clears all references and prepares for the next step.
          * */
         fun finalizePass() {
-            if(!hasTransferred) {
-                return
+            if(hasTransferred) {
+                blockEntity!!.recalculateBody()
             }
 
-            blockEntity!!.recalculateBody()
-        }
-
-        fun clear() {
             skipSimulation = false
             blockEntity = null
 
@@ -1011,16 +1046,7 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
     val distillation = DistillationSimulation(this)
 
     /**
-     * Marks that the structure of the multiblock has changed, and the linked modules will be rebuilt on the next [serverTickStart].
-     * */
-    @OnServerThread
-    fun markForRebuild() {
-        markedForRebuildLinks = true
-    }
-
-    /**
      * Registers 3 passes on the server thread.
-     * All of these execute before the simulation is dispatched, so we don't even need to lock.
      * */
     @OnServerThread
     override fun subscribeServerThread(subscribers: SubscriberCollection<ServerPhase>) {
@@ -1059,6 +1085,9 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
             else if(other is DistillationColumnCell) {
                 val remotePos = other.locator.requireLocator(Locators.BLOCK)
 
+                /**
+                 * Up or Down. We will follow this direction until we reach a module.
+                 * */
                 val face = pos.directionTo(remotePos)
                     ?: error(DEBUGGER_BREAK("Invalid remote distillation column $pos $remotePos"))
 
@@ -1076,7 +1105,6 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
                     }
                 }
             }
-            // else, it is a thermal conduit or something
         }
     }
 
@@ -1096,16 +1124,15 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
     @OnServerThread
     private fun serverTickAfterStart2(dt: Double, phase: ServerPhase) {
         distillation.finalizePass()
-        distillation.clear()
     }
 
     //#endregion
 }
 
-data class DistillationModuleModel(
-    val isIncandescent: Boolean,
-    val modelSupplier: Supplier<PartialModel>
-)
+/**
+ * @param isIncandescent If true, internal temperature will be synchronized and thermal tint will be applied.
+ * */
+data class DistillationModuleModel(val isIncandescent: Boolean, val modelSupplier: Supplier<PartialModel>)
 
 class DistillationModuleBlock(
     val cell: RegistryObject<CellProvider<DistillationModuleCell>>,
@@ -1123,6 +1150,9 @@ class DistillationModuleBlock(
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = DistillationModuleBlockEntity(pPos, pState)
 
+    /**
+     * Adds the vertical neighbor modules (we excluded verticals from the thermal connections, see the cell as for why), and adds the columns.
+     * */
     override fun spatialNeighborScan(level: Level, results: HashSet<CellAndContainerHandle>, cell: Cell) {
         super.spatialNeighborScan(level, results, cell)
 
@@ -1144,6 +1174,10 @@ class DistillationModuleBlock(
     }
 }
 
+/**
+ * Handles incremental building just like [DistillationColumnBlockEntity] and capability and sync.
+ * Doesn't actually tick, all the server-side logic is done by the [DistillationModuleCell].
+ * */
 class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
     CellBlockEntity<DistillationModuleCell>(pos, state, (state.block as DistillationModuleBlock).blockEntityType.get()),
     ComponentDisplay,
