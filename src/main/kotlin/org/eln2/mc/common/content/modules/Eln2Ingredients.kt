@@ -27,17 +27,12 @@ object Eln2Ingredients : ContentModule() {
 
     val EXTRUDER_ROD_DIE = itemNoStack("extruder_rod_die")
 
-    //#region Plates
 
     val IRON_PLATE = itemDefault("iron_plate")
 
-    //#endregion
-
-    //#region Rods
+    val IRON_SHAFT = itemDefault("iron_shaft")
 
     val COPPER_ROD = itemDefault("copper_rod")
-
-    //#endregion
 
     //#region Tree Extraction
 

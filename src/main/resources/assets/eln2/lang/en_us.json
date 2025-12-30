@@ -256,7 +256,9 @@
 
     "config.jade.plugin_eln2.distillation_fluids": "ELN2",
     "config.jade.plugin_eln2.component_display": "ELN2",
+    "config.jade.plugin_eln2.blacksmithing_help": "ELN2",
 
     "key.eln2.category": "ELN2",
-    "key.eln2.cycle_spec_orientation": "Cycle Spec Orientation"
+    "key.eln2.cycle_spec_orientation": "Cycle Spec Orientation",
+    "blacksmithing.eln2.result": "Craft Result"
 }

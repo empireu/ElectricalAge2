@@ -306,9 +306,7 @@ class BlacksmithingStationBlockEntity(pPos: BlockPos, pState: BlockState) : Bloc
 
     //#endregion
 
-    fun searchForRecipe(tool: ItemStack): Optional<BlacksmithingRecipe> {
-        val stack = inventoryHandler.getStackInSlot(STATION_SLOT)
-
+    fun searchForRecipe(stack: ItemStack, tool: ItemStack): Optional<BlacksmithingRecipe> {
         if(stack.isEmpty) {
             return Optional.empty()
         }
@@ -329,7 +327,7 @@ class BlacksmithingStationBlockEntity(pPos: BlockPos, pState: BlockState) : Bloc
     @ServerOnly
     private fun toolInteraction(player: Player) : InteractionResult {
         val toolStack = player.getItemInHand(InteractionHand.MAIN_HAND)
-        val recipeOptional = searchForRecipe(toolStack)
+        val recipeOptional = searchForRecipe(inventoryHandler.getStackInSlot(0), toolStack)
 
         if(recipeOptional.isEmpty) {
             return InteractionResult.FAIL

@@ -1,0 +1,16 @@
+{
+    "type": "eln2:blacksmithing",
+    "ingredient": {
+        "item": "eln2:hot_iron_ingot"
+    },
+    "result": {
+        "item": "eln2:iron_shaft",
+        "count": 1
+    },
+    "tool": {
+        "item": "eln2:blacksmithing_hammer"
+    },
+    "tool_mode": "two_side_flattening",
+    "cooldown": 60,
+    "sound": "eln2:blacksmithing/hammer_many_hits"
+}
