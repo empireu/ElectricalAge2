@@ -553,6 +553,11 @@ value class MyColor(val data : Int) {
             lerp(from.bF, to.bF, blend)
     }
 
+    /**
+     * Converts from hex.
+     * */
+    constructor(hex: Long) : this(hex.toInt())
+
     val a get() = FastColor.ARGB32.alpha(data)
     val r get() = FastColor.ARGB32.red(data)
     val g get() = FastColor.ARGB32.green(data)

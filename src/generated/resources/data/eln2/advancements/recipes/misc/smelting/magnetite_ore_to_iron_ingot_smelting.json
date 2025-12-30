@@ -1,12 +1,12 @@
 {
   "parent": "minecraft:recipes/root",
   "criteria": {
-    "has_magnetite": {
+    "has_magnetite_ore": {
       "conditions": {
         "items": [
           {
             "items": [
-              "eln2:raw_magnetite"
+              "eln2:magnetite_ore"
             ]
           }
         ]
@@ -15,20 +15,20 @@
     },
     "has_the_recipe": {
       "conditions": {
-        "recipe": "eln2:blasting/raw_magnetite_to_magnetite_blasting"
+        "recipe": "eln2:smelting/magnetite_ore_to_iron_ingot_smelting"
       },
       "trigger": "minecraft:recipe_unlocked"
     }
   },
   "requirements": [
     [
-      "has_magnetite",
+      "has_magnetite_ore",
       "has_the_recipe"
     ]
   ],
   "rewards": {
     "recipes": [
-      "eln2:blasting/raw_magnetite_to_magnetite_blasting"
+      "eln2:smelting/magnetite_ore_to_iron_ingot_smelting"
     ]
   },
   "sends_telemetry_event": false

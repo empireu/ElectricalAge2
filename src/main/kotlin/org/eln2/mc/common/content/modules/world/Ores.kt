@@ -5,12 +5,17 @@ package org.eln2.mc.common.content.modules.world
 import net.minecraft.tags.BlockTags
 import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.Item
+import net.minecraft.world.item.Items
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.state.BlockBehaviour
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.utils.addUnique
+import org.eln2.mc.DEBUGGER_BREAK
+import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.blocks.BlockRegistry
+import org.eln2.mc.common.content.modules.ContentManager.withBlockTint
+import org.eln2.mc.common.content.modules.ContentManager.withItemTint
 import org.eln2.mc.common.content.modules.ContentModule
 import org.eln2.mc.common.content.modules.ContentManager.withTagDatagen
 import org.eln2.mc.common.content.modules.Eln2Ingredients
@@ -33,7 +38,7 @@ object Eln2Ores : ContentModule() {
      * */
     val ORE_DROP_BLOCKS_FOR_DATAGEN = LinkedHashSet<OreRegistryItem>()
 
-    private fun<T : OreRegistryItem> T.withDefaultOreLoot() : T {
+    private fun<T : OreRegistryItem> T.withLootDatagen() : T {
         ORE_DROP_BLOCKS_FOR_DATAGEN.addUnique(this) {
             "Duplicate default ore loot $this"
         }
@@ -46,9 +51,33 @@ object Eln2Ores : ContentModule() {
      * */
     val ORE_SMELTING_FOR_DATAGEN = LinkedHashSet<Pair<OreRegistryItem, Supplier<Item>>>()
 
-    private fun<T : OreRegistryItem> T.withVanillaSmelting(result: Supplier<Item>) : T {
+    private fun<T : OreRegistryItem> T.withVanillaSmeltingDatagen(result: Supplier<Item>) : T {
         ORE_SMELTING_FOR_DATAGEN.addUnique(Pair(this, result)) {
             "Duplicate vanilla smelting $this"
+        }
+
+        return this
+    }
+
+    /**
+     * Read by [org.eln2.mc.Eln2OreBlockStatesDatagen] and [org.eln2.mc.Eln2ItemModelProviderDatagen].
+     * */
+    val ORE_FOR_MODEL_DATAGEN = LinkedHashSet<OreRegistryItem>()
+
+    /**
+     * Registers multiple things:
+     * - [OreRegistryItem.rawOreItem] tint [color] on layer `0` (used by the generated model)
+     * - [OreRegistryItem.oreBlockItem] tint [color] on layer `1` (used by the generated model)
+     * - [OreRegistryItem.oreBlock] tint [color] on layer `1` (used by the generated model)
+     * - Model generator in [ORE_FOR_MODEL_DATAGEN], which generates the block model, block item model, raw ore model.
+     * */
+    private fun<T : OreRegistryItem> T.withModelDatagen(color: MyColor) : T {
+        this.rawOreItem.withItemTint(0, color)
+        this.oreBlockItem.withItemTint(1, color)
+        this.oreBlock.withBlockTint(1, color)
+
+        ORE_FOR_MODEL_DATAGEN.addUnique(this) {
+            DEBUGGER_BREAK("Duplicate default ore model $this")
         }
 
         return this
@@ -85,6 +114,7 @@ object Eln2Ores : ContentModule() {
     val MAGNETITE_ORE = basicOre("magnetite")
         .withTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
         .withTagDatagen(BlockTags.NEEDS_IRON_TOOL)
-        .withDefaultOreLoot()
-        .withVanillaSmelting(Eln2Ingredients.MAGNETITE)
+        .withLootDatagen()
+        .withModelDatagen(MyColor(0xFF333333))
+        .withVanillaSmeltingDatagen { Items.IRON_INGOT }
 }

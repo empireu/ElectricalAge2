@@ -1,11 +1,15 @@
 package org.eln2.mc.common.content.modules
 
 import net.minecraft.tags.TagKey
+import net.minecraft.world.item.Item
 import net.minecraft.world.level.block.Block
 import net.minecraftforge.client.event.EntityRenderersEvent
+import org.ageseries.libage.data.MutableSetMapMultiMap
 import org.ageseries.libage.utils.addUnique
 import org.eln2.mc.ClientOnly
+import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
+import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.content.modules.world.Eln2Ores
 import org.eln2.mc.requireIsOnRenderThread
 import java.util.function.Supplier
@@ -276,10 +280,36 @@ object ContentManager {
     }
 
     /**
-     * Repositories for datagen.
-     * Operations are validated against [initScope], since the repositories are built when the fields of the content modules are initialized.
+     * Registered by [org.eln2.mc.common.ModEvents.registerItemColors].
      * */
-    //#region Datagen
+    val ITEM_TINT_FOR_REGISTRATION = MutableSetMapMultiMap<Supplier<Item>, Pair<Int, MyColor>>()
+
+    fun<I : Item, T : Supplier<I>> T.withItemTint(tintIndex: Int, color: MyColor) : T {
+        initScope.validate()
+
+        @Suppress("UNCHECKED_CAST")
+        ITEM_TINT_FOR_REGISTRATION[this as Supplier<Item>].addUnique(Pair(tintIndex, color)) {
+            DEBUGGER_BREAK("Duplicate item tint registration for $this $tintIndex $color")
+        }
+
+        return this
+    }
+
+    /**
+     * Registered by [org.eln2.mc.common.ModEvents.registerBlockColors].
+     * */
+    val BLOCK_TINT_FOR_REGISTRATION = MutableSetMapMultiMap<Supplier<Block>, Pair<Int, MyColor>>()
+
+    fun<B : Block, T : Supplier<B>> T.withBlockTint(tintIndex: Int, color: MyColor) : T {
+        initScope.validate()
+
+        @Suppress("UNCHECKED_CAST")
+        BLOCK_TINT_FOR_REGISTRATION[this as Supplier<Block>].addUnique(Pair(tintIndex, color)) {
+            DEBUGGER_BREAK("Duplicate block tint registration for $this $tintIndex $color")
+        }
+
+        return this
+    }
 
     /**
      * Used by [org.eln2.mc.Eln2BlockSelfDropLootDatagen].
@@ -288,7 +318,12 @@ object ContentManager {
 
     fun<B : Block, T : Supplier<B>> T.withSelfDrop() : T{
         initScope.validate()
-        SELF_DROP_BLOCKS_FOR_DATAGEN.addUnique(Supplier { this.get() }) { "Duplicate self drop for $this" }
+
+        @Suppress("UNCHECKED_CAST")
+        SELF_DROP_BLOCKS_FOR_DATAGEN.addUnique(this as Supplier<Block>) {
+            "Duplicate self drop for $this"
+        }
+
         return this
     }
 
@@ -299,9 +334,11 @@ object ContentManager {
 
     fun<T : Supplier<Block>> T.withTagDatagen(tag: TagKey<Block>) : T {
         initScope.validate()
-        BLOCK_TAGS_FOR_DATAGEN.addUnique(Pair(this, tag)) { "Duplicate block tag for $this" }
+
+        BLOCK_TAGS_FOR_DATAGEN.addUnique(Pair(this, tag)) {
+            "Duplicate block tag for $this"
+        }
+
         return this
     }
-
-    //#endregion
 }

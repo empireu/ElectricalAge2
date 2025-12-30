@@ -11,6 +11,7 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.flag.FeatureFlags
 import net.minecraft.world.item.BucketItem
 import net.minecraft.world.item.crafting.Ingredient
+import net.minecraftforge.client.model.generators.BlockStateProvider
 import net.minecraftforge.client.model.generators.ItemModelProvider
 import net.minecraftforge.client.model.generators.loaders.DynamicFluidContainerModelBuilder
 import net.minecraftforge.common.data.BlockTagsProvider
@@ -32,7 +33,7 @@ class Eln2BlockSelfDropLootDatagen : BlockLootSubProvider(emptySet(), FeatureFla
 
             this.dropSelf(block)
 
-            LOG.debug(
+            LOG.info(
                 "Registered self drop for {} ({})",
                 block,
                 ForgeRegistries.BLOCKS.getKey(block)
@@ -58,7 +59,7 @@ class Eln2BlockOreDropLootDatagen : BlockLootSubProvider(emptySet(), FeatureFlag
                 createOreDrop(block, raw)
             }
 
-            LOG.debug(
+            LOG.info(
                 "Registered ore drop for {} ({})",
                 block,
                 ForgeRegistries.BLOCKS.getKey(block)
@@ -81,11 +82,58 @@ class Eln2BlockTagsDatagen(output: PackOutput, lookupProvider: CompletableFuture
 
             tag(tagKey).add(block)
 
-            LOG.debug(
+            LOG.info(
                 "Registered block tag {} for {}",
                 tagKey,
                 block
             )
+        }
+    }
+}
+
+/**
+ * Generates the block model from [Eln2Ores.ORE_FOR_MODEL_DATAGEN], which is built by [Eln2Ores.withGeneratedModel] which registers tints on indices we use in the models.
+ * */
+class Eln2OreBlockStatesDatagen(output: PackOutput, existingFileHelper: ExistingFileHelper) : BlockStateProvider(output, MODID, existingFileHelper) {
+    override fun registerStatesAndModels() {
+        Eln2Ores.ORE_FOR_MODEL_DATAGEN.forEach { obj ->
+            val oreBlock = obj.oreBlock.get()
+
+            val blockId = ForgeRegistries.BLOCKS.getKey(oreBlock)
+                ?: error("Could not resolve model generation block $oreBlock")
+
+            /**
+             * Creates a model using two overlay textures:
+             * - Stone base
+             * - Overlay texture we prepared (see the markdown file), with tint index `1` (which we register into)
+             * */
+            val model = models().getBuilder(blockId.path)
+                .renderType("minecraft:cutout")
+                .parent(models().getExistingFile(mcLoc("block/block")))
+                .texture("particle", mcLoc("block/stone"))
+                .element()
+                    .from(0f, 0f, 0f)
+                    .to(16f, 16f, 16f)
+                    .allFaces { face, builder ->
+                        builder
+                            .texture("#base")
+                            .cullface(face)
+                    }
+                    .end()
+                .element()
+                    .from(0f, 0f, 0f)
+                    .to(16f, 16f, 16f)
+                    .allFaces { face, builder ->
+                        builder
+                            .texture("#overlay")
+                            .cullface(face)
+                            .tintindex(1)
+                    }
+                    .end()
+                .texture("base", mcLoc("block/stone"))
+                .texture("overlay", modLoc("block/ore_overlay")) // You need to make this PNG!
+
+            simpleBlock(oreBlock, model)
         }
     }
 }
@@ -151,7 +199,7 @@ class Eln2OreSmeltingDatagen(output: PackOutput) : RecipeProvider(output) {
                 save(pWriter, resource("blasting/${rawId.path}_to_${resultId.path}_blasting"))
             }
 
-            LOG.debug(
+            LOG.info(
                 "Registered smelting recipes for {}, {} -> {}",
                 rawId,
                 blockItemId,
@@ -162,10 +210,42 @@ class Eln2OreSmeltingDatagen(output: PackOutput) : RecipeProvider(output) {
 }
 
 /**
- * Generates bucket item models, from [ForgeFluidRegistry.FORGE_FLUID_BUCKETS].
+ * - Generates the raw ore item model and the block item model from [Eln2Ores.ORE_FOR_MODEL_DATAGEN], which is built by [Eln2Ores.withGeneratedModel] which registers tints on indices we use in the models.
+ * - Generates bucket item models, from [ForgeFluidRegistry.FORGE_FLUID_BUCKETS].
  * */
-class Eln2BucketModelsDatagen(output: PackOutput, existingFileHelper: ExistingFileHelper) : ItemModelProvider(output, MODID, existingFileHelper) {
+class Eln2ItemModelProviderDatagen(output: PackOutput, existingFileHelper: ExistingFileHelper) : ItemModelProvider(output, MODID, existingFileHelper) {
     override fun registerModels() {
+        Eln2Ores.ORE_FOR_MODEL_DATAGEN.forEach { obj ->
+            val rawOreItem = obj.rawOreItem.get()
+            val oreBlock = obj.oreBlock.get()
+
+            val rawId = ForgeRegistries.ITEMS.getKey(rawOreItem)
+                ?: error("Could not resolve ore model generation raw ore $rawOreItem")
+
+            val blockId = ForgeRegistries.BLOCKS.getKey(oreBlock)
+                ?: error("Could not resolve model generation block $oreBlock")
+
+            /**
+             * For the block item, we parent the block's model:
+             * */
+            withExistingParent(
+                blockId.toString(),
+                modLoc("block/${blockId.path}")
+            )
+
+            /**
+             * For the raw ore, we create a model with 2 layers, like the block model:
+             * */
+            singleTexture(
+                rawId.path,
+                mcLoc("item/generated"),
+                "layer0",
+                modLoc("item/raw_ore_overlay")
+            )
+
+            LOG.info("Registered ore item models for {}", blockId)
+        }
+
         ForgeFluidRegistry.FORGE_FLUID_BUCKETS.entries.forEach { bucketEntry ->
             val item = bucketEntry.get() as BucketItem
             val id = bucketEntry.id
@@ -178,7 +258,7 @@ class Eln2BucketModelsDatagen(output: PackOutput, existingFileHelper: ExistingFi
                 .coverIsMask(false)
                 .end()
 
-            LOG.debug("Registered bucket model for {}", id)
+            LOG.info("Registered bucket model for {}", id)
         }
     }
 }

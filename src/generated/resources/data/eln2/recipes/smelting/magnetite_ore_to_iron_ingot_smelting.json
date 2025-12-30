@@ -6,5 +6,5 @@
   "ingredient": {
     "item": "eln2:magnetite_ore"
   },
-  "result": "eln2:magnetite"
+  "result": "minecraft:iron_ingot"
 }

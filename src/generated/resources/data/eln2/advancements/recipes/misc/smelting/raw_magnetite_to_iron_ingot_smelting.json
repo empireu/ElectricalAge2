@@ -1,7 +1,7 @@
 {
   "parent": "minecraft:recipes/root",
   "criteria": {
-    "has_magnetite": {
+    "has_iron_ingot": {
       "conditions": {
         "items": [
           {
@@ -15,20 +15,20 @@
     },
     "has_the_recipe": {
       "conditions": {
-        "recipe": "eln2:smelting/raw_magnetite_to_magnetite_smelting"
+        "recipe": "eln2:smelting/raw_magnetite_to_iron_ingot_smelting"
       },
       "trigger": "minecraft:recipe_unlocked"
     }
   },
   "requirements": [
     [
-      "has_magnetite",
+      "has_iron_ingot",
       "has_the_recipe"
     ]
   ],
   "rewards": {
     "recipes": [
-      "eln2:smelting/raw_magnetite_to_magnetite_smelting"
+      "eln2:smelting/raw_magnetite_to_iron_ingot_smelting"
     ]
   },
   "sends_telemetry_event": false

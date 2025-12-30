@@ -1,5 +1,7 @@
 package org.eln2.mc.common
 
+import it.unimi.dsi.fastutil.ints.Int2IntMap
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
 import net.minecraft.core.BlockPos
 import net.minecraft.data.loot.LootTableProvider
 import net.minecraft.server.level.ServerLevel
@@ -25,6 +27,7 @@ import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.SECOND
 import org.ageseries.libage.data.classify
 import org.ageseries.libage.utils.Stopwatch
+import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.ELN2_LOG_STATS
 import org.eln2.mc.Eln2BlockOreDropLootDatagen
 import org.eln2.mc.LOG
@@ -52,9 +55,11 @@ import org.eln2.mc.common.network.serverToClient.BulkMessages
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.foundation.SpecPlacementOverlayServer
 import org.eln2.mc.AveragingList
+import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.Eln2BlockTagsDatagen
 import org.eln2.mc.Eln2BlockSelfDropLootDatagen
-import org.eln2.mc.Eln2BucketModelsDatagen
+import org.eln2.mc.Eln2ItemModelProviderDatagen
+import org.eln2.mc.Eln2OreBlockStatesDatagen
 import org.eln2.mc.Eln2OreSmeltingDatagen
 import org.eln2.mc.extensions.formatted
 
@@ -73,8 +78,33 @@ object ModEvents {
         ContentManager.registerBlockEntityRenderers(event)
     }
 
+    private fun createTintLookupTable(layers: Set<Pair<Int, MyColor>>) : Int2IntMap {
+        val lookupTable = Int2IntOpenHashMap().apply {
+            defaultReturnValue(MyColor.WHITE.data)
+        }
+
+        layers.forEach { (tintIdx, color) ->
+            lookupTable.putUnique(tintIdx, color.data) {
+                DEBUGGER_BREAK("Duplicate color layer $tintIdx")
+            }
+        }
+
+        lookupTable.trim()
+
+        return lookupTable
+    }
+
     @SubscribeEvent @JvmStatic
     fun registerItemColors(event: RegisterColorHandlersEvent.Item) {
+        ContentManager.ITEM_TINT_FOR_REGISTRATION.map.forEach { (itemSupplier, layers) ->
+            val item = itemSupplier.get()
+            val lookupTable = createTintLookupTable(layers)
+
+            event.register({ _, pTintIndex ->
+                lookupTable.get(pTintIndex)
+            }, item)
+        }
+
         ForgeFluidRegistry.FORGE_FLUID_BUCKETS.entries.forEach { bucketEntry ->
             val item = bucketEntry.get() as BucketItem
 
@@ -90,6 +120,18 @@ object ModEvents {
 
                 return@register MyColor.WHITE.data
             }, item)
+        }
+    }
+
+    @SubscribeEvent @JvmStatic
+    fun registerBlockColors(event: RegisterColorHandlersEvent.Block) {
+        ContentManager.BLOCK_TINT_FOR_REGISTRATION.map.forEach { (blockSupplier, layers) ->
+            val block = blockSupplier.get()
+            val lookupTable = createTintLookupTable(layers)
+
+            event.register({ _, _, _, pTintIndex ->
+                lookupTable.get(pTintIndex)
+            }, block)
         }
     }
 
@@ -133,13 +175,18 @@ object ModEvents {
         )
 
         generator.addProvider(
+            event.includeClient(),
+            Eln2OreBlockStatesDatagen(output, existingFileHelper)
+        )
+
+        generator.addProvider(
             event.includeServer(),
             Eln2OreSmeltingDatagen(output)
         )
 
         generator.addProvider(
             event.includeClient(),
-            Eln2BucketModelsDatagen(output, existingFileHelper)
+            Eln2ItemModelProviderDatagen(output, existingFileHelper)
         )
     }
 }
