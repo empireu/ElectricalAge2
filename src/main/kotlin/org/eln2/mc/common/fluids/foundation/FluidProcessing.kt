@@ -1,4 +1,4 @@
-package org.eln2.mc.common.chemistry
+package org.eln2.mc.common.fluids.foundation
 
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonElement

@@ -37,10 +37,10 @@ import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.blocks.foundation.ReplaceVanillaParticlesBlockExtension
 import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
 import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.chemistry.BoilingTransformation
-import org.eln2.mc.common.chemistry.CondensationTransformation
-import org.eln2.mc.common.chemistry.FluidTransformationManager
-import org.eln2.mc.common.chemistry.PhysicalFluidManager
+import org.eln2.mc.common.fluids.foundation.BoilingTransformation
+import org.eln2.mc.common.fluids.foundation.CondensationTransformation
+import org.eln2.mc.common.fluids.foundation.FluidTransformationManager
+import org.eln2.mc.common.fluids.foundation.PhysicalFluidManager
 import org.eln2.mc.common.content.ThermalWireObject
 import org.eln2.mc.common.content.WrenchInteractable
 import org.eln2.mc.common.content.WrenchItem

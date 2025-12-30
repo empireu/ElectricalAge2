@@ -34,8 +34,8 @@ import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityLevelRendererPro
 import org.eln2.mc.common.cells.foundation.CellGraphManager
 import org.eln2.mc.common.cells.foundation.ServerPhase
 import org.eln2.mc.common.cells.foundation.SimulationExecutionSubgraph
-import org.eln2.mc.common.chemistry.FluidTransformationManager
-import org.eln2.mc.common.chemistry.PhysicalFluidManager
+import org.eln2.mc.common.fluids.foundation.FluidTransformationManager
+import org.eln2.mc.common.fluids.foundation.PhysicalFluidManager
 import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.content.WindSystem
 import org.eln2.mc.common.content.fluid.FluidPipeNetworkManager

@@ -11,7 +11,7 @@ import org.ageseries.libage.data.*
 import org.ageseries.libage.utils.sourceName
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.*
-import org.eln2.mc.common.chemistry.PhysicalFluidManager
+import org.eln2.mc.common.fluids.foundation.PhysicalFluidManager
 import org.eln2.mc.common.content.processing.DistillationModuleBlock
 import org.eln2.mc.common.content.processing.DistillationModuleBlockEntity
 import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
