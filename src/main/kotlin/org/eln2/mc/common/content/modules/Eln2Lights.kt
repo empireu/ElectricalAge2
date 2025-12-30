@@ -5,7 +5,6 @@ package org.eln2.mc.common.content.modules
 import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.minecraft.core.BlockPos
-import net.minecraft.world.phys.AABB
 import net.minecraftforge.client.event.EntityRenderersEvent
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.OHM
@@ -29,7 +28,6 @@ import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
 import org.eln2.mc.common.blocks.BlockRegistry.defineDelegateMap
-import org.eln2.mc.common.blocks.BlockRegistry.withBlockDrop
 import org.eln2.mc.common.blocks.foundation.BigBlockItem
 import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.foundation.ElectricalSize
@@ -43,6 +41,7 @@ import org.eln2.mc.common.content.SolarLightModel
 import org.eln2.mc.common.content.SolarLightPart
 import org.eln2.mc.common.content.TerminalLightCell
 import org.eln2.mc.common.content.TerminalPoweredLightPart
+import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
 import org.eln2.mc.common.content.solarScan
 import org.eln2.mc.common.items.CreativeTabRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
@@ -270,7 +269,7 @@ object Eln2Lights : ContentModule() {
 
     val LAMP_POLE_BLOCK = blockOnly("lamp_pole") {
         LampPoleBlock(POLAR_LIGHT_CELL_CONE_SPHERE, BlockPos(0, 5, 0))
-    }.withBlockDrop()
+    }.withSelfDrop()
 
     val LAMP_POLE_BLOCK_ENTITY = blockEntityOnly("lamp_pole", LAMP_POLE_BLOCK) { pos, state ->
         LampPoleBlockEntity(pos, state)

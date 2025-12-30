@@ -1,0 +1,35 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_magnetite": {
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "eln2:raw_magnetite"
+            ]
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_the_recipe": {
+      "conditions": {
+        "recipe": "eln2:blasting/raw_magnetite_to_magnetite_blasting"
+      },
+      "trigger": "minecraft:recipe_unlocked"
+    }
+  },
+  "requirements": [
+    [
+      "has_magnetite",
+      "has_the_recipe"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "eln2:blasting/raw_magnetite_to_magnetite_blasting"
+    ]
+  },
+  "sends_telemetry_event": false
+}

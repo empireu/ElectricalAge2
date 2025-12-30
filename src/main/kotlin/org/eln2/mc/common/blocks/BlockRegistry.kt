@@ -23,8 +23,6 @@ object BlockRegistry {
     val BLOCK_ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, MODID)!!
     val BLOCK_ENTITIES = DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, MODID)!!
 
-    val LOOT_TABLE_BLOCKS = ArrayList<RegistryObject<Block>>()
-
     fun <T : BlockEntity> blockEntityOnly(
         name: String,
         blockEntitySupplier: BlockEntityType.BlockEntitySupplier<T>,
@@ -91,18 +89,7 @@ object BlockRegistry {
         val registryName get() = block.id ?: error("Invalid registry name")
     }
 
-    fun<B : Block> RegistryObject<B>.withBlockDrop() : RegistryObject<B>  {
-        @Suppress("UNCHECKED_CAST")
-        LOOT_TABLE_BLOCKS.add(this as RegistryObject<Block>)
-        return this
-    }
-
-    fun<B : Block> BlockRegistryItem<B>.withBlockDrop() : BlockRegistryItem<B> {
-        this.block.withBlockDrop()
-        return this
-    }
-
-    fun<T : Block> blockAndItemAndDrop(
+    fun<T : Block> blockAndItem(
         name: String,
         supplier: () -> T,
     ): BlockRegistryItem<T> {
@@ -113,8 +100,6 @@ object BlockRegistry {
                 Item.Properties()
             )
         }
-
-        block.withBlockDrop()
 
         return BlockRegistryItem(name, block, item)
     }

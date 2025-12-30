@@ -15,7 +15,7 @@ import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
-import org.eln2.mc.common.blocks.BlockRegistry.blockAndItemAndDrop
+import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
@@ -31,6 +31,7 @@ import org.eln2.mc.common.content.PrimitiveBurnerBlock
 import org.eln2.mc.common.content.PrimitiveBurnerBlockEntity
 import org.eln2.mc.common.content.PrimitiveBurnerBlockEntityVisual
 import org.eln2.mc.common.content.PrimitiveBurnerCell
+import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
 import org.eln2.mc.data.monopolarMapPlanar
 import org.eln2.mc.mathematics.Base6Direction3d
 
@@ -80,7 +81,8 @@ object Eln2HeatGenerators : ContentModule() {
         }
     }
 
-    val PRIMITIVE_BURNER_BLOCK = blockAndItemAndDrop("primitive_burner", ::PrimitiveBurnerBlock)
+    val PRIMITIVE_BURNER_BLOCK = blockAndItem("primitive_burner", ::PrimitiveBurnerBlock)
+        .withSelfDrop()
 
     val PRIMITIVE_BURNER_BLOCK_ENTITY = blockEntityOnly("primitive_burner", PRIMITIVE_BURNER_BLOCK.block, ::PrimitiveBurnerBlockEntity)
 
@@ -107,7 +109,8 @@ object Eln2HeatGenerators : ContentModule() {
         }
     }
 
-    val HEAT_GENERATOR_BLOCK = blockAndItemAndDrop("heat_generator") { HeatGeneratorBlock() }
+    val HEAT_GENERATOR_BLOCK = blockAndItem("heat_generator") { HeatGeneratorBlock() }
+        .withSelfDrop()
 
     val HEAT_GENERATOR_BLOCK_ENTITY = blockEntityOnly("heat_generator", HEAT_GENERATOR_BLOCK, ::HeatGeneratorBlockEntity)
 

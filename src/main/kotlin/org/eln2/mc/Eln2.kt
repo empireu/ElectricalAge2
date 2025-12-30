@@ -24,7 +24,7 @@ import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.containers.ContainerRegistry
-import org.eln2.mc.common.content.modules.ContentModuleManager
+import org.eln2.mc.common.content.modules.ContentManager
 import org.eln2.mc.common.content.OscilloscopeCopyManager
 import org.eln2.mc.common.content.OscilloscopeShader
 import org.eln2.mc.common.content.ScrewdriverItem
@@ -84,7 +84,7 @@ class Eln2 {
         CellRegistry.setup(modEventBus)
         PartRegistry.setup(modEventBus)
         SpecRegistry.setup(modEventBus)
-        ContentModuleManager.initialize()
+        ContentManager.initialize()
 
         LOG.info("Prepared registries.")
     }
@@ -94,11 +94,11 @@ class Eln2 {
             event.enqueueWork {
                 FlwInstanceTypes.init()
                 FlwVisualizerRegistry.registerFoundationalVisualizers()
-                ContentModuleManager.registerBlockEntityVisualizers()
-                ContentModuleManager.registerPartVisualizers()
-                ContentModuleManager.registerSpecVisualizers()
-                ContentModuleManager.setupScreens()
-                ContentModuleManager.setRenderLayers()
+                ContentManager.registerBlockEntityVisualizers()
+                ContentManager.registerPartVisualizers()
+                ContentManager.registerSpecVisualizers()
+                ContentManager.setupScreens()
+                ContentManager.setRenderLayers()
             }
         }
 

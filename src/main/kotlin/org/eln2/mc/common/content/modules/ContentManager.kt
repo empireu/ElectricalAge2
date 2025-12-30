@@ -1,18 +1,21 @@
 package org.eln2.mc.common.content.modules
 
+import net.minecraft.tags.TagKey
+import net.minecraft.world.level.block.Block
 import net.minecraftforge.client.event.EntityRenderersEvent
-import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
 import org.ageseries.libage.utils.addUnique
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.LOG
+import org.eln2.mc.common.content.modules.world.Eln2Ores
 import org.eln2.mc.requireIsOnRenderThread
+import java.util.function.Supplier
 
 private val obj = Any()
 
 /**
  * Validation layer for a method that executes only once. Used to ensure the content setup methods are called from the right call site, in the right order.
- * - A setup method from [ContentModuleManager] calls methods from [ContentModule] inside the block of [executeInScope].
- * - Methods from [ContentModule] ensure they are being called exactly once, from the right setup method in [ContentModuleManager], and in the correct order relative to other setup methods, with [validate].
+ * - A setup method from [ContentManager] calls methods from [ContentModule] inside the block of [executeInScope].
+ * - Methods from [ContentModule] ensure they are being called exactly once, from the right setup method in [ContentManager], and in the correct order relative to other setup methods, with [validate].
  * @param dependencies [Scope]s [enter] depends on. All of these scopes must have already been executed, otherwise [enter] will result in an error.
  * */
 private class Scope(val name: String, val dependencies: List<Scope> = listOf()) {
@@ -63,13 +66,13 @@ private class Scope(val name: String, val dependencies: List<Scope> = listOf()) 
 
 /**
  * All `object`s that implement [ContentModule]. They are in the `modules` package.
- * This collection is built in [ContentModuleManager.initialize], which calls [ContentModule.initialize] which causes the singleton to be instanced.
+ * This collection is built in [ContentManager.initialize], which calls [ContentModule.initialize] which causes the singleton to be instanced.
  * The constructor of [ContentModule] then validates the scope and adds itself to the set.
  * */
 private val contentModules = HashSet<ContentModule>()
 
 /**
- * Scope of the [ContentModuleManager.initialize] method. The singletons implementing [ContentModule] are constructed in this scope.
+ * Scope of the [ContentManager.initialize] method. The singletons implementing [ContentModule] are constructed in this scope.
  * */
 private val initScope = Scope("initialize")
 
@@ -82,7 +85,7 @@ private val setupScreensScope = Scope(
 )
 
 /**
- * Client-only scope where block entity visualizers are registered in [ContentModuleManager.registerBlockEntityVisualizers].
+ * Client-only scope where block entity visualizers are registered in [ContentManager.registerBlockEntityVisualizers].
  * */
 private val registerBlockEntityVisualizersScope = Scope(
     "registerBlockEntityVisualizers",
@@ -90,7 +93,7 @@ private val registerBlockEntityVisualizersScope = Scope(
 )
 
 /**
- * Client-only scope where part visualizers are registered in [ContentModuleManager.registerPartVisualizers].
+ * Client-only scope where part visualizers are registered in [ContentManager.registerPartVisualizers].
  * Depends on [registerBlockEntityVisualizersScope].
  * */
 private val registerPartVisualizersScope = Scope(
@@ -99,7 +102,7 @@ private val registerPartVisualizersScope = Scope(
 )
 
 /**
- * Client-only scope where spec visualizers are registered in [ContentModuleManager.registerSpecVisualizers].
+ * Client-only scope where spec visualizers are registered in [ContentManager.registerSpecVisualizers].
  * Depends on [registerPartVisualizersScope].
  * */
 private val registerSpecVisualizersScope = Scope(
@@ -125,7 +128,7 @@ private val setRenderLayersScope = Scope(
 
 /**
  * Implemented by `object`s that hold fields for the registered blocks, items, block entities, cells, parts, specs, and other things.
- * Methods to register visualizers and block entity renderers are also present. They are called in [ContentModuleManager], with some validation.
+ * Methods to register visualizers and block entity renderers are also present. They are called in [ContentManager], with some validation.
  * */
 abstract class ContentModule {
     init {
@@ -187,10 +190,15 @@ abstract class ContentModule {
 }
 
 /**
- * Event dispatcher for content registry.
- * It handles initializing [ContentModule]s.
+ * Event dispatcher for content registration and repository for things that will be included in datagen.
+ * It primarily handles initializing [ContentModule]s.
+ * Note on datagen: we create some repositories of common things to generate during datagen.
+ * We don't hold _everything_ here, see the datagen file to see other sources. For example, [Eln2Ores] has its own repository of blocks to include in loot table generation.
  */
-object ContentModuleManager {
+object ContentManager {
+    /**
+     * P.S. This is the only place you have to add new content modules to:
+     * */
     fun initialize() = initScope.executeInScope {
         Eln2Tools.initialize()
         Eln2Ingredients.initialize()
@@ -207,6 +215,7 @@ object ContentModuleManager {
         Eln2Signal.initialize()
         Eln2Grid.initialize()
         Eln2ForgeFluids.initialize()
+        Eln2Ores.initialize()
 
         LOG.info("Content init completed.")
     }
@@ -265,4 +274,34 @@ object ContentModuleManager {
 
         LOG.info("Set render layers completed.")
     }
+
+    /**
+     * Repositories for datagen.
+     * Operations are validated against [initScope], since the repositories are built when the fields of the content modules are initialized.
+     * */
+    //#region Datagen
+
+    /**
+     * Used by [org.eln2.mc.Eln2BlockSelfDropLootDatagen].
+     * */
+    val SELF_DROP_BLOCKS_FOR_DATAGEN = LinkedHashSet<Supplier<Block>>()
+
+    fun<B : Block, T : Supplier<B>> T.withSelfDrop() : T{
+        initScope.validate()
+        SELF_DROP_BLOCKS_FOR_DATAGEN.addUnique(Supplier { this.get() }) { "Duplicate self drop for $this" }
+        return this
+    }
+
+    /**
+     * Used by [org.eln2.mc.Eln2BlockTagsDatagen].
+     * */
+    val BLOCK_TAGS_FOR_DATAGEN = LinkedHashSet<Pair<Supplier<Block>, TagKey<Block>>>()
+
+    fun<T : Supplier<Block>> T.withTagDatagen(tag: TagKey<Block>) : T {
+        initScope.validate()
+        BLOCK_TAGS_FOR_DATAGEN.addUnique(Pair(this, tag)) { "Duplicate block tag for $this" }
+        return this
+    }
+
+    //#endregion
 }

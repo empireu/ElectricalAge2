@@ -34,7 +34,6 @@ import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setPartVisuali
 import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setPartVisualizerMemoized
 import org.eln2.mc.client.render.foundation.ShaftDescription
 import org.eln2.mc.client.render.foundation.SingleNodeMultiShaftKineticPartVisual
-import org.eln2.mc.common.blocks.BlockRegistry.withBlockDrop
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
@@ -57,6 +56,7 @@ import org.eln2.mc.common.content.WindTurbineBlockEntity
 import org.eln2.mc.common.content.WindTurbineBlockEntityVisual
 import org.eln2.mc.common.content.WindTurbineCell
 import org.eln2.mc.common.content.WindTurbineOptions
+import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
 import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
 import org.eln2.mc.common.parts.PartRegistry.partMemoizeBB
 import org.eln2.mc.common.parts.foundation.PartFactory
@@ -169,7 +169,7 @@ object Eln2Kinetic : ContentModule() {
 
     override fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
         event.registerBlockEntityRenderer(
-            Eln2Kinetic.WIND_TURBINE_BLOCK_ENTITY.get(),
+            WIND_TURBINE_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
     }
@@ -468,7 +468,7 @@ object Eln2Kinetic : ContentModule() {
                 FlwModels.BASIC_WIND_TURBINE_ROTOR
             )
         )
-    }.withBlockDrop()
+    }.withSelfDrop()
 
     val BASIC_WIND_TURBINE_BLOCK_ITEM = blockItemOnly("basic_wind_turbine") {
         BigBlockItem(

@@ -10,6 +10,8 @@ import org.eln2.mc.common.items.ItemRegistry.itemNoStack
 object Eln2Ingredients : ContentModule() {
     val COKE = itemDefault("coke")
 
+    val MAGNETITE = itemDefault("magnetite")
+
     //#region Crushed Ores
 
     val CRUSHED_IRON_ORE = itemDefault("crushed_iron_ore")
@@ -26,7 +28,6 @@ object Eln2Ingredients : ContentModule() {
     //#endregion
 
     val EXTRUDER_ROD_DIE = itemNoStack("extruder_rod_die")
-
 
     val IRON_PLATE = itemDefault("iron_plate")
 

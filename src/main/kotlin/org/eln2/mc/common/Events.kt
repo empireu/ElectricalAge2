@@ -26,6 +26,7 @@ import org.ageseries.libage.data.SECOND
 import org.ageseries.libage.data.classify
 import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.ELN2_LOG_STATS
+import org.eln2.mc.Eln2BlockOreDropLootDatagen
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.foundation.MyColor
@@ -39,7 +40,7 @@ import org.eln2.mc.common.fluids.foundation.PhysicalFluidManager
 import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.content.WindSystem
 import org.eln2.mc.common.content.fluid.FluidPipeNetworkManager
-import org.eln2.mc.common.content.modules.ContentModuleManager
+import org.eln2.mc.common.content.modules.ContentManager
 import org.eln2.mc.common.content.processing.TreeExtractionManager
 import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.events.schedulePost
@@ -51,8 +52,10 @@ import org.eln2.mc.common.network.serverToClient.BulkMessages
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.foundation.SpecPlacementOverlayServer
 import org.eln2.mc.data.AveragingList
-import org.eln2.mc.datagen.Eln2BlockLoot
-import org.eln2.mc.datagen.Eln2BucketModels
+import org.eln2.mc.Eln2BlockTagsDatagen
+import org.eln2.mc.Eln2BlockSelfDropLootDatagen
+import org.eln2.mc.Eln2BucketModelsDatagen
+import org.eln2.mc.Eln2OreSmeltingDatagen
 import org.eln2.mc.extensions.formatted
 
 @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.MOD)
@@ -67,7 +70,7 @@ object ModEvents {
             MultipartBlockEntityLevelRendererProvider()
         )
 
-        ContentModuleManager.registerBlockEntityRenderers(event)
+        ContentManager.registerBlockEntityRenderers(event)
     }
 
     @SubscribeEvent @JvmStatic
@@ -104,6 +107,7 @@ object ModEvents {
         val generator = event.generator
         val output = generator.packOutput
         val existingFileHelper = event.existingFileHelper
+        val lookupProvider = event.lookupProvider
 
         generator.addProvider(
             event.includeServer(),
@@ -112,7 +116,11 @@ object ModEvents {
                 emptySet(), // What?
                 listOf(
                     LootTableProvider.SubProviderEntry(
-                        ::Eln2BlockLoot,
+                        ::Eln2BlockSelfDropLootDatagen,
+                        LootContextParamSets.BLOCK
+                    ),
+                    LootTableProvider.SubProviderEntry(
+                        ::Eln2BlockOreDropLootDatagen,
                         LootContextParamSets.BLOCK
                     )
                 )
@@ -120,8 +128,18 @@ object ModEvents {
         )
 
         generator.addProvider(
+            event.includeServer(),
+            Eln2BlockTagsDatagen(output, lookupProvider, existingFileHelper)
+        )
+
+        generator.addProvider(
+            event.includeServer(),
+            Eln2OreSmeltingDatagen(output)
+        )
+
+        generator.addProvider(
             event.includeClient(),
-            Eln2BucketModels(output, existingFileHelper)
+            Eln2BucketModelsDatagen(output, existingFileHelper)
         )
     }
 }

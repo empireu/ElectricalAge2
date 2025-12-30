@@ -17,12 +17,11 @@ import org.eln2.mc.FrictionNodeDescription
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
 import org.eln2.mc.client.screens.BasicProgressScreen
-import org.eln2.mc.common.blocks.BlockRegistry.blockAndItemAndDrop
+import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
 import org.eln2.mc.common.blocks.BlockRegistry.defineDelegateMap
-import org.eln2.mc.common.blocks.BlockRegistry.withBlockDrop
 import org.eln2.mc.common.blocks.foundation.BigBlockItem
 import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
@@ -30,6 +29,7 @@ import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.cells.foundation.ThermalSize
 import org.eln2.mc.common.containers.ContainerRegistry.menu
 import org.eln2.mc.common.content.*
+import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
 import org.eln2.mc.common.content.processing.*
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
@@ -167,7 +167,8 @@ object Eln2Processing : ContentModule() {
 
     val BLACKSMITHING_HAMMER_MANY_HITS_SOUND = soundEventVariableRange("blacksmithing/hammer_many_hits")
 
-    val BLACKSMITHING_STATION_BLOCK = blockAndItemAndDrop("blacksmithing_station", ::BlacksmithingStationBlock)
+    val BLACKSMITHING_STATION_BLOCK = blockAndItem("blacksmithing_station", ::BlacksmithingStationBlock)
+        .withSelfDrop()
 
     val BLACKSMITHING_STATION_BLOCK_ENTITY = blockEntityOnly(
         "blacksmithing_station",
@@ -280,7 +281,7 @@ object Eln2Processing : ContentModule() {
     }
 
     val COKE_OVEN_MAIN_BLOCK = blockOnly("coke_oven", ::CokeOvenMainBlock)
-        .withBlockDrop()
+        .withSelfDrop()
 
     val COKE_OVEN_MAIN_BLOCK_ENTITY = blockEntityOnly(
         "coke_oven",
@@ -303,7 +304,8 @@ object Eln2Processing : ContentModule() {
 
     val DISTILLATION_COLUMN_CELL = cellImmediate("distillation_column", ::DistillationColumnCell)
 
-    val DISTILLATION_COLUMN_BLOCK = blockAndItemAndDrop("distillation_column", ::DistillationColumnBlock)
+    val DISTILLATION_COLUMN_BLOCK = blockAndItem("distillation_column", ::DistillationColumnBlock)
+        .withSelfDrop()
 
     val DISTILLATION_COLUMN_BLOCK_ENTITY = blockEntityOnly(
         "distillation_column",
@@ -319,7 +321,7 @@ object Eln2Processing : ContentModule() {
         }
     }
 
-    val INSULATED_DISTILLATION_MODULE_BLOCK = blockAndItemAndDrop("insulated_distillation_module") {
+    val INSULATED_DISTILLATION_MODULE_BLOCK = blockAndItem("insulated_distillation_module") {
         DistillationModuleBlock(
             INSULATED_DISTILLATION_MODULE_CELL,
             INSULATED_DISTILLATION_MODULE_BLOCK_ENTITY,
@@ -328,6 +330,7 @@ object Eln2Processing : ContentModule() {
             }
         )
     }
+        .withSelfDrop()
 
     val INSULATED_DISTILLATION_MODULE_BLOCK_ENTITY: RegistryObject<BlockEntityType<DistillationModuleBlockEntity>> = blockEntityOnly(
         "insulated_distillation_module",
@@ -343,7 +346,7 @@ object Eln2Processing : ContentModule() {
         }
     }
 
-    val CONDENSER_DISTILLATION_MODULE_BLOCK = blockAndItemAndDrop("condenser_distillation_module") {
+    val CONDENSER_DISTILLATION_MODULE_BLOCK = blockAndItem("condenser_distillation_module") {
         DistillationModuleBlock(
             CONDENSER_DISTILLATION_MODULE_CELL,
             CONDENSER_DISTILLATION_MODULE_BLOCK_ENTITY,
@@ -351,7 +354,7 @@ object Eln2Processing : ContentModule() {
                 FlwModels.CONDENSER_DISTILLATION_MODULE
             }
         )
-    }
+    }.withSelfDrop()
 
     val CONDENSER_DISTILLATION_MODULE_BLOCK_ENTITY: RegistryObject<BlockEntityType<DistillationModuleBlockEntity>> = blockEntityOnly(
         "condenser_distillation_module",
@@ -377,7 +380,8 @@ object Eln2Processing : ContentModule() {
         }
     }
 
-    val FURNACE_BLOCK = blockAndItemAndDrop("furnace") { FurnaceBlock() }
+    val FURNACE_BLOCK = blockAndItem("furnace") { FurnaceBlock() }
+        .withSelfDrop()
 
     val FURNACE_BLOCK_ENTITY = blockEntityOnly(
         "furnace",
@@ -430,7 +434,8 @@ object Eln2Processing : ContentModule() {
         }
     }
 
-    val CRUSHER_BLOCK = blockAndItemAndDrop("crusher", ::CrusherBlock)
+    val CRUSHER_BLOCK = blockAndItem("crusher", ::CrusherBlock)
+        .withSelfDrop()
 
     val CRUSHER_SOUND_ROCK = soundEventVariableRange("crusher.rock")
 
@@ -473,7 +478,8 @@ object Eln2Processing : ContentModule() {
         }
     }
 
-    val ELECTRIC_EXTRUDER_BLOCK = blockAndItemAndDrop("electric_extruder", ::ElectricExtruderBlock)
+    val ELECTRIC_EXTRUDER_BLOCK = blockAndItem("electric_extruder", ::ElectricExtruderBlock)
+        .withSelfDrop()
 
     val ELECTRIC_EXTRUDER_BLOCK_ENTITY = blockEntityOnly("electric_extruder", ELECTRIC_EXTRUDER_BLOCK.block, ::ElectricExtruderBlockEntity)
 
@@ -510,7 +516,8 @@ object Eln2Processing : ContentModule() {
         }
     }
 
-    val KINETIC_EXTRUDER_BLOCK = blockAndItemAndDrop("kinetic_extruder", ::KineticExtruderBlock)
+    val KINETIC_EXTRUDER_BLOCK = blockAndItem("kinetic_extruder", ::KineticExtruderBlock)
+        .withSelfDrop()
 
     val KINETIC_EXTRUDER_BLOCK_ENTITY = blockEntityOnly("kinetic_extruder", KINETIC_EXTRUDER_BLOCK.block, ::KineticExtruderBlockEntity)
 
@@ -555,7 +562,8 @@ object Eln2Processing : ContentModule() {
         }
     }
 
-    val KINETIC_ROLLING_MACHINE_BLOCK = blockAndItemAndDrop("kinetic_rolling_machine", ::KineticRollingMachineBlock)
+    val KINETIC_ROLLING_MACHINE_BLOCK = blockAndItem("kinetic_rolling_machine", ::KineticRollingMachineBlock)
+        .withSelfDrop()
 
     val KINETIC_ROLLING_MACHINE_BLOCK_ENTITY = blockEntityOnly("kinetic_rolling_machine", KINETIC_ROLLING_MACHINE_BLOCK.block, ::KineticRollingMachineBlockEntity)
 
@@ -599,7 +607,7 @@ object Eln2Processing : ContentModule() {
     val VULCANIZING_AUTOCLAVE_MAIN_CELL = cellImmediate("vulcanizing_autoclave", ::VulcanizingAutoclaveMainCell)
 
     val VULCANIZING_AUTOCLAVE_MAIN_BLOCK = blockOnly("vulcanizing_autoclave", ::VulcanizingAutoclaveMainBlock)
-        .withBlockDrop()
+        .withSelfDrop()
 
     val VULCANIZING_AUTOCLAVE_MAIN_BLOCK_ENTITY = blockEntityOnly(
         "vulcanizing_autoclave",
