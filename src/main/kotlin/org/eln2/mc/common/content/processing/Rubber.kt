@@ -65,8 +65,8 @@ import org.eln2.mc.common.recipes.foundation.OUTPUT_SLOT
 import org.eln2.mc.common.sounds.foundation.SimpleLoopingBlockEntitySoundInstance
 import org.eln2.mc.common.sounds.foundation.SoundInfo
 import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
-import org.eln2.mc.data.Locators
-import org.eln2.mc.data.MonopoleMap
+import org.eln2.mc.Locators
+import org.eln2.mc.MonopoleMap
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList

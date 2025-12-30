@@ -32,7 +32,7 @@ import org.eln2.mc.common.content.PrimitiveBurnerBlockEntity
 import org.eln2.mc.common.content.PrimitiveBurnerBlockEntityVisual
 import org.eln2.mc.common.content.PrimitiveBurnerCell
 import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
-import org.eln2.mc.data.monopolarMapPlanar
+import org.eln2.mc.monopolarMapPlanar
 import org.eln2.mc.mathematics.Base6Direction3d
 
 object Eln2HeatGenerators : ContentModule() {

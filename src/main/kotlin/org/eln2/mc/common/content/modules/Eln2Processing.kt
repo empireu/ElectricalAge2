@@ -37,9 +37,9 @@ import org.eln2.mc.common.recipes.*
 import org.eln2.mc.common.recipes.RecipeRegistry.registerCatalyzedRecipe
 import org.eln2.mc.common.recipes.RecipeRegistry.registerDirectRecipe
 import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
-import org.eln2.mc.data.directionPoleMapPlanar
-import org.eln2.mc.data.monopolarMapPlanar
-import org.eln2.mc.data.nullPolarMap
+import org.eln2.mc.directionPoleMapPlanar
+import org.eln2.mc.monopolarMapPlanar
+import org.eln2.mc.nullPolarMap
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.resource

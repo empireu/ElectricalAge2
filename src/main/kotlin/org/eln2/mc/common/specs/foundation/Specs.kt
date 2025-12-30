@@ -63,7 +63,7 @@ import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.common.specs.SpecRegistry
-import org.eln2.mc.data.Locators
+import org.eln2.mc.Locators
 import org.eln2.mc.extensions.*
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.mathematics.FacingDirection

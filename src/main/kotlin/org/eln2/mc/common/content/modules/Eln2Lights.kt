@@ -50,7 +50,7 @@ import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
 import org.eln2.mc.common.parts.PartRegistry.partMemoizeBB
 import org.eln2.mc.common.parts.foundation.BasicPartProvider
 import org.eln2.mc.common.parts.foundation.PartFactory
-import org.eln2.mc.data.directionPoleMapPlanar
+import org.eln2.mc.directionPoleMapPlanar
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.maskXY
 import kotlin.math.PI

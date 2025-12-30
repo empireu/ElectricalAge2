@@ -35,9 +35,9 @@ import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.common.GhostLightServer.canCreateHandle
 import org.eln2.mc.common.network.Networking
-import org.eln2.mc.data.DefaultPooledObjectPolicy
-import org.eln2.mc.data.LinearObjectPool
-import org.eln2.mc.data.Locators
+import org.eln2.mc.LinearObjectPool
+import org.eln2.mc.Locators
+import org.eln2.mc.PooledObjectPolicy
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.*
 import java.nio.ByteBuffer
@@ -586,7 +586,16 @@ object GhostLightHackClient {
     private val preparedChunks = HashSet<ChunkPos>()
 
     private val pool = LinearObjectPool(
-        DefaultPooledObjectPolicy(GhostLightHackClient::allocateSection, GhostLightHackClient::clearSection),
+        object : PooledObjectPolicy<ByteArray> {
+            override fun create(): ByteArray {
+                return ByteArray(16 * 16 * 16)
+            }
+
+            override fun release(obj: ByteArray): Boolean {
+                obj.fill(0)
+                return true
+            }
+        },
         16384
     )
 
@@ -709,15 +718,6 @@ object GhostLightHackClient {
 
         grid.clear()
         preparedChunks.clear()
-    }
-
-    private fun allocateSection() : ByteArray {
-        return ByteArray(16 * 16 * 16)
-    }
-
-    private fun clearSection(array: ByteArray) : Boolean {
-        array.fill(0)
-        return true
     }
 
     private fun forEachSection(chunkPos: ChunkPos, use: (SectionPos) -> Unit) {

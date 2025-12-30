@@ -55,7 +55,7 @@ import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.network.serverToClient.BulkMessageHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.with
 import org.eln2.mc.common.parts.foundation.*
-import org.eln2.mc.data.PoleMap
+import org.eln2.mc.PoleMap
 import org.eln2.mc.extensions.enqueueBulkMessage
 import org.eln2.mc.extensions.evaluateDiffuseIrradianceFactor
 import org.eln2.mc.extensions.plus

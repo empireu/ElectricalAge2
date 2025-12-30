@@ -84,7 +84,7 @@ import org.eln2.mc.common.fluids.foundation.IThermalFluidHandler
 import org.eln2.mc.common.fluids.foundation.PurityBasedMultipleFractionalFluidTank
 import org.eln2.mc.common.fluids.foundation.ThermalFluidStack
 import org.eln2.mc.common.recipes.foundation.*
-import org.eln2.mc.data.Locators
+import org.eln2.mc.Locators
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList

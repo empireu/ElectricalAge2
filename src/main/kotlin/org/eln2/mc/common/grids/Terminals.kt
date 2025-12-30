@@ -26,7 +26,7 @@ import org.eln2.mc.common.cells.foundation.requireNode
 import org.eln2.mc.common.parts.foundation.GridCellPart
 import org.eln2.mc.common.specs.foundation.GridSpec
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
-import org.eln2.mc.data.Notifier
+import org.eln2.mc.NotificationBus
 import org.eln2.mc.extensions.*
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.getPlayerPOVHitResult
@@ -378,7 +378,7 @@ abstract class GridTerminalServer(
     /**
      * Raised when the stored connections change, and the game object may want to ensure that this terminal gets saved.
      * */
-    val connectionsChanged = Notifier()
+    val connectionsChanged = NotificationBus()
 
     init {
         requireIsOnServerThread {

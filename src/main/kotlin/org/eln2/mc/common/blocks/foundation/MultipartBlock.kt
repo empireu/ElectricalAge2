@@ -66,7 +66,7 @@ import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.common.specs.SpecRegistry
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
-import org.eln2.mc.data.Locators
+import org.eln2.mc.Locators
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.FacingDirection

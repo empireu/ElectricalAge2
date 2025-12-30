@@ -85,7 +85,7 @@ import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.common.parts.foundation.PartUseInfo
 import org.eln2.mc.common.parts.foundation.stillValid
 import org.eln2.mc.common.parts.foundation.eln2WritePartGuiData
-import org.eln2.mc.data.MonopoleMap
+import org.eln2.mc.MonopoleMap
 import org.eln2.mc.extensions.getListTag
 import org.eln2.mc.extensions.mulPose
 import org.eln2.mc.extensions.preserve

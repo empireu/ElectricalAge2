@@ -14,8 +14,8 @@ import org.ageseries.libage.sim.kinetic.*
 import org.eln2.mc.MINUS
 import org.eln2.mc.PLUS
 import org.eln2.mc.common.grids.GridConnectionCell
-import org.eln2.mc.data.PoleMap
-import org.eln2.mc.data.evaluate
+import org.eln2.mc.PoleMap
+import org.eln2.mc.evaluate
 import org.eln2.mc.extensions.getQuantity
 import org.eln2.mc.extensions.putQuantity
 import org.eln2.mc.offerExternal

@@ -28,9 +28,9 @@ import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.events.schedulePre
-import org.eln2.mc.data.Locators
-import org.eln2.mc.data.SortedUUIDPair
-import org.eln2.mc.data.plusAssign
+import org.eln2.mc.Locators
+import org.eln2.mc.SortedUUIDPair
+import org.eln2.mc.plusAssign
 import org.eln2.mc.extensions.*
 import org.eln2.mc.randomFloat
 import java.util.*

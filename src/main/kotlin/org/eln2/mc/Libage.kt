@@ -1,7 +1,9 @@
 package org.eln2.mc
 
 import it.unimi.dsi.fastutil.longs.Long2ShortOpenHashMap
+import net.minecraft.core.Vec3i
 import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.ArrayKDVectorD
 import org.ageseries.libage.mathematics.geometry.BoundingBox3d
 import org.ageseries.libage.mathematics.geometry.Ray3d
 import org.ageseries.libage.mathematics.geometry.Vector3d
@@ -13,6 +15,14 @@ import org.ageseries.libage.sim.kinetic.KineticMono
 import org.ageseries.libage.sim.kinetic.KineticTriple
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.common.cells.foundation.CellGraph
+import java.nio.ByteBuffer
+import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.contracts.ExperimentalContracts
+import kotlin.contracts.InvocationKind
+import kotlin.contracts.contract
 import kotlin.math.*
 
 class ListCombination<T>(val a: List<T>, val b: List<T>) : Iterable<T> {
@@ -786,5 +796,436 @@ data class FrictionNodeDescription(
         shaft.coulombFriction = !coulombFriction
         shaft.staticFriction = !staticThreshold
         shaft.velocityEps = !velocityEps
+    }
+}
+
+class AveragingList(private val sampleCount: Int) {
+    init {
+        require(sampleCount > 0) {
+            "Invalid sample count $sampleCount"
+        }
+    }
+
+    private val samples = DoubleArray(sampleCount)
+    private var index = 0
+    private var filled = 0
+    private var sum = 0.0
+
+    fun addSample(value: Double) {
+        if (filled < sampleCount) {
+            filled++
+        } else {
+            sum -= samples[index] // remove old value
+        }
+
+        samples[index] = value
+        sum += value
+        index = (index + 1) % sampleCount
+    }
+
+    fun calculate(): Double {
+        return if (filled == 0) 0.0 else sum / filled
+    }
+}
+
+class Average {
+    var count = 0
+    var value = 0.0
+
+    fun add(x: Double) {
+        value += (x - value) / (count + 1)
+        ++count
+    }
+
+    fun add(x: Int) {
+        add(x.toDouble())
+    }
+
+    fun reset() {
+        count = 0
+        value = 0.0
+    }
+
+    companion object {
+        fun combine(a: Average, b: Average): Average {
+            val count = a.count + b.count
+            val kA = a.count / count
+            val kB = b.count / count
+
+            val result = Average()
+
+            result.count = count
+            result.value = a.value * kA + b.value * kB
+
+            return result
+        }
+    }
+}
+
+class Average3d {
+    var count = 0
+    var averageX = 0.0
+    var averageY = 0.0
+    var averageZ = 0.0
+
+    var average: Vector3d
+        get() = Vector3d(averageX, averageY, averageZ)
+        set(value) {
+            averageX = value.x
+            averageY = value.y
+            averageZ = value.z
+        }
+
+    fun add(x: Double, y: Double, z: Double) {
+        averageX += (x - averageX) / (count + 1)
+        averageY += (y - averageY) / (count + 1)
+        averageZ += (z - averageZ) / (count + 1)
+        ++count
+    }
+
+    fun add(x: Int, y: Int, z: Int) {
+        add(x.toDouble(), y.toDouble(), z.toDouble())
+    }
+
+    fun add(value: Vector3d) {
+        add(value.x, value.y, value.z)
+    }
+
+    fun add(value: Vec3i) {
+        add(value.x, value.y, value.z)
+    }
+
+    fun reset() {
+        count = 0
+        averageX = 0.0
+        averageY = 0.0
+        averageZ = 0.0
+    }
+
+    companion object {
+        fun combine(a: Average3d, b: Average3d): Average3d {
+            val count = a.count + b.count
+            val kA = a.count / count
+            val kB = b.count / count
+
+            val result = Average3d()
+
+            result.count = count
+            result.averageX = a.averageX * kA + b.averageX * kB
+            result.averageY = a.averageY * kA + b.averageY * kB
+            result.averageZ = a.averageZ * kA + b.averageZ * kB
+
+            return result
+        }
+    }
+}
+
+/**
+ * [Lazy] which can be reset (the value is discarded).
+ * */
+interface LazyResettable<T> : Lazy<T> {
+    /**
+     * Resets the stored value, if present.
+     * @return True if a value was present. Otherwise, false.
+     * */
+    fun reset() : Boolean
+}
+
+/**
+ * Non-thread safe implementation of [LazyResettable].
+ * */
+class LinearLazyResettable<T>(private val new: () -> T) : LazyResettable<T> {
+    private var instance: T? = null
+
+    override fun reset(): Boolean {
+        val instance = this.instance
+        this.instance = null
+        return instance != null
+    }
+
+    override val value: T
+        get() {
+            val instance = this.instance
+
+            if(instance != null) {
+                return instance
+            }
+
+            val newValue = new()
+            this.instance = newValue
+            return newValue
+        }
+
+    override fun isInitialized() = instance != null
+}
+
+/**
+ * CSV file with purely numeric data.
+ * @param headers The headers of each column.
+ * @param entries Each row in the file, as a vector.
+ * */
+class NumericCsvFile(val headers: List<String>, val entries: List<ArrayKDVectorD>) {
+    companion object {
+        /**
+         * Parses a [NumericCsvFile].
+         * The header row **must** be present.
+         * */
+        fun parse(csv: String): NumericCsvFile {
+            val lines = csv.lines()
+
+            val headers = ArrayList<String>()
+
+            lines[0].split(',').forEach { headers.add(it) }
+
+            val results = ArrayList<ArrayKDVectorD>()
+
+            for (i in 1 until lines.size) {
+                val line = lines[i]
+
+                if (line.isEmpty()) {
+                    continue
+                }
+
+                val tokens = line.split(',').map { it.toDoubleOrNull() ?: error("Could not parse double $it") }
+
+                if (tokens.size != headers.size) {
+                    error("Mismatched CSV token count")
+                }
+
+                results.add(ArrayKDVectorD(tokens.toDoubleArray()))
+            }
+
+            return NumericCsvFile(headers, results)
+        }
+    }
+}
+
+/**
+ * Thread safe collection of runnable handlers.
+ * */
+class NotificationBus {
+    private val handlers = CopyOnWriteArrayList<Runnable>()
+
+    /**
+     * Adds a handler. **Does not check for duplicate adds!**
+     * */
+    operator fun plusAssign(handler: Runnable) {
+        handlers.add(handler)
+    }
+
+    /**
+     * Removes a handler.
+     * */
+    operator fun minusAssign(handler: Runnable) {
+        handlers.remove(handler)
+    }
+
+    fun run() {
+        handlers.forEach {
+            it.run()
+        }
+    }
+}
+
+inline operator fun<reified TEvent : Event> EventSource.plusAssign(handler: EventHandler<TEvent>) {
+    registerHandler(TEvent::class) {
+        handler.handle(it as TEvent)
+    }
+}
+
+class SortedUUIDPair private constructor(val a: UUID, val b: UUID) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as SortedUUIDPair
+
+        if (a != other.a) return false
+        if (b != other.b) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = a.hashCode()
+        result = 31 * result + b.hashCode()
+        return result
+    }
+
+    companion object {
+        fun write(pair: SortedUUIDPair, buffer: ByteBuffer) {
+            val a = pair.a
+            buffer.putLong(a.mostSignificantBits)
+            buffer.putLong(a.leastSignificantBits)
+
+            val b = pair.b
+            buffer.putLong(b.mostSignificantBits)
+            buffer.putLong(b.leastSignificantBits)
+        }
+
+        fun read(buffer: ByteBuffer) : SortedUUIDPair {
+            val a = UUID(buffer.getLong(), buffer.getLong())
+            val b = UUID(buffer.getLong(), buffer.getLong())
+
+            return SortedUUIDPair(a, b)
+        }
+
+        fun create(a: UUID, b: UUID) : SortedUUIDPair {
+            require(a != b) {
+                "Duplicate UUID pair"
+            }
+
+            return if(a < b) {
+                SortedUUIDPair(a, b)
+            }
+            else {
+                SortedUUIDPair(b, a)
+            }
+        }
+    }
+}
+
+/**
+ * Pool of reusable objects. Thread safety is up to the implementation.
+ * */
+interface ObjectPool<T> {
+    /**
+     * Gets an object from the pool or allocates one, if the pool is empty.
+     * */
+    fun get(): T
+
+    /**
+     * Releases an object back into the pool (if the policy allows it), or discards it.
+     * */
+    fun release(obj: T)
+}
+
+/**
+ * Allocates an object from the pool for use in the scope [block].
+ * Storing a reference to the object outside of [block] is not allowed.
+ * */
+@OptIn(ExperimentalContracts::class)
+inline fun<reified T> ObjectPool<T>.using(block: (obj: T) -> Unit) {
+    contract {
+        callsInPlace(block, InvocationKind.EXACTLY_ONCE)
+    }
+
+    val obj = this.get()
+
+    try {
+        block.invoke(obj)
+    }
+    finally {
+        this.release(obj)
+    }
+}
+
+/**
+ * Policy used by [ObjectPool] to allocate new objects and determine if they are allowed back into the pool.
+ * */
+interface PooledObjectPolicy<T> {
+    /**
+     * Called to create a new instance of [T].
+     * */
+    fun create(): T
+
+    /**
+     * Called when [obj] is returned to the pool, to clean its state for reuse.
+     * @return True if [obj] should be accepted back into the pool. If false, then [obj] will not be added back and will be collected by GC.
+     * */
+    fun release(obj: T): Boolean
+}
+
+/**
+ * Non-thread-safe object pool, using an [ArrayList] as backing storage.
+ * @param maximumRetained The maximum number of objects to keep in the pool. If [release] is called and the pool has reached this number of objects, then the object will be discarded.
+ * */
+class LinearObjectPool<T>(private val policy: PooledObjectPolicy<T>, val maximumRetained: Int) : ObjectPool<T> {
+    init {
+        require(maximumRetained > 0) {
+            "Invalid pool size $maximumRetained"
+        }
+    }
+
+    private val items = ArrayList<T>()
+
+    override fun get(): T {
+        if(items.isEmpty()) {
+            return policy.create()
+        }
+
+        return items.removeLast()
+    }
+
+    override fun release(obj: T) {
+        if(!policy.release(obj)) {
+            return
+        }
+
+        if(items.size == maximumRetained) {
+            return
+        }
+
+        items.add(obj)
+    }
+}
+
+/**
+ * Simple thread-safe object pool implemented as an atomic stack.
+ * @param maximumRetained The maximum number of objects to keep in the pool. If [release] is called and the pool has reached this number of objects, then the object will be discarded.
+ * */
+class LocklessAtomicObjectPool<T>(val policy: PooledObjectPolicy<T>, val maximumRetained: Int) : ObjectPool<T> {
+    // Could we use a TLS [LinearObjectPool] for these nodes?
+    private class Node<T>(val value: T) {
+        var next: Node<T>? = null
+    }
+
+    private val head = AtomicReference<Node<T>?>(null)
+    private val retained = AtomicInteger(0)
+
+    override fun get(): T {
+        while (true) {
+            val h = head.get()
+                ?: return policy.create()
+
+            val next = h.next
+
+            if (head.compareAndSet(h, next)) {
+                retained.decrementAndGet()
+                h.next = null
+
+                return h.value
+            }
+        }
+    }
+
+    override fun release(obj: T) {
+        if (!policy.release(obj)) {
+            return
+        }
+
+        while (true) {
+            val count = retained.get()
+
+            if (count >= maximumRetained) {
+                return
+            }
+
+            if (retained.compareAndSet(count, count + 1)) {
+                break
+            }
+        }
+
+        val node = Node(obj)
+
+        while (true) {
+            val h = head.get()
+
+            node.next = h
+
+            if (head.compareAndSet(h, node)) {
+                return
+            }
+        }
     }
 }

@@ -24,7 +24,7 @@ import org.eln2.mc.common.content.PolarBatteryCell
 import org.eln2.mc.common.content.TerminalBatteryCell
 import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
 import org.eln2.mc.common.specs.SpecRegistry.specImmediateBB
-import org.eln2.mc.data.directionPoleMapPlanar
+import org.eln2.mc.directionPoleMapPlanar
 import org.eln2.mc.mathematics.Base6Direction3d
 import kotlin.math.PI
 

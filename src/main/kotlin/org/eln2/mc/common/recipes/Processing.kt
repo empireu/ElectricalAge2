@@ -59,8 +59,8 @@ import org.eln2.mc.common.recipes.foundation.SimpleProcessingRecipeInventoryHand
 import org.eln2.mc.common.sounds.foundation.SimpleLoopingBlockEntitySoundInstance
 import org.eln2.mc.common.sounds.foundation.SoundInfo
 import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
-import org.eln2.mc.data.PoleMap
-import org.eln2.mc.data.evaluate
+import org.eln2.mc.PoleMap
+import org.eln2.mc.evaluate
 import org.eln2.mc.extensions.constructMenuHelper2
 import org.eln2.mc.extensions.debugInIDE
 import org.eln2.mc.extensions.loadNbt

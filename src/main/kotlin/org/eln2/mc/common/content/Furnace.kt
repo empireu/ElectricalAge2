@@ -55,7 +55,7 @@ import org.eln2.mc.common.containers.ContainerHelper
 import org.eln2.mc.common.containers.MyAbstractContainerScreen
 import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
 import org.eln2.mc.common.content.modules.Eln2Processing
-import org.eln2.mc.data.PoleMap
+import org.eln2.mc.PoleMap
 import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
 import org.eln2.mc.common.recipes.foundation.OUTPUT_SLOT
 import org.eln2.mc.extensions.constructMenuHelper2

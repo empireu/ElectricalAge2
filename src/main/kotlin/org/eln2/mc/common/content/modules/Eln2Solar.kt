@@ -16,8 +16,8 @@ import org.eln2.mc.common.content.PhotovoltaicGeneratorCell
 import org.eln2.mc.common.content.PhotovoltaicModel
 import org.eln2.mc.common.content.PhotovoltaicPanelPart
 import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
-import org.eln2.mc.data.Locators
-import org.eln2.mc.data.directionPoleMapPlanar
+import org.eln2.mc.Locators
+import org.eln2.mc.directionPoleMapPlanar
 import org.eln2.mc.extensions.vector3d
 
 object Eln2Solar : ContentModule() {

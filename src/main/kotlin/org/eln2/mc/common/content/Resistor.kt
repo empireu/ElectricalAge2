@@ -7,7 +7,7 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.content.modules.Eln2BasicComponents
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
-import org.eln2.mc.data.directionPoleMapPlanar
+import org.eln2.mc.directionPoleMapPlanar
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d

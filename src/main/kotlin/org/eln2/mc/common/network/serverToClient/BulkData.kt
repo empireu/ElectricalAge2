@@ -27,7 +27,7 @@ import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.network.Networking
-import org.eln2.mc.data.AveragingList
+import org.eln2.mc.AveragingList
 import org.eln2.mc.extensions.formatted
 import org.eln2.mc.reflectId
 import java.nio.ByteBuffer

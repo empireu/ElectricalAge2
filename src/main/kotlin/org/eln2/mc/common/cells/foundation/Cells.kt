@@ -19,7 +19,6 @@ import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.CellLayer.*
 import org.eln2.mc.common.cells.foundation.SimulationObjectType.*
 import org.eln2.mc.common.grids.GridConnectionCell
-import org.eln2.mc.data.*
 import org.eln2.mc.extensions.*
 import java.util.*
 import java.util.concurrent.*

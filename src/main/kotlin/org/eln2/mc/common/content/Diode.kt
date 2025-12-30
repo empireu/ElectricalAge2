@@ -11,7 +11,7 @@ import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.content.modules.Eln2BasicComponents
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
-import org.eln2.mc.data.PoleMap
+import org.eln2.mc.PoleMap
 import org.eln2.mc.extensions.loadNbt
 import org.eln2.mc.extensions.saveNbt
 import org.eln2.mc.integration.ComponentDisplay

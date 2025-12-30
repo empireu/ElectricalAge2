@@ -9,7 +9,7 @@ import org.eln2.mc.client.render.foundation.WireConnectionModel
 import org.eln2.mc.client.render.foundation.WirePatchPolarModel
 import org.eln2.mc.client.render.foundation.WirePatchType
 import org.eln2.mc.common.content.WireConnectionModelPartial
-import org.eln2.mc.data.Average3d
+import org.eln2.mc.Average3d
 import org.eln2.mc.resource
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap

@@ -1,8 +1,8 @@
 package org.eln2.mc.common.cells.foundation
 
-import org.eln2.mc.data.MonopoleMap
-import org.eln2.mc.data.PoleMap
-import org.eln2.mc.data.findDirActualSpecificFrameOrNull
+import org.eln2.mc.MonopoleMap
+import org.eln2.mc.PoleMap
+import org.eln2.mc.findDirActualSpecificFrameOrNull
 import org.eln2.mc.mathematics.Base6Direction3d
 
 /**

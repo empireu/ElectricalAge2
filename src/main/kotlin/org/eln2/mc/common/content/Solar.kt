@@ -12,8 +12,8 @@ import org.ageseries.libage.sim.electrical.Resistor
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
-import org.eln2.mc.data.Locators
-import org.eln2.mc.data.PoleMap
+import org.eln2.mc.Locators
+import org.eln2.mc.PoleMap
 import org.eln2.mc.extensions.celestialPass
 import org.eln2.mc.extensions.evaluateDiffuseIrradianceFactor
 import org.eln2.mc.integration.ComponentDisplay

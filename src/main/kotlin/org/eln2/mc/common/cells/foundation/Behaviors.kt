@@ -21,7 +21,7 @@ import org.eln2.mc.common.events.schedulePre
 import org.eln2.mc.common.specs.foundation.CellSpec
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.common.specs.foundation.SpecContainerPart.Companion.spawnDrop
-import org.eln2.mc.data.Locators
+import org.eln2.mc.Locators
 import org.eln2.mc.extensions.destroyPart
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs

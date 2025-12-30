@@ -32,8 +32,8 @@ import org.eln2.mc.common.content.VoltageSourceCell
 import org.eln2.mc.common.content.VoltageSourcePart
 import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
 import org.eln2.mc.common.specs.SpecRegistry.specImmediateBB
-import org.eln2.mc.data.directionPoleMapPlanar
-import org.eln2.mc.data.monopolarMapPlanar
+import org.eln2.mc.directionPoleMapPlanar
+import org.eln2.mc.monopolarMapPlanar
 import org.eln2.mc.mathematics.Base6Direction3d
 
 object Eln2BasicComponents : ContentModule() {

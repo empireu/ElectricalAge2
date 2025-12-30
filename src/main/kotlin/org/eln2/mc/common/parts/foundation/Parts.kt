@@ -62,7 +62,7 @@ import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.PartMessage
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.foundation.SpecGeometry
-import org.eln2.mc.data.Locators
+import org.eln2.mc.Locators
 import org.eln2.mc.directionByNormal
 import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Base6Direction3d
@@ -76,7 +76,7 @@ import org.eln2.mc.common.network.serverToClient.DimensionMessageToServerPart
 import org.eln2.mc.common.network.serverToClient.ServerSidePacketHandler
 import org.eln2.mc.common.network.serverToClient.ServerSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.id
-import org.eln2.mc.data.hasLocalFrame
+import org.eln2.mc.hasLocalFrame
 import org.eln2.mc.extensions.directionTo
 import org.eln2.mc.extensions.minus
 import org.eln2.mc.extensions.plus

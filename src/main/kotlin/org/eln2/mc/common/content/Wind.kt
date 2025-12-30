@@ -69,7 +69,7 @@ import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.sendBulkPacket
-import org.eln2.mc.data.Locators
+import org.eln2.mc.Locators
 import org.eln2.mc.extensions.cast
 import org.eln2.mc.extensions.loadNbt
 import org.eln2.mc.extensions.minus

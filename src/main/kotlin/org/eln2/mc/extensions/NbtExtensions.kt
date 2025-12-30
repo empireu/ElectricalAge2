@@ -17,7 +17,7 @@ import org.ageseries.libage.sim.electrical.LinearDiode
 import org.eln2.mc.common.parts.foundation.CellPartConnectionMode
 import org.eln2.mc.common.parts.foundation.PartUpdateType
 import org.eln2.mc.common.specs.foundation.SpecUpdateType
-import org.eln2.mc.data.Locators
+import org.eln2.mc.Locators
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.FacingDirection

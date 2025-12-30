@@ -29,9 +29,9 @@ import org.eln2.mc.common.parts.foundation.TickablePart
 import org.eln2.mc.common.sounds.foundation.SimpleLoopingPartSoundInstance
 import org.eln2.mc.common.sounds.foundation.SoundInfo
 import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
-import org.eln2.mc.data.MonopoleMap
-import org.eln2.mc.data.PoleMap
-import org.eln2.mc.data.anyEvaluates
+import org.eln2.mc.MonopoleMap
+import org.eln2.mc.PoleMap
+import org.eln2.mc.anyEvaluates
 import org.eln2.mc.extensions.debugInIDE
 import org.eln2.mc.extensions.loadNbt
 import org.eln2.mc.extensions.saveNbt

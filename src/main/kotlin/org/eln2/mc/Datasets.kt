@@ -2,7 +2,7 @@ package org.eln2.mc
 
 import org.ageseries.libage.mathematics.*
 import org.eln2.mc.common.ModEvents
-import org.eln2.mc.data.CsvLoader
+import org.eln2.mc.NumericCsvFile
 
 private fun readPairs(name: String): List<Pair<String, String>> = readDatasetString(name)
     .lines().filter { it.isNotBlank() }.map { line ->
@@ -66,7 +66,7 @@ private fun loadPairInterpolator(
 
 private fun readDatasetString(name: String) = getResourceString(resource("datasets/$name"))
 
-private fun readCsvNumbers(name: String) = CsvLoader.loadNumericData(readDatasetString(name))
+private fun readCsvNumbers(name: String) = NumericCsvFile.parse(readDatasetString(name))
 
 private fun loadCsvSpline(name: String, keyIndex: Int, valueIndex: Int): Spline1d {
     val builder = InterpolatorBuilder()

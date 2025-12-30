@@ -19,7 +19,7 @@ import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.common.specs.foundation.CellSpec
 import org.eln2.mc.common.specs.foundation.SpecCreateInfo
-import org.eln2.mc.data.PoleMap
+import org.eln2.mc.PoleMap
 import org.eln2.mc.extensions.getQuantity
 import org.eln2.mc.extensions.useSubTagIfPreset
 import org.eln2.mc.integration.ComponentDisplay

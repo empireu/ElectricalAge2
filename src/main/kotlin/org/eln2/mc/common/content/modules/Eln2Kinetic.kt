@@ -62,8 +62,8 @@ import org.eln2.mc.common.parts.PartRegistry.partMemoizeBB
 import org.eln2.mc.common.parts.foundation.PartFactory
 import org.eln2.mc.common.parts.foundation.PartVisualizer
 import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
-import org.eln2.mc.data.directionPoleMapPlanar
-import org.eln2.mc.data.monopolarMapPlanar
+import org.eln2.mc.directionPoleMapPlanar
+import org.eln2.mc.monopolarMapPlanar
 import org.eln2.mc.mathematics.Axis3d
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask

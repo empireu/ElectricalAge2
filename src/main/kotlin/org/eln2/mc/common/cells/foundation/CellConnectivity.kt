@@ -5,7 +5,7 @@ import net.minecraft.world.level.Level
 import org.ageseries.libage.data.requireLocator
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
-import org.eln2.mc.data.Locators
+import org.eln2.mc.Locators
 import org.eln2.mc.extensions.plus
 import java.util.ArrayDeque
 import java.util.ArrayList

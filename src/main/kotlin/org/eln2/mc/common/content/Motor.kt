@@ -38,9 +38,9 @@ import org.eln2.mc.common.sounds.foundation.SimpleLoopingMachineSoundInstance
 import org.eln2.mc.common.sounds.foundation.SimpleLoopingPartSoundInstance
 import org.eln2.mc.common.sounds.foundation.SoundInfo
 import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
-import org.eln2.mc.data.MonopoleMap
-import org.eln2.mc.data.PoleMap
-import org.eln2.mc.data.evaluate
+import org.eln2.mc.MonopoleMap
+import org.eln2.mc.PoleMap
+import org.eln2.mc.evaluate
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3dMask

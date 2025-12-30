@@ -29,8 +29,8 @@ import org.eln2.mc.common.content.ElectricalHeatEnginePartVisual
 import org.eln2.mc.common.content.ThermalElectricGeneratorModel
 import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
 import org.eln2.mc.common.parts.foundation.transformPartWorld
-import org.eln2.mc.data.directionMonopolarMapPlanar
-import org.eln2.mc.data.directionPoleMapPlanar
+import org.eln2.mc.directionMonopolarMapPlanar
+import org.eln2.mc.directionPoleMapPlanar
 import org.eln2.mc.mathematics.Base6Direction3d
 
 object Eln2Thermal : ContentModule() {

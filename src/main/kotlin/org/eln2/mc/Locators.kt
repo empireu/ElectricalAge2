@@ -1,6 +1,6 @@
 @file:Suppress("UNCHECKED_CAST")
 
-package org.eln2.mc.data
+package org.eln2.mc
 
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -8,8 +8,6 @@ import org.ageseries.libage.data.Locator
 import org.ageseries.libage.data.LocatorDispatcher
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.Pole
-import org.eln2.mc.DEBUGGER_BREAK
-import org.eln2.mc.ELN2_DEBUG
 import org.eln2.mc.common.cells.foundation.Cell
 import org.eln2.mc.common.cells.foundation.CellLayer
 import org.eln2.mc.common.cells.foundation.CellLayer.Block
@@ -23,59 +21,6 @@ import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.mathematics.FacingDirection
 import java.nio.ByteBuffer
-import java.util.*
-
-class SortedUUIDPair private constructor(val a: UUID, val b: UUID) {
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as SortedUUIDPair
-
-        if (a != other.a) return false
-        if (b != other.b) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = a.hashCode()
-        result = 31 * result + b.hashCode()
-        return result
-    }
-
-    companion object {
-        fun write(pair: SortedUUIDPair, buffer: ByteBuffer) {
-            val a = pair.a
-            buffer.putLong(a.mostSignificantBits)
-            buffer.putLong(a.leastSignificantBits)
-
-            val b = pair.b
-            buffer.putLong(b.mostSignificantBits)
-            buffer.putLong(b.leastSignificantBits)
-        }
-
-        fun read(buffer: ByteBuffer) : SortedUUIDPair {
-            val a = UUID(buffer.getLong(), buffer.getLong())
-            val b = UUID(buffer.getLong(), buffer.getLong())
-
-            return SortedUUIDPair(a, b)
-        }
-
-        fun create(a: UUID, b: UUID) : SortedUUIDPair {
-            require(a != b) {
-                "Duplicate UUID pair"
-            }
-
-            return if(a < b) {
-                SortedUUIDPair(a, b)
-            }
-            else {
-                SortedUUIDPair(b, a)
-            }
-        }
-    }
-}
 
 @Suppress("NOTHING_TO_INLINE")
 object Locators : LocatorDispatcher<Locators>() {

@@ -18,9 +18,9 @@ import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.ThermalMass
 import org.eln2.mc.*
-import org.eln2.mc.data.LinearObjectPool
-import org.eln2.mc.data.PooledObjectPolicy
-import org.eln2.mc.data.using
+import org.eln2.mc.LinearObjectPool
+import org.eln2.mc.PooledObjectPolicy
+import org.eln2.mc.using
 import org.eln2.mc.extensions.forEachCompound
 import org.eln2.mc.extensions.getListTag
 import org.eln2.mc.integration.ComponentDisplayList

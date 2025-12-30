@@ -51,7 +51,7 @@ import org.eln2.mc.common.grids.GridConnectionManagerServer
 import org.eln2.mc.common.network.serverToClient.BulkMessages
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.foundation.SpecPlacementOverlayServer
-import org.eln2.mc.data.AveragingList
+import org.eln2.mc.AveragingList
 import org.eln2.mc.Eln2BlockTagsDatagen
 import org.eln2.mc.Eln2BlockSelfDropLootDatagen
 import org.eln2.mc.Eln2BucketModelsDatagen

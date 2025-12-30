@@ -21,8 +21,8 @@ import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.GridCellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
-import org.eln2.mc.data.MonopoleMap
-import org.eln2.mc.data.PoleMap
+import org.eln2.mc.MonopoleMap
+import org.eln2.mc.PoleMap
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d

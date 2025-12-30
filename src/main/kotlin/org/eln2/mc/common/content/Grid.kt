@@ -27,7 +27,7 @@ import org.eln2.mc.common.parts.foundation.GridCellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.common.specs.foundation.CellSpec
 import org.eln2.mc.common.specs.foundation.SpecCreateInfo
-import org.eln2.mc.data.UnsafeLazyResettable
+import org.eln2.mc.LinearLazyResettable
 import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
@@ -125,7 +125,7 @@ class GridAnchorSpec(ci: SpecCreateInfo, terminalSize: Vector3d, categories: Lis
 }
 
 class GridInterfaceObject(cell: GridInterfaceCell, val tapResistance: Double, val anchorResistance: Double) : ElectricalObject<GridInterfaceCell>(cell) {
-    private val tapResistor = UnsafeLazyResettable {
+    private val tapResistor = LinearLazyResettable {
         val resistor = Resistor()
         resistor.resistance = tapResistance
         resistor

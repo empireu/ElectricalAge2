@@ -23,9 +23,9 @@ import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
 import org.eln2.mc.common.parts.PartRegistry.partMemoizeBB
 import org.eln2.mc.common.parts.foundation.PartFactory
 import org.eln2.mc.common.parts.foundation.eln2ReadPartGuiData
-import org.eln2.mc.data.directionPoleMapPlanar
-import org.eln2.mc.data.monopolarMapPlanar
-import org.eln2.mc.data.nullMonopoleMap
+import org.eln2.mc.directionPoleMapPlanar
+import org.eln2.mc.monopolarMapPlanar
+import org.eln2.mc.nullMonopoleMap
 import org.eln2.mc.mathematics.Base6Direction3d
 
 object Eln2Signal : ContentModule() {
