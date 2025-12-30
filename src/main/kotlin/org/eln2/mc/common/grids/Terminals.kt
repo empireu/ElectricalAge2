@@ -29,7 +29,7 @@ import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.NotificationBus
 import org.eln2.mc.extensions.*
 import org.eln2.mc.client.render.foundation.MyColor
-import org.eln2.mc.common.getPlayerPOVHitResult
+import org.eln2.mc.getPlayerPOVHitResult
 import org.eln2.mc.requireIsOnRenderThread
 import org.eln2.mc.requireIsOnServerThread
 import java.util.*

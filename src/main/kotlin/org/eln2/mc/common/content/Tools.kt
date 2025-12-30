@@ -19,7 +19,7 @@ import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.content.modules.Eln2Tools
-import org.eln2.mc.common.getPlayerPOVHitResult
+import org.eln2.mc.getPlayerPOVHitResult
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.extensions.toVector3d

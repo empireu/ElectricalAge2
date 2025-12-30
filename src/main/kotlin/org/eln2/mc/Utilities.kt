@@ -7,11 +7,14 @@ import net.minecraft.core.Direction
 import net.minecraft.core.Vec3i
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.entity.player.Player
+import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
+import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.Vec3
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.server.ServerLifecycleHooks
@@ -24,8 +27,11 @@ import org.eln2.mc.mathematics.FacingDirection
 import org.joml.Vector3f
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 import kotlin.random.Random
 
 fun randomFloat(min: Float, max: Float) = map(Random.nextFloat(), 0f, 1f, min, max)
@@ -213,4 +219,66 @@ interface ItemPersistent {
      * @param tag The saved tag. Null if no data was present in the item (possibly because the item was newly created)
      * */
     fun loadFromItemNbt(tag: CompoundTag?)
+}
+
+fun getPlayerPOVHitResult(pLevel: Level, pPlayer: Player): BlockHitResult {
+    val f = pPlayer.xRot
+    val f1 = pPlayer.yRot
+    val vec3 = pPlayer.eyePosition
+    val f2 = cos(-f1 * (PI.toFloat() / 180f) - PI.toFloat())
+    val f3 = sin(-f1 * (PI.toFloat() / 180f) - PI.toFloat())
+    val f4 = -cos(-f * (PI.toFloat() / 180f))
+    val f5 = sin(-f * (PI.toFloat() / 180f))
+    val f6 = f3 * f4
+    val f7 = f2 * f4
+    val d0 = pPlayer.getBlockReach()
+    val vec31 = vec3.add(f6.toDouble() * d0, f5.toDouble() * d0, f7.toDouble() * d0)
+    return pLevel.clip(
+        ClipContext(
+            vec3,
+            vec31,
+            ClipContext.Block.OUTLINE,
+            ClipContext.Fluid.SOURCE_ONLY,
+            pPlayer
+        )
+    )
+}
+
+class PIDController(var kP: Double, var kI: Double, var kD: Double) {
+    constructor() : this(1.0, 0.0, 0.0)
+
+    var errorSum = 0.0
+    var lastError = 0.0
+
+    /**
+     * Gets or sets the setpoint (desired value).
+     * */
+    var setPoint = 0.0
+
+    /**
+     * Gets or sets the minimum control signal returned by [update]
+     * */
+    var minControl = Double.MIN_VALUE
+
+    /**
+     * Gets or sets the maximum control signal returned by [update]
+     * */
+    var maxControl = Double.MAX_VALUE
+
+    fun update(value: Double, dt: Double): Double {
+        val error = setPoint - value
+
+        errorSum += (error + lastError) * 0.5 * dt
+
+        val derivative = (error - lastError) / dt
+
+        lastError = error
+
+        return (kP * error + kI * errorSum + kD * derivative).coerceIn(minControl, maxControl)
+    }
+
+    fun reset() {
+        errorSum = 0.0
+        lastError = 0.0
+    }
 }

@@ -19,7 +19,7 @@ import org.eln2.mc.LOG
 import org.eln2.mc.common.network.serverToClient.BlockEntityMessage
 import org.eln2.mc.common.network.serverToClient.BulkMessageHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.BulkMessages
-import org.eln2.mc.control.PIDController
+import org.eln2.mc.PIDController
 import org.eln2.mc.integration.ComponentDisplayList
 import org.joml.Vector3f
 

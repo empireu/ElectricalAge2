@@ -2,7 +2,6 @@ package org.eln2.mc
 
 import org.ageseries.libage.mathematics.*
 import org.eln2.mc.common.ModEvents
-import org.eln2.mc.NumericCsvFile
 
 private fun readPairs(name: String): List<Pair<String, String>> = readDatasetString(name)
     .lines().filter { it.isNotBlank() }.map { line ->
