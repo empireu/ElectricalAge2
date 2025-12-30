@@ -361,9 +361,9 @@ object Eln2Processing : ContentModule() {
 
     //#endregion
 
-    //#region Rubber
+    //#region Tree Tap
 
-    val RUBBER_TAP_PART = partAndItemWithProvider("rubber_tap", RubberTapPartProvider())
+    val TREE_TAP_PART = partAndItemWithProvider("tree_tap", TreeTapPartProvider())
 
     //#endregion
 

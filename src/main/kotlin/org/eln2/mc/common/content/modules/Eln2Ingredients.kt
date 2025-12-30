@@ -39,9 +39,15 @@ object Eln2Ingredients : ContentModule() {
 
     //#endregion
 
-    //#region Rubber
+    //#region Tree Extraction
 
     val RAW_LATEX = itemDefault("raw_latex")
+    val RAW_RESIN = itemDefault("raw_resin")
+
+    //#endregion
+
+    //#region Rubber
+
     val RUBBER_COMPOUND = item("rubber_compound") { Item(Item.Properties().stacksTo(8)) }
     val RUBBER = itemDefault("rubber")
     val BURNT_RUBBER = itemDefault("burnt_rubber")

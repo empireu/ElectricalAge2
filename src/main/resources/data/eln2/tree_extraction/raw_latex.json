@@ -1,0 +1,5 @@
+{
+    "logBlock": "minecraft:oak_log",
+    "leavesBlock": "minecraft:oak_leaves",
+    "resultItem": "eln2:raw_latex"
+}

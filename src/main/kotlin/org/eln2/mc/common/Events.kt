@@ -40,6 +40,7 @@ import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.content.WindSystem
 import org.eln2.mc.common.content.fluid.FluidPipeNetworkManager
 import org.eln2.mc.common.content.modules.ContentModuleManager
+import org.eln2.mc.common.content.processing.TreeExtractionManager
 import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.events.schedulePost
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
@@ -148,6 +149,7 @@ object ForgeEvents {
     fun onAddReloadListeners(event: AddReloadListenerEvent) {
         event.addListener(PhysicalFluidManager)
         event.addListener(FluidTransformationManager)
+        event.addListener(TreeExtractionManager)
     }
 
     @SubscribeEvent @JvmStatic
