@@ -12,7 +12,9 @@ import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
 import net.minecraftforge.eventbus.api.IEventBus
 import net.minecraftforge.registries.*
+import org.ageseries.libage.data.MutableSetMapMultiMap
 import org.ageseries.libage.utils.putUnique
+import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.common.blocks.foundation.*
@@ -23,20 +25,39 @@ object BlockRegistry {
     val BLOCK_ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, MODID)!!
     val BLOCK_ENTITIES = DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, MODID)!!
 
+    val BLOCK_ENTITY_TYPE_BY_BLOCK = MutableSetMapMultiMap<Block, RegistryObject<BlockEntityType<*>>>()
+
+    fun getBlockEntityType(block: Block) : RegistryObject<BlockEntityType<*>> {
+        val set = BLOCK_ENTITY_TYPE_BY_BLOCK.map[block]
+            ?: error(DEBUGGER_BREAK("Could not get block entity types for $block"))
+
+        if(set.isEmpty() || set.size != 1) {
+            error(DEBUGGER_BREAK("Block entity types for $block are ${set.size}"))
+        }
+
+        return set.first()
+    }
+
     fun <T : BlockEntity> blockEntityOnly(
         name: String,
         blockEntitySupplier: BlockEntityType.BlockEntitySupplier<T>,
         vararg blockSuppliers: (() -> Block),
     ): RegistryObject<BlockEntityType<T>> {
-        return BLOCK_ENTITIES.register(name) {
+        var rv: RegistryObject<BlockEntityType<T>>? = null
+        rv = BLOCK_ENTITIES.register(name) {
             @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS") // Thanks, Minecraft for the high quality code.
             BlockEntityType.Builder.of(
                 blockEntitySupplier,
                 *blockSuppliers.map {
-                    it.invoke()
+                    it.invoke().also { block ->
+                        @Suppress("UNCHECKED_CAST")
+                        BLOCK_ENTITY_TYPE_BY_BLOCK[block].add(rv as RegistryObject<BlockEntityType<*>>)
+                    }
                 }.toTypedArray()
             ).build(null)
         }
+
+        return rv
     }
 
     fun<T : BlockEntity> blockEntityOnly(

@@ -1,3 +1,4 @@
+/*
 package org.eln2.mc.common.content.processing
 
 import dev.engine_room.flywheel.api.instance.Instance
@@ -19,7 +20,6 @@ import net.minecraft.network.chat.MutableComponent
 import net.minecraft.util.RandomSource
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
-import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.inventory.ContainerLevelAccess
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
@@ -34,8 +34,6 @@ import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.PartialModelHelper
 import org.eln2.mc.common.containers.*
 import org.eln2.mc.common.content.modules.Eln2Processing
-import org.eln2.mc.common.recipes.MotorProcessingBlock
-import org.eln2.mc.common.recipes.MotorProcessingBlockEntity
 import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipe
 import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
 import org.eln2.mc.common.recipes.foundation.OUTPUT_SLOT
@@ -59,9 +57,11 @@ class CrusherBlock : MotorProcessingBlock<DirectSimpleProcessingRecipe, CrusherB
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = CrusherBlockEntity(pPos, pState)
 
-    /**
+    */
+/**
      * Animates bursts of particles based on speed.
-     * */
+     * *//*
+
     override fun animateMachineTick(blockEntity: CrusherBlockEntity, speed: Double, pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {
         val sparkBurst = ceil(speed * 4).toInt()
         val dustBurst = ceil(speed * 2).toInt()
@@ -310,3 +310,4 @@ class CrusherScreen(menu: CrusherMenu, playerInventory: Inventory, title: Compon
     }
 }
 
+*/

@@ -27,6 +27,7 @@ import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.AbstractContainerMenu
+import net.minecraft.world.inventory.ContainerLevelAccess
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.crafting.Recipe
 import net.minecraft.world.item.crafting.RecipeType
@@ -65,6 +66,16 @@ import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
 import kotlin.math.PI
 import kotlin.math.cos
+
+inline fun<reified T : Block> AbstractContainerMenu.eln2StillValid(pAccess: ContainerLevelAccess, pPlayer: Player) : Boolean {
+    return pAccess.evaluate({ pLevel, pPos ->
+        if(pLevel.getBlockState(pPos).block !is T) {
+            return@evaluate false
+        }
+
+        return@evaluate pPlayer.distanceToSqr(pPos.x + 0.5, pPos.y + 0.5, pPos.z + 0.5) <= 64.0
+    }, true)
+}
 
 fun eln2StandardBlockProperties(): BlockBehaviour.Properties = BlockBehaviour.Properties.of()
     .mapColor(MapColor.STONE)

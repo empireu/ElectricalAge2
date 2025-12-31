@@ -13,7 +13,6 @@ import org.ageseries.libage.data.*
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
-import org.eln2.mc.FrictionNodeDescription
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
 import org.eln2.mc.client.screens.BasicProgressScreen
@@ -33,38 +32,37 @@ import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
 import org.eln2.mc.common.content.processing.*
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
-import org.eln2.mc.common.recipes.*
+import org.eln2.mc.common.recipes.RecipeRegistry
 import org.eln2.mc.common.recipes.RecipeRegistry.registerCatalyzedRecipe
 import org.eln2.mc.common.recipes.RecipeRegistry.registerDirectRecipe
 import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
 import org.eln2.mc.directionPoleMapPlanar
-import org.eln2.mc.monopolarMapPlanar
-import org.eln2.mc.nullPolarMap
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
+import org.eln2.mc.monopolarMapPlanar
 import org.eln2.mc.resource
 
 object Eln2Processing : ContentModule() {
     override fun registerBlockEntityVisualizers() {
-        VisualizerRegistry.setVisualizer(
+       /* VisualizerRegistry.setVisualizer(
             CRUSHER_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::CrusherBlockEntityVisual) { true }
         )
-
+*/
         VisualizerRegistry.setVisualizer(
             ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::ElectricExtruderBlockEntityVisual) { true }
         )
 
-        VisualizerRegistry.setVisualizer(
+       /* VisualizerRegistry.setVisualizer(
             KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::KineticExtruderBlockEntityVisual) { true }
-        )
+        )*/
 
-        VisualizerRegistry.setVisualizer(
+      /*  VisualizerRegistry.setVisualizer(
             KINETIC_ROLLING_MACHINE_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::KineticRollingMachineBlockEntityVisual) { true }
-        )
+        )*/
 
         VisualizerRegistry.setVisualizer(
             VULCANIZING_AUTOCLAVE_MAIN_BLOCK_ENTITY.get(),
@@ -98,25 +96,27 @@ object Eln2Processing : ContentModule() {
             DummyBlockEntityRendererProvider()
         )
 
-        event.registerBlockEntityRenderer(
+        /*event.registerBlockEntityRenderer(
             CRUSHER_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
-        )
+        )*/
 
         event.registerBlockEntityRenderer(
             ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
 
-        event.registerBlockEntityRenderer(
+      /*  event.registerBlockEntityRenderer(
             KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
-        )
+        )*/
+/*
 
         event.registerBlockEntityRenderer(
             KINETIC_ROLLING_MACHINE_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
+*/
 
         event.registerBlockEntityRenderer(
             VULCANIZING_AUTOCLAVE_MAIN_BLOCK_ENTITY.get(),
@@ -145,10 +145,10 @@ object Eln2Processing : ContentModule() {
             )
         }
         MenuScreens.register(FURNACE_MENU.get(), ::FurnaceScreen)
-        MenuScreens.register(CRUSHER_MENU.get(), ::CrusherScreen)
+        //MenuScreens.register(CRUSHER_MENU.get(), ::CrusherScreen)
         MenuScreens.register(EXTRUDER_MENU.get(), ::ExtruderScreen)
 
-        MenuScreens.register(ROLLING_MACHINE_MENU.get()) { menu, inventory, title ->
+       /* MenuScreens.register(ROLLING_MACHINE_MENU.get()) { menu, inventory, title ->
             BasicProgressScreen(
                 menu, inventory, title,
                 resource("textures/gui/container/rolling_machine_base.png"),
@@ -156,7 +156,7 @@ object Eln2Processing : ContentModule() {
                 54.0f,
                 129.0f
             )
-        }
+        }*/
     }
 
     //#region Blacksmithing
@@ -396,9 +396,10 @@ object Eln2Processing : ContentModule() {
     //#region Crusher
 
     val CRUSHING_RECIPE = registerDirectRecipe("crushing")
+/*
 
     val BASIC_CRUSHER_CELL = cellMemoize("basic_crusher") {
-        val options = MotorProcessingCellOptions(
+        val options = ElectricalMotorWorkBoxCellOptions(
             1.0,
             MotorProcessingCellElectricalOptions(
                 Quantity(1.155, KILOGRAM_METER2),
@@ -413,7 +414,7 @@ object Eln2Processing : ContentModule() {
                 Quantity(800.0, VOLT),
                 Quantity(8155.1598, WATT)
             ),
-            ProcessingCellThermalOptions(
+            WorkBoxThermalOptions(
                 0.1,
                 ThermalMassDefinition(
                     ChemicalElement.Iron.asMaterial,
@@ -430,7 +431,7 @@ object Eln2Processing : ContentModule() {
         val thermalMap = directionPoleMapPlanar(Base6Direction3d.Back)
 
         CellFactory {
-            MotorProcessingCell(it, options, electricalMap, thermalMap)
+            MotorWorkBoxCell(it, options, electricalMap, thermalMap)
         }
     }
 
@@ -442,8 +443,44 @@ object Eln2Processing : ContentModule() {
     val CRUSHER_BLOCK_ENTITY = blockEntityOnly("crusher", CRUSHER_BLOCK.block, ::CrusherBlockEntity)
 
     val CRUSHER_MENU = menu("crusher", ::CrusherMenu)
+*/
 
     //#endregion
+
+    val MY_WORK_BOX =  cellMemoize("my_electric_work_box") {
+        val options = ElectricalMotorWorkBoxCellOptions(
+            1.0,
+            Quantity(1.155, KILOGRAM_METER2),
+            Quantity(10.0, KILO * OHM),
+            Quantity(41.561, OHM),
+            Quantity(1.25, MILLI * HENRY),
+            Quantity(2.06, VOLT_PER_RADIAN_PER_SECOND),
+            Quantity(2.05, NEWTON_METER_PER_AMPERE),
+            10.0,
+            0.5,
+            1.15,
+            Quantity(800.0, VOLT),
+            Quantity(8155.1598, WATT),
+            WorkBoxThermalOptions(
+                0.01,
+                ThermalMassDefinition(
+                    ChemicalElement.Copper.asMaterial,
+                    mass = Quantity(10.0, KILOGRAM)
+                ),
+                ConnectionParameters.DEFAULT,
+                Quantity(60.0, CELSIUS)
+            )
+        )
+
+        val electricalMap = directionPoleMapPlanar(
+            Base6Direction3d.Left,
+            Base6Direction3d.Right
+        )
+
+        CellFactory {
+            MotorWorkBoxCell(it, options, electricalMap)
+        }
+    }
 
     //#region Extruder
 
@@ -451,81 +488,22 @@ object Eln2Processing : ContentModule() {
 
     val EXTRUDER_SOUND = soundEventVariableRange("extruder")
 
-    val ELECTRIC_EXTRUDER_CELL = cellMemoize("electric_extruder") {
-        val options = MotorProcessingCellOptions(
-            1.0,
-            MotorProcessingCellElectricalOptions(
-                Quantity(1.155, KILOGRAM_METER2),
-                Quantity(10.0, KILO * OHM),
-                Quantity(41.561, OHM),
-                Quantity(1.25, MILLI * HENRY),
-                Quantity(2.06, VOLT_PER_RADIAN_PER_SECOND),
-                Quantity(2.05, NEWTON_METER_PER_AMPERE),
-                10.0,
-                0.5,
-                1.15,
-                Quantity(800.0, VOLT),
-                Quantity(8155.1598, WATT)
-            ),
-            null
-        )
+    val ELECTRIC_EXTRUDER_BLOCK = blockAndItem("electric_extruder") {
+        ExtruderBlock(MY_WORK_BOX)
+    }.withSelfDrop()
 
-        val electricalMap = directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)
-        val thermalMap = nullPolarMap()
-
-        CellFactory {
-            MotorProcessingCell(it, options, electricalMap, thermalMap)
-        }
-    }
-
-    val ELECTRIC_EXTRUDER_BLOCK = blockAndItem("electric_extruder", ::ElectricExtruderBlock)
-        .withSelfDrop()
-
-    val ELECTRIC_EXTRUDER_BLOCK_ENTITY = blockEntityOnly("electric_extruder", ELECTRIC_EXTRUDER_BLOCK.block, ::ElectricExtruderBlockEntity)
-
-    val KINETIC_EXTRUDER_CELL = cellMemoize("kinetic_extruder") {
-        val inertia = Quantity(0.1251, KILOGRAM_METER2)
-
-        val options = KineticProcessingCellOptions(
-            1.0,
-            KineticProcessingCellKineticOptions(
-                FrictionNodeDescription(
-                    inertia,
-                    0.01,
-                    Quantity(0.1, NEWTON_METER),
-                    Quantity(1.0, NEWTON_METER)
-                ),
-                FrictionNodeDescription(
-                    inertia,
-                    10.0,
-                    Quantity(0.5, NEWTON_METER),
-                    Quantity(1.0, NEWTON_METER)
-                ),
-                Quantity(1.0, REVOLUTION_PER_SECOND),
-                Quantity(25.0, REVOLUTION_PER_SECOND),
-                Quantity(250.0, NEWTON_METER)
-            ),
-            null
-        )
-
-        val kineticMap = directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)
-        val thermalMap = nullPolarMap()
-
-        CellFactory {
-            KineticProcessingCell(it, options, kineticMap, thermalMap)
-        }
-    }
-
-    val KINETIC_EXTRUDER_BLOCK = blockAndItem("kinetic_extruder", ::KineticExtruderBlock)
-        .withSelfDrop()
-
-    val KINETIC_EXTRUDER_BLOCK_ENTITY = blockEntityOnly("kinetic_extruder", KINETIC_EXTRUDER_BLOCK.block, ::KineticExtruderBlockEntity)
+    val ELECTRIC_EXTRUDER_BLOCK_ENTITY = blockEntityOnly<ExtruderBlockEntity<MotorWorkBoxCell>, ExtruderBlock<MotorWorkBoxCell>>(
+        "electric_extruder",
+        ELECTRIC_EXTRUDER_BLOCK.block,
+        ::ExtruderBlockEntity
+    )
 
     val EXTRUDER_MENU = menu("extruder", ::ExtruderMenu)
 
     //#endregion
 
     //#region Rolling Machine
+/*
 
     val ROLLING_RECIPE = registerDirectRecipe("rolling")
 
@@ -534,7 +512,7 @@ object Eln2Processing : ContentModule() {
 
         val options = KineticProcessingCellOptions(
             1.0,
-            KineticProcessingCellKineticOptions(
+            KineticWorkBoxCellOptions(
                 FrictionNodeDescription(
                     inertia,
                     0.01,
@@ -558,7 +536,7 @@ object Eln2Processing : ContentModule() {
         val thermalMap = nullPolarMap()
 
         CellFactory {
-            KineticProcessingCell(it, options, kineticMap, thermalMap)
+            KineticWorkBoxCell(it, options, kineticMap, thermalMap)
         }
     }
 
@@ -568,6 +546,7 @@ object Eln2Processing : ContentModule() {
     val KINETIC_ROLLING_MACHINE_BLOCK_ENTITY = blockEntityOnly("kinetic_rolling_machine", KINETIC_ROLLING_MACHINE_BLOCK.block, ::KineticRollingMachineBlockEntity)
 
     val ROLLING_MACHINE_MENU = menu("rolling_machine", ::RollingMachineMenu)
+*/
 
     //#endregion
 

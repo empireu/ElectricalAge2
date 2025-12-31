@@ -783,19 +783,32 @@ fun KineticTriple.setSafeTorque(threshold: Quantity<Torque>) {
 fun KineticDouble.minus() = this.e1
 fun KineticDouble.plus() = this.e2
 
-data class FrictionNodeDescription(
-    val inertia: Quantity<Inertia>,
+data class NodeFrictionDescription(
     val damping: Double,
     val coulombFriction: Quantity<Torque>,
     val staticThreshold: Quantity<Torque>,
     val velocityEps: Quantity<AngularVelocity> = Quantity(0.01, RADIAN_PER_SECOND)
 ) {
     fun applyTo(shaft: FrictionKineticNode) {
-        shaft.inertia = !inertia
         shaft.viscousDamping = damping
         shaft.coulombFriction = !coulombFriction
         shaft.staticFriction = !staticThreshold
         shaft.velocityEps = !velocityEps
+    }
+}
+
+data class FrictionNodeDescription(val inertia: Quantity<Inertia>, val frictionDescription: NodeFrictionDescription) {
+    constructor(
+        inertia: Quantity<Inertia>,
+        damping: Double,
+        coulombFriction: Quantity<Torque>,
+        staticThreshold: Quantity<Torque>,
+        velocityEps: Quantity<AngularVelocity> = Quantity(0.01, RADIAN_PER_SECOND)
+    ) : this(inertia, NodeFrictionDescription(damping, coulombFriction, staticThreshold, velocityEps))
+
+    fun applyTo(shaft: FrictionKineticNode) {
+        shaft.inertia = !inertia
+        frictionDescription.applyTo(shaft)
     }
 }
 

@@ -1,3 +1,4 @@
+/*
 package org.eln2.mc.common.content.processing
 
 import dev.engine_room.flywheel.api.instance.Instance
@@ -42,8 +43,6 @@ import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicateAndSkipPic
 import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.sendBulkPacket
-import org.eln2.mc.common.recipes.KineticProcessingBlock
-import org.eln2.mc.common.recipes.KineticProcessingBlockEntity
 import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipe
 import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
 import org.eln2.mc.common.recipes.foundation.OUTPUT_SLOT
@@ -259,3 +258,4 @@ class RollingMachineMenu(
 
     override fun getProgressForRender() = containerData.progress
 }
+*/
