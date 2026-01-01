@@ -7,6 +7,7 @@ import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.minecraft.client.gui.screens.MenuScreens
 import net.minecraft.core.BlockPos
+import net.minecraft.world.item.Item
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
@@ -36,6 +37,7 @@ import org.eln2.mc.common.containers.ContainerRegistry.menu
 import org.eln2.mc.common.content.*
 import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
 import org.eln2.mc.common.content.processing.*
+import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
 import org.eln2.mc.common.recipes.RecipeRegistry
@@ -52,14 +54,20 @@ import java.util.function.Supplier
 object Eln2Processing : ContentModule() {
     //#region Registration Helpers
 
-    val PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN = LinkedHashSet<ProcessingMachineRegistryDto>()
+    val PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN = LinkedHashSet<ProcessingMachineRegistryItem>()
 
-    data class ProcessingMachineRegistryDto(
+    /**
+     * @param box The box installed in the final usable machine.
+     * @param blockAndItem The final, usable machine.
+     * @param hullItem The craftable item that represents the machine.
+     * */
+    data class ProcessingMachineRegistryItem(
         val box: ProcessingCellRegistryItem<*>,
         val blockAndItem: BlockRegistry.BlockRegistryItem<*>,
         val blockEntity: RegistryObject<BlockEntityType<ProcessingMachineBlockEntity<*>>>,
         val modelSupplier: Supplier<ProcessingMachineCompositeModel>,
-        val visualConstructor: ProcessingMachineVisualConstructor<*, ProcessingMachineBlockEntity<*>>
+        val visualConstructor: ProcessingMachineVisualConstructor<*, ProcessingMachineBlockEntity<*>>,
+        val hullItem: RegistryObject<Item>
     )
 
     /**
@@ -89,31 +97,51 @@ object Eln2Processing : ContentModule() {
         ) : ProcessingMachineBlockEntityVisual<C, BE>
     }
 
+    /**
+     * Registers a machine powered by a work box ([ProcessingCell]):
+     * - [blockConstructor] and [blockEntityConstructor] result in the functional machine, that can be obtained as described next
+     * - a [ProcessingMachineRegistryItem.hullItem] is registered, which is the item that will actually be crafted using the specific components needed for the machine
+     * - to obtain the functional machine, the [box]'s [ProcessingCellRegistryItem.item] and the [ProcessingMachineRegistryItem.hullItem] are combined in the crafting table. This will give the item from [ProcessingMachineRegistryItem.blockAndItem] which places the final machine
+     * @param hullName The ID that will be given to the hull. The machine's ID will be [ProcessingCellRegistryItem.prefixToApply] + [hullName].
+     * @param box The registered work box cell.
+     * @param blockConstructor The constructor of the machine block.
+     * @param blockEntityConstructor The constructor of the block entity.
+     * @param modelLazy Supplier for the composite model. See its definition for more information.
+     * @param visualConstructor The constructor for the composite visual. Usually you'd pass the constructor of [ProcessingMachineBlockEntityVisual], but you might need to extend it in order to add additional dynamic elements that don't fit the rotating elements from the composite model (e.g. [ExtruderBlockEntityVisual]).
+     * @return All the relevant registered information. This will be added to [PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN], which registers the visual and dummy renderer in [registerBlockEntityVisualizers] and [registerBlockEntityRenderers], and is also accessed by datagen to create the recipes (and models) linking the hull item and the final machine.
+     * */
     @Suppress("RemoveRedundantQualifierName")
     private inline fun<reified C : ProcessingCell, reified BE : ProcessingMachineBlockEntity<C>> registerMachine(
-        name: String,
+        hullName: String,
         box: ProcessingCellRegistryItem<C>,
         blockConstructor: ProcessingMachineBlockConstructor<C, BE>,
         blockEntityConstructor: ProcessingMachineBlockEntityConstructor<C>,
-        modelSupplier: Supplier<ProcessingMachineCompositeModel>,
+        modelLazy: Lazy<ProcessingMachineCompositeModel>,
         visualConstructor: ProcessingMachineVisualConstructor<C, BE>
-    ) : ProcessingMachineRegistryDto {
+    ) : ProcessingMachineRegistryItem {
         ContentManager.requireInit()
 
-        val blockAndItem: BlockRegistry.BlockRegistryItem<ProcessingMachineBlock<C, BE>> = BlockRegistry.blockAndItem(name) {
+        val machineName = "${box.prefixToApply}_$hullName"
+
+        val blockAndItem: BlockRegistry.BlockRegistryItem<ProcessingMachineBlock<C, BE>> = BlockRegistry.blockAndItem(machineName) {
             blockConstructor.create(box.cellProvider)
         }
 
-        val blockEntity = BlockRegistry.blockEntityOnly(name, blockAndItem) { pPos, pState ->
+        val blockEntity = BlockRegistry.blockEntityOnly(machineName, blockAndItem) { pPos, pState ->
             blockEntityConstructor.create(pPos, pState)
         }
 
-        @Suppress("UNCHECKED_CAST") val obj = ProcessingMachineRegistryDto(
+        val hullItem = ItemRegistry.item(hullName) {
+            Item(Item.Properties())
+        }
+
+        @Suppress("UNCHECKED_CAST") val obj = ProcessingMachineRegistryItem(
             box,
             blockAndItem,
             blockEntity as RegistryObject<BlockEntityType<ProcessingMachineBlockEntity<*>>>,
-            modelSupplier,
-            visualConstructor as ProcessingMachineVisualConstructor<*, ProcessingMachineBlockEntity<*>>
+            modelLazy::value,
+            visualConstructor as ProcessingMachineVisualConstructor<*, ProcessingMachineBlockEntity<*>>,
+            hullItem
         )
 
         PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN.addUnique(obj)
@@ -150,26 +178,10 @@ object Eln2Processing : ContentModule() {
     //#endregion
 
     override fun registerBlockEntityVisualizers() {
+        /**
+         * Registers processing machine visualizers:
+         * */
         registerWorkBoxMachineVisualizers()
-       /* VisualizerRegistry.setVisualizer(
-            CRUSHER_BLOCK_ENTITY.get(),
-            SimpleBlockEntityVisualizer(::CrusherBlockEntityVisual) { true }
-        )
-*/
-        //VisualizerRegistry.setVisualizer(
-        //    ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(),
-        //    SimpleBlockEntityVisualizer(::ElectricExtruderBlockEntityVisual) { true }
-        //)
-
-       /* VisualizerRegistry.setVisualizer(
-            KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
-            SimpleBlockEntityVisualizer(::KineticExtruderBlockEntityVisual) { true }
-        )*/
-
-      /*  VisualizerRegistry.setVisualizer(
-            KINETIC_ROLLING_MACHINE_BLOCK_ENTITY.get(),
-            SimpleBlockEntityVisualizer(::KineticRollingMachineBlockEntityVisual) { true }
-        )*/
 
         VisualizerRegistry.setVisualizer(
             VULCANIZING_AUTOCLAVE_MAIN_BLOCK_ENTITY.get(),
@@ -193,6 +205,9 @@ object Eln2Processing : ContentModule() {
     }
 
     override fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
+        /**
+         * Registers processing machine dummy renderers:
+         * */
         registerWorkBoxMachineBlockEntityRenderers(event)
 
         event.registerBlockEntityRenderer(
@@ -204,28 +219,6 @@ object Eln2Processing : ContentModule() {
             COKE_OVEN_MAIN_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
-
-        /*event.registerBlockEntityRenderer(
-            CRUSHER_BLOCK_ENTITY.get(),
-            DummyBlockEntityRendererProvider()
-        )*/
-
-       //event.registerBlockEntityRenderer(
-       //    ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(),
-       //    DummyBlockEntityRendererProvider()
-       //)
-
-      /*  event.registerBlockEntityRenderer(
-            KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
-            DummyBlockEntityRendererProvider()
-        )*/
-/*
-
-        event.registerBlockEntityRenderer(
-            KINETIC_ROLLING_MACHINE_BLOCK_ENTITY.get(),
-            DummyBlockEntityRendererProvider()
-        )
-*/
 
         event.registerBlockEntityRenderer(
             VULCANIZING_AUTOCLAVE_MAIN_BLOCK_ENTITY.get(),
@@ -556,8 +549,10 @@ object Eln2Processing : ContentModule() {
 
     //#endregion
 
-    val MY_BOX = MotorProcessingCell.register(
-        "my_electric_work_box",
+    //#region Work Boxes
+
+    val BRUSHED_DC_MOTOR_WORK_BOX = MotorProcessingCell.register(
+        "brushed_dc_motor_work_box", "brushed_dc_motor",
         MotorProcessingCellOptions(
             1.0,
             Quantity(1.155, KILOGRAM_METER2),
@@ -582,6 +577,8 @@ object Eln2Processing : ContentModule() {
         )
     )
 
+    //#endregion
+
     //#region Extruder
 
     val EXTRUDING_RECIPE = registerCatalyzedRecipe("extruding")
@@ -597,10 +594,10 @@ object Eln2Processing : ContentModule() {
 
     val EXTRUDER_MACHINE = registerMachine(
         "extruder",
-        MY_BOX,
+        BRUSHED_DC_MOTOR_WORK_BOX,
         ::ExtruderBlock,
         ::ExtruderBlockEntity,
-        EXTRUDER_MODEL::value,
+        EXTRUDER_MODEL,
         ::ExtruderBlockEntityVisual
     )
 

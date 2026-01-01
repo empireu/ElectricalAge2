@@ -244,11 +244,13 @@ enum class ProcessingCellType {
  * @param boxType The domain of the implementation (kinetic or electrical).
  * @param cellProvider The registered cell.
  * @param item The associated item.
+ * @param prefixToApply A prefix applied to the machine hull, to get the ID of the machine + work box.
  * */
 class ProcessingCellRegistryItem<C : ProcessingCell>(
     val boxType: ProcessingCellType,
     val cellProvider: RegistryObject<CellProvider<C>>,
-    val item: RegistryObject<Item>
+    val item: RegistryObject<Item>,
+    val prefixToApply: String,
 )
 
 /**
@@ -256,7 +258,7 @@ class ProcessingCellRegistryItem<C : ProcessingCell>(
  * */
 class KineticProcessingCell private constructor(ci: CellCreateInfo, val options: KineticProcessingCellOptions) : ProcessingCell(ci), SidedKineticMapped<KineticProcessingCell> {
     companion object {
-        fun register(name: String, options: KineticProcessingCellOptions) : ProcessingCellRegistryItem<KineticProcessingCell> {
+        fun register(name: String, prefix: String, options: KineticProcessingCellOptions) : ProcessingCellRegistryItem<KineticProcessingCell> {
             val cell = CellRegistry.cellImmediate(name) {
                 KineticProcessingCell(it, options)
             }
@@ -265,7 +267,7 @@ class KineticProcessingCell private constructor(ci: CellCreateInfo, val options:
                 Item(Item.Properties())
             }
 
-            return ProcessingCellRegistryItem(ProcessingCellType.Kinetic, cell, item)
+            return ProcessingCellRegistryItem(ProcessingCellType.Kinetic, cell, item, prefix)
         }
     }
 
@@ -385,7 +387,7 @@ class KineticProcessingCell private constructor(ci: CellCreateInfo, val options:
  * */
 class MotorProcessingCell private constructor(ci: CellCreateInfo, val options: MotorProcessingCellOptions) : ProcessingCell(ci), SidedElectricalMapped<MotorProcessingCell> {
     companion object {
-        fun register(name: String, options: MotorProcessingCellOptions) : ProcessingCellRegistryItem<MotorProcessingCell> {
+        fun register(name: String, prefix: String, options: MotorProcessingCellOptions) : ProcessingCellRegistryItem<MotorProcessingCell> {
             val cell = CellRegistry.cellImmediate(name) {
                 MotorProcessingCell(it, options)
             }
@@ -394,7 +396,7 @@ class MotorProcessingCell private constructor(ci: CellCreateInfo, val options: M
                 Item(Item.Properties())
             }
 
-            return ProcessingCellRegistryItem(ProcessingCellType.Electrical, cell, item)
+            return ProcessingCellRegistryItem(ProcessingCellType.Electrical, cell, item, prefix)
         }
     }
 
