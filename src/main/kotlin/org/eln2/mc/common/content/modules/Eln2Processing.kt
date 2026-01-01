@@ -8,6 +8,7 @@ import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.minecraft.client.gui.screens.MenuScreens
 import net.minecraft.core.BlockPos
 import net.minecraft.world.item.Item
+import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
@@ -28,6 +29,7 @@ import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
 import org.eln2.mc.common.blocks.BlockRegistry.defineDelegateMap
 import org.eln2.mc.common.blocks.foundation.BigBlockItem
+import org.eln2.mc.common.blocks.foundation.Eln2BlockItemWithCraftingRemainder
 import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
@@ -123,9 +125,20 @@ object Eln2Processing : ContentModule() {
 
         val machineName = "${box.prefixToApply}_$hullName"
 
-        val blockAndItem: BlockRegistry.BlockRegistryItem<ProcessingMachineBlock<C, BE>> = BlockRegistry.blockAndItem(machineName) {
-            blockConstructor.create(box.cellProvider)
-        }
+        val blockAndItem: BlockRegistry.BlockRegistryItem<ProcessingMachineBlock<C, BE>> = BlockRegistry
+            .blockAndItem(
+                machineName,
+                /**
+                 * Needed to get the box out of the machine (disassembly):
+                 * */
+                { block: Block ->
+                    /**
+                     * See the documentation of this wrapper to see why we need it:
+                     * */
+                    Eln2BlockItemWithCraftingRemainder(box.item, block, Item.Properties())
+                },
+                { blockConstructor.create(box.cellProvider) }
+            )
 
         val blockEntity = BlockRegistry.blockEntityOnly(machineName, blockAndItem) { pPos, pState ->
             blockEntityConstructor.create(pPos, pState)

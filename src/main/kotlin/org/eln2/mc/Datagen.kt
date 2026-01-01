@@ -6,6 +6,7 @@ import net.minecraft.data.loot.BlockLootSubProvider
 import net.minecraft.data.recipes.FinishedRecipe
 import net.minecraft.data.recipes.RecipeCategory
 import net.minecraft.data.recipes.RecipeProvider
+import net.minecraft.data.recipes.ShapelessRecipeBuilder
 import net.minecraft.data.recipes.SimpleCookingRecipeBuilder
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.flag.FeatureFlags
@@ -18,6 +19,7 @@ import net.minecraftforge.common.data.BlockTagsProvider
 import net.minecraftforge.common.data.ExistingFileHelper
 import net.minecraftforge.registries.ForgeRegistries
 import org.eln2.mc.common.content.modules.ContentManager
+import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.content.modules.world.Eln2Ores
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import java.util.concurrent.CompletableFuture
@@ -92,15 +94,14 @@ class Eln2BlockTagsDatagen(output: PackOutput, lookupProvider: CompletableFuture
 }
 
 /**
- * Generates the block model from [Eln2Ores.ORE_FOR_MODEL_DATAGEN], which is built by [Eln2Ores.withGeneratedModel] which registers tints on indices we use in the models.
+ * Generates the block model from [Eln2Ores.ORE_FOR_MODEL_DATAGEN], which is built by [Eln2Ores.withModelDatagen] which registers tints on indices we use in the models.
  * */
-class Eln2OreBlockStatesDatagen(output: PackOutput, existingFileHelper: ExistingFileHelper) : BlockStateProvider(output, MODID, existingFileHelper) {
+class Eln2BlockStateProviderDatagen(output: PackOutput, existingFileHelper: ExistingFileHelper) : BlockStateProvider(output, MODID, existingFileHelper) {
     override fun registerStatesAndModels() {
         Eln2Ores.ORE_FOR_MODEL_DATAGEN.forEach { obj ->
             val oreBlock = obj.oreBlock.get()
 
-            val blockId = ForgeRegistries.BLOCKS.getKey(oreBlock)
-                ?: error("Could not resolve model generation block $oreBlock")
+            val blockId = ForgeRegistries.BLOCKS.getKey(oreBlock)!!
 
             /**
              * Creates a model using two overlay textures:
@@ -139,24 +140,19 @@ class Eln2OreBlockStatesDatagen(output: PackOutput, existingFileHelper: Existing
 }
 
 /**
- * Registers raw ore smelting, ore item smelting, raw ore blasting, from [Eln2Ores.ORE_SMELTING_FOR_DATAGEN].
+ * - Registers raw ore smelting, ore item smelting, raw ore blasting, from [Eln2Ores.ORE_SMELTING_FOR_DATAGEN].
+ * - Registers assembly and disassembly recipes, from [Eln2Processing.PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN].
  * */
-class Eln2OreSmeltingDatagen(output: PackOutput) : RecipeProvider(output) {
+class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
     override fun buildRecipes(pWriter: Consumer<FinishedRecipe?>) {
         Eln2Ores.ORE_SMELTING_FOR_DATAGEN.forEach { (obj, resultSupplier) ->
             val rawOreItem = obj.rawOreItem.get()
             val blockItem = obj.oreBlockItem.get()
             val result = resultSupplier.get()
 
-            val rawId = ForgeRegistries.ITEMS.getKey(rawOreItem)
-                ?: error("Could not resolve ore smelting raw ore $rawOreItem")
-
-            val blockItemId = ForgeRegistries.ITEMS.getKey(blockItem)
-                ?: error("Could not resolve ore smelting block item $blockItem")
-
-            val resultId = ForgeRegistries.ITEMS.getKey(result)
-                ?: error("Could not resolve ore smelting result $result")
-
+            val rawId = ForgeRegistries.ITEMS.getKey(rawOreItem)!!
+            val blockItemId = ForgeRegistries.ITEMS.getKey(blockItem)!!
+            val resultId = ForgeRegistries.ITEMS.getKey(result)!!
             /**
              * Smelts the raw ore item.
              * */
@@ -206,12 +202,41 @@ class Eln2OreSmeltingDatagen(output: PackOutput) : RecipeProvider(output) {
                 resultId
             )
         }
+
+        Eln2Processing.PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN.forEach { obj ->
+            val blockItem = obj.blockAndItem.item.get()
+            val hull = obj.hullItem.get()
+            val boxItem = obj.box.item.get()
+
+            val blockItemId = ForgeRegistries.ITEMS.getKey(blockItem)!!
+
+            /**
+             * Assembly recipe:
+             * */
+            ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, blockItem)
+                .requires(hull)
+                .requires(boxItem)
+                .unlockedBy("has_hull", has(hull))
+                .unlockedBy("has_work_box", has(boxItem))
+                .save(pWriter, resource("crafting/processing_machine/${blockItemId.path}_assembly"))
+
+            /**
+             * Disassembly recipe. The hull is left behind thanks to the registered craft remainder:
+             * */
+            ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, hull)
+                .requires(blockItem)
+                .unlockedBy("has_machine", has(blockItem))
+                .save(pWriter, resource("crafting/processing_machine/${blockItemId.path}_disassembly"))
+
+            LOG.info("Registered assembly and disassembly recipes for: {}", blockItemId)
+        }
     }
 }
 
 /**
- * - Generates the raw ore item model and the block item model from [Eln2Ores.ORE_FOR_MODEL_DATAGEN], which is built by [Eln2Ores.withGeneratedModel] which registers tints on indices we use in the models.
+ * - Generates the raw ore item model and the block item model from [Eln2Ores.ORE_FOR_MODEL_DATAGEN], which is built by [Eln2Ores.withModelDatagen] which registers tints on indices we use in the models.
  * - Generates bucket item models, from [ForgeFluidRegistry.FORGE_FLUID_BUCKETS].
+ * - Generates item models for the machine hulls and final machines, from [Eln2Processing.PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN].
  * */
 class Eln2ItemModelProviderDatagen(output: PackOutput, existingFileHelper: ExistingFileHelper) : ItemModelProvider(output, MODID, existingFileHelper) {
     override fun registerModels() {
@@ -219,11 +244,8 @@ class Eln2ItemModelProviderDatagen(output: PackOutput, existingFileHelper: Exist
             val rawOreItem = obj.rawOreItem.get()
             val oreBlock = obj.oreBlock.get()
 
-            val rawId = ForgeRegistries.ITEMS.getKey(rawOreItem)
-                ?: error("Could not resolve ore model generation raw ore $rawOreItem")
-
-            val blockId = ForgeRegistries.BLOCKS.getKey(oreBlock)
-                ?: error("Could not resolve model generation block $oreBlock")
+            val rawId = ForgeRegistries.ITEMS.getKey(rawOreItem)!!
+            val blockId = ForgeRegistries.BLOCKS.getKey(oreBlock)!!
 
             /**
              * For the block item, we parent the block's model:
@@ -259,6 +281,28 @@ class Eln2ItemModelProviderDatagen(output: PackOutput, existingFileHelper: Exist
                 .end()
 
             LOG.info("Registered bucket model for {}", id)
+        }
+
+        Eln2Processing.PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN.forEach { obj ->
+            val hullItem = obj.hullItem.get()
+            val machineBlockItem = obj.blockAndItem.item.get()
+
+            val hullId = ForgeRegistries.ITEMS.getKey(hullItem)!!
+            val blockItemId = ForgeRegistries.ITEMS.getKey(machineBlockItem)!!
+
+            val model = obj.modelSupplier.get()
+            val bodyLocation = model.body.modelLocation()
+
+            withExistingParent(hullId.path, bodyLocation)
+
+            /**
+             * Registers the finished machine's model as simply the hull model.
+             * We might be able to refine this in the future.
+             * It might be possible to take the box's item model (which would be a generated model, from a sprite) and layer it on top of the model used here.
+             * */
+            withExistingParent(blockItemId.path, bodyLocation)
+
+            LOG.info("Registered processing machine models for {} and {}", hullId, blockItemId)
         }
     }
 }

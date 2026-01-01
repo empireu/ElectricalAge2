@@ -59,8 +59,8 @@ import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.Eln2BlockTagsDatagen
 import org.eln2.mc.Eln2BlockSelfDropLootDatagen
 import org.eln2.mc.Eln2ItemModelProviderDatagen
-import org.eln2.mc.Eln2OreBlockStatesDatagen
-import org.eln2.mc.Eln2OreSmeltingDatagen
+import org.eln2.mc.Eln2BlockStateProviderDatagen
+import org.eln2.mc.Eln2RecipeProviderDatagen
 import org.eln2.mc.extensions.formatted
 
 @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.MOD)
@@ -176,12 +176,12 @@ object ModEvents {
 
         generator.addProvider(
             event.includeClient(),
-            Eln2OreBlockStatesDatagen(output, existingFileHelper)
+            Eln2BlockStateProviderDatagen(output, existingFileHelper)
         )
 
         generator.addProvider(
             event.includeServer(),
-            Eln2OreSmeltingDatagen(output)
+            Eln2RecipeProviderDatagen(output)
         )
 
         generator.addProvider(

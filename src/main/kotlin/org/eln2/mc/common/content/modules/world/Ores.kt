@@ -18,7 +18,6 @@ import org.eln2.mc.common.content.modules.ContentManager.withBlockTint
 import org.eln2.mc.common.content.modules.ContentManager.withItemTint
 import org.eln2.mc.common.content.modules.ContentModule
 import org.eln2.mc.common.content.modules.ContentManager.withTagDatagen
-import org.eln2.mc.common.content.modules.Eln2Ingredients
 import org.eln2.mc.common.items.ItemRegistry
 import java.util.function.Supplier
 
@@ -47,7 +46,7 @@ object Eln2Ores : ContentModule() {
     }
 
     /**
-     * Read by [org.eln2.mc.Eln2OreSmeltingDatagen].
+     * Read by [org.eln2.mc.Eln2RecipeProviderDatagen].
      * */
     val ORE_SMELTING_FOR_DATAGEN = LinkedHashSet<Pair<OreRegistryItem, Supplier<Item>>>()
 
@@ -60,7 +59,7 @@ object Eln2Ores : ContentModule() {
     }
 
     /**
-     * Read by [org.eln2.mc.Eln2OreBlockStatesDatagen] and [org.eln2.mc.Eln2ItemModelProviderDatagen].
+     * Read by [org.eln2.mc.Eln2BlockStateProviderDatagen] and [org.eln2.mc.Eln2ItemModelProviderDatagen].
      * */
     val ORE_FOR_MODEL_DATAGEN = LinkedHashSet<OreRegistryItem>()
 

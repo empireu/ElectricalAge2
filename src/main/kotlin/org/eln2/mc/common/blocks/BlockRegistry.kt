@@ -102,24 +102,41 @@ object BlockRegistry {
             BlockEntityType.Builder.of({ a, b -> MultiblockDelegateBlockEntity(a, b, null) } ).build(null)
         }
 
-    data class BlockRegistryItem<T : Block>(
-        val name: String,
-        val block: RegistryObject<T>,
-        val item: RegistryObject<BlockItem>,
-    ) : Supplier<T> by block {
+    data class BlockRegistryItem<T : Block>(val name: String, val block: RegistryObject<T>, val item: RegistryObject<BlockItem>) : Supplier<T> by block {
         val registryName get() = block.id ?: error("Invalid registry name")
     }
 
-    fun<T : Block> blockAndItem(
-        name: String,
-        supplier: () -> T,
-    ): BlockRegistryItem<T> {
-        val block = BLOCKS.register(name) { supplier() }
+    fun<B : Block> blockAndItem(name: String, blockSupplier: () -> B): BlockRegistryItem<B> {
+        val block = BLOCKS.register(name) {
+            blockSupplier()
+        }
+
         val item = BLOCK_ITEMS.register(name) {
-            BlockItem(
-                block.get(),
-                Item.Properties()
-            )
+            BlockItem(block.get(), Item.Properties())
+        }
+
+        return BlockRegistryItem(name, block, item)
+    }
+
+    fun<B : Block> blockAndItem(name: String, itemPropertiesSupplier: () -> Item.Properties, blockSupplier: () -> B): BlockRegistryItem<B> {
+        val block = BLOCKS.register(name) {
+            blockSupplier()
+        }
+
+        val item = BLOCK_ITEMS.register(name) {
+            BlockItem(block.get(), itemPropertiesSupplier())
+        }
+
+        return BlockRegistryItem(name, block, item)
+    }
+
+    fun<B : Block> blockAndItem(name: String, blockItemSupplier: (block: B) -> BlockItem, blockSupplier: () -> B): BlockRegistryItem<B> {
+        val block = BLOCKS.register(name) {
+            blockSupplier()
+        }
+
+        val item = BLOCK_ITEMS.register(name) {
+            blockItemSupplier(block.get())
         }
 
         return BlockRegistryItem(name, block, item)
