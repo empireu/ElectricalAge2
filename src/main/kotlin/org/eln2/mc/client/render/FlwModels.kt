@@ -136,6 +136,9 @@ object FlwModels {
 
     //#endregion
 
+    val WORK_BOX_COMPOSITE_SHAFT = partialBlock("work_box_machine_composite/kinetic_shaft")
+    val WORK_BOX_COMPOSITE_CABLE = partialBlock("work_box_machine_composite/electrical_cable")
+
     //#region Crusher
 
     val CRUSHER_BODY = partialBlock("crusher/body")

@@ -2,10 +2,13 @@
 
 package org.eln2.mc.common.content.modules
 
+import dev.engine_room.flywheel.api.visualization.VisualizationContext
 import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.minecraft.client.gui.screens.MenuScreens
+import net.minecraft.core.BlockPos
 import net.minecraft.world.level.block.entity.BlockEntityType
+import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
 import net.minecraftforge.client.event.EntityRenderersEvent
 import net.minecraftforge.registries.RegistryObject
@@ -13,9 +16,11 @@ import org.ageseries.libage.data.*
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
+import org.ageseries.libage.utils.addUnique
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
 import org.eln2.mc.client.screens.BasicProgressScreen
+import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
@@ -25,6 +30,7 @@ import org.eln2.mc.common.blocks.foundation.BigBlockItem
 import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
+import org.eln2.mc.common.cells.foundation.CellProvider
 import org.eln2.mc.common.cells.foundation.ThermalSize
 import org.eln2.mc.common.containers.ContainerRegistry.menu
 import org.eln2.mc.common.content.*
@@ -41,18 +47,119 @@ import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.monopolarMapPlanar
 import org.eln2.mc.resource
+import java.util.function.Supplier
 
 object Eln2Processing : ContentModule() {
+    //#region Registration Helpers
+
+    val PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN = LinkedHashSet<ProcessingMachineRegistryDto>()
+
+    data class ProcessingMachineRegistryDto(
+        val box: ProcessingCellRegistryItem<*>,
+        val blockAndItem: BlockRegistry.BlockRegistryItem<*>,
+        val blockEntity: RegistryObject<BlockEntityType<ProcessingMachineBlockEntity<*>>>,
+        val modelSupplier: Supplier<ProcessingMachineCompositeModel>,
+        val visualConstructor: ProcessingMachineVisualConstructor<*, ProcessingMachineBlockEntity<*>>
+    )
+
+    /**
+     * The constructor of the [ProcessingMachineBlock].
+     * */
+    fun interface ProcessingMachineBlockConstructor<C : ProcessingCell, BE : ProcessingMachineBlockEntity<C>> {
+        fun create(cellProvider: RegistryObject<CellProvider<C>>) : ProcessingMachineBlock<C, BE>
+    }
+
+    /**
+     * The constructor of the [ProcessingMachineBlockEntity].
+     * */
+    fun interface ProcessingMachineBlockEntityConstructor<C : ProcessingCell> {
+        fun create(pos: BlockPos, state: BlockState) : ProcessingMachineBlockEntity<C>
+    }
+
+    /**
+     * The constructor of the base or derived [ProcessingMachineBlockEntityVisual].
+     * */
+    fun interface ProcessingMachineVisualConstructor<C : ProcessingCell, BE : ProcessingMachineBlockEntity<C>> {
+        fun create(
+            ctx: VisualizationContext,
+            blockEntity: BE,
+            partialTick: Float,
+            workBox: ProcessingCellType,
+            composite: ProcessingMachineCompositeModel
+        ) : ProcessingMachineBlockEntityVisual<C, BE>
+    }
+
+    @Suppress("RemoveRedundantQualifierName")
+    private inline fun<reified C : ProcessingCell, reified BE : ProcessingMachineBlockEntity<C>> registerMachine(
+        name: String,
+        box: ProcessingCellRegistryItem<C>,
+        blockConstructor: ProcessingMachineBlockConstructor<C, BE>,
+        blockEntityConstructor: ProcessingMachineBlockEntityConstructor<C>,
+        modelSupplier: Supplier<ProcessingMachineCompositeModel>,
+        visualConstructor: ProcessingMachineVisualConstructor<C, BE>
+    ) : ProcessingMachineRegistryDto {
+        ContentManager.requireInit()
+
+        val blockAndItem: BlockRegistry.BlockRegistryItem<ProcessingMachineBlock<C, BE>> = BlockRegistry.blockAndItem(name) {
+            blockConstructor.create(box.cellProvider)
+        }
+
+        val blockEntity = BlockRegistry.blockEntityOnly(name, blockAndItem) { pPos, pState ->
+            blockEntityConstructor.create(pPos, pState)
+        }
+
+        @Suppress("UNCHECKED_CAST") val obj = ProcessingMachineRegistryDto(
+            box,
+            blockAndItem,
+            blockEntity as RegistryObject<BlockEntityType<ProcessingMachineBlockEntity<*>>>,
+            modelSupplier,
+            visualConstructor as ProcessingMachineVisualConstructor<*, ProcessingMachineBlockEntity<*>>
+        )
+
+        PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN.addUnique(obj)
+
+        return obj
+    }
+
+    private fun registerWorkBoxMachineVisualizers() {
+        PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN.forEach { obj ->
+            val model = obj.modelSupplier.get()
+
+            VisualizerRegistry.setVisualizer(
+                obj.blockEntity.get(),
+                SimpleBlockEntityVisualizer({ ctx, blockEntity, partialTick ->
+                    obj.visualConstructor.create(
+                        ctx, blockEntity, partialTick,
+                        obj.box.boxType,
+                        model
+                    )
+                }) { true }
+            )
+        }
+    }
+
+    private fun registerWorkBoxMachineBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
+        PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN.forEach { obj ->
+            event.registerBlockEntityRenderer(
+                obj.blockEntity.get(),
+                DummyBlockEntityRendererProvider()
+            )
+        }
+    }
+
+    //#endregion
+
     override fun registerBlockEntityVisualizers() {
+        registerWorkBoxMachineVisualizers()
        /* VisualizerRegistry.setVisualizer(
             CRUSHER_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::CrusherBlockEntityVisual) { true }
         )
 */
-        VisualizerRegistry.setVisualizer(
-            ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(),
-            SimpleBlockEntityVisualizer(::ElectricExtruderBlockEntityVisual) { true }
-        )
+        //VisualizerRegistry.setVisualizer(
+        //    ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(),
+        //    SimpleBlockEntityVisualizer(::ElectricExtruderBlockEntityVisual) { true }
+        //)
 
        /* VisualizerRegistry.setVisualizer(
             KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
@@ -86,6 +193,8 @@ object Eln2Processing : ContentModule() {
     }
 
     override fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
+        registerWorkBoxMachineBlockEntityRenderers(event)
+
         event.registerBlockEntityRenderer(
             BLACKSMITHING_STATION_BLOCK_ENTITY.get(),
             BlacksmithingStationBlockEntityRenderer.Provider()
@@ -101,10 +210,10 @@ object Eln2Processing : ContentModule() {
             DummyBlockEntityRendererProvider()
         )*/
 
-        event.registerBlockEntityRenderer(
-            ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(),
-            DummyBlockEntityRendererProvider()
-        )
+       //event.registerBlockEntityRenderer(
+       //    ELECTRIC_EXTRUDER_BLOCK_ENTITY.get(),
+       //    DummyBlockEntityRendererProvider()
+       //)
 
       /*  event.registerBlockEntityRenderer(
             KINETIC_EXTRUDER_BLOCK_ENTITY.get(),
@@ -447,8 +556,9 @@ object Eln2Processing : ContentModule() {
 
     //#endregion
 
-    val MY_WORK_BOX =  cellMemoize("my_electric_work_box") {
-        val options = ElectricalMotorWorkBoxCellOptions(
+    val MY_BOX = MotorProcessingCell.register(
+        "my_electric_work_box",
+        MotorProcessingCellOptions(
             1.0,
             Quantity(1.155, KILOGRAM_METER2),
             Quantity(10.0, KILO * OHM),
@@ -461,8 +571,7 @@ object Eln2Processing : ContentModule() {
             1.15,
             Quantity(800.0, VOLT),
             Quantity(8155.1598, WATT),
-            WorkBoxThermalOptions(
-                0.01,
+            ProcessingCellThermalOptions(
                 ThermalMassDefinition(
                     ChemicalElement.Copper.asMaterial,
                     mass = Quantity(10.0, KILOGRAM)
@@ -471,16 +580,7 @@ object Eln2Processing : ContentModule() {
                 Quantity(60.0, CELSIUS)
             )
         )
-
-        val electricalMap = directionPoleMapPlanar(
-            Base6Direction3d.Left,
-            Base6Direction3d.Right
-        )
-
-        CellFactory {
-            MotorWorkBoxCell(it, options, electricalMap)
-        }
-    }
+    )
 
     //#region Extruder
 
@@ -488,7 +588,23 @@ object Eln2Processing : ContentModule() {
 
     val EXTRUDER_SOUND = soundEventVariableRange("extruder")
 
-    val ELECTRIC_EXTRUDER_BLOCK = blockAndItem("electric_extruder") {
+    val EXTRUDER_MODEL = lazy {
+        ProcessingMachineCompositeModel(
+            FlwModels.EXTRUDER_BODY,
+            listOf()
+        )
+    }
+
+    val EXTRUDER_MACHINE = registerMachine(
+        "extruder",
+        MY_BOX,
+        ::ExtruderBlock,
+        ::ExtruderBlockEntity,
+        EXTRUDER_MODEL::value,
+        ::ExtruderBlockEntityVisual
+    )
+
+   /* val ELECTRIC_EXTRUDER_BLOCK = blockAndItem("electric_extruder") {
         ExtruderBlock(MY_WORK_BOX)
     }.withSelfDrop()
 
@@ -497,7 +613,7 @@ object Eln2Processing : ContentModule() {
         ELECTRIC_EXTRUDER_BLOCK.block,
         ::ExtruderBlockEntity
     )
-
+*/
     val EXTRUDER_MENU = menu("extruder", ::ExtruderMenu)
 
     //#endregion

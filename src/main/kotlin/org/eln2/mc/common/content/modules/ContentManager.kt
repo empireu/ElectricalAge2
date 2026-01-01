@@ -20,9 +20,9 @@ private val obj = Any()
  * Validation layer for a method that executes only once. Used to ensure the content setup methods are called from the right call site, in the right order.
  * - A setup method from [ContentManager] calls methods from [ContentModule] inside the block of [executeInScope].
  * - Methods from [ContentModule] ensure they are being called exactly once, from the right setup method in [ContentManager], and in the correct order relative to other setup methods, with [validate].
- * @param dependencies [Scope]s [enter] depends on. All of these scopes must have already been executed, otherwise [enter] will result in an error.
+ * @param dependencies [ContentRegistrationScope]s [enter] depends on. All of these scopes must have already been executed, otherwise [enter] will result in an error.
  * */
-private class Scope(val name: String, val dependencies: List<Scope> = listOf()) {
+class ContentRegistrationScope(val name: String, val dependencies: List<ContentRegistrationScope> = listOf()) {
     private var thread: Thread? = null
     private var executed = false
 
@@ -78,12 +78,12 @@ private val contentModules = HashSet<ContentModule>()
 /**
  * Scope of the [ContentManager.initialize] method. The singletons implementing [ContentModule] are constructed in this scope.
  * */
-private val initScope = Scope("initialize")
+private val initScope = ContentRegistrationScope("initialize")
 
 /**
  * Client-only scope where screens are registered.
  * */
-private val setupScreensScope = Scope(
+private val setupScreensScope = ContentRegistrationScope(
     "setupScreens",
     listOf(initScope)
 )
@@ -91,7 +91,7 @@ private val setupScreensScope = Scope(
 /**
  * Client-only scope where block entity visualizers are registered in [ContentManager.registerBlockEntityVisualizers].
  * */
-private val registerBlockEntityVisualizersScope = Scope(
+private val registerBlockEntityVisualizersScope = ContentRegistrationScope(
     "registerBlockEntityVisualizers",
     listOf(initScope)
 )
@@ -100,7 +100,7 @@ private val registerBlockEntityVisualizersScope = Scope(
  * Client-only scope where part visualizers are registered in [ContentManager.registerPartVisualizers].
  * Depends on [registerBlockEntityVisualizersScope].
  * */
-private val registerPartVisualizersScope = Scope(
+private val registerPartVisualizersScope = ContentRegistrationScope(
     "registerPartVisualizers",
     listOf(registerBlockEntityVisualizersScope)
 )
@@ -109,7 +109,7 @@ private val registerPartVisualizersScope = Scope(
  * Client-only scope where spec visualizers are registered in [ContentManager.registerSpecVisualizers].
  * Depends on [registerPartVisualizersScope].
  * */
-private val registerSpecVisualizersScope = Scope(
+private val registerSpecVisualizersScope = ContentRegistrationScope(
     "registerSpecVisualizers",
     listOf(registerPartVisualizersScope)
 )
@@ -117,7 +117,7 @@ private val registerSpecVisualizersScope = Scope(
 /**
  * Client-only scope where BERs are registered.
  * */
-private val registerBlockEntityRenderersScope = Scope(
+private val registerBlockEntityRenderersScope = ContentRegistrationScope(
     "registerBlockEntityRenderers",
     listOf(initScope)
 )
@@ -125,7 +125,7 @@ private val registerBlockEntityRenderersScope = Scope(
 /**
  * Client-only scope where render layers (for fluids) are set.
  * */
-private val setRenderLayersScope = Scope(
+private val setRenderLayersScope = ContentRegistrationScope(
     "setRenderLayers",
     listOf(initScope)
 )
@@ -200,6 +200,11 @@ abstract class ContentModule {
  * We don't hold _everything_ here, see the datagen file to see other sources. For example, [Eln2Ores] has its own repository of blocks to include in loot table generation.
  */
 object ContentManager {
+    /**
+     * Called by external registration helpers.
+     * */
+    fun requireInit() = initScope.validate()
+
     /**
      * P.S. This is the only place you have to add new content modules to:
      * */
