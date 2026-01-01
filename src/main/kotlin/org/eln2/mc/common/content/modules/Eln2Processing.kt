@@ -100,11 +100,28 @@ object Eln2Processing : ContentModule() {
     }
 
     /**
+     * @param hullName The path of the ID.
+     * @param hullItem The registered hull item.
+     * */
+    data class MachineHullRegistryItem(val hullName: String, val hullItem: RegistryObject<Item>)
+
+    /**
+     * Registers the machine hull item, which is then used in the [registerMachine] API.
+     * */
+    private fun registerMachineHull(hullName: String) : MachineHullRegistryItem {
+        val hullItem = ItemRegistry.item(hullName) {
+            Item(Item.Properties())
+        }
+
+        return MachineHullRegistryItem(hullName, hullItem)
+    }
+
+    /**
      * Registers a machine powered by a work box ([ProcessingCell]):
-     * - [blockConstructor] and [blockEntityConstructor] result in the functional machine, that can be obtained as described next
-     * - a [ProcessingMachineRegistryItem.hullItem] is registered, which is the item that will actually be crafted using the specific components needed for the machine
-     * - to obtain the functional machine, the [box]'s [ProcessingCellRegistryItem.item] and the [ProcessingMachineRegistryItem.hullItem] are combined in the crafting table. This will give the item from [ProcessingMachineRegistryItem.blockAndItem] which places the final machine
-     * @param hullName The ID that will be given to the hull. The machine's ID will be [ProcessingCellRegistryItem.prefixToApply] + [hullName].
+     * - the [blockConstructor] and [blockEntityConstructor] create the functional machine, that can be obtained as described next
+     * - a [hull] was previously registered with [registerMachineHull], which is the item that will actually be crafted using the specific components needed for the machine
+     * - to obtain the functional machine, the [box]'s [ProcessingCellRegistryItem.item] and the [ProcessingMachineRegistryItem.hullItem] are combined in the crafting table. This will give the item from [ProcessingMachineRegistryItem.blockAndItem] which places the final machine. This recipe is handled by datagen.
+     * @param hull The hull item. The machine's ID will be [ProcessingCellRegistryItem.prefixToApply] + [MachineHullRegistryItem.hullName].
      * @param box The registered work box cell.
      * @param blockConstructor The constructor of the machine block.
      * @param blockEntityConstructor The constructor of the block entity.
@@ -114,7 +131,7 @@ object Eln2Processing : ContentModule() {
      * */
     @Suppress("RemoveRedundantQualifierName")
     private inline fun<reified C : ProcessingCell, reified BE : ProcessingMachineBlockEntity<C>> registerMachine(
-        hullName: String,
+        hull: MachineHullRegistryItem,
         box: ProcessingCellRegistryItem<C>,
         blockConstructor: ProcessingMachineBlockConstructor<C, BE>,
         blockEntityConstructor: ProcessingMachineBlockEntityConstructor<C>,
@@ -123,6 +140,7 @@ object Eln2Processing : ContentModule() {
     ) : ProcessingMachineRegistryItem {
         ContentManager.requireInit()
 
+        val hullName = hull.hullName
         val machineName = "${box.prefixToApply}_$hullName"
 
         val blockAndItem: BlockRegistry.BlockRegistryItem<ProcessingMachineBlock<C, BE>> = BlockRegistry
@@ -144,17 +162,13 @@ object Eln2Processing : ContentModule() {
             blockEntityConstructor.create(pPos, pState)
         }
 
-        val hullItem = ItemRegistry.item(hullName) {
-            Item(Item.Properties())
-        }
-
         @Suppress("UNCHECKED_CAST") val obj = ProcessingMachineRegistryItem(
             box,
             blockAndItem,
             blockEntity as RegistryObject<BlockEntityType<ProcessingMachineBlockEntity<*>>>,
             modelLazy::value,
             visualConstructor as ProcessingMachineVisualConstructor<*, ProcessingMachineBlockEntity<*>>,
-            hullItem
+            hull.hullItem
         )
 
         PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN.addUnique(obj)
@@ -599,14 +613,18 @@ object Eln2Processing : ContentModule() {
     val EXTRUDER_SOUND = soundEventVariableRange("extruder")
 
     val EXTRUDER_MODEL = lazy {
-        ProcessingMachineCompositeModel(
-            FlwModels.EXTRUDER_BODY,
-            listOf()
-        )
+        ProcessingMachineCompositeModel(FlwModels.EXTRUDER_BODY) {
+            withElement(FlwModels.EXTRUDER_SHAFT_A0, 0.5)
+            withElement(FlwModels.EXTRUDER_SHAFT_A1, 0.5)
+            withElement(FlwModels.EXTRUDER_SHAFT_B0, 0.5)
+            withElement(FlwModels.EXTRUDER_SHAFT_B1, 0.5)
+        }
     }
 
-    val EXTRUDER_MACHINE = registerMachine(
-        "extruder",
+    val EXTRUDER_HULL = registerMachineHull("extruder")
+
+    val EXTRUDER_BRUSHED_DC_MOTOR = registerMachine(
+        EXTRUDER_HULL,
         BRUSHED_DC_MOTOR_WORK_BOX,
         ::ExtruderBlock,
         ::ExtruderBlockEntity,

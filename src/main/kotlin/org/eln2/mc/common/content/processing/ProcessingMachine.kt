@@ -56,6 +56,7 @@ import org.ageseries.libage.sim.electrical.ElectricalSimulation
 import org.ageseries.libage.sim.electrical.Inductor
 import org.ageseries.libage.sim.electrical.LinearDiode
 import org.ageseries.libage.sim.electrical.PotentialSource
+import org.ageseries.libage.sim.electrical.Resistor
 import org.ageseries.libage.sim.kinetic.KineticDouble
 import org.ageseries.libage.sim.kinetic.KineticNodeSet
 import org.eln2.mc.*
@@ -455,7 +456,7 @@ class MotorProcessingCell private constructor(ci: CellCreateInfo, val options: M
     }
 
     class MotorProcessingObject(cell: MotorProcessingCell) : ElectricalObject<MotorProcessingCell>(cell), PersistentObject {
-        val armatureResistor = LinearDiode()
+        val armatureResistor = Resistor()
         val armatureInductor = Inductor()
         val potentialSource = PotentialSource()
 
@@ -470,8 +471,7 @@ class MotorProcessingCell private constructor(ci: CellCreateInfo, val options: M
         var angularVelocity = 0.0
 
         init {
-            armatureResistor.forwardResistance = !cell.options.idleResistance
-            armatureResistor.reverseResistance = ElectricalSimulation.MAX_RESISTANCE
+            armatureResistor.resistance = !cell.options.idleResistance
             armatureInductor.inductance = !cell.options.armatureInductance
             potentialSource.potential = 0.0
         }
@@ -531,7 +531,7 @@ class MotorProcessingCell private constructor(ci: CellCreateInfo, val options: M
             /**
              * On-off switch:
              * */
-            armatureResistor.forwardResistance = if(cell.isActive) {
+            armatureResistor.resistance = if(cell.isActive) {
                 !options.armatureResistance
             }
             else {
@@ -597,7 +597,6 @@ class MotorProcessingCell private constructor(ci: CellCreateInfo, val options: M
         override fun saveObjectNbt() : CompoundTag {
             val tag = CompoundTag()
 
-            tag.put(ARMATURE_RESISTOR, armatureResistor.saveNbt())
             tag.put(INDUCTOR, armatureInductor.saveNbt())
             tag.putDouble(ANGLE, angle)
             tag.putDouble(ANGULAR_VELOCITY, angularVelocity)
@@ -606,14 +605,12 @@ class MotorProcessingCell private constructor(ci: CellCreateInfo, val options: M
         }
 
         override fun loadObjectNbt(tag: CompoundTag) {
-            armatureResistor.loadNbt(tag.getCompound(ARMATURE_RESISTOR))
             armatureInductor.loadNbt(tag.getCompound(INDUCTOR))
             angle = tag.getDouble(ANGLE)
             angularVelocity = tag.getDouble(ANGULAR_VELOCITY)
         }
 
         companion object {
-            private const val ARMATURE_RESISTOR = "diode"
             private const val INDUCTOR = "inductor"
             private const val ANGLE = "angle"
             private const val ANGULAR_VELOCITY = "angularVelocity"
@@ -987,9 +984,27 @@ abstract class SimpleProcessingMachineBlockEntity<C : ProcessingCell, R : Eln2Si
 
 /**
  * @param body The base model of the machine, same for both kinetic and electric variants.
- * @param elements Animated rotating elements (currently constrained to rotating around one axis, will upgrade if needed).
+ * @param defineRotatingElements Lazy builder for animated rotating elements (currently constrained to rotating around one axis, will upgrade if needed).
  * */
-class ProcessingMachineCompositeModel(val body: PartialModel, val elements: List<RotatingElement>) {
+class ProcessingMachineCompositeModel(val body: PartialModel, private val defineRotatingElements: RotatingElementListBuilder.() -> Unit) {
+    constructor(body: PartialModel) : this(body, { })
+
+    private val rotatingElementsLazy = lazy {
+        val builder = RotatingElementListBuilder()
+        defineRotatingElements(builder)
+        builder.elements
+    }
+
+    val rotatingElements: List<RotatingElement> by rotatingElementsLazy
+
+    class RotatingElementListBuilder {
+        val elements = ArrayList<RotatingElement>()
+
+        fun withElement(model: PartialModel, factor: Double) {
+            elements.add(RotatingElement(model, factor))
+        }
+    }
+
     /**
      * Represents a wheel or gear that is rotating based on the processing speed of the machine.
      * @param model The model, in the desired position and orientation in the model space.
@@ -1079,7 +1094,7 @@ open class ProcessingMachineBlockEntityVisual<C : ProcessingCell, BE : Processin
     /**
      * Instances of the animated rotating elements.
      * */
-    val rotatingElements = composite.elements.map { element ->
+    val rotatingElements = composite.rotatingElements.map { element ->
         val instance = visualizationContext.instancerProvider()
             .instancer(
                 InstanceTypes.TRANSFORMED,
@@ -1096,7 +1111,7 @@ open class ProcessingMachineBlockEntityVisual<C : ProcessingCell, BE : Processin
     }.toTypedArray()
 
     /**
-     * Rotation and smoother for the [ProcessingMachineBlockEntity.ClientState.targetClientSpeed], which is used for the rotating elements in [ProcessingMachineCompositeModel.elements].
+     * Rotation and smoother for the [ProcessingMachineBlockEntity.ClientState.targetClientSpeed], which is used for the rotating elements in [ProcessingMachineCompositeModel.rotatingElements].
      * */
     var processRotation = Rotation2d.identity
     val processSpeedSmoother = FramerateIndependentSmoother1d(0.1)
