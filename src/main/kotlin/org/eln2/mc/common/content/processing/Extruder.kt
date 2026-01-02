@@ -83,7 +83,7 @@ class ExtruderBlockEntity<C : ProcessingCell>(pPos: BlockPos, pState: BlockState
     override val inputSlots: IntArray
         get() = intArrayOf(INPUT_SLOT, CATALYST_SLOT)
 
-    override val sound: RegistryObject<SoundEvent>?
+    override val sound: RegistryObject<SoundEvent>
         get() = Eln2Processing.EXTRUDER_SOUND
 
     override fun serverTick() {

@@ -530,24 +530,24 @@ object Eln2Processing : ContentModule() {
         "brushed_dc_motor_work_box", "brushed_dc_motor",
         MotorProcessingCellOptions(
             1.0,
-            Quantity(1.155, KILOGRAM_METER2),
+            Quantity(0.5, KILOGRAM_METER2),
             Quantity(10.0, KILO * OHM),
-            Quantity(41.561, OHM),
+            Quantity(0.85, OHM),
             Quantity(1.25, MILLI * HENRY),
-            Quantity(2.06, VOLT_PER_RADIAN_PER_SECOND),
-            Quantity(2.05, NEWTON_METER_PER_AMPERE),
-            10.0,
-            0.5,
-            1.15,
-            Quantity(800.0, VOLT),
-            Quantity(8155.1598, WATT),
+            Quantity(0.515, VOLT_PER_RADIAN_PER_SECOND),
+            Quantity(0.15, NEWTON_METER_PER_AMPERE),
+            0.1,
+            !Quantity(0.1, REVOLUTION_PER_SECOND),
+            !Quantity(5.0, REVOLUTION_PER_SECOND),
+            Quantity(300.0, VOLT),
+            Quantity(5400.0, WATT),
             ProcessingCellThermalOptions(
                 ThermalMassDefinition(
                     ChemicalElement.Copper.asMaterial,
                     mass = Quantity(10.0, KILOGRAM)
                 ),
                 ConnectionParameters.DEFAULT,
-                Quantity(60.0, CELSIUS)
+                Quantity(120.0, CELSIUS)
             )
         )
     )

@@ -47,7 +47,11 @@ class CrusherBlock<C : ProcessingCell>(cell: RegistryObject<CellProvider<C>>) : 
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = CrusherBlockEntity<C>(pPos, pState)
 
-    override fun animateMachineTick(blockEntity: CrusherBlockEntity<C>, avSpeed: Double, pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {
+    override fun animateMachineTick(blockEntity: CrusherBlockEntity<C>, processingDirection: ProcessingCell.ProcessingDirection, avSpeed: Double, pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {
+        if(processingDirection != ProcessingCell.ProcessingDirection.Forward) {
+            return
+        }
+
         val sparkBurst = ceil(avSpeed * 4).toInt()
         val dustBurst = ceil(avSpeed * 2).toInt()
 
@@ -62,7 +66,6 @@ class CrusherBlock<C : ProcessingCell>(cell: RegistryObject<CellProvider<C>>) : 
             val z = cz + rz
             val y = topY + pRandom.nextDouble() * 0.1
 
-            // velocity: biased upward and outwards; scale with speed
             val vx = rx * 0.02 * (0.5 + avSpeed * 2.0)
             val vy = 0.06 + pRandom.nextDouble() * 0.06 * (0.5 + avSpeed)
             val vz = rz * 0.02 * (0.5 + avSpeed * 2.0)
@@ -115,7 +118,11 @@ class CrusherBlockEntity<C : ProcessingCell>(pPos: BlockPos, pState: BlockState)
     override val allowProcessingInReverse: Boolean
         get() = false
 
-    override fun animateClientTick(dt: Double, state: ClientState, avSpeed: Double, level: ClientLevel) {
+    override fun animateClientTick(dt: Double, state: ClientState, processingDirection: ProcessingCell.ProcessingDirection, avSpeed: Double, level: ClientLevel) {
+        if(processingDirection != ProcessingCell.ProcessingDirection.Forward) {
+            return
+        }
+
         val random = level.getRandom()
         val chance = 0.5 * avSpeed
 

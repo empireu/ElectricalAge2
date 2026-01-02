@@ -50,44 +50,29 @@ import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Pole
 import org.ageseries.libage.sim.ThermalMassDefinition
-import org.ageseries.libage.sim.electrical.ElectricalComponentSet
-import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
-import org.ageseries.libage.sim.electrical.Inductor
-import org.ageseries.libage.sim.electrical.PotentialSource
-import org.ageseries.libage.sim.electrical.Resistor
+import org.ageseries.libage.sim.electrical.*
 import org.ageseries.libage.sim.kinetic.KineticDouble
 import org.ageseries.libage.sim.kinetic.KineticNodeSet
 import org.eln2.mc.*
-import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
-import org.eln2.mc.common.blocks.foundation.CellBlockEntity
-import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.cells.foundation.Cell
-import org.eln2.mc.common.content.ThermalWireObject
-import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
-import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
-import org.eln2.mc.common.network.serverToClient.sendBulkPacket
-import org.eln2.mc.common.sounds.foundation.SimpleLoopingBlockEntitySoundInstance
-import org.eln2.mc.common.sounds.foundation.SoundInfo
-import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
-import org.eln2.mc.PoleMap
 import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.PartialModelHelper
 import org.eln2.mc.common.blocks.BlockRegistry
+import org.eln2.mc.common.blocks.foundation.CellBlockEntity
+import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
 import org.eln2.mc.common.cells.CellRegistry
+import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.containers.ProgressContainerData
+import org.eln2.mc.common.content.ThermalWireObject
 import org.eln2.mc.common.items.ItemRegistry
-import org.eln2.mc.common.recipes.foundation.Eln2SimpleOutputProcessingLoopRecipe
-import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
-import org.eln2.mc.common.recipes.foundation.ProcessingDevice
-import org.eln2.mc.common.recipes.foundation.ProcessingRecipeLoop
-import org.eln2.mc.common.recipes.foundation.SimpleProcessingRecipeInventoryHandler
-import org.eln2.mc.evaluate
-import org.eln2.mc.extensions.constructMenuHelper2
-import org.eln2.mc.extensions.debugInIDE
-import org.eln2.mc.extensions.loadNbt
-import org.eln2.mc.extensions.saveNbt
-import org.eln2.mc.extensions.transformFacingBlock
+import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
+import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
+import org.eln2.mc.common.network.serverToClient.sendBulkPacket
+import org.eln2.mc.common.recipes.foundation.*
+import org.eln2.mc.common.sounds.foundation.SimpleLoopingBlockEntitySoundInstance
+import org.eln2.mc.common.sounds.foundation.SoundInfo
+import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
+import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Axis3d
@@ -97,6 +82,7 @@ import java.util.function.Supplier
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sign
 
 /**
  * Abstraction for (single-block) machines that have both kinetic and electrical variants, and possibly multiple tiers of those variants.
@@ -114,6 +100,9 @@ abstract class ProcessingCell(ci: CellCreateInfo) : Cell(ci), ProcessingDevice {
 
     override var processingSpeed = 0.0
         protected set
+
+    val signedProcessingSpeed: Double
+        get() = processingSpeed * if(direction == ProcessingDirection.Forward) 1.0 else -1.0
 
     /**
      * Read by the game object and used for rendering. For the kinetic work box, this should match the node exactly, so the shaft seems rigidly connected.
@@ -150,24 +139,37 @@ abstract class ProcessingCell(ci: CellCreateInfo) : Cell(ci), ProcessingDevice {
         protected set
 
     /**
-     * Replicator for the processing speed (handled by [ProcessingMachineBlockEntity.onSpeedChanged]).
+     * The mechanical stress created by the load.
+     * For kinetic boxes and motor boxes, this is torque (for kinetic, it's the total friction torque, and for motor, it's the load torque only).
      * */
-    class ProcessingCellSpeedReplicator(val supplier: Supplier<Double>, val consumer: ProcessingMachineBlockEntity<*>) : ReplicatorBehavior {
-        var trackedSpeed = 0.0
+    var stressLevel = 0.0
+        protected set
+
+    @Replicator
+    fun speedReplicator(target: ProcessingMachineBlockEntity<*>) = ProcessingCellSpeedReplicator(
+        this::signedProcessingSpeed,
+        target
+    )
+
+    /**
+     * Replicator for the processing speed (handled by [ProcessingMachineBlockEntity.onSignedProcessingSpeedChanged]).
+     * */
+    class ProcessingCellSpeedReplicator(val signedSupplier: Supplier<Double>, val consumer: ProcessingMachineBlockEntity<*>) : ReplicatorBehavior {
+        var signedTrackedSpeed = 0.0
 
         override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
             subscribers.addSubscriber(SubscriberOptions(10, SimulationPhase.Post), this::tick)
         }
 
         private fun tick(dt: Double, phase: SimulationPhase) {
-            val targetSpeed = supplier.get()
+            val signedTargetSpeed = signedSupplier.get()
 
-            if(targetSpeed.approxEq(trackedSpeed, 0.01)) {
+            if(signedTargetSpeed.sign == signedTrackedSpeed.sign && signedTargetSpeed.approxEq(signedTrackedSpeed, 0.01)) {
                 return
             }
 
-            trackedSpeed = targetSpeed
-            consumer.onSpeedChanged(targetSpeed)
+            signedTrackedSpeed = signedTargetSpeed
+            consumer.onSignedProcessingSpeedChanged(signedTargetSpeed)
         }
     }
 }
@@ -291,12 +293,6 @@ class KineticProcessingCell private constructor(ci: CellCreateInfo, val options:
         get() = RotatingKineticState(kinetic.node.angle, kinetic.node.angularVelocity)
 
     @Replicator
-    fun speedReplicator(target: ProcessingMachineBlockEntity<*>) = ProcessingCellSpeedReplicator(
-        this::processingSpeed,
-        target
-    )
-
-    @Replicator
     fun kineticReplicator(target: InternalKineticStateConsumer) = InternalKineticReplicatorBehavior(
         this::kineticState,
         target,
@@ -375,6 +371,8 @@ class KineticProcessingCell private constructor(ci: CellCreateInfo, val options:
             else {
                 ProcessingCell.ProcessingDirection.Reverse
             }
+
+            cell.stressLevel = abs(node.frictionTorque)
         }
 
         override fun saveObjectNbt() = node.saveNbt()
@@ -418,12 +416,6 @@ class MotorProcessingCell private constructor(ci: CellCreateInfo, val options: M
 
     override val kineticState: RotatingKineticState
         get() = RotatingKineticState(motor.angle, motor.angularVelocity)
-
-    @Replicator
-    fun speedReplicator(target: ProcessingMachineBlockEntity<*>) = ProcessingCellSpeedReplicator(
-        this::processingSpeed,
-        target
-    )
 
     @Replicator
     fun kineticReplicator(target: InternalKineticStateConsumer) = InternalKineticReplicatorBehavior(
@@ -506,6 +498,8 @@ class MotorProcessingCell private constructor(ci: CellCreateInfo, val options: M
              * Applies friction (load):
              * */
             val loadTorque = angularVelocity * (options.loadDependentFriction * cell.loadFactor)
+            cell.stressLevel = abs(loadTorque)
+
             var dw = loadTorque / !options.inertia * dt
 
             /**
@@ -675,7 +669,7 @@ abstract class ProcessingMachineBlock<C : ProcessingCell, BE : ProcessingMachine
      * Called by [animateTick], to animate particles.
      * @param avSpeed Smooth speed from [ProcessingMachineBlockEntity.ClientState.avSpeedSmoother].
      * */
-    open fun animateMachineTick(blockEntity: BE, avSpeed: Double, pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) { }
+    open fun animateMachineTick(blockEntity: BE, processingDirection: ProcessingCell.ProcessingDirection, avSpeed: Double, pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) { }
 
     override fun animateTick(pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {
         @Suppress("UNCHECKED_CAST") val blockEntity = pLevel.getBlockEntity(pPos) as? BE
@@ -687,7 +681,11 @@ abstract class ProcessingMachineBlock<C : ProcessingCell, BE : ProcessingMachine
             return
         }
 
-        animateMachineTick(blockEntity, speed, pState, pLevel, pPos, pRandom)
+        animateMachineTick(
+            blockEntity,
+            blockEntity.clientState!!.processingDirection, speed,
+            pState, pLevel, pPos, pRandom
+        )
     }
 
     //#region Collider
@@ -761,6 +759,8 @@ abstract class ProcessingMachineBlockEntity<C : ProcessingCell>(pPos: BlockPos, 
          * Smoother updated in [clientTick] using [ClientState.targetClientSpeed], for **audio and particles effects only**.
          * */
         val avSpeedSmoother = FramerateIndependentSmoother1d(0.2)
+
+        var processingDirection = ProcessingCell.ProcessingDirection.Forward
     }
 
     /**
@@ -792,7 +792,7 @@ abstract class ProcessingMachineBlockEntity<C : ProcessingCell>(pPos: BlockPos, 
      * Method called by [clientTick], used to update A/V, if needed.
      * @param avSpeed The smoothed speed, from [ClientState.avSpeedSmoother].
      * */
-    open fun animateClientTick(dt: Double, state: ClientState, avSpeed: Double, level: ClientLevel) { }
+    open fun animateClientTick(dt: Double, state: ClientState, processingDirection: ProcessingCell.ProcessingDirection, avSpeed: Double, level: ClientLevel) { }
 
     @ClientOnly
     fun clientTick() {
@@ -820,7 +820,7 @@ abstract class ProcessingMachineBlockEntity<C : ProcessingCell>(pPos: BlockPos, 
             }
         }
 
-        animateClientTick(dt, state, state.avSpeedSmoother.value, level)
+        animateClientTick(dt, state, state.processingDirection, state.avSpeedSmoother.value, level)
     }
 
     //#endregion
@@ -833,7 +833,7 @@ abstract class ProcessingMachineBlockEntity<C : ProcessingCell>(pPos: BlockPos, 
     @ServerOnly
     override fun getUpdateTag(): CompoundTag {
         if(hasCell) {
-            this.sendBulkPacket(SpeedSyncPacket(cell.processingSpeed))
+            this.sendBulkPacket(ProcessingSyncPacket(cell.signedProcessingSpeed))
             this.sendBulkPacket(cell.kineticState)
         }
 
@@ -850,9 +850,10 @@ abstract class ProcessingMachineBlockEntity<C : ProcessingCell>(pPos: BlockPos, 
             state.renderVersion++
         }
 
-        handler.withHandler<SpeedSyncPacket> { packet ->
+        handler.withHandler<ProcessingSyncPacket> { packet ->
             modifyState {
-                targetClientSpeed = packet.speed
+                targetClientSpeed = abs(packet.signedSpeed)
+                processingDirection = if(packet.signedSpeed >= 0.0) ProcessingCell.ProcessingDirection.Forward else ProcessingCell.ProcessingDirection.Reverse
             }
         }
 
@@ -864,8 +865,8 @@ abstract class ProcessingMachineBlockEntity<C : ProcessingCell>(pPos: BlockPos, 
     }
 
     @OnSimulationThread
-    fun onSpeedChanged(newSpeed: Double) {
-        sendBulkPacket(SpeedSyncPacket(newSpeed))
+    fun onSignedProcessingSpeedChanged(newSpeed: Double) {
+        sendBulkPacket(ProcessingSyncPacket(newSpeed))
     }
 
     @OnSimulationThread
@@ -874,18 +875,20 @@ abstract class ProcessingMachineBlockEntity<C : ProcessingCell>(pPos: BlockPos, 
     }
 
     @Serializable
-    class SpeedSyncPacket(val speed: Double)
+    class ProcessingSyncPacket(val signedSpeed: Double)
 
     //#endregion
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         val cell = cell
 
+        builder.debugInIDE { "Processing Speed: ${cell.processingSpeed.rounded()}" }
+        builder.debugInIDE { "Direction: ${cell.direction}" }
+        builder.debugInIDE { "Stress: ${cell.stressLevel.rounded()}" }
+
         if(cell is KineticProcessingCell) {
             cell.kinetic.subSolvers?.debugInIDE(builder)
-            builder.debugInIDE { "Speed: ${cell.processingSpeed.rounded()}" }
-            builder.debugInIDE { "Imp0: ${cell.kinetic.node.e1.impulse.rounded()}, Imp1: ${cell.kinetic.node.e2.impulse.rounded()}" }
-            builder.debugInIDE { "Fric T: ${cell.kinetic.node.frictionTorque.rounded()}"}
+            builder.debugInIDE { "Angular velocity: ${cell.kinetic.node.angularVelocity.rounded()}" }
             builder.quantity(cell.thermalWire.thermalBody.temperature)
         }
         else if(cell is MotorProcessingCell) {
