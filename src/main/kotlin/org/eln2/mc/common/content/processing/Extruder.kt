@@ -8,6 +8,7 @@ import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.core.BlockPos
 import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.MutableComponent
+import net.minecraft.sounds.SoundEvent
 import net.minecraft.world.SimpleContainer
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
@@ -82,7 +83,8 @@ class ExtruderBlockEntity<C : ProcessingCell>(pPos: BlockPos, pState: BlockState
     override val inputSlots: IntArray
         get() = intArrayOf(INPUT_SLOT, CATALYST_SLOT)
 
-    override fun getSound() = Eln2Processing.EXTRUDER_SOUND
+    override val sound: RegistryObject<SoundEvent>?
+        get() = Eln2Processing.EXTRUDER_SOUND
 
     override fun serverTick() {
         super.serverTick()

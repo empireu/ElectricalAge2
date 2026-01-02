@@ -5,13 +5,14 @@ package org.eln2.mc.mathematics
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
 import net.minecraft.core.Direction
 import org.ageseries.libage.data.ImmutableByteArrayView
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.extensions.*
 import org.joml.Matrix4f
 
-enum class Axis3d(val id: Int) {
-    X(0),
-    Y(1),
-    Z(2);
+enum class Axis3d(val id: Int, val direction: Vector3d, val maskExclude: Vector3d) {
+    X(0, Vector3d.unitX, Vector3d(0.0, 1.0, 1.0)),
+    Y(1, Vector3d.unitY, Vector3d(1.0, 0.0, 1.0)),
+    Z(2, Vector3d.unitZ, Vector3d(1.0, 1.0, 0.0))
 }
 
 enum class Base6Direction3d(val id: Int) {

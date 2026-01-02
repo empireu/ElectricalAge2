@@ -52,9 +52,7 @@ import org.ageseries.libage.sim.Pole
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
-import org.ageseries.libage.sim.electrical.ElectricalSimulation
 import org.ageseries.libage.sim.electrical.Inductor
-import org.ageseries.libage.sim.electrical.LinearDiode
 import org.ageseries.libage.sim.electrical.PotentialSource
 import org.ageseries.libage.sim.electrical.Resistor
 import org.ageseries.libage.sim.kinetic.KineticDouble
@@ -92,6 +90,7 @@ import org.eln2.mc.extensions.saveNbt
 import org.eln2.mc.extensions.transformFacingBlock
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.mathematics.Axis3d
 import org.eln2.mc.mathematics.Base6Direction3d
 import java.util.function.Consumer
 import java.util.function.Supplier
@@ -139,7 +138,7 @@ abstract class ProcessingCell(ci: CellCreateInfo) : Cell(ci), ProcessingDevice {
     @CrossThreadAccess @OnServerThread
     var thermalFactor: Double = 1.0
 
-    enum class Direction {
+    enum class ProcessingDirection {
         Forward,
         Reverse
     }
@@ -147,7 +146,7 @@ abstract class ProcessingCell(ci: CellCreateInfo) : Cell(ci), ProcessingDevice {
     /**
      * The direction currently being imposed by the external device. For electrical boxes, the polarity will set this, and for kinetic boxes, the rotation direction will set this.
      * */
-    var direction: ProcessingCell.Direction = ProcessingCell.Direction.Forward
+    var direction: ProcessingCell.ProcessingDirection = ProcessingCell.ProcessingDirection.Forward
         protected set
 
     /**
@@ -371,10 +370,10 @@ class KineticProcessingCell private constructor(ci: CellCreateInfo, val options:
             cell.processingSpeed = options.baseSpeedFactor * (abs(node.angularVelocity) / !options.nominalAngularVelocity)
 
             cell.direction = if(node.angularVelocity >= 0.0) {
-                ProcessingCell.Direction.Forward
+                ProcessingCell.ProcessingDirection.Forward
             }
             else {
-                ProcessingCell.Direction.Reverse
+                ProcessingCell.ProcessingDirection.Reverse
             }
         }
 
@@ -568,9 +567,9 @@ class MotorProcessingCell private constructor(ci: CellCreateInfo, val options: M
             angularVelocity += dw
 
             cell.direction = if (angularVelocity >= 0.0) {
-                ProcessingCell.Direction.Forward
+                ProcessingCell.ProcessingDirection.Forward
             } else {
-                ProcessingCell.Direction.Reverse
+                ProcessingCell.ProcessingDirection.Reverse
             }
 
             /**
@@ -781,7 +780,8 @@ abstract class ProcessingMachineBlockEntity<C : ProcessingCell>(pPos: BlockPos, 
      * Called on the first [clientTick].
      * If this machine uses a single, speed-based looping sound, return the sound here, and it will be played and controlled with [ClientState.avSpeedSmoother].
      * */
-    open fun getSound() : RegistryObject<SoundEvent>? = null
+    open val sound: RegistryObject<SoundEvent>?
+        get() = null
 
     //#region Tick Loops
 
@@ -807,7 +807,7 @@ abstract class ProcessingMachineBlockEntity<C : ProcessingCell>(pPos: BlockPos, 
             ?: return
 
         if(clientState!!.soundInstance == null) {
-            val soundEvent = getSound()
+            val soundEvent = sound
 
             if(soundEvent != null) {
                 clientState!!.soundInstance = SimpleLoopingBlockEntitySoundInstance(this as BlockEntity, soundEvent.get()).also {
@@ -917,6 +917,12 @@ abstract class SimpleProcessingMachineBlockEntity<C : ProcessingCell, R : Eln2Si
      * */
     open val inputSlots: IntArray = intArrayOf(INPUT_SLOT)
 
+    /**
+     * If true, the recipe loop will be stepped when [ProcessingCell.direction] is reverse too.
+     * */
+    open val allowProcessingInReverse: Boolean
+        get() = true
+
     //#region Capability
 
     val inventoryHandler = SimpleProcessingRecipeInventoryHandler.create(this, recipe, inventorySize, inputSlots)
@@ -956,9 +962,11 @@ abstract class SimpleProcessingMachineBlockEntity<C : ProcessingCell, R : Eln2Si
      * */
     @ServerOnly
     override fun serverTick() {
-        val result = loop.tick(cell, inventoryHandler)
+        if(cell.direction == ProcessingCell.ProcessingDirection.Forward || allowProcessingInReverse) {
+            val result = loop.tick(cell, inventoryHandler)
 
-        data.progress = result.progress
+            data.progress = result.progress
+        }
     }
 
     //#endregion
@@ -1000,8 +1008,8 @@ class ProcessingMachineCompositeModel(val body: PartialModel, private val define
     class RotatingElementListBuilder {
         val elements = ArrayList<RotatingElement>()
 
-        fun withElement(model: PartialModel, factor: Double) {
-            elements.add(RotatingElement(model, factor))
+        fun withElement(model: PartialModel, factor: Double, axis: Axis3d = Axis3d.X) {
+            elements.add(RotatingElement(model, factor, axis))
         }
     }
 
@@ -1010,7 +1018,7 @@ class ProcessingMachineCompositeModel(val body: PartialModel, private val define
      * @param model The model, in the desired position and orientation in the model space.
      * @param factor Angular velocity multiplier. The perceived angular velocity of the element will be [factor]*`speed`, where `speed` is the processing speed of the machine.
      * */
-    class RotatingElement(val model: PartialModel, val factor: Double) {
+    class RotatingElement(val model: PartialModel, val factor: Double, val rotationAxis: Axis3d) {
         val center = FlwModels.getModelCenter(model)
     }
 }
@@ -1089,7 +1097,7 @@ open class ProcessingMachineBlockEntityVisual<C : ProcessingCell, BE : Processin
         }
     }
 
-    class RotatingElement(val instance: TransformedInstance, val center: Vector3d, val factor: Double)
+    class RotatingElement(val instance: TransformedInstance, val center: Vector3d, val factor: Double, val axis: Axis3d)
 
     /**
      * Instances of the animated rotating elements.
@@ -1107,7 +1115,7 @@ open class ProcessingMachineBlockEntityVisual<C : ProcessingCell, BE : Processin
                 poseShaft(it, element.center, 0.0)
             }
 
-        RotatingElement(instance, element.center, element.factor)
+        RotatingElement(instance, element.center, element.factor, element.rotationAxis)
     }.toTypedArray()
 
     /**
@@ -1133,7 +1141,7 @@ open class ProcessingMachineBlockEntityVisual<C : ProcessingCell, BE : Processin
             for(i in 0 until rotatingElements.size) {
                 val element = rotatingElements[i]
 
-                poseShaft(element.instance, element.center, angle * element.factor)
+                poseShaft(element.instance, element.center, angle * element.factor, element.axis)
             }
         }
 
@@ -1179,18 +1187,26 @@ open class ProcessingMachineBlockEntityVisual<C : ProcessingCell, BE : Processin
         }
     }
 
-    fun poseShaft(instance: TransformedInstance, center: Vector3d, rotation: Double) {
-        val z = center.z
-        val y = center.y
+    fun poseShaft(instance: TransformedInstance, center: Vector3d, rotation: Double, axis: Axis3d = Axis3d.X) {
+        val mask = axis.maskExclude
+        val x = mask.x * center.x
+        val y = mask.y * center.y
+        val z = mask.z * center.z
 
         instance.setIdentityTransform()
             .translate(visualPos)
             .center()
             .rotateToFace(blockEntity.blockState.getValue(HorizontalDirectionalBlock.FACING))
             .uncenter()
-            .translate(0.0, y, z)
-            .rotateX(rotation.toFloat())
-            .translate(0.0, -y, -z)
+            .translate(x, y, z)
+            .apply {
+                when(axis) {
+                    Axis3d.X -> rotateX(rotation.toFloat())
+                    Axis3d.Y -> rotateY(rotation.toFloat())
+                    Axis3d.Z -> rotateZ(rotation.toFloat())
+                }
+            }
+            .translate(-x, -y, -z)
             .setChanged()
     }
 }

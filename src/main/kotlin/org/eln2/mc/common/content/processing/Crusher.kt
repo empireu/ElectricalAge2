@@ -1,70 +1,55 @@
-/*
 package org.eln2.mc.common.content.processing
 
-import dev.engine_room.flywheel.api.instance.Instance
-import dev.engine_room.flywheel.api.visual.DynamicVisual
-import dev.engine_room.flywheel.api.visualization.VisualizationContext
-import dev.engine_room.flywheel.lib.instance.InstanceTypes
-import dev.engine_room.flywheel.lib.instance.TransformedInstance
-import dev.engine_room.flywheel.lib.material.Materials
-import dev.engine_room.flywheel.lib.model.Models
-import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
-import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.particles.DustParticleOptions
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.network.chat.Component
-import net.minecraft.network.chat.MutableComponent
+import net.minecraft.sounds.SoundEvent
 import net.minecraft.util.RandomSource
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
+import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.inventory.ContainerLevelAccess
+import net.minecraft.world.item.crafting.RecipeType
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraftforge.items.ItemStackHandler
-import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
-import org.ageseries.libage.mathematics.geometry.Rotation2d
-import org.ageseries.libage.mathematics.geometry.Vector3d
+import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.mathematics.map
-import org.eln2.mc.*
-import org.eln2.mc.client.render.FlwModels
-import org.eln2.mc.client.render.foundation.PartialModelHelper
-import org.eln2.mc.common.containers.*
+import org.eln2.mc.ClientOnly
+import org.eln2.mc.MODID
+import org.eln2.mc.ServerOnly
+import org.eln2.mc.common.cells.foundation.CellProvider
+import org.eln2.mc.common.containers.ContainerHelper
+import org.eln2.mc.common.containers.MyAbstractContainerScreen
+import org.eln2.mc.common.containers.ProgressContainerData
+import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
+import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicateAndSkipPickupCheck
 import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipe
 import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
 import org.eln2.mc.common.recipes.foundation.OUTPUT_SLOT
+import org.eln2.mc.extensions.eln2StillValid
 import org.eln2.mc.extensions.nextDouble
 import org.eln2.mc.extensions.recipeExists
-import org.eln2.mc.extensions.transformFacingBlock
+import org.eln2.mc.resource
 import org.joml.Vector3f
-import java.util.function.Consumer
 import kotlin.math.ceil
 
-class CrusherBlock : MotorProcessingBlock<DirectSimpleProcessingRecipe, CrusherBlockEntity>() {
-    override fun getTitle(): MutableComponent = Component.translatable("manu.$MODID.crusher")
+class CrusherBlock<C : ProcessingCell>(cell: RegistryObject<CellProvider<C>>) : ProcessingMachineBlock<C, CrusherBlockEntity<C>>(cell) {
+    override fun getTitle(): Component = Component.translatable("menu.$MODID.crusher")
 
-    override fun createMenu(
-        pBlockEntity: CrusherBlockEntity,
-        pContainerId: Int,
-        pPlayerInventory: Inventory,
-    ) = CrusherMenu(pBlockEntity, pContainerId, pPlayerInventory)
+    override fun createMenu(pBlockEntity: CrusherBlockEntity<C>, pContainerId: Int, pPlayerInventory: Inventory) = CrusherMenu(pBlockEntity, pContainerId, pPlayerInventory)
 
-    override fun getCellProvider() = Eln2Processing.BASIC_CRUSHER_CELL.get()
+    override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = CrusherBlockEntity<C>(pPos, pState)
 
-    override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = CrusherBlockEntity(pPos, pState)
-
-    */
-/**
-     * Animates bursts of particles based on speed.
-     * *//*
-
-    override fun animateMachineTick(blockEntity: CrusherBlockEntity, speed: Double, pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {
-        val sparkBurst = ceil(speed * 4).toInt()
-        val dustBurst = ceil(speed * 2).toInt()
+    override fun animateMachineTick(blockEntity: CrusherBlockEntity<C>, avSpeed: Double, pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {
+        val sparkBurst = ceil(avSpeed * 4).toInt()
+        val dustBurst = ceil(avSpeed * 2).toInt()
 
         val cx = pPos.x + 0.5
         val topY = pPos.y + 0.9
@@ -78,9 +63,9 @@ class CrusherBlock : MotorProcessingBlock<DirectSimpleProcessingRecipe, CrusherB
             val y = topY + pRandom.nextDouble() * 0.1
 
             // velocity: biased upward and outwards; scale with speed
-            val vx = rx * 0.02 * (0.5 + speed * 2.0)
-            val vy = 0.06 + pRandom.nextDouble() * 0.06 * (0.5 + speed)
-            val vz = rz * 0.02 * (0.5 + speed * 2.0)
+            val vx = rx * 0.02 * (0.5 + avSpeed * 2.0)
+            val vy = 0.06 + pRandom.nextDouble() * 0.06 * (0.5 + avSpeed)
+            val vz = rz * 0.02 * (0.5 + avSpeed * 2.0)
 
             val prob = pRandom.nextDouble()
 
@@ -110,9 +95,9 @@ class CrusherBlock : MotorProcessingBlock<DirectSimpleProcessingRecipe, CrusherB
             val x = cx + rx
             val z = cz + rz
 
-            val vx = rx * 0.01 * speed
-            val vy = 0.02 + pRandom.nextDouble() * 0.03 * speed
-            val vz = rz * 0.01 * speed
+            val vx = rx * 0.01 * avSpeed
+            val vy = 0.02 + pRandom.nextDouble() * 0.03 * avSpeed
+            val vz = rz * 0.01 * avSpeed
 
             val dust = DustParticleOptions(Vector3f(0.72f, 0.62f, 0.5f), 1.0f)
             pLevel.addParticle(dust, x, topY, z, vx, vy, vz)
@@ -120,14 +105,19 @@ class CrusherBlock : MotorProcessingBlock<DirectSimpleProcessingRecipe, CrusherB
     }
 }
 
-class CrusherBlockEntity(pos: BlockPos, state: BlockState) : MotorProcessingBlockEntity<DirectSimpleProcessingRecipe>(pos, state, Eln2Processing.CRUSHER_BLOCK_ENTITY.get(), 2) {
-    override fun getRecipe() = Eln2Processing.CRUSHING_RECIPE
+class CrusherBlockEntity<C : ProcessingCell>(pPos: BlockPos, pState: BlockState) : SimpleProcessingMachineBlockEntity<C, DirectSimpleProcessingRecipe>(pPos, pState, 2) {
+    override val recipe: RecipeType<DirectSimpleProcessingRecipe>
+        get() = Eln2Processing.CRUSHING_RECIPE
 
-    override fun getSound() = Eln2Processing.CRUSHER_SOUND_ROCK
+    override val sound: RegistryObject<SoundEvent>
+        get() = Eln2Processing.CRUSHER_SOUND
 
-    override fun animateClientTick(dt: Double, speed: Double, level: Level, blockPos: BlockPos) {
+    override val allowProcessingInReverse: Boolean
+        get() = false
+
+    override fun animateClientTick(dt: Double, state: ClientState, avSpeed: Double, level: ClientLevel) {
         val random = level.getRandom()
-        val chance = 0.5 * clientTickSpeedSmoother.value
+        val chance = 0.5 * avSpeed
 
         if (random.nextDouble() < chance) {
             var x = blockPos.x + 0.5
@@ -155,82 +145,6 @@ class CrusherBlockEntity(pos: BlockPos, state: BlockState) : MotorProcessingBloc
     }
 }
 
-class CrusherBlockEntityVisual(
-    ctx: VisualizationContext,
-    blockEntity: CrusherBlockEntity,
-    partialTick: Float,
-) : AbstractBlockEntityVisual<CrusherBlockEntity>(ctx, blockEntity, partialTick), SimpleDynamicVisual {
-    companion object {
-        private val center0 = FlwModels.getModelCenter(FlwModels.CRUSHER_GRINDER_0)
-        private val center1 = FlwModels.getModelCenter(FlwModels.CRUSHER_GRINDER_1)
-    }
-
-    val body: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.CRUSHER_BODY, Materials.CUTOUT_BLOCK))
-        .createInstance()
-        .transformFacingBlock(visualPos, blockEntity)
-
-    val grinder0: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(FlwModels.CRUSHER_GRINDER_0))
-        .createInstance()
-
-    val grinder1: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(FlwModels.CRUSHER_GRINDER_1))
-        .createInstance()
-
-    var rotation = Rotation2d.identity
-    val velocitySmoother = FramerateIndependentSmoother1d(0.1) // Separate smoother (flywheel thread)
-
-    private fun poseGrinder(instance: TransformedInstance, center: Vector3d, rotation: Double) {
-        val x = center.x
-        val y = center.y
-
-        instance.setIdentityTransform()
-            .translate(visualPos)
-            .center()
-            .rotateToFace(blockEntity.blockState.getValue(HorizontalDirectionalBlock.FACING))
-            .uncenter()
-            .translate(x, y, 0.0)
-            .rotateZ(rotation.toFloat())
-            .translate(-x, -y, 0.0)
-            .setChanged()
-    }
-
-    init {
-        poseGrinder(grinder0, center0, 0.0)
-        poseGrinder(grinder1, center1, 0.0)
-    }
-
-    override fun beginFrame(p0: DynamicVisual.Context?) {
-        val dt = velocitySmoother.update(blockEntity.targetClientSpeed)
-        velocitySmoother.pullDown()
-        val incr = velocitySmoother.value * dt
-
-        if(incr != 0.0) {
-            rotation += incr
-            val angle = rotation.ln()
-            poseGrinder(grinder0, center0, -angle)
-            poseGrinder(grinder1, center1, +angle)
-        }
-    }
-
-    override fun updateLight(p0: Float) {
-        relight(body, grinder0, grinder1)
-    }
-
-    override fun collectCrumblingInstances(p0: Consumer<Instance?>) {
-        p0.accept(body)
-        p0.accept(grinder0)
-        p0.accept(grinder1)
-    }
-
-    override fun _delete() {
-        body.delete()
-        grinder0.delete()
-        grinder1.delete()
-    }
-}
-
 class CrusherMenu(
     pContainerId: Int,
     playerInventory: Inventory,
@@ -238,9 +152,9 @@ class CrusherMenu(
     val containerData: ProgressContainerData,
     val access: ContainerLevelAccess,
     val level: Level,
-) : net.minecraft.world.inventory.AbstractContainerMenu(Eln2Processing.CRUSHER_MENU.get(), pContainerId) {
+) : AbstractContainerMenu(Eln2Processing.CRUSHER_MENU.get(), pContainerId) {
     @ServerOnly
-    constructor(entity: CrusherBlockEntity, id: Int, inventory: Inventory): this(
+    constructor(entity: CrusherBlockEntity<*>, id: Int, inventory: Inventory): this(
         id,
         inventory,
         entity.inventoryHandler,
@@ -277,7 +191,7 @@ class CrusherMenu(
         ContainerHelper.addPlayerGrid(playerInventory, this::addSlot)
     }
 
-    override fun stillValid(pPlayer: Player) = stillValid(access, pPlayer, Eln2Processing.CRUSHER_BLOCK.block.get())
+    override fun stillValid(pPlayer: Player) = eln2StillValid<CrusherBlock<*>>(access, pPlayer)
 
     override fun quickMoveStack(pPlayer: Player, pIndex: Int) = ContainerHelper.quickMove(slots, pPlayer, pIndex)
 }
@@ -310,4 +224,3 @@ class CrusherScreen(menu: CrusherMenu, playerInventory: Inventory, title: Compon
     }
 }
 
-*/

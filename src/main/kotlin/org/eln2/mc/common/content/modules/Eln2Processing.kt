@@ -2,6 +2,7 @@
 
 package org.eln2.mc.common.content.modules
 
+import org.eln2.mc.common.content.processing.CrusherMenu
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
 import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
@@ -47,6 +48,7 @@ import org.eln2.mc.common.recipes.RecipeRegistry.registerCatalyzedRecipe
 import org.eln2.mc.common.recipes.RecipeRegistry.registerDirectRecipe
 import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
 import org.eln2.mc.directionPoleMapPlanar
+import org.eln2.mc.mathematics.Axis3d
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.monopolarMapPlanar
@@ -156,7 +158,7 @@ object Eln2Processing : ContentModule() {
                     Eln2BlockItemWithCraftingRemainder(box.item, block, Item.Properties())
                 },
                 { blockConstructor.create(box.cellProvider) }
-            )
+            ).withSelfDrop()
 
         val blockEntity = BlockRegistry.blockEntityOnly(machineName, blockAndItem) { pPos, pState ->
             blockEntityConstructor.create(pPos, pState)
@@ -274,7 +276,7 @@ object Eln2Processing : ContentModule() {
             )
         }
         MenuScreens.register(FURNACE_MENU.get(), ::FurnaceScreen)
-        //MenuScreens.register(CRUSHER_MENU.get(), ::CrusherScreen)
+        MenuScreens.register(CRUSHER_MENU.get(), ::CrusherScreen)
         MenuScreens.register(EXTRUDER_MENU.get(), ::ExtruderScreen)
 
        /* MenuScreens.register(ROLLING_MACHINE_MENU.get()) { menu, inventory, title ->
@@ -522,60 +524,6 @@ object Eln2Processing : ContentModule() {
 
     //#endregion
 
-    //#region Crusher
-
-    val CRUSHING_RECIPE = registerDirectRecipe("crushing")
-/*
-
-    val BASIC_CRUSHER_CELL = cellMemoize("basic_crusher") {
-        val options = ElectricalMotorWorkBoxCellOptions(
-            1.0,
-            MotorProcessingCellElectricalOptions(
-                Quantity(1.155, KILOGRAM_METER2),
-                Quantity(10.0, KILO * OHM),
-                Quantity(1.0, OHM),
-                Quantity(1.25, MILLI * HENRY),
-                Quantity(9.501, VOLT_PER_RADIAN_PER_SECOND),
-                Quantity(2.05, NEWTON_METER_PER_AMPERE),
-                50.0,
-                0.124,
-                3.0,
-                Quantity(800.0, VOLT),
-                Quantity(8155.1598, WATT)
-            ),
-            WorkBoxThermalOptions(
-                0.1,
-                ThermalMassDefinition(
-                    ChemicalElement.Iron.asMaterial,
-                    mass = Quantity(5.0, KILOGRAM)
-                ),
-                ConnectionParameters(
-                    Quantity(10.0, WATT_PER_KELVIN)
-                ),
-                Quantity(150.0, CELSIUS),
-            )
-        )
-
-        val electricalMap = directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)
-        val thermalMap = directionPoleMapPlanar(Base6Direction3d.Back)
-
-        CellFactory {
-            MotorWorkBoxCell(it, options, electricalMap, thermalMap)
-        }
-    }
-
-    val CRUSHER_BLOCK = blockAndItem("crusher", ::CrusherBlock)
-        .withSelfDrop()
-
-    val CRUSHER_SOUND_ROCK = soundEventVariableRange("crusher.rock")
-
-    val CRUSHER_BLOCK_ENTITY = blockEntityOnly("crusher", CRUSHER_BLOCK.block, ::CrusherBlockEntity)
-
-    val CRUSHER_MENU = menu("crusher", ::CrusherMenu)
-*/
-
-    //#endregion
-
     //#region Work Boxes
 
     val BRUSHED_DC_MOTOR_WORK_BOX = MotorProcessingCell.register(
@@ -606,6 +554,33 @@ object Eln2Processing : ContentModule() {
 
     //#endregion
 
+    //#region Crusher
+
+    val CRUSHING_RECIPE = registerDirectRecipe("crushing")
+
+    val CRUSHER_SOUND = soundEventVariableRange("crusher.rock")
+
+    val CRUSHER_MODEL = lazy {
+        ProcessingMachineCompositeModel(FlwModels.CRUSHER_BODY) {
+            withElement(FlwModels.CRUSHER_GRINDER_0, -0.4, Axis3d.Z)
+            withElement(FlwModels.CRUSHER_GRINDER_1, +0.4, Axis3d.Z)
+        }
+    }
+
+    val CRUSHER_HULL = registerMachineHull("crusher")
+
+    val CRUSHER_BRUSHED_DC_MOTOR = registerMachine(
+        CRUSHER_HULL, BRUSHED_DC_MOTOR_WORK_BOX,
+        ::CrusherBlock,
+        ::CrusherBlockEntity,
+        CRUSHER_MODEL,
+        ::ProcessingMachineBlockEntityVisual
+    )
+
+    val CRUSHER_MENU = menu("crusher", ::CrusherMenu)
+
+    //#endregion
+
     //#region Extruder
 
     val EXTRUDING_RECIPE = registerCatalyzedRecipe("extruding")
@@ -624,8 +599,7 @@ object Eln2Processing : ContentModule() {
     val EXTRUDER_HULL = registerMachineHull("extruder")
 
     val EXTRUDER_BRUSHED_DC_MOTOR = registerMachine(
-        EXTRUDER_HULL,
-        BRUSHED_DC_MOTOR_WORK_BOX,
+        EXTRUDER_HULL, BRUSHED_DC_MOTOR_WORK_BOX,
         ::ExtruderBlock,
         ::ExtruderBlockEntity,
         EXTRUDER_MODEL,
