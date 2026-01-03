@@ -528,27 +528,20 @@ object Eln2Processing : ContentModule() {
 
     val BRUSHED_DC_MOTOR_WORK_BOX = MotorProcessingCell.register(
         "brushed_dc_motor_work_box", "brushed_dc_motor",
-        MotorProcessingCellOptions(
-            1.0,
-            Quantity(0.5, KILOGRAM_METER2),
-            Quantity(10.0, KILO * OHM),
-            Quantity(0.85, OHM),
-            Quantity(1.25, MILLI * HENRY),
-            Quantity(0.515, VOLT_PER_RADIAN_PER_SECOND),
-            Quantity(0.15, NEWTON_METER_PER_AMPERE),
+        MotorProcessingCellOptions.create(
             0.1,
-            !Quantity(0.1, REVOLUTION_PER_SECOND),
-            !Quantity(5.0, REVOLUTION_PER_SECOND),
-            Quantity(300.0, VOLT),
-            Quantity(5400.0, WATT),
-            ProcessingCellThermalOptions(
-                ThermalMassDefinition(
-                    ChemicalElement.Copper.asMaterial,
-                    mass = Quantity(10.0, KILOGRAM)
-                ),
-                ConnectionParameters.DEFAULT,
-                Quantity(120.0, CELSIUS)
-            )
+            Quantity(50.0, VOLT),
+            Quantity(750.0, WATT),
+            Quantity(10.0, REVOLUTION_PER_SECOND),
+            0.75,
+            Quantity(2.5, SECOND),
+            ThermalMassDefinition(
+                ChemicalElement.Copper.asMaterial,
+                mass = Quantity(10.0, KILOGRAM)
+            ),
+            ConnectionParameters.DEFAULT.copy(
+                conductance = Quantity(5.0, WATT_PER_KELVIN)
+            ),
         )
     )
 
@@ -571,7 +564,15 @@ object Eln2Processing : ContentModule() {
 
     val CRUSHER_BRUSHED_DC_MOTOR = registerMachine(
         CRUSHER_HULL, BRUSHED_DC_MOTOR_WORK_BOX,
-        ::CrusherBlock,
+        {
+            CrusherBlock(
+                it,
+                Quantity(600.0, WATT),
+                1.0,
+                0,
+                0.25
+            )
+        },
         ::CrusherBlockEntity,
         CRUSHER_MODEL,
         ::ProcessingMachineBlockEntityVisual

@@ -27,6 +27,8 @@ import net.minecraft.world.phys.shapes.VoxelShape
 import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.items.SlotItemHandler
 import net.minecraftforge.registries.RegistryObject
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.WATT
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.eln2.mc.ClientOnly
@@ -86,11 +88,15 @@ class ExtruderBlockEntity<C : ProcessingCell>(pPos: BlockPos, pState: BlockState
     override val sound: RegistryObject<SoundEvent>
         get() = Eln2Processing.EXTRUDER_SOUND
 
+    override fun loadSettings() {
+        super.loadSettings()
+
+        cell.loadPower = Quantity(120.0, WATT)
+        cell.thermalFactor = 0.05
+    }
+
     override fun serverTick() {
         super.serverTick()
-
-        cell.loadFactor = 0.25
-        cell.thermalFactor = 0.25
 
         val hasDieItem = !inventoryHandler.getStackInSlot(CATALYST_SLOT).isEmpty
 

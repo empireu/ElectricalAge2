@@ -45,14 +45,15 @@ import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Rotation2d
 import org.ageseries.libage.mathematics.geometry.Vector3d
-import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Pole
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.*
+import org.ageseries.libage.sim.kinetic.FrictionKineticNode
 import org.ageseries.libage.sim.kinetic.KineticDouble
 import org.ageseries.libage.sim.kinetic.KineticNodeSet
+import org.ageseries.libage.sim.kinetic.KineticSimulationForestBuilder
 import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
@@ -63,6 +64,7 @@ import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.containers.ProgressContainerData
+import org.eln2.mc.common.content.DcMotorOptions
 import org.eln2.mc.common.content.ThermalWireObject
 import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
@@ -80,9 +82,8 @@ import org.eln2.mc.mathematics.Base6Direction3d
 import java.util.function.Consumer
 import java.util.function.Supplier
 import kotlin.math.abs
-import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.sign
+import kotlin.math.withSign
 
 /**
  * Abstraction for (single-block) machines that have both kinetic and electrical variants, and possibly multiple tiers of those variants.
@@ -95,12 +96,25 @@ import kotlin.math.sign
  * Finally, we add a recipe for the base machine, that isn't placeable and doesn't work by itself, but we define a recipe taking the base machine and one of the work boxes, and this creates one of those registered variants which we can place and use.
  * TODO I will implement this automatically with datagen, gotta update this documentation
  * */
-abstract class ProcessingCell(ci: CellCreateInfo) : Cell(ci), ProcessingDevice {
-    override var isActive: Boolean = false
+abstract class ProcessingCell(ci: CellCreateInfo) : Cell(ci) {
+    /**
+     * Set by the game object when processing is needed.
+     * */
+    @CrossThreadAccess
+    @OnServerThread
+    var isActive: Boolean = false
 
-    override var processingSpeed = 0.0
+    /**
+     * Read by the game object and used to advance the recipe.
+     * */
+    @CrossThreadAccess
+    @OnServerThread
+    var processingSpeed: Double = 0.0
         protected set
 
+    /**
+     * Processing speed, signed with the direction.
+     * */
     val signedProcessingSpeed: Double
         get() = processingSpeed * if(direction == ProcessingDirection.Forward) 1.0 else -1.0
 
@@ -112,12 +126,11 @@ abstract class ProcessingCell(ci: CellCreateInfo) : Cell(ci), ProcessingDevice {
     abstract val kineticState: RotatingKineticState
 
     /**
-     * Factor set by the block entity. It is used to scale the consumption of the machine.
-     * For example, the crusher will use a large value, but the extruder will use a small value.
-     * In other words, this can be used to make some machines consume a different amount of power compared to other machines, even with the same work box.
+     * Power set by the block entity.
+     * The work box will try to extract this amount of mechanical power, as the load.
      * */
     @CrossThreadAccess @OnServerThread
-    var loadFactor: Double = 1.0
+    var loadPower: Quantity<Power> = Quantity(0.0, WATT)
 
     /**
      * Factor set by the block entity. It is used to calculate the portion of simulated work that gets converted into heat.
@@ -129,20 +142,17 @@ abstract class ProcessingCell(ci: CellCreateInfo) : Cell(ci), ProcessingDevice {
 
     enum class ProcessingDirection {
         Forward,
-        Reverse
+        Reverse;
+
+        companion object {
+            fun of(angularVelocity: Double) = if(angularVelocity >= 0.0) Forward else Reverse
+        }
     }
 
     /**
      * The direction currently being imposed by the external device. For electrical boxes, the polarity will set this, and for kinetic boxes, the rotation direction will set this.
      * */
     var direction: ProcessingCell.ProcessingDirection = ProcessingCell.ProcessingDirection.Forward
-        protected set
-
-    /**
-     * The mechanical stress created by the load.
-     * For kinetic boxes and motor boxes, this is torque (for kinetic, it's the total friction torque, and for motor, it's the load torque only).
-     * */
-    var stressLevel = 0.0
         protected set
 
     @Replicator
@@ -192,16 +202,13 @@ data class ProcessingCellThermalOptions(
 
 /**
  * Work box modeled as a friction load.
- * @param idleFriction The friction of the node when not processing.
- * @param runningFriction The friction of the node when processing. This models the load.
- * @param nominalAngularVelocity The angular velocity where the device is running at 100% speed.
+ * @param friction The friction of the work box (applied at all times).
+ * @param nominalAngularVelocity The nominal angular velocity of the device, where the processing speed is 100%.
  * @param maxTorque Torque breaking limit.
  * */
 data class KineticProcessingCellOptions(
-    val baseSpeedFactor: Double,
     val inertia: Quantity<Inertia>,
-    val idleFriction: NodeFrictionDescription,
-    val runningFriction: NodeFrictionDescription,
+    val friction: NodeFrictionDescription,
     val nominalAngularVelocity: Quantity<AngularVelocity>,
     val kineticBreakdownVelocity: Quantity<AngularVelocity>,
     val maxTorque: Quantity<Torque>,
@@ -210,27 +217,71 @@ data class KineticProcessingCellOptions(
 
 /**
  * Work box modeled as an electrical motor.
- * @param baseSpeedFactor Base efficiency of the box. Better boxes have larger values.
- * @param idleResistance The armature resistance when not active.
- * @param loadDependentFriction Omega-dependent friction, that simulates the load.
- * @param omegaThreshold If the internal motor's angular velocity is below this, processing speed is 0.
- * @param omegaNominal At this angular velocity, speed is 1.
+ * @param startAngularVelocity The processing "starts" at this angular velocity. This value should be relatively high; if the motor gets loaded at a low speed, the current will be enormous, the efficiency low and the motor can stall.
  * */
 data class MotorProcessingCellOptions(
-    val baseSpeedFactor: Double,
     val inertia: Quantity<Inertia>,
+    val friction: NodeFrictionDescription,
     val idleResistance: Quantity<Resistance>,
     val armatureResistance: Quantity<Resistance>,
     val armatureInductance: Quantity<Inductance>,
     val backEmfConstant: Quantity<MotorBackEmfConstant>,
     val torqueConstant: Quantity<MotorTorqueConstant>,
-    val loadDependentFriction: Double,
-    val omegaThreshold: Double,
-    val omegaNominal: Double,
+    val nominalAngularVelocity: Quantity<AngularVelocity>,
     val dielectricBreakdownPotential: Quantity<Potential>,
     val overPowerThreshold: Quantity<Power>,
     val thermal: ProcessingCellThermalOptions,
-)
+) {
+    companion object {
+        /**
+         * Creates the motor parameters using [DcMotorOptions.create] and adds some extra values.
+         * @param friction Dependent friction.
+         * @param ratedPotential The potential we expect the motor to run at.
+         * @param ratedPower The power we expect to be able to draw at the nominal potential and speed.
+         * @param ratedSpeed The speed the motor hits unloaded at the [ratedPotential].
+         * @param efficiency Number describing the approximate electrical energy to mechanical energy conversion efficiency.
+         * @param spinUpTime Used to calculate inertia. The motor reaches its nominal speed in approximately this time period, at the rated potential.
+         * @param coolingParameters The environment leakage parameters.
+         * */
+        fun create(
+            friction: Double,
+            ratedPotential: Quantity<Potential>,
+            ratedPower: Quantity<Power>,
+            ratedSpeed: Quantity<AngularVelocity>,
+            efficiency: Double,
+            spinUpTime: Quantity<Time>,
+            mass: ThermalMassDefinition,
+            coolingParameters: ConnectionParameters,
+            idleResistance: Quantity<Resistance> = Quantity(ElectricalSimulation.MAX_RESISTANCE, OHM),
+        ) : MotorProcessingCellOptions {
+            val dcMotorOptions = DcMotorOptions.create(
+                ratedPotential,
+                ratedPower,
+                ratedSpeed,
+                efficiency,
+                spinUpTime
+            )
+
+            return MotorProcessingCellOptions(
+                dcMotorOptions.frictionNodeDescription.inertia,
+                dcMotorOptions.frictionNodeDescription.frictionDescription,
+                idleResistance,
+                dcMotorOptions.armatureResistance,
+                dcMotorOptions.armatureInductance,
+                dcMotorOptions.backEmfConstant,
+                dcMotorOptions.torqueConstant,
+                ratedSpeed,
+                dcMotorOptions.breakdownPotential,
+                ratedPower * 2.0,
+                ProcessingCellThermalOptions(
+                    mass,
+                    coolingParameters,
+                    dcMotorOptions.breakdownTemperature
+                )
+            )
+        }
+    }
+}
 
 //#endregion
 
@@ -254,6 +305,30 @@ class ProcessingCellRegistryItem<C : ProcessingCell>(
     val item: RegistryObject<Item>,
     val prefixToApply: String,
 )
+
+/**
+ * Calculates the torque to apply to [node] for the required load power [requiredPower].
+ * */
+private fun calculateLoadTorque(dt: Double, node: FrictionKineticNode, nominalAngularVelocity: Quantity<AngularVelocity>, requiredPower: Quantity<Power>) : Double {
+    var loadTorque = -node.angularVelocity * !requiredPower / (!nominalAngularVelocity * !nominalAngularVelocity)
+    val maxTorque = abs(node.angularVelocity) * node.inertia / dt
+
+    if (abs(loadTorque) > maxTorque) {
+        loadTorque = maxTorque.withSign(loadTorque)
+    }
+
+    return loadTorque
+}
+
+/**
+ * Calculates the total heat generated, including friction and the conversion factor set by the machine.
+ * */
+private fun calculateHeating(dt: Double, node: FrictionKineticNode, loadTorque: Double, thermalFactor: Double) : Quantity<Energy> {
+    val workEnergy = abs(loadTorque * node.angularVelocity) * dt
+    val frictionEnergy = node.deltaHeatFromFriction
+
+    return Quantity(frictionEnergy + thermalFactor * workEnergy, JOULE)
+}
 
 /**
  * Kinetic work box. Accepts kinetic connections and models the consumption as friction.
@@ -319,13 +394,13 @@ class KineticProcessingCell private constructor(ci: CellCreateInfo, val options:
         init {
             node.inertia = !cell.options.inertia
             node.setSafeTorque(cell.options.maxTorque)
-            cell.options.idleFriction.applyTo(node)
+            cell.options.friction.applyTo(node)
         }
 
         override fun offerExtension(remote: KineticObject<*>) = node.chooseExtension(cell.kineticMap, remote)
 
         override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
-            subscribers.addPre(this::tick)
+            subscribers.addPre(this::tickPre)
         }
 
         override fun addNodes(builder: KineticNodeSet) {
@@ -335,44 +410,22 @@ class KineticProcessingCell private constructor(ci: CellCreateInfo, val options:
         /**
          * Converts the input power into some thermal power and updates the [processingSpeed].
          * */
-        private fun tick(dt: Double, subscriberPhase: SimulationPhase) {
+        private fun tickPre(dt: Double, subscriberPhase: SimulationPhase) {
             val options = cell.options
-
-            /**
-             * Converts a fraction of the friction into heat:
-             * */
-            val energy = cell.thermalFactor * node.deltaHeatFromFriction
-
-            if(!energy.approxEq(0.0)) {
-                cell.thermalWire.thermalBody.energy += Quantity(energy, JOULE)
-                cell.setChanged()
-            }
 
             if(!cell.isActive) {
                 cell.processingSpeed = 0.0
-                cell.options.idleFriction.applyTo(node)
+                cell.direction = ProcessingDirection.of(0.0)
                 return
             }
 
-            /**
-             * Applies the load factor:
-             * */
-            val parameter = cell.options.runningFriction.copy(
-                damping = cell.options.runningFriction.damping * cell.loadFactor
-            )
-
-            parameter.applyTo(node)
-
-            cell.processingSpeed = options.baseSpeedFactor * (abs(node.angularVelocity) / !options.nominalAngularVelocity)
-
-            cell.direction = if(node.angularVelocity >= 0.0) {
-                ProcessingCell.ProcessingDirection.Forward
-            }
-            else {
-                ProcessingCell.ProcessingDirection.Reverse
-            }
-
-            cell.stressLevel = abs(node.frictionTorque)
+            val loadTorque = calculateLoadTorque(dt, node, options.nominalAngularVelocity, cell.loadPower)
+            val heating = calculateHeating(dt, node, loadTorque, cell.thermalFactor)
+            node.externalTorque += loadTorque
+            cell.thermalWire.thermalBody.energy += heating
+            cell.processingSpeed = abs(node.angularVelocity) / !options.nominalAngularVelocity
+            cell.direction = ProcessingCell.ProcessingDirection.of(node.angularVelocity)
+            cell.setChanged()
         }
 
         override fun saveObjectNbt() = node.saveNbt()
@@ -415,7 +468,7 @@ class MotorProcessingCell private constructor(ci: CellCreateInfo, val options: M
     val motor = MotorProcessingObject(this)
 
     override val kineticState: RotatingKineticState
-        get() = RotatingKineticState(motor.angle, motor.angularVelocity)
+        get() = RotatingKineticState(motor.node.angle, motor.node.angularVelocity)
 
     @Replicator
     fun kineticReplicator(target: InternalKineticStateConsumer) = InternalKineticReplicatorBehavior(
@@ -451,15 +504,12 @@ class MotorProcessingCell private constructor(ci: CellCreateInfo, val options: M
         val armatureInductor = Inductor()
         val potentialSource = PotentialSource()
 
-        /**
-         * Emulated angle of the simulated motor (for rendering).
-         * */
-        var angle = 0.0
+        val node = KineticDouble()
 
-        /**
-         * Angular velocity of the simulated motor.
-         * */
-        var angularVelocity = 0.0
+        val simulation = KineticSimulationForestBuilder()
+            .apply { add(node) }
+            .build(CellGraph.DT)
+            .solvers[0]
 
         init {
             armatureResistor.resistance = !cell.options.idleResistance
@@ -488,38 +538,13 @@ class MotorProcessingCell private constructor(ci: CellCreateInfo, val options: M
             subscribers.addPost(this::tickPost)
         }
 
-        /**
-         * Applies load friction, sets the armature resistance and Back-EMF.
-         * */
         private fun tickPre(dt: Double, phase: SimulationPhase) {
             val options = cell.options
 
-            /**
-             * Applies friction (load):
-             * */
-            val loadTorque = angularVelocity * (options.loadDependentFriction * cell.loadFactor)
-            cell.stressLevel = abs(loadTorque)
-
-            var dw = loadTorque / !options.inertia * dt
-
-            /**
-             * Limits explicit step:
-             * */
-            dw = if(angularVelocity < 0.0) {
-                max(dw, angularVelocity)
-            } else {
-                min(dw, angularVelocity)
-            }
-
-            if(!dw.approxEq(0.0)) {
-                cell.setChanged()
-                angularVelocity -= dw
-
-                /**
-                 * Converts a fraction of the consumed energy into heat:
-                 * */
-                cell.thermalWire.thermalBody.energy += Quantity(cell.thermalFactor * (0.5 * !options.inertia * (dw * dw)))
-            }
+            val loadTorque = calculateLoadTorque(dt, node, options.nominalAngularVelocity, cell.loadPower)
+            val heating = calculateHeating(dt, node, loadTorque, cell.thermalFactor)
+            node.externalTorque += loadTorque
+            cell.thermalWire.thermalBody.energy += heating
 
             /**
              * On-off switch:
@@ -534,56 +559,36 @@ class MotorProcessingCell private constructor(ci: CellCreateInfo, val options: M
             /**
              * Back-EMF:
              * */
-            potentialSource.potential = !options.backEmfConstant * angularVelocity
+            potentialSource.potential = !options.backEmfConstant * node.angularVelocity
         }
 
-        /**
-         * Applies the motor torque, and calculates the processing speed.
-         * */
         private fun tickPost(dt: Double, phase: SimulationPhase) {
             val options = cell.options
+
+            simulation.step()
+
+            /**
+             * Torque for the current across the device:
+             * */
+            val torque = armatureResistor.current * !cell.options.torqueConstant
+            node.externalTorque -= torque
 
             /**
              * Integrates the resistive heating:
              * */
             cell.thermalWire.thermalBody.energy += Quantity(abs(armatureResistor.power) * dt)
 
-            /**
-             * Torque for the current across the device:
-             * */
-            val torque = armatureResistor.current * !options.torqueConstant
-            val dw = torque / !options.inertia * dt
-
-            if(!dw.approxEq(0.0)) {
+            if(!torque.approxEq(0.0, 1e-5) || !node.frictionTorque.approxEq(0.0, 1e-5)) {
                 cell.setChanged()
             }
 
-            angularVelocity += dw
-
-            cell.direction = if (angularVelocity >= 0.0) {
-                ProcessingCell.ProcessingDirection.Forward
-            } else {
-                ProcessingCell.ProcessingDirection.Reverse
-            }
-
-            /**
-             * Calculates the (unsigned) processing speed:
-             * */
-            cell.processingSpeed = if(abs(angularVelocity) < options.omegaThreshold) {
-                0.0
+            if(cell.isActive) {
+                cell.processingSpeed = abs(node.angularVelocity) / !options.nominalAngularVelocity
+                cell.direction = ProcessingCell.ProcessingDirection.of(node.angularVelocity)
             }
             else {
-                map(
-                    abs(angularVelocity),
-                    options.omegaThreshold, options.omegaNominal,
-                    0.0, 1.0
-                )
-            }
-
-            val dTheta = angularVelocity * dt
-            if(!dTheta.approxEq(0.0, 1e-5)) {
-                angle += dTheta
-                cell.setChanged()
+                cell.processingSpeed = 0.0
+                cell.direction = ProcessingCell.ProcessingDirection.of(0.0)
             }
         }
 
@@ -591,22 +596,19 @@ class MotorProcessingCell private constructor(ci: CellCreateInfo, val options: M
             val tag = CompoundTag()
 
             tag.put(INDUCTOR, armatureInductor.saveNbt())
-            tag.putDouble(ANGLE, angle)
-            tag.putDouble(ANGULAR_VELOCITY, angularVelocity)
+            tag.put(NODE, node.saveNbt())
 
             return tag
         }
 
         override fun loadObjectNbt(tag: CompoundTag) {
             armatureInductor.loadNbt(tag.getCompound(INDUCTOR))
-            angle = tag.getDouble(ANGLE)
-            angularVelocity = tag.getDouble(ANGULAR_VELOCITY)
+            node.loadNbt(tag.getCompound(NODE))
         }
 
         companion object {
             private const val INDUCTOR = "inductor"
-            private const val ANGLE = "angle"
-            private const val ANGULAR_VELOCITY = "angularVelocity"
+            private const val NODE = "node"
         }
     }
 }
@@ -884,7 +886,6 @@ abstract class ProcessingMachineBlockEntity<C : ProcessingCell>(pPos: BlockPos, 
 
         builder.debugInIDE { "Processing Speed: ${cell.processingSpeed.rounded()}" }
         builder.debugInIDE { "Direction: ${cell.direction}" }
-        builder.debugInIDE { "Stress: ${cell.stressLevel.rounded()}" }
 
         if(cell is KineticProcessingCell) {
             cell.kinetic.subSolvers?.debugInIDE(builder)
@@ -892,7 +893,7 @@ abstract class ProcessingMachineBlockEntity<C : ProcessingCell>(pPos: BlockPos, 
             builder.quantity(cell.thermalWire.thermalBody.temperature)
         }
         else if(cell is MotorProcessingCell) {
-            builder.debugInIDE { "Angular velocity: ${cell.motor.angularVelocity.rounded()}" }
+            builder.debugInIDE { "Angular velocity: ${cell.motor.node.angularVelocity.rounded()}" }
             builder.debugInIDE { "Speed: ${cell.processingSpeed.rounded()}" }
             builder.debugInIDE { "Back-EMF: ${cell.motor.potentialSource.potential.rounded()}" }
             builder.debugInIDE { "Resistor power: ${cell.motor.armatureResistor.power.rounded()}"}
@@ -961,15 +962,61 @@ abstract class SimpleProcessingMachineBlockEntity<C : ProcessingCell, R : Eln2Si
     val loop = ProcessingRecipeLoop.create<R>(this)
 
     /**
-     * Updates the loop and sets the progress of [data].
+     * Implementation of [ProcessingDevice] which multiplies the cell's processing speed by the device's factor.
+     * */
+    open class DefaultRecipeWrapper(val cell: ProcessingCell, val factor: Double, override val tier: Int) : TieredProcessingDevice {
+        override var isActive: Boolean
+            get() = cell.isActive
+            set(value) { cell.isActive = value }
+
+        override val processingSpeed: Double
+            get() = cell.processingSpeed * factor
+    }
+
+    protected var wrapper: ProcessingDevice? = null
+
+    protected fun setDefaultRecipeOptions(factor: Double, tier: Int = Int.MAX_VALUE) {
+        wrapper = DefaultRecipeWrapper(cell, factor, tier)
+    }
+
+    private var initialized = false
+
+    /**
+     * Called in the first [serverTick] to set the power and create the processing cell wrapper.
+     * Used if your machine will have different tiers. Let's say the tier is defined by the required power and a speed factor (and say, a max recipe tier of some sort).
+     * You pass along that data in the constructor, and:
+     * - Set [ProcessingCell.loadPower]
+     * - Call [setDefaultRecipeOptions] with your speed and tier, which sets the [wrapper] that is used by the [loop]
+     * */
+    @CalledOnce @OnServerThread
+    open fun loadSettings() {
+        setDefaultRecipeOptions(1.0)
+    }
+
+    @ServerOnly
+    protected open fun tickRecipe() {
+        if(cell.direction == ProcessingCell.ProcessingDirection.Forward || allowProcessingInReverse) {
+            val result = loop.tick(wrapper!!, inventoryHandler)
+            data.progress = loop.lastProgress.toFloat()
+        }
+    }
+
+    /**
+     * Initializes the cell and ticks the recipe.
      * */
     @ServerOnly
     override fun serverTick() {
-        if(cell.direction == ProcessingCell.ProcessingDirection.Forward || allowProcessingInReverse) {
-            val result = loop.tick(cell, inventoryHandler)
+        if(!initialized) {
+            initialized = true
 
-            data.progress = result.progress
+            loadSettings()
+
+            check(wrapper != null) {
+                DEBUGGER_BREAK("Did not initialize wrapper for the processing cell")
+            }
         }
+
+        tickRecipe()
     }
 
     //#endregion

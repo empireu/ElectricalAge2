@@ -21,6 +21,7 @@ import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.OnServerThread
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.extensions.bindToSimpleContainer
+import org.eln2.mc.extensions.getInt
 import org.eln2.mc.extensions.recipeExists
 import java.util.Optional
 import java.util.function.Supplier
@@ -46,6 +47,13 @@ interface Eln2SimpleOutputProcessingLoopRecipe : Eln2ProcessingLoopRecipe, Recip
 }
 
 /**
+ * Implemented by recipes which have a certain tier, which blocks crude machines from being able to apply it.
+ * */
+interface Eln2TieredRecipe {
+    val tier: Int
+}
+
+/**
  * Processor (probably a [org.eln2.mc.common.cells.foundation.Cell]) that allows starting/stopping its operation and provides the processing speed.
  * */
 interface ProcessingDevice {
@@ -65,18 +73,27 @@ interface ProcessingDevice {
 }
 
 /**
+ * Implemented by a [ProcessingDevice] that has a tier, meant to be used with [Eln2TieredRecipe].
+ * */
+interface TieredProcessingDevice : ProcessingDevice {
+    val tier: Int
+}
+
+/**
  * Recipe for converting an item into another item. Can be used for e.g. a crusher.
  * @param input The input ingredient. Must be a single item stack with 1 count.
  * @param output The output item. Must be a single item with 1 or more count.
  * @param duration The base duration, in seconds.
+ * @param tier The recipe's tier. By default, `0`.
  * */
 class DirectSimpleProcessingRecipe(
     val recipeSerializer: Serializer,
     override val recipeId: ResourceLocation,
     val input: Ingredient,
     override val output: ItemStack,
-    override val duration: Double
-) : Eln2SimpleOutputProcessingLoopRecipe {
+    override val duration: Double,
+    override val tier: Int
+) : Eln2SimpleOutputProcessingLoopRecipe, Eln2TieredRecipe {
     init {
         require(input.items.size > 0 && input.items[0].count == 1) {
             DEBUGGER_BREAK("Simple processing recipe requires exactly one/one input!")
@@ -98,13 +115,15 @@ class DirectSimpleProcessingRecipe(
             val input = Ingredient.fromJson(pSerializedRecipe.get("ingredient"))
             val output = ShapedRecipe.itemStackFromJson(GsonHelper.getAsJsonObject(pSerializedRecipe, "result"))
             val duration = pSerializedRecipe.getAsJsonPrimitive("duration").asDouble
+            val tier = pSerializedRecipe.getInt("tier", 0)
 
             return DirectSimpleProcessingRecipe(
                 this,
                 pRecipeId,
                 input,
                 output,
-                duration
+                duration,
+                tier
             )
         }
 
@@ -112,13 +131,15 @@ class DirectSimpleProcessingRecipe(
             val input = Ingredient.fromNetwork(pBuffer)
             val output = pBuffer.readItem()
             val duration = pBuffer.readDouble()
+            val tier = pBuffer.readInt()
 
             return DirectSimpleProcessingRecipe(
                 this,
                 pRecipeId,
                 input,
                 output,
-                duration
+                duration,
+                tier
             )
         }
 
@@ -126,6 +147,7 @@ class DirectSimpleProcessingRecipe(
             pRecipe.input.toNetwork(pBuffer)
             pBuffer.writeItem(pRecipe.output)
             pBuffer.writeDouble(pRecipe.duration)
+            pBuffer.writeInt(pRecipe.tier)
         }
     }
 }
@@ -136,6 +158,7 @@ class DirectSimpleProcessingRecipe(
  * @param catalyst The catalyst. Must abe a single item stack with 1 count.
  * @param output The output item. Must be a single item with 1 or more count.
  * @param duration The base duration, in seconds.
+ * @param tier The recipe's tier. By default, `0`.
  * */
 class CatalyzedSimpleProcessingRecipe(
     val recipeSerializer: Serializer,
@@ -143,8 +166,9 @@ class CatalyzedSimpleProcessingRecipe(
     val input: Ingredient,
     val catalyst: Ingredient,
     override val output: ItemStack,
-    override val duration: Double
-) : Eln2SimpleOutputProcessingLoopRecipe {
+    override val duration: Double,
+    override val tier: Int
+) : Eln2SimpleOutputProcessingLoopRecipe, Eln2TieredRecipe {
     init {
         require(input.items.size > 0 && input.items.all { it.count == 1 }) {
             DEBUGGER_BREAK("Simple catalyzed processing recipe requires exactly one/one input!")
@@ -174,6 +198,7 @@ class CatalyzedSimpleProcessingRecipe(
             val catalyst = Ingredient.fromJson(pSerializedRecipe.get("catalyst"))
             val output = ShapedRecipe.itemStackFromJson(GsonHelper.getAsJsonObject(pSerializedRecipe, "result"))
             val duration = pSerializedRecipe.getAsJsonPrimitive("duration").asDouble
+            val tier = pSerializedRecipe.getInt("tier", 0)
 
             return CatalyzedSimpleProcessingRecipe(
                 this,
@@ -181,7 +206,8 @@ class CatalyzedSimpleProcessingRecipe(
                 input,
                 catalyst,
                 output,
-                duration
+                duration,
+                tier
             )
         }
 
@@ -190,6 +216,7 @@ class CatalyzedSimpleProcessingRecipe(
             val catalyst = Ingredient.fromNetwork(pBuffer)
             val output = pBuffer.readItem()
             val duration = pBuffer.readDouble()
+            val tier = pBuffer.readInt()
 
             return CatalyzedSimpleProcessingRecipe(
                 this,
@@ -197,7 +224,8 @@ class CatalyzedSimpleProcessingRecipe(
                 input,
                 catalyst,
                 output,
-                duration
+                duration,
+                tier
             )
         }
 
@@ -206,6 +234,7 @@ class CatalyzedSimpleProcessingRecipe(
             pRecipe.catalyst.toNetwork(pBuffer)
             pBuffer.writeItem(pRecipe.output)
             pBuffer.writeDouble(pRecipe.duration)
+            pBuffer.writeInt(pRecipe.tier)
         }
     }
 }
@@ -378,29 +407,81 @@ class ProcessingRecipeLoop<R : Eln2ProcessingLoopRecipe>(val onChanged: Runnable
     var operation: Operation<R>? = null
     var savedProgress: Double? = null // Level not available in [load] for block entities, we do the trick the cell block entity does.
 
+    enum class InsufficientTierBehavior {
+        /**
+         * Keeps [ProcessingDevice.isActive] set to true, even if the tier is insufficient.
+         * */
+        KeepDeviceActive,
+        /**
+         * Sets [ProcessingDevice.isActive] to false.
+         * */
+        Shutdown
+    }
+
+    var insufficientTierBehavior = InsufficientTierBehavior.KeepDeviceActive
+
+    enum class TickResult {
+        /**
+         * Returned when there is nothing to do.
+         * */
+        NoRecipe,
+        /**
+         * Returned when the tier of the machine is insufficient.
+         * */
+        InsufficientTier,
+        /**
+         * Returned when the recipe was advanced successfully, or was found, and it is compatible by tier.
+         * */
+        Advance,
+        /**
+         * Returned when the operation has finished.
+         * */
+        Finished,
+        /**
+         * Returned when the operation could progress, but there isn't enough space to export.
+         * */
+        Halted,
+        /**
+         * Returned when the input items have changed, and the current [operation] is invalid.
+         * */
+        ResetRecipe
+    }
+
     /**
-     * @param speed The [ProcessingDevice.processingSpeed], used for rendering.
-     * @param progress The progress to sync to the GUI.
+     * The last progress made by [tick].
+     * **The value is only meaningful if [tick] returned [TickResult.Advance].
      * */
-    data class Result(val speed: Double, val progress: Float)
+    var lastProgress: Double = 0.0
+
+    /**
+     * If [device] is [TieredProcessingDevice] and [recipe] is [Eln2TieredRecipe], check whether the device's tier is larger than or equal to the recipe tier.
+     * Otherwise, defaults to true.
+     * */
+    fun isRecipeCompatibleByTier(device: ProcessingDevice, recipe: R) : Boolean {
+        if(device is TieredProcessingDevice && recipe is Eln2TieredRecipe) {
+            return device.tier >= recipe.tier
+        }
+
+        return true
+    }
 
     /**
      * Advances the processing, if the inventory is eligible for operation.
      * Calls [BlockEntity.setChanged] if the NBT needs to be serialized.
      * */
-    fun tick(device: ProcessingDevice, inventoryHandler: ProcessingRecipeInventoryHandler<R>) : Result {
+    fun tick(device: ProcessingDevice, inventoryHandler: ProcessingRecipeInventoryHandler<R>) : TickResult {
         val processingSpeed = device.processingSpeed
-        val progress: Float
 
         if(operation == null) {
-            progress = 0.0f
+            lastProgress = 0.0
 
             val recipe = inventoryHandler.searchForRecipe() // Should be fast
 
             if(recipe.isPresent) {
-                device.isActive = true
+                val isCompatible = isRecipeCompatibleByTier(device, recipe.get())
 
-                // Create new operation:
+                device.isActive = isCompatible || insufficientTierBehavior == InsufficientTierBehavior.KeepDeviceActive
+
                 operation = Operation(recipe.get())
 
                 if(savedProgress != null) {
@@ -409,9 +490,12 @@ class ProcessingRecipeLoop<R : Eln2ProcessingLoopRecipe>(val onChanged: Runnable
                 }
 
                 onChanged.run()
+
+                return if(isCompatible) TickResult.Advance else TickResult.InsufficientTier
             }
             else {
                 device.isActive = false
+                return TickResult.NoRecipe
             }
         }
         else {
@@ -421,33 +505,43 @@ class ProcessingRecipeLoop<R : Eln2ProcessingLoopRecipe>(val onChanged: Runnable
             if(inventoryHandler.wasRecipeChanged(op.recipe)) {
                 operation = null
                 onChanged.run()
-                progress = 0.0f
+                lastProgress = 0.0
+                return TickResult.ResetRecipe
             }
             else {
-                // Progress if we have space for the output.
-                // If we don't, we just wait with the current recipe.
-                progress = (op.timeProgress / op.recipe.duration).toFloat().coerceIn(0.0f, 1.0f)
+                if(isRecipeCompatibleByTier(device, op.recipe)) {
+                    // Progress if we have space for the output.
+                    // If we don't, we just wait with the current recipe.
+                    lastProgress = (op.timeProgress / op.recipe.duration).coerceIn(0.0, 1.0)
 
-                if(inventoryHandler.hasSpaceForExport(op.recipe)) {
-                    device.isActive = true
-                    op.timeProgress += processingSpeed * (1.0 / 20.0)
-                    op.timeProgress = op.timeProgress.coerceIn(0.0, op.recipe.duration)
+                    if(inventoryHandler.hasSpaceForExport(op.recipe)) {
+                        device.isActive = true
+                        op.timeProgress += processingSpeed * (1.0 / 20.0)
+                        op.timeProgress = op.timeProgress.coerceIn(0.0, op.recipe.duration)
 
-                    if(op.timeProgress == op.recipe.duration) {
-                        // Finish processing:
-                        inventoryHandler.execute()
-                        operation = null
+                        var finished = false
+                        if(op.timeProgress == op.recipe.duration) {
+                            // Finish processing:
+                            inventoryHandler.execute()
+                            operation = null
+                            finished = true
+                        }
+
+                        onChanged.run()
+
+                        return if(finished) TickResult.Finished else TickResult.Advance
                     }
-
-                    onChanged.run()
+                    else {
+                        device.isActive = false
+                        return TickResult.Halted
+                    }
                 }
                 else {
-                    device.isActive = false
+                    device.isActive = insufficientTierBehavior == InsufficientTierBehavior.KeepDeviceActive
+                    return TickResult.InsufficientTier
                 }
             }
         }
-
-        return Result(processingSpeed, progress)
     }
 
     fun saveAdditional(pTag: CompoundTag) {

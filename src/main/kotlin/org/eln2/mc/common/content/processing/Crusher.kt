@@ -19,6 +19,8 @@ import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.registries.RegistryObject
+import org.ageseries.libage.data.Power
+import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.mathematics.map
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.MODID
@@ -40,7 +42,11 @@ import org.eln2.mc.resource
 import org.joml.Vector3f
 import kotlin.math.ceil
 
-class CrusherBlock<C : ProcessingCell>(cell: RegistryObject<CellProvider<C>>) : ProcessingMachineBlock<C, CrusherBlockEntity<C>>(cell) {
+class CrusherBlock<C : ProcessingCell>(
+    cell: RegistryObject<CellProvider<C>>,
+    val power: Quantity<Power>, val speed: Double, val tier: Int,
+    val thermalEfficiency: Double
+) : ProcessingMachineBlock<C, CrusherBlockEntity<C>>(cell) {
     override fun getTitle(): Component = Component.translatable("menu.$MODID.crusher")
 
     override fun createMenu(pBlockEntity: CrusherBlockEntity<C>, pContainerId: Int, pPlayerInventory: Inventory) = CrusherMenu(pBlockEntity, pContainerId, pPlayerInventory)
@@ -149,6 +155,14 @@ class CrusherBlockEntity<C : ProcessingCell>(pPos: BlockPos, pState: BlockState)
                 0.0, vy, 0.0
             )
         }
+    }
+
+    override fun loadSettings() {
+        val block = blockState.block as CrusherBlock<*>
+
+        setDefaultRecipeOptions(block.speed, block.tier)
+        cell.loadPower = block.power
+        cell.thermalFactor = block.thermalEfficiency
     }
 }
 

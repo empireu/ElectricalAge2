@@ -3,28 +3,13 @@ package org.eln2.mc.common.content
 import kotlinx.serialization.Serializable
 import net.minecraft.nbt.CompoundTag
 import net.minecraftforge.registries.RegistryObject
-import org.ageseries.libage.data.AngularVelocity
-import org.ageseries.libage.data.Inductance
-import org.ageseries.libage.data.JOULE
-import org.ageseries.libage.data.MotorBackEmfConstant
-import org.ageseries.libage.data.MotorTorqueConstant
-import org.ageseries.libage.data.NEWTON_METER
-import org.ageseries.libage.data.Potential
-import org.ageseries.libage.data.Power
-import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.Resistance
-import org.ageseries.libage.data.Temperature
-import org.ageseries.libage.data.registerHandler
+import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Pole
 import org.ageseries.libage.sim.ThermalMassDefinition
-import org.ageseries.libage.sim.electrical.ElectricalComponentSet
-import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
-import org.ageseries.libage.sim.electrical.Inductor
-import org.ageseries.libage.sim.electrical.PotentialSource
-import org.ageseries.libage.sim.electrical.Resistor
+import org.ageseries.libage.sim.electrical.*
 import org.ageseries.libage.sim.kinetic.KineticMono
 import org.ageseries.libage.sim.kinetic.KineticNodeSet
 import org.eln2.mc.*
@@ -38,9 +23,6 @@ import org.eln2.mc.common.sounds.foundation.SimpleLoopingMachineSoundInstance
 import org.eln2.mc.common.sounds.foundation.SimpleLoopingPartSoundInstance
 import org.eln2.mc.common.sounds.foundation.SoundInfo
 import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
-import org.eln2.mc.MonopoleMap
-import org.eln2.mc.PoleMap
-import org.eln2.mc.evaluate
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3dMask
@@ -67,7 +49,69 @@ data class DcMotorOptions(
     val breakdownPotential: Quantity<Potential>,
     val breakdownTemperature: Quantity<Temperature>,
     val relaxation: Double = 0.5
-)
+) {
+    companion object {
+        /**
+         * Creates the motor parameters from simple values, using some assumptions.
+         * @param ratedPotential The potential we expect the motor to run at.
+         * @param ratedPower The power we expect to be able to draw at the nominal potential and speed.
+         * @param ratedSpeed The speed the motor hits unloaded at the [ratedPotential].
+         * @param efficiency Number describing the approximate electrical energy to mechanical energy conversion efficiency.
+         * @param spinUpTime Used to calculate inertia. The motor reaches its nominal speed in approximately this time period, at the rated potential.
+         * */
+        fun create(
+            ratedPotential: Quantity<Potential>,
+            ratedPower: Quantity<Power>,
+            ratedSpeed: Quantity<AngularVelocity>,
+            efficiency: Double,
+            spinUpTime: Quantity<Time>
+        ): DcMotorOptions {
+            /**
+             * Calculates input power and current at the rated load:
+             * */
+            val pIn = !ratedPower / efficiency
+            val iRated = pIn / !ratedPotential
+
+            /**
+             * Calculates internal resistance based on the resistive loss:
+             * */
+            val loss = pIn - !ratedPower
+            val r = loss / (iRated * iRated)
+
+            /**
+             * Calculates motor constants:
+             * */
+            val emf = !ratedPotential - (iRated * r)
+            val kE = emf / !ratedSpeed
+            val torque = !ratedPower / !ratedSpeed
+            val kT = torque / iRated
+
+            /**
+             * Calculates an approximate inertia:
+             * */
+            val inertia = torque / (!ratedSpeed / spinUpTime.value)
+
+            return DcMotorOptions(
+                FrictionNodeDescription(
+                    Quantity(inertia, KILOGRAM_METER2),
+                    NodeFrictionDescription(
+                        0.01,
+                        Quantity(0.01, NEWTON_METER),
+                        Quantity(0.1, NEWTON_METER)
+                    )
+                ),
+                0.1,
+                Quantity(r, OHM),
+                Quantity(10.0, MILLI * HENRY),
+                Quantity(kE, VOLT_PER_RADIAN_PER_SECOND),
+                Quantity(kT, NEWTON_METER_PER_AMPERE),
+                ratedSpeed * 4.0,
+                ratedPotential * 3.0,
+                Quantity(120.0, CELSIUS)
+            )
+        }
+    }
+}
 
 /**
  * The electrical part of the DC motor. Made up of a resistor in series with an inductor in series with a potential source.
