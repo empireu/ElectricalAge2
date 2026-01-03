@@ -275,11 +275,12 @@ object Eln2Processing : ContentModule() {
                 155.0f
             )
         }
+
         MenuScreens.register(FURNACE_MENU.get(), ::FurnaceScreen)
         MenuScreens.register(CRUSHER_MENU.get(), ::CrusherScreen)
         MenuScreens.register(EXTRUDER_MENU.get(), ::ExtruderScreen)
 
-       /* MenuScreens.register(ROLLING_MACHINE_MENU.get()) { menu, inventory, title ->
+        MenuScreens.register(ROLLING_MACHINE_MENU.get()) { menu, inventory, title ->
             BasicProgressScreen(
                 menu, inventory, title,
                 resource("textures/gui/container/rolling_machine_base.png"),
@@ -287,7 +288,7 @@ object Eln2Processing : ContentModule() {
                 54.0f,
                 129.0f
             )
-        }*/
+       }
     }
 
     //#region Blacksmithing
@@ -622,50 +623,24 @@ object Eln2Processing : ContentModule() {
     //#endregion
 
     //#region Rolling Machine
-/*
 
     val ROLLING_RECIPE = registerDirectRecipe("rolling")
 
-    val KINETIC_ROLLING_MACHINE_CELL = cellMemoize("kinetic_rolling_machine") {
-        val inertia = Quantity(0.491, KILOGRAM_METER2)
-
-        val options = KineticProcessingCellOptions(
-            1.0,
-            KineticWorkBoxCellOptions(
-                FrictionNodeDescription(
-                    inertia,
-                    0.01,
-                    Quantity(0.1, NEWTON_METER),
-                    Quantity(1.0, NEWTON_METER)
-                ),
-                FrictionNodeDescription(
-                    inertia,
-                    10.0,
-                    Quantity(0.5, NEWTON_METER),
-                    Quantity(1.0, NEWTON_METER)
-                ),
-                Quantity(1.0, REVOLUTION_PER_SECOND),
-                Quantity(25.0, REVOLUTION_PER_SECOND),
-                Quantity(250.0, NEWTON_METER)
-            ),
-            null
-        )
-
-        val kineticMap = directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)
-        val thermalMap = nullPolarMap()
-
-        CellFactory {
-            KineticWorkBoxCell(it, options, kineticMap, thermalMap)
-        }
+    val ROLLING_MACHINE_MODEL = lazy {
+        ProcessingMachineCompositeModel(FlwModels.ROLLING_MACHINE_BODY)
     }
 
-    val KINETIC_ROLLING_MACHINE_BLOCK = blockAndItem("kinetic_rolling_machine", ::KineticRollingMachineBlock)
-        .withSelfDrop()
+    val ROLLING_MACHINE_HULL = registerMachineHull("rolling_machine")
 
-    val KINETIC_ROLLING_MACHINE_BLOCK_ENTITY = blockEntityOnly("kinetic_rolling_machine", KINETIC_ROLLING_MACHINE_BLOCK.block, ::KineticRollingMachineBlockEntity)
+    val ROLLING_MACHINE_BRUSHED_DC_MOTOR = registerMachine(
+        ROLLING_MACHINE_HULL, BRUSHED_DC_MOTOR_WORK_BOX,
+        ::RollingMachineBlock,
+        ::RollingMachineBlockEntity,
+        ROLLING_MACHINE_MODEL,
+        ::ProcessingMachineBlockEntityVisual
+    )
 
     val ROLLING_MACHINE_MENU = menu("rolling_machine", ::RollingMachineMenu)
-*/
 
     //#endregion
 

@@ -692,7 +692,7 @@ abstract class ProcessingMachineBlock<C : ProcessingCell, BE : ProcessingMachine
 
     //#region Collider
 
-    open fun getCollider(pState: BlockState, pLevel: BlockGetter, pPos: BlockPos, pContext: CollisionContext) : VoxelShape? = null
+    open fun getColliderFor(pState: BlockState, pLevel: BlockGetter, pPos: BlockPos, pContext: CollisionContext) : VoxelShape? = null
 
     @Suppress("OVERRIDE_DEPRECATION")
     override fun getCollisionShape(
@@ -700,7 +700,7 @@ abstract class ProcessingMachineBlock<C : ProcessingCell, BE : ProcessingMachine
         pLevel: BlockGetter,
         pPos: BlockPos,
         pContext: CollisionContext,
-    ): VoxelShape = getCollider(pState, pLevel, pPos, pContext) ?: super.getCollisionShape(pState, pLevel, pPos, pContext)
+    ): VoxelShape = getColliderFor(pState, pLevel, pPos, pContext) ?: super.getCollisionShape(pState, pLevel, pPos, pContext)
 
     @Suppress("OVERRIDE_DEPRECATION")
     override fun getShape(
@@ -708,7 +708,7 @@ abstract class ProcessingMachineBlock<C : ProcessingCell, BE : ProcessingMachine
         pLevel: BlockGetter,
         pPos: BlockPos,
         pContext: CollisionContext,
-    ): VoxelShape = getCollider(pState, pLevel, pPos, pContext) ?: super.getShape(pState, pLevel, pPos, pContext)
+    ): VoxelShape = getColliderFor(pState, pLevel, pPos, pContext) ?: super.getShape(pState, pLevel, pPos, pContext)
 
     @Suppress("OVERRIDE_DEPRECATION")
     override fun getVisualShape(
@@ -716,7 +716,7 @@ abstract class ProcessingMachineBlock<C : ProcessingCell, BE : ProcessingMachine
         pLevel: BlockGetter,
         pPos: BlockPos,
         pContext: CollisionContext,
-    ): VoxelShape = getCollider(pState, pLevel, pPos, pContext) ?: super.getVisualShape(pState, pLevel, pPos, pContext)
+    ): VoxelShape = getColliderFor(pState, pLevel, pPos, pContext) ?: super.getVisualShape(pState, pLevel, pPos, pContext)
 
     //#endregion
 }
@@ -964,19 +964,21 @@ abstract class SimpleProcessingMachineBlockEntity<C : ProcessingCell, R : Eln2Si
     /**
      * Implementation of [ProcessingDevice] which multiplies the cell's processing speed by the device's factor.
      * */
-    open class DefaultRecipeWrapper(val cell: ProcessingCell, val factor: Double, override val tier: Int) : TieredProcessingDevice {
+    open class RecipeWrapper(val cell: ProcessingCell, val factor: Double, override val tier: Int) : TieredProcessingDevice {
         override var isActive: Boolean
             get() = cell.isActive
             set(value) { cell.isActive = value }
 
         override val processingSpeed: Double
-            get() = cell.processingSpeed * factor
+            get() = if(pauseProcessing) 0.0 else cell.processingSpeed * factor
+
+        var pauseProcessing = false
     }
 
-    protected var wrapper: ProcessingDevice? = null
+    protected var wrapper: RecipeWrapper? = null
 
     protected fun setDefaultRecipeOptions(factor: Double, tier: Int = Int.MAX_VALUE) {
-        wrapper = DefaultRecipeWrapper(cell, factor, tier)
+        wrapper = RecipeWrapper(cell, factor, tier)
     }
 
     private var initialized = false
@@ -995,10 +997,17 @@ abstract class SimpleProcessingMachineBlockEntity<C : ProcessingCell, R : Eln2Si
 
     @ServerOnly
     protected open fun tickRecipe() {
-        if(cell.direction == ProcessingCell.ProcessingDirection.Forward || allowProcessingInReverse) {
-            val result = loop.tick(wrapper!!, inventoryHandler)
-            data.progress = loop.lastProgress.toFloat()
+        val wrapper = wrapper!!
+
+        wrapper.pauseProcessing = if(cell.direction == ProcessingCell.ProcessingDirection.Forward) {
+            false
         }
+        else {
+            !allowProcessingInReverse
+        }
+
+        val result = loop.tick(wrapper, inventoryHandler)
+        data.progress = loop.lastProgress.toFloat()
     }
 
     /**
@@ -1182,7 +1191,7 @@ open class ProcessingMachineBlockEntityVisual<C : ProcessingCell, BE : Processin
 
         val dt = processSpeedSmoother.update(processSpeed)
         processSpeedSmoother.pullDown()
-        val processIncr = processSpeedSmoother.value * dt
+        val processIncr = processSpeedSmoother.value * dt * if(renderState.processingDirection == ProcessingCell.ProcessingDirection.Forward) 1.0 else -1.0
 
         if(processIncr != 0.0) {
             processRotation += processIncr

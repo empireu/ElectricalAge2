@@ -64,7 +64,7 @@ class ExtruderBlock<C : ProcessingCell>(cell: RegistryObject<CellProvider<C>>) :
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = ExtruderBlockEntity<C>(pPos, pState)
 
-    override fun getCollider(pState: BlockState, pLevel: BlockGetter, pPos: BlockPos, pContext: CollisionContext): VoxelShape = collider
+    override fun getColliderFor(pState: BlockState, pLevel: BlockGetter, pPos: BlockPos, pContext: CollisionContext): VoxelShape = collider
 
     companion object {
         val WITH_DIE: BooleanProperty = BooleanProperty.create("has_die")
