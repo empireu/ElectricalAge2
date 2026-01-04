@@ -28,6 +28,7 @@ import org.eln2.mc.common.content.modules.ContentManager
 import org.eln2.mc.common.content.OscilloscopeCopyManager
 import org.eln2.mc.common.content.OscilloscopeShader
 import org.eln2.mc.common.content.ScrewdriverItem
+import org.eln2.mc.common.content.fluid.ChemicalBottleItem
 import org.eln2.mc.common.entities.EntityRegistry
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.grids.TerminalHighlightRenderer
@@ -119,6 +120,8 @@ class Eln2 {
         if(SodiumPlugin.shouldApply()) {
             forgeEventBus.addListener(EmbeddiumCompat::`eln2GridRenderer$handleEvent`)
         }
+
+        forgeEventBus.addListener(EventPriority.LOWEST, ChemicalBottleItem::onRightClickBlockEvent)
 
         FlwModels.initialize()
 

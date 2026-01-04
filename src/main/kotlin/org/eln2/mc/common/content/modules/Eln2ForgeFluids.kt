@@ -6,22 +6,88 @@ import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.minecraft.client.renderer.ItemBlockRenderTypes
 import net.minecraft.client.renderer.RenderType
+import net.minecraft.world.level.material.Fluid
 import net.minecraftforge.client.event.EntityRenderersEvent
 import net.minecraftforge.fluids.FluidType
+import net.minecraftforge.registries.RegistryObject
+import org.ageseries.libage.utils.putUnique
+import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
-import org.eln2.mc.common.content.fluid.FluidPipeBlock
-import org.eln2.mc.common.content.fluid.FluidPipeBlockEntity
-import org.eln2.mc.common.content.fluid.FluidPipeBlockEntityVisual
-import org.eln2.mc.common.content.fluid.FluidPipeModuleItem
+import org.eln2.mc.common.content.fluid.*
 import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.fluids.ForgeFluidRegistry.basicForgeFluid
+import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
 
 object Eln2ForgeFluids : ContentModule() {
+    //#region Registration Helpers
+
+    /**
+     * Deferred information for setting render layers in [setRenderLayers].
+     * */
+    private val renderLayerSetups = ArrayList<Pair<ForgeFluidRegistry.ForgeFluidRegistryItem, RenderType>>()
+
+    /**
+     * Sets the render layer for the source and the flowing blocks of the fluid.
+     * */
+    fun ForgeFluidRegistry.BasicForgeFluidBuilder.withRenderLayer(layer: RenderType) {
+        ContentManager.requireInit()
+
+        this.onRegister {
+            renderLayerSetups.add(Pair(it, layer))
+        }
+    }
+
+    /**
+     * Read by [org.eln2.mc.Eln2ItemModelProviderDatagen] and [org.eln2.mc.common.ModEvents.registerItemColors].
+     * */
+    val CHEMICAL_BOTTLES_FOR_RESOLVE_AND_DATAGEN = LinkedHashMap<ForgeFluidRegistry.ForgeFluidRegistryItem, ChemicalBottleRegistryItem>()
+
+    data class ChemicalBottleRegistryItem(
+        val fluidRegistryItem: ForgeFluidRegistry.ForgeFluidRegistryItem,
+        val tintColor: MyColor,
+        val bottleItem: RegistryObject<ChemicalBottleItem>
+    )
+
+    /**
+     * Registers a [ChemicalBottleItem] for the ELN2 fluid.
+     * */
+    fun ForgeFluidRegistry.BasicForgeFluidBuilder.withChemicalBottle() {
+        ContentManager.requireInit()
+
+        val tint = requireNotNull(this.tintColor) {
+            DEBUGGER_BREAK("Bottle requires tint color")
+        }
+
+        this.onRegister {
+            val bottle = ItemRegistry.item("${it.id}_bottle") {
+                ChemicalBottleItem(it)
+            }
+
+            CHEMICAL_BOTTLES_FOR_RESOLVE_AND_DATAGEN.putUnique(it, ChemicalBottleRegistryItem(it, tint, bottle)) {
+                DEBUGGER_BREAK("Duplicate chemical bottle for $this")
+            }
+        }
+    }
+
+    /**
+     * Returns the chemical bottle for the [fluid] or null, if one isn't registered.
+     * This is a slow operation.
+     * */
+    fun getChemicalBottle(fluid: Fluid) : ChemicalBottleItem? {
+        val entry = CHEMICAL_BOTTLES_FOR_RESOLVE_AND_DATAGEN.entries.firstOrNull {
+            it.key.get() == fluid
+        } ?: return null
+
+        return entry.value.bottleItem.get()
+    }
+
+    //#endregion
+
     override fun registerBlockEntityVisualizers() {
         VisualizerRegistry.setVisualizer(
             FLUID_PIPE_BLOCK_ENTITY.get(),
@@ -36,12 +102,9 @@ object Eln2ForgeFluids : ContentModule() {
         )
     }
 
-    private val renderLayerSetups = ArrayList<Pair<ForgeFluidRegistry.ForgeFluidRegistryItem, RenderType>>()
-
-    fun ForgeFluidRegistry.ForgeFluidRegistryItem.withRenderLayer(layer: RenderType) {
-        renderLayerSetups.add(Pair(this, layer))
-    }
-
+    /**
+     * Registers the render layers from [renderLayerSetups].
+     * */
     override fun setRenderLayers() {
         renderLayerSetups.forEach { (fluid, renderLayer) ->
             ItemBlockRenderTypes.setRenderLayer(fluid.source.get(), renderLayer)
@@ -72,7 +135,9 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(-1000) // Gas
                 .viscosity(100)
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+    }
 
     val FUEL_GAS = basicForgeFluid("fuel_gas") {
         tintColor = MyColor(50, 200, 200, 200) // Translucent Grey Vapor
@@ -90,7 +155,10 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(700)
                 .viscosity(800)
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+        withChemicalBottle()
+    }
 
     val NAPHTHA_GAS = basicForgeFluid("naphtha_gas") {
         tintColor = MyColor(100, 200, 240, 255) // Faint Blue Vapor
@@ -99,7 +167,9 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(-1000)
                 .viscosity(100)
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+    }
 
     val CREOSOTE = basicForgeFluid("creosote") {
         tintColor = MyColor(200, 208, 218, 40)
@@ -108,6 +178,9 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(1200)
                 .viscosity(400)
         }
+
+        withRenderLayer(RenderType.translucent())
+        withChemicalBottle()
     }
 
     val CREOSOTE_GAS = basicForgeFluid("creosote_gas") {
@@ -124,7 +197,9 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(-500) // Gas
                 .viscosity(100)
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+    }
 
     val COAL_TAR = basicForgeFluid("coal_tar") {
         tintColor = MyColor(255, 20, 20, 20) // Opaque Black
@@ -151,6 +226,8 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(2000) // Sinks in water
                 .viscosity(6000) // Thick
         }
+
+        withChemicalBottle()
     }
 
     val CRUDE_OIL = basicForgeFluid("crude_oil") {
@@ -160,6 +237,8 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(850)
                 .viscosity(2000)
         }
+
+        withChemicalBottle()
     }
 
     val HEAVY_OIL = basicForgeFluid("heavy_oil") {
@@ -178,7 +257,10 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(830)
                 .viscosity(1500)
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+        withChemicalBottle()
+    }
 
     val DIESEL_GAS = basicForgeFluid("diesel_gas") {
         tintColor = MyColor(100, 220, 200, 150) // Faint Amber Vapor
@@ -187,7 +269,9 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(-500)
                 .viscosity(200)
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+    }
 
     val BITUMEN = basicForgeFluid("bitumen") {
         tintColor = MyColor(255, 10, 10, 10) // Opaque Black
@@ -196,6 +280,8 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(1200) // Sinks
                 .viscosity(10000) // Very thick
         }
+
+        withChemicalBottle()
     }
 
     val LIQUID_METHANE = basicForgeFluid("liquid_methane") {
@@ -205,7 +291,10 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(420)
                 .viscosity(500) // Very thin
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+        withChemicalBottle()
+    }
 
     val METHANE = basicForgeFluid("methane") {
         tintColor = MyColor(100, 200, 200, 255) // Faint Blue gas
@@ -214,7 +303,9 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(-500)
                 .viscosity(100)
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+    }
 
     val LIQUID_PROPANE = basicForgeFluid("liquid_propane") {
         tintColor = MyColor(180, 255, 255, 255) // Clear/White
@@ -223,7 +314,10 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(580)
                 .viscosity(600)
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+        withChemicalBottle()
+    }
 
     val PROPANE = basicForgeFluid("propane") {
         tintColor = MyColor(100, 255, 255, 255) // Faint White gas
@@ -232,7 +326,9 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(-600)
                 .viscosity(100)
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+    }
 
     val LIQUID_BUTANE = basicForgeFluid("liquid_butane") {
         tintColor = MyColor(180, 255, 240, 220) // Off-white
@@ -241,7 +337,10 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(600)
                 .viscosity(700)
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+        withChemicalBottle()
+    }
 
     val BUTANE = basicForgeFluid("butane") {
         tintColor = MyColor(100, 255, 250, 230) // Faint Off-white
@@ -250,7 +349,9 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(-600)
                 .viscosity(100)
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+    }
 
     val LIQUID_HYDROGEN = basicForgeFluid("liquid_hydrogen") {
         tintColor = MyColor(180, 200, 180, 255) // Very faint purple/blue
@@ -259,7 +360,10 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(70) // Extremely light liquid
                 .viscosity(200)
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+        withChemicalBottle()
+    }
 
     val HYDROGEN = basicForgeFluid("hydrogen") {
         tintColor = MyColor(80, 220, 200, 255) // Faint purple gas
@@ -268,7 +372,9 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(-1000) // Rises fast
                 .viscosity(50)
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+    }
 
     val LIQUID_NITROGEN = basicForgeFluid("liquid_nitrogen") {
         tintColor = MyColor(180, 200, 240, 255) // Cold Blue (Visual convention)
@@ -277,7 +383,10 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(810)
                 .viscosity(400)
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+        withChemicalBottle()
+    }
 
     val NITROGEN = basicForgeFluid("nitrogen") {
         tintColor = MyColor(100, 220, 240, 255) // Faint Blue fog
@@ -286,7 +395,9 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(-800)
                 .viscosity(100)
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+    }
 
     val LIQUID_ACETYLENE = basicForgeFluid("liquid_acetylene") {
         tintColor = MyColor(180, 230, 230, 230) // Light Grey
@@ -295,7 +406,9 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(620)
                 .viscosity(500)
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+    }
 
     val ACETYLENE = basicForgeFluid("acetylene") {
         tintColor = MyColor(100, 230, 230, 230) // Faint Grey
@@ -304,5 +417,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .density(-600)
                 .viscosity(100)
         }
-    }.withRenderLayer(RenderType.translucent())
+
+        withRenderLayer(RenderType.translucent())
+    }
 }

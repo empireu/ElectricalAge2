@@ -16,8 +16,14 @@ import net.minecraftforge.registries.DeferredRegister
 import net.minecraftforge.registries.ForgeRegistries
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.ClosedInterval
+import org.ageseries.libage.data.Event
+import org.ageseries.libage.data.EventBus
+import org.ageseries.libage.data.EventHandler
+import org.ageseries.libage.data.EventSource
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.MODID
+import org.eln2.mc.NotificationBus
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.fluids.foundation.BasicForgeFluidType
 import org.eln2.mc.common.fluids.foundation.BasicForgeFluidTypeClientOptions
@@ -72,7 +78,7 @@ object ForgeFluidRegistry {
     /**
      * A class such as this is actually necessary because the various bits of the registration reference themselves cyclically, so it's easiest to use field initialization to register them.
      * */
-    class ForgeFluidRegistryItem(val id: String, fluidTypeFactory: FluidTypeSupplier, val builder: ForgeFluidBuilder) {
+    class ForgeFluidRegistryItem(val id: String, fluidTypeFactory: FluidTypeSupplier, val builder: ForgeFluidBuilder) : Supplier<Fluid> {
         val type: RegistryObject<FluidType> = FORGE_FLUID_TYPES.register(id) {
             fluidTypeFactory.create()
         }
@@ -100,6 +106,10 @@ object ForgeFluidRegistry {
             .levelDecreasePerBlock(builder.levelDecreasePerBlock)
             .explosionResistance(builder.explosionResistance)
             .tickRate(builder.tickRate)
+
+        override fun get(): Fluid {
+            return source.get().source
+        }
     }
 
     fun forgeFluid(id: String, build: ForgeFluidBuilder.() -> FluidTypeSupplier) : ForgeFluidRegistryItem {
@@ -117,6 +127,13 @@ object ForgeFluidRegistry {
         var fogColor: Vector3d? = null
         var fog: ClosedInterval? = null
 
+        data class RegisterEvent(val entry: ForgeFluidRegistry.ForgeFluidRegistryItem) : Event
+        private val eventBus = EventBus(setOf(RegisterEvent::class))
+
+        fun onRegister(handler: (ForgeFluidRegistry.ForgeFluidRegistryItem) -> Unit) = eventBus.registerHandler(RegisterEvent::class) {
+            handler((it as RegisterEvent).entry)
+        }
+
         var buildMethod: Consumer<ForgeFluidBuilder> = Consumer { }
 
         fun properties(factory: () -> FluidType.Properties) {
@@ -125,6 +142,14 @@ object ForgeFluidRegistry {
 
         fun configureBase(build: ForgeFluidBuilder.() -> Unit) {
             buildMethod = Consumer(build)
+        }
+
+        var finished = false
+            private set
+
+        fun finish(item: ForgeFluidRegistryItem) {
+            eventBus.send(RegisterEvent(item))
+            finished = true
         }
     }
 
@@ -145,6 +170,8 @@ object ForgeFluidRegistry {
                     builder.propertiesFactory.get()
                 )
             }
+        }.also {
+            builder.finish(it)
         }
     }
 }

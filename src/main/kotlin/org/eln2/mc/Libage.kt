@@ -1016,13 +1016,14 @@ class NumericCsvFile(val headers: List<String>, val entries: List<ArrayKDVectorD
 /**
  * Thread safe collection of runnable handlers.
  * */
-class NotificationBus {
+class NotificationBus(val validateOnAssign: Runnable? = null) {
     private val handlers = CopyOnWriteArrayList<Runnable>()
 
     /**
      * Adds a handler. **Does not check for duplicate adds!**
      * */
     operator fun plusAssign(handler: Runnable) {
+        validateOnAssign?.run()
         handlers.add(handler)
     }
 

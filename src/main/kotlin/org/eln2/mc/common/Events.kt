@@ -61,6 +61,7 @@ import org.eln2.mc.Eln2BlockSelfDropLootDatagen
 import org.eln2.mc.Eln2ItemModelProviderDatagen
 import org.eln2.mc.Eln2BlockStateProviderDatagen
 import org.eln2.mc.Eln2RecipeProviderDatagen
+import org.eln2.mc.common.content.modules.Eln2ForgeFluids
 import org.eln2.mc.extensions.formatted
 
 @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.MOD)
@@ -119,6 +120,19 @@ object ModEvents {
                 }
 
                 return@register MyColor.WHITE.data
+            }, item)
+        }
+
+        Eln2ForgeFluids.CHEMICAL_BOTTLES_FOR_RESOLVE_AND_DATAGEN.forEach { (_, itemRegistryItem) ->
+            val item = itemRegistryItem.bottleItem.get()
+
+            event.register({ _, tintIndex ->
+                if(tintIndex == 1) {
+                    itemRegistryItem.tintColor.data
+                }
+                else {
+                    MyColor.WHITE.data
+                }
             }, item)
         }
     }

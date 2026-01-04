@@ -19,6 +19,7 @@ import net.minecraftforge.common.data.BlockTagsProvider
 import net.minecraftforge.common.data.ExistingFileHelper
 import net.minecraftforge.registries.ForgeRegistries
 import org.eln2.mc.common.content.modules.ContentManager
+import org.eln2.mc.common.content.modules.Eln2ForgeFluids
 import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.content.modules.world.Eln2Ores
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
@@ -236,6 +237,7 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
 /**
  * - Generates the raw ore item model and the block item model from [Eln2Ores.ORE_FOR_MODEL_DATAGEN], which is built by [Eln2Ores.withModelDatagen] which registers tints on indices we use in the models.
  * - Generates bucket item models, from [ForgeFluidRegistry.FORGE_FLUID_BUCKETS].
+ * - Generates chemical bottle models, from [Eln2ForgeFluids.CHEMICAL_BOTTLES_FOR_RESOLVE_AND_DATAGEN].
  * - Generates item models for the machine hulls and final machines, from [Eln2Processing.PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN].
  * */
 class Eln2ItemModelProviderDatagen(output: PackOutput, existingFileHelper: ExistingFileHelper) : ItemModelProvider(output, MODID, existingFileHelper) {
@@ -281,6 +283,18 @@ class Eln2ItemModelProviderDatagen(output: PackOutput, existingFileHelper: Exist
                 .end()
 
             LOG.info("Registered bucket model for {}", id)
+        }
+
+        Eln2ForgeFluids.CHEMICAL_BOTTLES_FOR_RESOLVE_AND_DATAGEN.forEach { (eln2Fluid, registeredBottle) ->
+            val bottle = registeredBottle.bottleItem.get()
+            val bottleId = ForgeRegistries.ITEMS.getKey(bottle)!!
+
+            getBuilder(bottleId.path)
+                .parent(getExistingFile(mcLoc("item/generated")))
+                .texture("layer0", mcLoc("item/glass_bottle"))
+                .texture("layer1", modLoc("item/bottle_fluid_overlay"))
+
+            LOG.info("Registered bottle item {} for ELN2 fluid {}", bottleId, eln2Fluid.id)
         }
 
         Eln2Processing.PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN.forEach { obj ->
