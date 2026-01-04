@@ -420,4 +420,16 @@ object Eln2ForgeFluids : ContentModule() {
 
         withRenderLayer(RenderType.translucent())
     }
+
+    val INSULATING_VARNISH = basicForgeFluid("insulating_varnish") {
+        tintColor = MyColor(180, 28, 23, 23) // Opaque Black
+        properties {
+            FluidType.Properties.create()
+                .density(1500)
+                .viscosity(4000) // Thick
+        }
+
+        withRenderLayer(RenderType.translucent())
+        withChemicalBottle()
+    }
 }

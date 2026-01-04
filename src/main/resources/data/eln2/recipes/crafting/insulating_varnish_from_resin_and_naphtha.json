@@ -1,0 +1,9 @@
+{
+    "type": "minecraft:crafting_shapeless",
+    "ingredients": [
+        { "item": "eln2:naphtha_bottle" },
+        { "item": "eln2:raw_resin" },
+        { "item": "minecraft:glass_bottle" }
+    ],
+    "result": { "item": "eln2:insulating_varnish_bottle" }
+}
