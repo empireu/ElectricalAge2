@@ -5,111 +5,151 @@ package org.eln2.mc.common.content.modules
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.Items
 import net.minecraftforge.registries.RegistryObject
-import org.ageseries.libage.mathematics.geometry.Vector4d
 import org.ageseries.libage.utils.addUnique
 import org.eln2.mc.client.render.foundation.MyColor
-import org.eln2.mc.common.content.modules.Eln2Ingredients.TRANSFORMED_ITEMS_FOR_TINT
+import org.eln2.mc.common.ModEvents
 import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.items.ItemRegistry.itemDefault
-import org.eln2.mc.common.items.ItemRegistry.itemNoStack
 import java.util.function.Supplier
 
 object Eln2Ingredients : ContentModule() {
     //#region Registration Helpers
 
-    data class IngotInfo(
+    /**
+     * Item with a data-generated model (consisting of a base texture and a tint registered in [ITEMS_FOR_TINT]).
+     * @param id The item registry path.
+     * @param tint The color of the item.
+     * @param item The item itself.
+     * */
+    data class IngredientInfo<Type>(
         val id: String,
-        val tint: MyColor,
-        val ingotItem: RegistryObject<Item>
-    ) : Supplier<Item> by ingotItem
+        override val tint: MyColor,
+        val item: RegistryObject<Item>
+    ) : Supplier<Item> by item, ModEvents.ItemAndTint
 
     /**
-     * Read by [org.eln2.mc.common.ModEvents.registerItemColors].
+     * Repository for intermediary items, that will get simple generated models.
      * */
-    val INGOTS_FOR_TINT_AND_DATAGEN = LinkedHashSet<IngotInfo>()
+    open class IngredientSet<Type> {
+        /**
+         * Read by [org.eln2.mc.Eln2ItemModelProviderDatagen] (specific implementation for the type of intermediary item).
+         * This generates the simple model using a base texture and tint.
+         * */
+        val itemsForModelDatagen = LinkedHashSet<IngredientInfo<Type>>()
 
-    private fun registerIngot(name: String, tint: MyColor) : IngotInfo {
-        ContentManager.requireInit()
+        /**
+         * Registers an item with the ID [name], and adds it to [ITEMS_FOR_TINT] (picked up automatically by a generic routine) and to [itemsForModelDatagen] (needs a specific implementation in [org.eln2.mc.Eln2ItemModelProviderDatagen]).
+         * */
+        fun register(name: String, tint: MyColor) : IngredientInfo<Type> {
+            ContentManager.requireInit()
 
-        val ingotItem = ItemRegistry.item(name) {
-            Item(Item.Properties())
+            val ingredientItem = ItemRegistry.itemDefault(name)
+            val obj = IngredientInfo<Type>(name, tint, ingredientItem)
+
+            ContentManager.addItemForTint(obj)
+            itemsForModelDatagen.addUnique(obj)
+
+            return obj
         }
-
-        val obj = IngotInfo(name, tint, ingotItem)
-        INGOTS_FOR_TINT_AND_DATAGEN.addUnique(obj)
-
-        return obj
     }
 
-    data class TransformedItemInfo<Type>(
-        val id: String,
-        val tint: MyColor,
-        val registeredTransformedItem: RegistryObject<Item>,
-        val sourceItem: Supplier<Item>?
-    ) : Supplier<Item> by registeredTransformedItem
-
     /**
-     * Read by [org.eln2.mc.common.ModEvents.registerItemColors].
+     * Repository extending [IngredientSet] with additional information for generating recipes to obtain the ingredient.
      * */
-    val TRANSFORMED_ITEMS_FOR_TINT = ArrayList<TransformedItemInfo<*>>()
+    class IngredientSetWithRecipes<Type, Builder>(private val builderConstructor: (obj: IngredientInfo<Type>) -> Builder) : IngredientSet<Type>() {
+        /**
+         * Read by [org.eln2.mc.Eln2RecipeProviderDatagen] (specific implementation for the type of intermediary item).
+         * This generates the recipes that convert some input items into this ingredient (e.g. if this repository stores plates, the builder would have data needed to make the recipes for hammering and rolling to get the plate).
+         * */
+        val itemsForRecipeDatagen = LinkedHashSet<Builder>()
 
-    /**
-     * Registers a transformed item and adds the data to [set] and to the [TRANSFORMED_ITEMS_FOR_TINT].
-     * */
-    private fun <Type> registerTransformedItem(name: String, set: LinkedHashSet<TransformedItemInfo<Type>>, tint: MyColor, itemSupplier: Supplier<Item>?) : TransformedItemInfo<Type> {
-        ContentManager.requireInit()
+        /**
+         * Executes [register] to register the item, tint and model, and creates a builder to gather the recipes to obtain the ingredient and adds it to [itemsForRecipeDatagen].
+         * */
+        fun build(name: String, tint: MyColor, build: (Builder.() -> Unit)? = null) : IngredientInfo<Type> {
+            ContentManager.requireInit()
 
-        val derivedItem = ItemRegistry.item(name) {
-            Item(Item.Properties())
+            val result = register(name, tint)
+            val builder = builderConstructor(result)
+            build?.invoke(builder)
+
+            itemsForRecipeDatagen.addUnique(builder)
+
+            return result
         }
-
-        val obj = TransformedItemInfo<Type>(name, tint, derivedItem, itemSupplier)
-
-        TRANSFORMED_ITEMS_FOR_TINT.add(obj)
-        set.addUnique(obj)
-
-        return obj
     }
 
-    interface Hot
+    //#region Ingots
+
+    interface Ingot
+    val INGOTS = IngredientSet<Ingot>()
+
+    //#endregion
+
+    //#region Plates
+
     interface Plate
+    val PLATES = IngredientSetWithRecipes(::PlateBuilder)
 
-    /**
-     * Read by [org.eln2.mc.Eln2ItemModelProviderDatagen] and [org.eln2.mc.Eln2RecipeProviderDatagen].
-     * */
-    val HOT_ITEMS_FOR_MODEL_AND_RECIPE_DATAGEN = LinkedHashSet<TransformedItemInfo<Hot>>()
-
-    /**
-     * Read by [org.eln2.mc.Eln2ItemModelProviderDatagen].
-     * */
-    val PLATES_FOR_MODEL_DATAGEN = LinkedHashSet<TransformedItemInfo<Plate>>()
-    /**
-     * Read by [org.eln2.mc.Eln2RecipeProviderDatagen].
-     * */
-    val PLATES_FOR_RECIPE_DATAGEN = LinkedHashSet<PlateBuilder>()
-
-    fun registerHotItem(name: String, tint: MyColor, sourceItemSupplier: Supplier<Item>) = registerTransformedItem(name, HOT_ITEMS_FOR_MODEL_AND_RECIPE_DATAGEN, tint, sourceItemSupplier)
-
-    fun registerHotIngot(ingot: IngotInfo) = registerHotItem("hot_${ingot.id}", ingot.tint, ingot.ingotItem)
-
-    class PlateBuilder(val item: TransformedItemInfo<Plate>) {
-        var hasRollingRecipe = true
+    class PlateBuilder(val info: IngredientInfo<Plate>) {
+        /**
+         * Registers a rolling recipe that turns [sourceItemForRolling] into [info] with duration [rollingDuration].
+         * */
+        var sourceItemForRolling: Supplier<Item>? = null
         var rollingDuration = 100.0
-        var hasBlacksmithingRecipe = true
+
+        /**
+         * Registers a blacksmithing hammer (flattening mode) recipe that turns [sourceItemForFlattening] into [info] with cooldown [blacksmithingDuration].
+         * */
+        var sourceItemForFlattening: Supplier<Item>? = null
         var blacksmithingDuration = 40
+
+        fun allRecipes(sourceItem: Supplier<Item>) {
+            sourceItemForRolling = sourceItem
+            sourceItemForFlattening = sourceItem
+        }
     }
 
-    fun registerPlate(name: String, tint: MyColor, sourceItemSupplier: Supplier<Item>, build: (PlateBuilder.() -> Unit)? = null) : TransformedItemInfo<Plate> {
-        val result = registerTransformedItem(name, PLATES_FOR_MODEL_DATAGEN, tint, sourceItemSupplier)
+    //#endregion
 
-        val builder = PlateBuilder(result)
-        build?.invoke(builder)
+    //#region Hot Items
 
-        return result
+    interface HotIngot
+    val HOT_INGOTS = IngredientSetWithRecipes<HotIngot, HotItemBuilder<HotIngot>>(::HotItemBuilder)
+
+    interface HotPlate
+    val HOT_PLATES = IngredientSetWithRecipes<HotPlate, HotItemBuilder<HotPlate>>(::HotItemBuilder)
+
+    class HotItemBuilder<Type>(val info: IngredientInfo<Type>) {
+        /**
+         * Registers smelting and blasting recipes that turn [sourceItemForVanillaHeating] into [info].
+         * */
+        var sourceItemForVanillaHeating: Supplier<Item>? = null
     }
 
-    fun registerPlate(ingotInfo: IngotInfo) = registerPlate("${ingotInfo.id}_plate", ingotInfo.tint, ingotInfo.ingotItem)
+    //#endregion
+
+    //#region Wires
+
+    interface Wire
+    val WIRES = IngredientSetWithRecipes(::WireBuilder)
+
+    class WireBuilder(val info: IngredientInfo<Wire>) {
+        /**
+         * Registers blacksmithing chisel and hammer recipe (slicing mode) that turns [sourceItemForSlicing] into [info].
+         * */
+        var sourceItemForSlicing: Supplier<Item>? = null
+        var blacksmithingDuration = 60
+
+        /**
+         * Registers extruding recipe that turns [sourceItemForExtruding] into [info].
+         * */
+        var sourceItemForExtruding: Supplier<Item>? = null
+        var extrudingDuration = 120.0
+    }
+
+    //#endregion
 
     //#endregion
 
@@ -123,27 +163,82 @@ object Eln2Ingredients : ContentModule() {
 
     //#endregion
 
-    //#region Ingots and Plates
+    //#region Lead
 
-    val LEAD_INGOT = registerIngot("lead_ingot", MyColor(150, 150, 160))
-    val LEAD_PLATE = registerPlate("lead_plate", MyColor(165, 165, 180), LEAD_INGOT)
+    val LEAD_INGOT = INGOTS.register("lead_ingot", MyColor(150, 150, 160))
 
-    val TIN_INGOT = registerIngot("tin_ingot", MyColor(244, 235, 231))
-    val TIN_PLATE = registerPlate("tin_plate", TIN_INGOT.tint, TIN_INGOT)
+    val LEAD_PLATE = PLATES.build("lead_plate", MyColor(165, 165, 180)) {
+        allRecipes(LEAD_INGOT)
+    }
 
-    val HOT_IRON_INGOT = registerHotItem("hot_iron_ingot", MyColor(255, 192, 0), Items::IRON_INGOT)
-    val IRON_PLATE = registerPlate("iron_plate", MyColor(255, 255, 255), HOT_IRON_INGOT)
-
-    val HOT_COPPER_INGOT = registerHotItem("hot_copper_ingot", MyColor(255, 127, 80), Items::COPPER_INGOT)
-    val COPPER_PLATE = registerPlate("copper_plate", MyColor(184, 115, 51), HOT_COPPER_INGOT)
-
-    val BRONZE_INGOT = registerIngot("bronze_ingot", MyColor(206, 137, 70))
-    val HOT_BRONZE_INGOT = registerHotIngot(BRONZE_INGOT)
-    val BRONZE_PLATE = registerPlate("bronze_plate", BRONZE_INGOT.tint, HOT_BRONZE_INGOT)
+    val LEAD_WIRE = WIRES.build("lead_wire", MyColor(110, 110, 130)) {
+        sourceItemForSlicing = LEAD_PLATE
+        sourceItemForExtruding = LEAD_INGOT
+    }
 
     //#endregion
 
-    val EXTRUDER_ROD_DIE = itemNoStack("extruder_rod_die")
+    //#region Tin
+
+    val TIN_INGOT = INGOTS.register("tin_ingot", MyColor(244, 235, 231))
+
+    val TIN_PLATE = PLATES.build("tin_plate", TIN_INGOT.tint) {
+        allRecipes(TIN_INGOT)
+    }
+
+    val TIN_WIRE = WIRES.build("tin_wire", TIN_INGOT.tint) {
+        sourceItemForSlicing = TIN_PLATE
+        sourceItemForExtruding = TIN_INGOT
+    }
+
+    //#endregion
+
+    //#region Iron
+
+    val HOT_IRON_INGOT = HOT_INGOTS.build("hot_iron_ingot", MyColor(255, 192, 0)) {
+        sourceItemForVanillaHeating = Supplier { Items.IRON_INGOT }
+    }
+
+    val IRON_PLATE = PLATES.build("iron_plate", MyColor.WHITE) {
+        allRecipes(HOT_IRON_INGOT)
+    }
+
+    //#endregion
+
+    //#region Copper
+
+    val HOT_COPPER_INGOT = HOT_INGOTS.build("hot_copper_ingot", MyColor(255, 127, 80)) {
+        sourceItemForVanillaHeating = Supplier { Items.COPPER_INGOT }
+    }
+
+    val COPPER_PLATE = PLATES.build("copper_plate", MyColor(184, 115, 51)) {
+        allRecipes(HOT_COPPER_INGOT)
+    }
+
+    val HOT_COPPER_PLATE = HOT_PLATES.build("hot_copper_plate", MyColor(240, 110, 70)) {
+        sourceItemForVanillaHeating = COPPER_PLATE
+    }
+
+    val COPPER_WIRE = WIRES.build("copper_wire", MyColor(184, 115, 51)) {
+        sourceItemForSlicing = HOT_COPPER_PLATE
+        sourceItemForExtruding = HOT_COPPER_INGOT
+    }
+
+    //#endregion
+
+    //#region Bronze
+
+    val BRONZE_INGOT = INGOTS.register("bronze_ingot", MyColor(206, 137, 70))
+
+    val HOT_BRONZE_INGOT = HOT_INGOTS.build("hot_bronze_ingot", BRONZE_INGOT.tint) {
+        sourceItemForVanillaHeating = BRONZE_INGOT
+    }
+
+    val BRONZE_PLATE = PLATES.build("bronze_plate", BRONZE_INGOT.tint) {
+        allRecipes(HOT_BRONZE_INGOT)
+    }
+
+    //#endregion
 
     val IRON_SHAFT = itemDefault("iron_shaft")
 

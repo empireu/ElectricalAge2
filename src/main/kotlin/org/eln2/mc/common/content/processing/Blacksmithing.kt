@@ -205,22 +205,22 @@ class BlacksmithingRecipeBuilder(val input: Ingredient, val result: Item, val co
         }
     }
 
-    fun setTool(toolItem: BlacksmithingToolItem): BlacksmithingRecipeBuilder {
+    fun withTool(toolItem: BlacksmithingToolItem): BlacksmithingRecipeBuilder {
         this.tool = toolItem
         return this
     }
 
-    fun setMode(mode: String): BlacksmithingRecipeBuilder {
+    fun withMode(mode: String): BlacksmithingRecipeBuilder {
         this.toolMode = mode
         return this
     }
 
-    fun setCooldown(ticks: Int): BlacksmithingRecipeBuilder {
+    fun withCooldown(ticks: Int): BlacksmithingRecipeBuilder {
         this.cooldown = ticks
         return this
     }
 
-    fun setSound(sound: ResourceLocation): BlacksmithingRecipeBuilder {
+    fun withSound(sound: ResourceLocation): BlacksmithingRecipeBuilder {
         this.sound = sound
         return this
     }
@@ -468,7 +468,7 @@ class BlacksmithingStationBlockEntity(pPos: BlockPos, pState: BlockState) : Bloc
          * Tries to remove an item from the anvil:
          * */
         if(!anvilItem.isEmpty) {
-            if(player.addItem(anvilItem)) {
+            if(player.isCreative || player.addItem(anvilItem)) {
                 inventoryHandler.setStackInSlot(STATION_SLOT, ItemStack.EMPTY)
                 return InteractionResult.SUCCESS
             }

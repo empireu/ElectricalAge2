@@ -28,6 +28,7 @@ import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.inventory.ContainerLevelAccess
+import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.crafting.Recipe
 import net.minecraft.world.item.crafting.RecipeType
@@ -52,6 +53,7 @@ import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.network.NetworkHooks
 import net.minecraftforge.registries.ForgeRegistries
 import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.debug.DEBUG
 import org.ageseries.libage.mathematics.geometry.*
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
@@ -66,6 +68,20 @@ import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
 import kotlin.math.PI
 import kotlin.math.cos
+
+val Block.blockID : ResourceLocation get() {
+    val result = ForgeRegistries.BLOCKS.getKey(this)
+        ?: error(DEBUGGER_BREAK("Could not resolve block $this"))
+
+    return result
+}
+
+val Item.itemID : ResourceLocation get() {
+    val result = ForgeRegistries.ITEMS.getKey(this)
+        ?: error(DEBUGGER_BREAK("Could not resolve item $this"))
+
+    return result
+}
 
 inline fun<reified T : Block> AbstractContainerMenu.eln2StillValid(pAccess: ContainerLevelAccess, pPlayer: Player) : Boolean {
     return pAccess.evaluate({ pLevel, pPos ->

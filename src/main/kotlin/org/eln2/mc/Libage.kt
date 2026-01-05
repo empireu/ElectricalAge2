@@ -41,6 +41,46 @@ class ListCombination<T>(val a: List<T>, val b: List<T>) : Iterable<T> {
     }
 }
 
+class FlatteningIterator<T>(val iterables: List<Iterator<T>>) : Iterator<T> {
+    var indexInList = 0
+
+    private fun loadFront() : Iterator<T>? {
+        while (true) {
+            if(indexInList >= iterables.size) {
+                break
+            }
+
+            val target = iterables[indexInList]
+
+            if (target.hasNext()) {
+               return target
+            }
+            else {
+                ++indexInList
+            }
+        }
+
+        return null
+    }
+
+    override fun hasNext() : Boolean {
+        return loadFront() != null
+    }
+
+    override fun next(): T {
+        val front = loadFront()
+            ?: throw NoSuchElementException()
+
+        return front.next()
+    }
+}
+
+inline fun<T> sequentialForEach(vararg iterables: Iterable<T>, operation: (T) -> Unit) {
+    iterables.forEach { sequence ->
+        sequence.forEach(operation)
+    }
+}
+
 class FramerateIndependentSmoother1dA(val tau: Double) {
     var value = 0.0
 

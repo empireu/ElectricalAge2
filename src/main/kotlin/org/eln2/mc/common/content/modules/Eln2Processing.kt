@@ -42,6 +42,7 @@ import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
 import org.eln2.mc.common.content.processing.*
 import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
+import org.eln2.mc.common.items.ItemRegistry.itemNoStack
 import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
 import org.eln2.mc.common.recipes.RecipeRegistry
 import org.eln2.mc.common.recipes.RecipeRegistry.registerCatalyzedRecipe
@@ -327,10 +328,12 @@ object Eln2Processing : ContentModule() {
         )
     }
 
+    const val BLACKSMITHING_CHISEL_AND_HAMMER_SLICING = "slicing"
+
     val BLACKSMITHING_CHISEL_AND_HAMMER_ITEM = item("blacksmithing_chisel_and_hammer") {
         BlacksmithingToolItem(
             50,
-            listOf()
+            listOf(BLACKSMITHING_CHISEL_AND_HAMMER_SLICING)
         )
     }
 
@@ -611,17 +614,10 @@ object Eln2Processing : ContentModule() {
         ::ExtruderBlockEntityVisual
     )
 
-   /* val ELECTRIC_EXTRUDER_BLOCK = blockAndItem("electric_extruder") {
-        ExtruderBlock(MY_WORK_BOX)
-    }.withSelfDrop()
-
-    val ELECTRIC_EXTRUDER_BLOCK_ENTITY = blockEntityOnly<ExtruderBlockEntity<MotorWorkBoxCell>, ExtruderBlock<MotorWorkBoxCell>>(
-        "electric_extruder",
-        ELECTRIC_EXTRUDER_BLOCK.block,
-        ::ExtruderBlockEntity
-    )
-*/
     val EXTRUDER_MENU = menu("extruder", ::ExtruderMenu)
+
+    val EXTRUDER_ROD_DIE = itemNoStack("extruder_rod_die")
+    val EXTRUDER_WIRE_DIE = itemNoStack("extruder_wire_die")
 
     //#endregion
 

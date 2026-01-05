@@ -1,24 +1,23 @@
 package org.eln2.mc
 
+import net.minecraft.client.renderer.block.model.BlockModel.GuiLight
 import net.minecraft.core.HolderLookup
 import net.minecraft.data.PackOutput
 import net.minecraft.data.loot.BlockLootSubProvider
-import net.minecraft.data.recipes.FinishedRecipe
-import net.minecraft.data.recipes.RecipeCategory
-import net.minecraft.data.recipes.RecipeProvider
-import net.minecraft.data.recipes.ShapelessRecipeBuilder
-import net.minecraft.data.recipes.SimpleCookingRecipeBuilder
+import net.minecraft.data.recipes.*
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.flag.FeatureFlags
 import net.minecraft.world.item.BucketItem
 import net.minecraft.world.item.Item
+import net.minecraft.world.item.ItemDisplayContext
 import net.minecraft.world.item.crafting.Ingredient
 import net.minecraftforge.client.model.generators.BlockStateProvider
+import net.minecraftforge.client.model.generators.ItemModelBuilder
 import net.minecraftforge.client.model.generators.ItemModelProvider
 import net.minecraftforge.client.model.generators.loaders.DynamicFluidContainerModelBuilder
+import net.minecraftforge.client.model.generators.loaders.ItemLayerModelBuilder
 import net.minecraftforge.common.data.BlockTagsProvider
 import net.minecraftforge.common.data.ExistingFileHelper
-import net.minecraftforge.registries.ForgeRegistries
 import org.eln2.mc.common.content.modules.ContentManager
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
 import org.eln2.mc.common.content.modules.Eln2Ingredients
@@ -26,7 +25,10 @@ import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.content.modules.world.Eln2Ores
 import org.eln2.mc.common.content.processing.BlacksmithingRecipeBuilder
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
+import org.eln2.mc.common.recipes.foundation.CatalyzedSimpleProcessingRecipeBuilder
 import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipeBuilder
+import org.eln2.mc.extensions.blockID
+import org.eln2.mc.extensions.itemID
 import java.util.concurrent.CompletableFuture
 import java.util.function.Consumer
 import java.util.function.Supplier
@@ -41,11 +43,7 @@ class Eln2BlockSelfDropLootDatagen : BlockLootSubProvider(emptySet(), FeatureFla
 
             this.dropSelf(block)
 
-            LOG.info(
-                "Registered self drop for {} ({})",
-                block,
-                ForgeRegistries.BLOCKS.getKey(block)
-            )
+            LOG.info("Registered self drop for {} ({})", block, block.blockID)
         }
     }
 
@@ -67,11 +65,7 @@ class Eln2BlockOreDropLootDatagen : BlockLootSubProvider(emptySet(), FeatureFlag
                 createOreDrop(block, raw)
             }
 
-            LOG.info(
-                "Registered ore drop for {} ({})",
-                block,
-                ForgeRegistries.BLOCKS.getKey(block)
-            )
+            LOG.info("Registered ore drop for {} ({})", block, block.blockID)
         }
     }
 
@@ -107,14 +101,12 @@ class Eln2BlockStateProviderDatagen(output: PackOutput, existingFileHelper: Exis
         Eln2Ores.ORE_FOR_MODEL_DATAGEN.forEach { obj ->
             val oreBlock = obj.oreBlock.get()
 
-            val blockId = ForgeRegistries.BLOCKS.getKey(oreBlock)!!
-
             /**
              * Creates a model using two overlay textures:
              * - Stone base
              * - Overlay texture we prepared (see the markdown file), with tint index `1` (which we register into)
              * */
-            val model = models().getBuilder(blockId.path)
+            val model = models().getBuilder(oreBlock.blockID.path)
                 .renderType("minecraft:cutout")
                 .parent(models().getExistingFile(mcLoc("block/block")))
                 .texture("particle", mcLoc("block/stone"))
@@ -138,7 +130,7 @@ class Eln2BlockStateProviderDatagen(output: PackOutput, existingFileHelper: Exis
                     }
                     .end()
                 .texture("base", mcLoc("block/stone"))
-                .texture("overlay", modLoc("block/ore_overlay")) // You need to make this PNG!
+                .texture("overlay", modLoc("block/ore_overlay"))
 
             simpleBlock(oreBlock, model)
         }
@@ -148,8 +140,9 @@ class Eln2BlockStateProviderDatagen(output: PackOutput, existingFileHelper: Exis
 /**
  * - Registers raw ore smelting, ore item smelting, raw ore blasting, from [Eln2Ores.ORE_SMELTING_FOR_DATAGEN].
  * - Registers assembly and disassembly recipes, from [Eln2Processing.PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN].
- * - Registers ingot heating, from [Eln2Ingredients.HOT_ITEMS_FOR_MODEL_AND_RECIPE_DATAGEN].
- * - Registers plate hammering and rolling, from [Eln2Ingredients.PLATES_FOR_RECIPE_DATAGEN].
+ * - Registers hot item heating, from [Eln2Ingredients.HOT_INGOTS], [Eln2Ingredients.HOT_PLATES].
+ * - Registers plate hammering and rolling, from [Eln2Ingredients.PLATES].
+ * - Registers wire extruding and slicing, from [Eln2Ingredients.WIRES].
  * */
 class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
     override fun buildRecipes(pWriter: Consumer<FinishedRecipe?>) {
@@ -158,9 +151,6 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             val blockItem = obj.oreBlockItem.get()
             val result = resultSupplier.get()
 
-            val rawId = ForgeRegistries.ITEMS.getKey(rawOreItem)!!
-            val blockItemId = ForgeRegistries.ITEMS.getKey(blockItem)!!
-            val resultId = ForgeRegistries.ITEMS.getKey(result)!!
             /**
              * Smelts the raw ore item.
              * */
@@ -171,8 +161,8 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
                 0.7f,
                 200
             ).apply {
-                unlockedBy("has_${resultId.path}", has(rawOreItem))
-                save(pWriter, resource("smelting/${rawId.path}_to_${resultId.path}_smelting"))
+                unlockedBy("has_${result.itemID.path}", has(rawOreItem))
+                save(pWriter, resource("smelting/${rawOreItem.itemID.path}_to_${result.itemID.path}_smelting"))
             }
 
             /**
@@ -185,8 +175,8 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
                 0.7f,
                 200
             ).apply {
-                unlockedBy("has_${blockItemId.path}", has(blockItem))
-                save(pWriter, resource("smelting/${blockItemId.path}_to_${resultId.path}_smelting"))
+                unlockedBy("has_${blockItem.itemID.path}", has(blockItem))
+                save(pWriter, resource("smelting/${blockItem.itemID.path}_to_${result.itemID.path}_smelting"))
             }
 
             /**
@@ -199,15 +189,15 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
                 0.7f,
                 100
             ).apply {
-                unlockedBy("has_${resultId.path}", has(rawOreItem))
-                save(pWriter, resource("blasting/${rawId.path}_to_${resultId.path}_blasting"))
+                unlockedBy("has_${result.itemID.path}", has(rawOreItem))
+                save(pWriter, resource("blasting/${rawOreItem.itemID.path}_to_${result.itemID.path}_blasting"))
             }
 
             LOG.info(
                 "Registered smelting recipes for {}, {} -> {}",
-                rawId,
-                blockItemId,
-                resultId
+                rawOreItem.itemID,
+                blockItem.itemID,
+                result.itemID
             )
         }
 
@@ -215,8 +205,6 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             val blockItem = obj.blockAndItem.item.get()
             val hull = obj.hullItem.get()
             val boxItem = obj.box.item.get()
-
-            val blockItemId = ForgeRegistries.ITEMS.getKey(blockItem)!!
 
             /**
              * Assembly recipe:
@@ -226,7 +214,7 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
                 .requires(boxItem)
                 .unlockedBy("has_hull", has(hull))
                 .unlockedBy("has_work_box", has(boxItem))
-                .save(pWriter, resource("crafting/processing_machine/${blockItemId.path}_assembly"))
+                .save(pWriter, resource("crafting/processing_machine/${blockItem.itemID.path}_assembly"))
 
             /**
              * Disassembly recipe. The hull is left behind thanks to the registered craft remainder:
@@ -234,17 +222,14 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, hull)
                 .requires(blockItem)
                 .unlockedBy("has_machine", has(blockItem))
-                .save(pWriter, resource("crafting/processing_machine/${blockItemId.path}_disassembly"))
+                .save(pWriter, resource("crafting/processing_machine/${blockItem.itemID.path}_disassembly"))
 
-            LOG.info("Registered assembly and disassembly recipes for: {}", blockItemId)
+            LOG.info("Registered assembly and disassembly recipes for: {}", blockItem.itemID)
         }
 
-        Eln2Ingredients.HOT_ITEMS_FOR_MODEL_AND_RECIPE_DATAGEN.forEach { obj ->
-            val sourceItem = obj.sourceItem?.get() ?: return@forEach
-            val sourceItemId = ForgeRegistries.ITEMS.getKey(sourceItem)!!
-
-            val hotItem = obj.registeredTransformedItem.get()
-            val hotItemId = ForgeRegistries.ITEMS.getKey(hotItem)!!
+        sequentialForEach(Eln2Ingredients.HOT_INGOTS.itemsForRecipeDatagen, Eln2Ingredients.HOT_PLATES.itemsForRecipeDatagen) { obj ->
+            val sourceItem = obj.sourceItemForVanillaHeating?.get() ?: return@sequentialForEach
+            val hotItem = obj.info.get()
 
             /**
              * Smelts into hot ingots:
@@ -257,7 +242,7 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
                 200
             ).apply {
                 unlockedBy("has_item", has(sourceItem))
-                save(pWriter, resource("smelting/${sourceItemId.path}_to_${hotItemId.path}_smelting"))
+                save(pWriter, resource("smelting/${sourceItem.itemID.path}_to_${hotItem.itemID.path}_smelting"))
             }
 
             /**
@@ -271,42 +256,62 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
                 100
             ).apply {
                 unlockedBy("has_item", has(sourceItem))
-                save(pWriter, resource("blasting/${sourceItemId.path}_to_${hotItemId.path}_blasting"))
+                save(pWriter, resource("blasting/${sourceItem.itemID.path}_to_${hotItem.itemID.path}_blasting"))
             }
 
-            LOG.info("Added smelting and blasting to heat {} into {}", sourceItemId, hotItemId)
+            LOG.info("Added smelting and blasting to heat {} into {}", sourceItem.itemID, hotItem.itemID)
         }
 
-        Eln2Ingredients.PLATES_FOR_RECIPE_DATAGEN.forEach { obj ->
-            val sourceItem = obj.item.sourceItem?.get() ?: return@forEach
-            val sourceItemId = ForgeRegistries.ITEMS.getKey(sourceItem)!!
+        Eln2Ingredients.PLATES.itemsForRecipeDatagen.forEach { obj ->
+            val plateItem = obj.info.get()
+            val rollingItem = obj.sourceItemForRolling?.get()
+            val blacksmithingItem = obj.sourceItemForFlattening?.get()
 
-            val plateItem = obj.item.registeredTransformedItem.get()
-            val plateItemId = ForgeRegistries.ITEMS.getKey(plateItem)!!
-
-            if(obj.hasRollingRecipe) {
-                /**
-                 * Rolling machine into the plate:
-                 * */
+            if(rollingItem != null) {
                 DirectSimpleProcessingRecipeBuilder(Eln2Processing.ROLLING_RECIPE)
-                    .withInput(sourceItem)
+                    .withInput(rollingItem)
                     .withOutput(plateItem)
                     .withDuration(obj.rollingDuration)
-                    .save(pWriter, resource("rolling/${sourceItemId.path}_to_${plateItemId.path}"))
+                    .save(pWriter, resource("rolling/${rollingItem.itemID.path}_to_${plateItem.itemID.path}"))
 
-                LOG.info("Added plate rolling recipe from {} to {}", sourceItemId, plateItemId)
+                LOG.info("Added plate rolling recipe from {} to {}", rollingItem.itemID, plateItem.itemID)
             }
 
-            if(obj.hasBlacksmithingRecipe) {
-                /**
-                 * Hammering into the plate:
-                 * */
-                BlacksmithingRecipeBuilder(Ingredient.of(sourceItem), plateItem, 1)
-                    .setTool(Eln2Processing.BLACKSMITHING_HAMMER_ITEM.get())
-                    .setMode(Eln2Processing.BLACKSMITHING_HAMMER_FLATTENING)
-                    .save(pWriter, resource("blacksmithing/${sourceItemId.path}_to_${plateItemId.path}"))
+            if(blacksmithingItem != null) {
+                BlacksmithingRecipeBuilder(Ingredient.of(blacksmithingItem), plateItem, 1)
+                    .withTool(Eln2Processing.BLACKSMITHING_HAMMER_ITEM.get())
+                    .withMode(Eln2Processing.BLACKSMITHING_HAMMER_FLATTENING)
+                    .withCooldown(obj.blacksmithingDuration)
+                    .save(pWriter, resource("blacksmithing/${blacksmithingItem.itemID.path}_to_${plateItem.itemID.path}"))
 
-                LOG.info("Added plate blacksmithing recipe from {} to {}", sourceItemId, plateItemId)
+                LOG.info("Added plate blacksmithing recipe from {} to {}", blacksmithingItem.itemID, plateItem.itemID)
+            }
+        }
+
+        Eln2Ingredients.WIRES.itemsForRecipeDatagen.forEach { obj ->
+            val wireItem = obj.info.get()
+            val itemForSlicing = obj.sourceItemForSlicing?.get()
+            val itemForExtruding = obj.sourceItemForExtruding?.get()
+
+            if(itemForSlicing != null) {
+                BlacksmithingRecipeBuilder(Ingredient.of(itemForSlicing), wireItem, 1)
+                    .withTool(Eln2Processing.BLACKSMITHING_CHISEL_AND_HAMMER_ITEM.get())
+                    .withMode(Eln2Processing.BLACKSMITHING_CHISEL_AND_HAMMER_SLICING)
+                    .withCooldown(obj.blacksmithingDuration)
+                    .save(pWriter, resource("blacksmithing/${itemForSlicing.itemID.path}_to_${wireItem.itemID.path}"))
+
+                LOG.info("Added wire blacksmithing recipe from {} to {}", itemForSlicing.itemID, wireItem.itemID)
+            }
+
+            if(itemForExtruding != null) {
+                CatalyzedSimpleProcessingRecipeBuilder(Eln2Processing.EXTRUDING_RECIPE)
+                    .withInput(itemForExtruding)
+                    .withCatalyst(Eln2Processing.EXTRUDER_WIRE_DIE.get())
+                    .withOutput(wireItem)
+                    .withDuration(obj.extrudingDuration)
+                    .save(pWriter, resource("extruding/${itemForExtruding.itemID.path}_to_${wireItem.itemID.path}"))
+
+                LOG.info("Added wire extruding recipe from {} to {}", itemForExtruding.itemID, wireItem.itemID)
             }
         }
     }
@@ -314,11 +319,10 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
 
 /**
  * - Generates the raw ore item model and the block item model from [Eln2Ores.ORE_FOR_MODEL_DATAGEN], which is built by [Eln2Ores.withModelDatagen] which registers tints on indices we use in the models.
- * - Generates bucket item models, from [ForgeFluidRegistry.FORGE_FLUID_BUCKETS].
+ * - Generates bucket models, from [ForgeFluidRegistry.FORGE_FLUID_BUCKETS].
  * - Generates chemical bottle models, from [Eln2ForgeFluids.CHEMICAL_BOTTLES_FOR_RESOLVE_AND_DATAGEN].
- * - Generates item models for the machine hulls and final machines, from [Eln2Processing.PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN].
- * - Generates item models for hot items, from [Eln2Ingredients.HOT_ITEMS_FOR_MODEL_AND_RECIPE_DATAGEN].
- * - Generates plate models, from [Eln2Ingredients.PLATES_FOR_MODEL_DATAGEN].
+ * - Generates models for the machine hulls and final machines, from [Eln2Processing.PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN].
+ * - Generates models for all the repositories in [Eln2Ingredients].
  * */
 class Eln2ItemModelProviderDatagen(output: PackOutput, existingFileHelper: ExistingFileHelper) : ItemModelProvider(output, MODID, existingFileHelper) {
     override fun registerModels() {
@@ -326,28 +330,22 @@ class Eln2ItemModelProviderDatagen(output: PackOutput, existingFileHelper: Exist
             val rawOreItem = obj.rawOreItem.get()
             val oreBlock = obj.oreBlock.get()
 
-            val rawId = ForgeRegistries.ITEMS.getKey(rawOreItem)!!
-            val blockId = ForgeRegistries.BLOCKS.getKey(oreBlock)!!
-
             /**
              * For the block item, we parent the block's model:
              * */
-            withExistingParent(
-                blockId.toString(),
-                modLoc("block/${blockId.path}")
-            )
+            withExistingParent(oreBlock.blockID.toString(), modLoc("block/${oreBlock.blockID.path}"))
 
             /**
              * For the raw ore, we create a model with 2 layers, like the block model:
              * */
             singleTexture(
-                rawId.path,
+                rawOreItem.itemID.path,
                 mcLoc("item/generated"),
                 "layer0",
                 modLoc("item/raw_ore_overlay")
             )
 
-            LOG.info("Registered ore item models for {}", blockId)
+            LOG.info("Registered ore item models for {}", oreBlock.blockID)
         }
 
         ForgeFluidRegistry.FORGE_FLUID_BUCKETS.entries.forEach { bucketEntry ->
@@ -367,56 +365,107 @@ class Eln2ItemModelProviderDatagen(output: PackOutput, existingFileHelper: Exist
 
         Eln2ForgeFluids.CHEMICAL_BOTTLES_FOR_RESOLVE_AND_DATAGEN.forEach { (eln2Fluid, registeredBottle) ->
             val bottle = registeredBottle.bottleItem.get()
-            val bottleId = ForgeRegistries.ITEMS.getKey(bottle)!!
 
-            getBuilder(bottleId.path)
+            getBuilder(bottle.itemID.path)
                 .parent(getExistingFile(mcLoc("item/generated")))
                 .texture("layer0", mcLoc("item/glass_bottle"))
                 .texture("layer1", modLoc("item/bottle_fluid_overlay"))
 
-            LOG.info("Registered bottle item {} for ELN2 fluid {}", bottleId, eln2Fluid.id)
+            LOG.info("Registered bottle item {} for ELN2 fluid {}", bottle.itemID, eln2Fluid.id)
         }
 
         Eln2Processing.PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN.forEach { obj ->
             val hullItem = obj.hullItem.get()
             val machineBlockItem = obj.blockAndItem.item.get()
 
-            val hullId = ForgeRegistries.ITEMS.getKey(hullItem)!!
-            val blockItemId = ForgeRegistries.ITEMS.getKey(machineBlockItem)!!
-
             val model = obj.modelSupplier.get()
             val bodyLocation = model.body.modelLocation()
 
-            withExistingParent(hullId.path, bodyLocation)
+            withExistingParent(hullItem.itemID.path, bodyLocation)
 
             /**
              * Registers the finished machine's model as simply the hull model.
              * We might be able to refine this in the future.
              * It might be possible to take the box's item model (which would be a generated model, from a sprite) and layer it on top of the model used here.
              * */
-            withExistingParent(blockItemId.path, bodyLocation)
+            withExistingParent(machineBlockItem.itemID.path, bodyLocation)
 
-            LOG.info("Registered processing machine models for {} and {}", hullId, blockItemId)
+            LOG.info("Registered processing machine models for {} and {}", hullItem.itemID, machineBlockItem.itemID)
+        }
+
+        /**
+         * Does some tricks so the item model glows, ignoring light, for hot items.
+         * We need to write this data in the model file; parenting doesn't work.
+         * That's the first thing I tried, and it has some undefined behavior which makes all children use the texture of the (I think) first child that is loaded with that parent.
+         * */
+        fun ItemModelBuilder.loadGlowingTemplate(texture: ResourceLocation): ItemModelBuilder {
+            this.texture("layer0", texture)
+            this.guiLight(GuiLight.FRONT)
+
+            this.customLoader { a, b -> ItemLayerModelBuilder.begin(a, b) }
+                .emissive(15, 15, 0)
+                .end()
+
+            /**
+             * Source: `minecraft:item/generated`
+             * */
+            this.transforms()
+                .transform(ItemDisplayContext.GROUND)
+                    .rotation(0f, 0f, 0f)
+                    .translation(0f, 2f, 0f)
+                    .scale(0.5f, 0.5f, 0.5f)
+                    .end()
+                .transform(ItemDisplayContext.HEAD)
+                    .rotation(0f, 180f, 0f)
+                    .translation(0f, 13f, 7f)
+                    .scale(1f, 1f, 1f)
+                    .end()
+                .transform(ItemDisplayContext.THIRD_PERSON_RIGHT_HAND)
+                    .rotation(0f, 0f, 0f)
+                    .translation(0f, 3f, 1f)
+                    .scale(0.55f, 0.55f, 0.55f)
+                    .end()
+                .transform(ItemDisplayContext.FIRST_PERSON_RIGHT_HAND)
+                    .rotation(0f, -90f, 25f)
+                    .translation(1.13f, 3.2f, 1.13f)
+                    .scale(0.68f, 0.68f, 0.68f)
+                    .end()
+                .transform(ItemDisplayContext.FIXED)
+                    .rotation(0f, 180f, 0f)
+                    .scale(1f, 1f, 1f)
+                    .end()
+                .end()
+
+            return this
         }
 
         /**
          * Generates item models that simply tint a base texture.
          * */
-        fun fromTemplate(source: Iterable<Supplier<Item>>, baseTexture: String, name: String, parent: ResourceLocation = mcLoc("item/generated")) {
+        fun fromTemplate(source: Iterable<Supplier<Item>>, baseTexture: String, name: String, glowing: Boolean = false) {
             source.forEach { obj ->
                 val item = obj.get()
-                val itemId = ForgeRegistries.ITEMS.getKey(item)!!
 
-                getBuilder(itemId.path)
-                    .parent(getExistingFile(parent))
-                    .texture("layer0", modLoc("item/$baseTexture"))
+                val baseTextureResource = modLoc("item/$baseTexture")
 
-                LOG.info("Registered {} model for {}", name, itemId)
+                if(glowing) {
+                    getBuilder(item.itemID.path)
+                        .loadGlowingTemplate(baseTextureResource)
+                }
+                else {
+                    getBuilder(item.itemID.path)
+                        .parent(getExistingFile(mcLoc("item/generated")))
+                        .texture("layer0", baseTextureResource)
+                }
+
+                LOG.info("Registered {} model for {}", name, item.itemID)
             }
         }
 
-        fromTemplate(Eln2Ingredients.INGOTS_FOR_TINT_AND_DATAGEN, "ingot_base", "ingot")
-        fromTemplate(Eln2Ingredients.HOT_ITEMS_FOR_MODEL_AND_RECIPE_DATAGEN, "hot_ingot_base", "hot", modLoc("item/glowing"))
-        fromTemplate(Eln2Ingredients.PLATES_FOR_MODEL_DATAGEN, "plate_base", "plate")
+        fromTemplate(Eln2Ingredients.INGOTS.itemsForModelDatagen, "ingot_base", "ingot")
+        fromTemplate(Eln2Ingredients.HOT_INGOTS.itemsForModelDatagen, "hot_ingot_base", "hot ingot", true)
+        fromTemplate(Eln2Ingredients.PLATES.itemsForModelDatagen, "plate_base", "plate")
+        fromTemplate(Eln2Ingredients.HOT_PLATES.itemsForModelDatagen, "hot_plate_base", "hot plate", true)
+        fromTemplate(Eln2Ingredients.WIRES.itemsForModelDatagen, "wire_base", "wire")
     }
 }

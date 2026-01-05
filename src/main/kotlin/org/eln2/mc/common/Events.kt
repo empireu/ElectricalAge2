@@ -64,7 +64,6 @@ import org.eln2.mc.Eln2ItemModelProviderDatagen
 import org.eln2.mc.Eln2BlockStateProviderDatagen
 import org.eln2.mc.Eln2RecipeProviderDatagen
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
-import org.eln2.mc.common.content.modules.Eln2Ingredients
 import org.eln2.mc.extensions.formatted
 import java.util.function.Supplier
 
@@ -97,6 +96,13 @@ object ModEvents {
         lookupTable.trim()
 
         return lookupTable
+    }
+
+    /**
+     * Used by [registerItemColors].
+     * */
+    interface ItemAndTint : Supplier<Item> {
+        val tint: MyColor
     }
 
     @SubscribeEvent @JvmStatic
@@ -140,26 +146,19 @@ object ModEvents {
             }, item)
         }
 
-        /**
-         * Tints texture 0 for these items.
-         * */
-        fun derivedItems(pairs: Iterable<Pair<MyColor, Supplier<Item>>>) {
-            pairs.forEach { (tint, supplier) ->
-                val item = supplier.get()
+        ContentManager.ITEMS_FOR_TINT_ON_LAYER0.forEach { obj ->
+            val tint = obj.tint
+            val item = obj.get()
 
-                event.register({ _, tintIndex ->
-                    if(tintIndex == 0) {
-                        tint.data
-                    }
-                    else {
-                        MyColor.WHITE.data
-                    }
-                }, item)
-            }
+            event.register({ _, tintIndex ->
+                if(tintIndex == 0) {
+                    tint.data
+                }
+                else {
+                    MyColor.WHITE.data
+                }
+            }, item)
         }
-
-        derivedItems(Eln2Ingredients.INGOTS_FOR_TINT_AND_DATAGEN.map { it.tint to it.ingotItem })
-        derivedItems(Eln2Ingredients.TRANSFORMED_ITEMS_FOR_TINT.map { it.tint to it.registeredTransformedItem })
     }
 
     @SubscribeEvent @JvmStatic

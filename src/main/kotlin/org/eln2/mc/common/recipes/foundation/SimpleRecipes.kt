@@ -1,3 +1,5 @@
+@file:Suppress("unused")
+
 package org.eln2.mc.common.recipes.foundation
 
 import com.google.gson.JsonObject
@@ -323,6 +325,107 @@ class CatalyzedSimpleProcessingRecipe(
             pBuffer.writeDouble(pRecipe.duration)
             pBuffer.writeInt(pRecipe.tier)
         }
+    }
+}
+
+class CatalyzedSimpleProcessingRecipeBuilder(val recipe: RecipeType<CatalyzedSimpleProcessingRecipe>) {
+    private var input: Ingredient = Ingredient.EMPTY
+    private var catalyst: Ingredient = Ingredient.EMPTY
+    private var output: ItemStack = ItemStack.EMPTY
+    private var duration: Double = 200.0
+    private var tier: Int = 0
+
+    fun withInput(input: ItemLike): CatalyzedSimpleProcessingRecipeBuilder {
+        this.input = Ingredient.of(input)
+        return this
+    }
+
+    fun withInput(input: Ingredient): CatalyzedSimpleProcessingRecipeBuilder {
+        this.input = input
+        return this
+    }
+
+    fun withCatalyst(catalyst: ItemLike): CatalyzedSimpleProcessingRecipeBuilder {
+        this.catalyst = Ingredient.of(catalyst)
+        return this
+    }
+
+    fun withCatalyst(catalyst: Ingredient): CatalyzedSimpleProcessingRecipeBuilder {
+        this.catalyst = catalyst
+        return this
+    }
+
+    fun withOutput(output: ItemLike, count: Int = 1): CatalyzedSimpleProcessingRecipeBuilder {
+        this.output = ItemStack(output, count)
+        return this
+    }
+
+    fun withDuration(duration: Double): CatalyzedSimpleProcessingRecipeBuilder {
+        this.duration = duration
+        return this
+    }
+
+    fun withTier(tier: Int): CatalyzedSimpleProcessingRecipeBuilder {
+        this.tier = tier
+        return this
+    }
+
+    fun save(consumer: Consumer<FinishedRecipe?>, id: ResourceLocation) {
+        check(!input.isEmpty) {
+            DEBUGGER_BREAK("Input for catalyzed simple processing recipe cannot be empty")
+        }
+
+        check(!catalyst.isEmpty) {
+            DEBUGGER_BREAK("Catalyst for catalyzed simple processing recipe cannot be empty")
+        }
+
+        check(!output.isEmpty) {
+            DEBUGGER_BREAK("Output for catalyzed simple processing recipe cannot be empty")
+        }
+
+        consumer.accept(
+            Serializer(
+                id,
+                recipe,
+                input,
+                catalyst,
+                output,
+                duration,
+                tier
+            )
+        )
+    }
+
+    class Serializer(
+        val recipeId: ResourceLocation,
+        val recipe: RecipeType<CatalyzedSimpleProcessingRecipe>,
+        val input: Ingredient,
+        val catalyst: Ingredient,
+        val output: ItemStack,
+        val duration: Double,
+        val tier: Int
+    ) : FinishedRecipe {
+        override fun serializeRecipeData(json: JsonObject) {
+            json.add("ingredient", input.toJson())
+
+            json.add("catalyst", catalyst.toJson())
+
+            json.add("result", JsonObject().also { resultJson ->
+                resultJson.addProperty("item", ForgeRegistries.ITEMS.getKey(output.item)!!.toString())
+                resultJson.addProperty("count", output.count)
+            })
+
+            json.addProperty("duration", duration)
+
+            if (tier != 0) {
+                json.addProperty("tier", tier)
+            }
+        }
+
+        override fun getId(): ResourceLocation = recipeId
+        override fun getType(): RecipeSerializer<*> = RecipeRegistry.getRecipeSerializer(recipe)!!.get()
+        override fun serializeAdvancement(): JsonObject? = null
+        override fun getAdvancementId(): ResourceLocation? = null
     }
 }
 

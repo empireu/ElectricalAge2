@@ -10,6 +10,7 @@ import org.eln2.mc.ClientOnly
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.LOG
 import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.common.ModEvents
 import org.eln2.mc.common.content.modules.world.Eln2Ores
 import org.eln2.mc.requireIsOnRenderThread
 import java.util.function.Supplier
@@ -326,7 +327,7 @@ object ContentManager {
 
         @Suppress("UNCHECKED_CAST")
         SELF_DROP_BLOCKS_FOR_DATAGEN.addUnique(this as Supplier<Block>) {
-            "Duplicate self drop for $this"
+            DEBUGGER_BREAK("Duplicate self drop for $this")
         }
 
         return this
@@ -341,9 +342,22 @@ object ContentManager {
         initScope.validate()
 
         BLOCK_TAGS_FOR_DATAGEN.addUnique(Pair(this, tag)) {
-            "Duplicate block tag for $this"
+            DEBUGGER_BREAK("Duplicate block tag for $this")
         }
 
         return this
+    }
+
+    /**
+     * Tint registered in [ModEvents.registerItemColors], on texture index 0.
+     * */
+    val ITEMS_FOR_TINT_ON_LAYER0 = LinkedHashSet<ModEvents.ItemAndTint>()
+
+    fun addItemForTint(item: ModEvents.ItemAndTint) {
+        initScope.validate()
+
+        ITEMS_FOR_TINT_ON_LAYER0.addUnique(item) {
+            DEBUGGER_BREAK("Duplicate item for tint $item")
+        }
     }
 }

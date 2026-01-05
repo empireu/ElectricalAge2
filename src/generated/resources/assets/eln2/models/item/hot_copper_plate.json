@@ -74,6 +74,6 @@
   "render_types": {},
   "render_types_fast": {},
   "textures": {
-    "layer0": "eln2:item/hot_ingot_base"
+    "layer0": "eln2:item/hot_plate_base"
   }
 }
