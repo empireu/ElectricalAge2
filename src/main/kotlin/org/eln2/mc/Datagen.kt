@@ -402,13 +402,13 @@ class Eln2ItemModelProviderDatagen(output: PackOutput, existingFileHelper: Exist
         /**
          * Generates item models that simply tint a base texture.
          * */
-        fun fromTemplate(source: Iterable<Supplier<Item>>, baseTexture: String, name: String) {
+        fun fromTemplate(source: Iterable<Supplier<Item>>, baseTexture: String, name: String, parent: ResourceLocation = mcLoc("item/generated")) {
             source.forEach { obj ->
                 val item = obj.get()
                 val itemId = ForgeRegistries.ITEMS.getKey(item)!!
 
                 getBuilder(itemId.path)
-                    .parent(getExistingFile(mcLoc("item/generated")))
+                    .parent(getExistingFile(parent))
                     .texture("layer0", modLoc("item/$baseTexture"))
 
                 LOG.info("Registered {} model for {}", name, itemId)
@@ -416,7 +416,7 @@ class Eln2ItemModelProviderDatagen(output: PackOutput, existingFileHelper: Exist
         }
 
         fromTemplate(Eln2Ingredients.INGOTS_FOR_TINT_AND_DATAGEN, "ingot_base", "ingot")
-        fromTemplate(Eln2Ingredients.HOT_ITEMS_FOR_MODEL_AND_RECIPE_DATAGEN, "hot_ingot_base", "hot")
+        fromTemplate(Eln2Ingredients.HOT_ITEMS_FOR_MODEL_AND_RECIPE_DATAGEN, "hot_ingot_base", "hot", modLoc("item/glowing"))
         fromTemplate(Eln2Ingredients.PLATES_FOR_MODEL_DATAGEN, "plate_base", "plate")
     }
 }

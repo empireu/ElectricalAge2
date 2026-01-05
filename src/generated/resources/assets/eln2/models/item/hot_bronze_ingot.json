@@ -1,5 +1,5 @@
 {
-  "parent": "minecraft:item/generated",
+  "parent": "eln2:item/glowing",
   "textures": {
     "layer0": "eln2:item/hot_ingot_base"
   }
