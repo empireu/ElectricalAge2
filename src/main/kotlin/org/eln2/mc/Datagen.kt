@@ -140,9 +140,7 @@ class Eln2BlockStateProviderDatagen(output: PackOutput, existingFileHelper: Exis
 /**
  * - Registers raw ore smelting, ore item smelting, raw ore blasting, from [Eln2Ores.ORE_SMELTING_FOR_DATAGEN].
  * - Registers assembly and disassembly recipes, from [Eln2Processing.PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN].
- * - Registers hot item heating, from [Eln2Ingredients.HOT_INGOTS], [Eln2Ingredients.HOT_PLATES].
- * - Registers plate hammering and rolling, from [Eln2Ingredients.PLATES].
- * - Registers wire extruding and slicing, from [Eln2Ingredients.WIRES].
+ * - Registers recipes from all repositories in [Eln2Ingredients].
  * */
 class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
     override fun buildRecipes(pWriter: Consumer<FinishedRecipe?>) {
@@ -314,6 +312,21 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
                 LOG.info("Added wire extruding recipe from {} to {}", itemForExtruding.itemID, wireItem.itemID)
             }
         }
+
+        Eln2Ingredients.DUSTS.itemsForRecipeDatagen.forEach { obj ->
+            val dustItem = obj.info.get()
+
+            obj.sourceItemsForCrushing.forEach { crushingInfo ->
+                DirectSimpleProcessingRecipeBuilder(Eln2Processing.CRUSHING_RECIPE)
+                    .withInput(crushingInfo.sourceItem.get())
+                    .withOutput(dustItem)
+                    .withDuration(crushingInfo.duration)
+                    .withTier(crushingInfo.tier)
+                    .save(pWriter, resource("crushing/${crushingInfo.sourceItem.get().itemID.path}_to_${dustItem.itemID.path}"))
+
+                LOG.info("Added dust crushing recipe from {} to {}", crushingInfo.sourceItem.get().itemID, dustItem.itemID)
+            }
+        }
     }
 }
 
@@ -442,7 +455,7 @@ class Eln2ItemModelProviderDatagen(output: PackOutput, existingFileHelper: Exist
         /**
          * Generates item models that simply tint a base texture.
          * */
-        fun fromTemplate(source: Iterable<Supplier<Item>>, baseTexture: String, name: String, glowing: Boolean = false) {
+        fun fromBase(source: Iterable<Supplier<Item>>, baseTexture: String, name: String, glowing: Boolean = false) {
             source.forEach { obj ->
                 val item = obj.get()
 
@@ -462,10 +475,11 @@ class Eln2ItemModelProviderDatagen(output: PackOutput, existingFileHelper: Exist
             }
         }
 
-        fromTemplate(Eln2Ingredients.INGOTS.itemsForModelDatagen, "ingot_base", "ingot")
-        fromTemplate(Eln2Ingredients.HOT_INGOTS.itemsForModelDatagen, "hot_ingot_base", "hot ingot", true)
-        fromTemplate(Eln2Ingredients.PLATES.itemsForModelDatagen, "plate_base", "plate")
-        fromTemplate(Eln2Ingredients.HOT_PLATES.itemsForModelDatagen, "hot_plate_base", "hot plate", true)
-        fromTemplate(Eln2Ingredients.WIRES.itemsForModelDatagen, "wire_base", "wire")
+        fromBase(Eln2Ingredients.INGOTS.itemsForModelDatagen, "ingot_base", "ingot")
+        fromBase(Eln2Ingredients.HOT_INGOTS.itemsForModelDatagen, "hot_ingot_base", "hot ingot", true)
+        fromBase(Eln2Ingredients.PLATES.itemsForModelDatagen, "plate_base", "plate")
+        fromBase(Eln2Ingredients.HOT_PLATES.itemsForModelDatagen, "hot_plate_base", "hot plate", true)
+        fromBase(Eln2Ingredients.WIRES.itemsForModelDatagen, "wire_base", "wire")
+        fromBase(Eln2Ingredients.DUSTS.itemsForModelDatagen, "dust_base", "dust")
     }
 }

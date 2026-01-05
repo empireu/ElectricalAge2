@@ -6,6 +6,7 @@ import net.minecraft.world.item.Item
 import net.minecraft.world.item.Items
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.utils.addUnique
+import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.ModEvents
 import org.eln2.mc.common.items.ItemRegistry
@@ -146,14 +147,49 @@ object Eln2Ingredients : ContentModule() {
          * Registers extruding recipe that turns [sourceItemForExtruding] into [info].
          * */
         var sourceItemForExtruding: Supplier<Item>? = null
-        var extrudingDuration = 120.0
+        var extrudingDuration = 10.0
     }
 
     //#endregion
 
+    //#region Dusts
+
+    interface Dust
+    val DUSTS = IngredientSetWithRecipes(::DustBuilder)
+
+    class DustBuilder(val info: IngredientInfo<Dust>) {
+        data class CrushingInfo(
+            val sourceItem: Supplier<Item>,
+            val tier: Int,
+            val duration: Double
+        )
+
+        var sourceItemsForCrushing = LinkedHashSet<CrushingInfo>()
+
+        /**
+         * Adds a recipe that transforms [sourceItem] into [info] via crushing.
+         * */
+        fun fromCrushing(sourceItem: Supplier<Item>, tier: Int = 0, duration: Double = 30.0) {
+            sourceItemsForCrushing.add(CrushingInfo(sourceItem, tier, duration))
+        }
+    }
+
+    //#endregion
+
+    val CRUSHING_RECIPES_FOR_DATAGEN = LinkedHashMap<Supplier<Item>, Supplier<Item>>()
+
+    fun<T : Supplier<Item>> T.withCrushingRecipeDatagen(result: Supplier<Item>) : T {
+        CRUSHING_RECIPES_FOR_DATAGEN.putUnique(this, result)
+        return this
+    }
+
     //#endregion
 
     val COKE = itemDefault("coke")
+
+    val COKE_DUST = DUSTS.build("coke_dust", MyColor(127, 127, 127)) {
+        fromCrushing(COKE)
+    }
 
     //#region Crushed Ores
 
@@ -176,6 +212,12 @@ object Eln2Ingredients : ContentModule() {
         sourceItemForExtruding = LEAD_INGOT
     }
 
+    val LEAD_DUST = DUSTS.build("lead_dust", MyColor(110, 110, 130)) {
+        fromCrushing(LEAD_INGOT, duration = 15.0)
+        fromCrushing(LEAD_PLATE, duration = 12.5)
+        fromCrushing(LEAD_WIRE, duration = 8.0)
+    }
+
     //#endregion
 
     //#region Tin
@@ -191,6 +233,12 @@ object Eln2Ingredients : ContentModule() {
         sourceItemForExtruding = TIN_INGOT
     }
 
+    val TIN_DUST = DUSTS.build("tin_dust", MyColor(205, 195, 193)) {
+        fromCrushing(TIN_INGOT, duration = 20.0)
+        fromCrushing(TIN_PLATE, duration = 18.0)
+        fromCrushing(TIN_WIRE, duration = 15.0)
+    }
+
     //#endregion
 
     //#region Iron
@@ -201,6 +249,11 @@ object Eln2Ingredients : ContentModule() {
 
     val IRON_PLATE = PLATES.build("iron_plate", MyColor.WHITE) {
         allRecipes(HOT_IRON_INGOT)
+    }
+
+    val IRON_DUST = DUSTS.build("iron_dust", MyColor(200, 200, 200)) {
+        fromCrushing(Items::IRON_INGOT)
+        fromCrushing(IRON_PLATE)
     }
 
     //#endregion
@@ -219,9 +272,18 @@ object Eln2Ingredients : ContentModule() {
         sourceItemForVanillaHeating = COPPER_PLATE
     }
 
-    val COPPER_WIRE = WIRES.build("copper_wire", MyColor(184, 115, 51)) {
+    val COPPER_WIRE = WIRES.build("copper_wire", MyColor(284, 185, 135)) {
         sourceItemForSlicing = HOT_COPPER_PLATE
         sourceItemForExtruding = HOT_COPPER_INGOT
+    }
+
+    val ENAMELED_COPPER_WIRE = WIRES.register("enameled_copper_wire", MyColor(184, 115, 51))
+
+    val COPPER_DUST = DUSTS.build("copper_dust", COPPER_WIRE.tint) {
+        fromCrushing(Items::COPPER_INGOT)
+        fromCrushing(COPPER_PLATE)
+        fromCrushing(COPPER_WIRE)
+        fromCrushing(ENAMELED_COPPER_WIRE)
     }
 
     //#endregion

@@ -3,7 +3,7 @@
   "catalyst": {
     "item": "eln2:extruder_wire_die"
   },
-  "duration": 120.0,
+  "duration": 10.0,
   "ingredient": {
     "item": "eln2:tin_ingot"
   },

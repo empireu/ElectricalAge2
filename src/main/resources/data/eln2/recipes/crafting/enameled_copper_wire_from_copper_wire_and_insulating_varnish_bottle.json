@@ -1,0 +1,20 @@
+{
+    "type": "minecraft:crafting_shaped",
+    "pattern": [
+        "WWW",
+        "WBW",
+        "WWW"
+    ],
+    "key": {
+        "W": {
+            "item": "eln2:copper_wire"
+        },
+        "B": {
+            "item": "eln2:insulating_varnish_bottle"
+        }
+    },
+    "result": {
+        "item": "eln2:enameled_copper_wire",
+        "count": 8
+    }
+}
