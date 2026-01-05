@@ -308,12 +308,15 @@ object Eln2Processing : ContentModule() {
         ::BlacksmithingStationBlockEntity
     )
 
+    const val BLACKSMITHING_HAMMER_FLATTENING = "flattening"
+    const val BLACKSMITHING_HAMMER_TWO_SIDE_FLATTENING = "two_side_flattening"
+
     val BLACKSMITHING_HAMMER_ITEM = item("blacksmithing_hammer") {
         BlacksmithingToolItem(
             30,
             listOf(
-                "flattening",
-                "two_side_flattening"
+                BLACKSMITHING_HAMMER_FLATTENING,
+                BLACKSMITHING_HAMMER_TWO_SIDE_FLATTENING
             )
         )
     }

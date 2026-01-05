@@ -1,3 +1,5 @@
+@file:Suppress("unused")
+
 package org.eln2.mc
 
 import net.minecraft.SharedConstants
@@ -24,11 +26,11 @@ import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.containers.ContainerRegistry
-import org.eln2.mc.common.content.modules.ContentManager
 import org.eln2.mc.common.content.OscilloscopeCopyManager
 import org.eln2.mc.common.content.OscilloscopeShader
 import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.content.fluid.ChemicalBottleItem
+import org.eln2.mc.common.content.modules.ContentManager
 import org.eln2.mc.common.entities.EntityRegistry
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.grids.TerminalHighlightRenderer
@@ -162,12 +164,12 @@ fun getResourceString(location: ResourceLocation, charset: Charset = Charset.def
     getResourceBinary(location).toString(charset)
 
 val ELN2_DEBUG get() = true
-val ELN2_LOG_STATS get() = true
+val ELN2_LOG_STATS get() = false
 
 fun getResourceStringHelper(resource: String) : String =
     if (!SharedConstants.IS_RUNNING_IN_IDE) getResourceString(resource(resource))
     else Files.readString(Path("./src/main/resources/assets/eln2/$resource"))
 
-fun getResourceBinaryHelper(resource: String) =
+fun getResourceBinaryHelper(resource: String): ByteArray =
     if (!SharedConstants.IS_RUNNING_IN_IDE) getResourceBinary(resource(resource))
     else Files.readAllBytes(Path("./src/main/resources/assets/eln2/$resource"))

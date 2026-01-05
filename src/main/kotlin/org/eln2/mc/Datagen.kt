@@ -11,6 +11,7 @@ import net.minecraft.data.recipes.SimpleCookingRecipeBuilder
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.flag.FeatureFlags
 import net.minecraft.world.item.BucketItem
+import net.minecraft.world.item.Item
 import net.minecraft.world.item.crafting.Ingredient
 import net.minecraftforge.client.model.generators.BlockStateProvider
 import net.minecraftforge.client.model.generators.ItemModelProvider
@@ -20,11 +21,15 @@ import net.minecraftforge.common.data.ExistingFileHelper
 import net.minecraftforge.registries.ForgeRegistries
 import org.eln2.mc.common.content.modules.ContentManager
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
+import org.eln2.mc.common.content.modules.Eln2Ingredients
 import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.content.modules.world.Eln2Ores
+import org.eln2.mc.common.content.processing.BlacksmithingRecipeBuilder
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
+import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipeBuilder
 import java.util.concurrent.CompletableFuture
 import java.util.function.Consumer
+import java.util.function.Supplier
 
 /**
  * Registers blocks dropping their block item when broken, from [ContentManager.SELF_DROP_BLOCKS_FOR_DATAGEN].
@@ -143,6 +148,8 @@ class Eln2BlockStateProviderDatagen(output: PackOutput, existingFileHelper: Exis
 /**
  * - Registers raw ore smelting, ore item smelting, raw ore blasting, from [Eln2Ores.ORE_SMELTING_FOR_DATAGEN].
  * - Registers assembly and disassembly recipes, from [Eln2Processing.PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN].
+ * - Registers ingot heating, from [Eln2Ingredients.HOT_ITEMS_FOR_MODEL_AND_RECIPE_DATAGEN].
+ * - Registers plate hammering and rolling, from [Eln2Ingredients.PLATES_FOR_RECIPE_DATAGEN].
  * */
 class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
     override fun buildRecipes(pWriter: Consumer<FinishedRecipe?>) {
@@ -231,6 +238,77 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
 
             LOG.info("Registered assembly and disassembly recipes for: {}", blockItemId)
         }
+
+        Eln2Ingredients.HOT_ITEMS_FOR_MODEL_AND_RECIPE_DATAGEN.forEach { obj ->
+            val sourceItem = obj.sourceItem?.get() ?: return@forEach
+            val sourceItemId = ForgeRegistries.ITEMS.getKey(sourceItem)!!
+
+            val hotItem = obj.registeredTransformedItem.get()
+            val hotItemId = ForgeRegistries.ITEMS.getKey(hotItem)!!
+
+            /**
+             * Smelts into hot ingots:
+             * */
+            SimpleCookingRecipeBuilder.smelting(
+                Ingredient.of(sourceItem),
+                RecipeCategory.MISC,
+                hotItem,
+                0.5f,
+                200
+            ).apply {
+                unlockedBy("has_item", has(sourceItem))
+                save(pWriter, resource("smelting/${sourceItemId.path}_to_${hotItemId.path}_smelting"))
+            }
+
+            /**
+             * Blasts into hot ingots:
+             * */
+            SimpleCookingRecipeBuilder.blasting(
+                Ingredient.of(sourceItem),
+                RecipeCategory.MISC,
+                hotItem,
+                0.5f,
+                100
+            ).apply {
+                unlockedBy("has_item", has(sourceItem))
+                save(pWriter, resource("blasting/${sourceItemId.path}_to_${hotItemId.path}_blasting"))
+            }
+
+            LOG.info("Added smelting and blasting to heat {} into {}", sourceItemId, hotItemId)
+        }
+
+        Eln2Ingredients.PLATES_FOR_RECIPE_DATAGEN.forEach { obj ->
+            val sourceItem = obj.item.sourceItem?.get() ?: return@forEach
+            val sourceItemId = ForgeRegistries.ITEMS.getKey(sourceItem)!!
+
+            val plateItem = obj.item.registeredTransformedItem.get()
+            val plateItemId = ForgeRegistries.ITEMS.getKey(plateItem)!!
+
+            if(obj.hasRollingRecipe) {
+                /**
+                 * Rolling machine into the plate:
+                 * */
+                DirectSimpleProcessingRecipeBuilder(Eln2Processing.ROLLING_RECIPE)
+                    .withInput(sourceItem)
+                    .withOutput(plateItem)
+                    .withDuration(obj.rollingDuration)
+                    .save(pWriter, resource("rolling/${sourceItemId.path}_to_${plateItemId.path}"))
+
+                LOG.info("Added plate rolling recipe from {} to {}", sourceItemId, plateItemId)
+            }
+
+            if(obj.hasBlacksmithingRecipe) {
+                /**
+                 * Hammering into the plate:
+                 * */
+                BlacksmithingRecipeBuilder(Ingredient.of(sourceItem), plateItem, 1)
+                    .setTool(Eln2Processing.BLACKSMITHING_HAMMER_ITEM.get())
+                    .setMode(Eln2Processing.BLACKSMITHING_HAMMER_FLATTENING)
+                    .save(pWriter, resource("blacksmithing/${sourceItemId.path}_to_${plateItemId.path}"))
+
+                LOG.info("Added plate blacksmithing recipe from {} to {}", sourceItemId, plateItemId)
+            }
+        }
     }
 }
 
@@ -239,6 +317,8 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
  * - Generates bucket item models, from [ForgeFluidRegistry.FORGE_FLUID_BUCKETS].
  * - Generates chemical bottle models, from [Eln2ForgeFluids.CHEMICAL_BOTTLES_FOR_RESOLVE_AND_DATAGEN].
  * - Generates item models for the machine hulls and final machines, from [Eln2Processing.PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN].
+ * - Generates item models for hot items, from [Eln2Ingredients.HOT_ITEMS_FOR_MODEL_AND_RECIPE_DATAGEN].
+ * - Generates plate models, from [Eln2Ingredients.PLATES_FOR_MODEL_DATAGEN].
  * */
 class Eln2ItemModelProviderDatagen(output: PackOutput, existingFileHelper: ExistingFileHelper) : ItemModelProvider(output, MODID, existingFileHelper) {
     override fun registerModels() {
@@ -318,5 +398,25 @@ class Eln2ItemModelProviderDatagen(output: PackOutput, existingFileHelper: Exist
 
             LOG.info("Registered processing machine models for {} and {}", hullId, blockItemId)
         }
+
+        /**
+         * Generates item models that simply tint a base texture.
+         * */
+        fun fromTemplate(source: Iterable<Supplier<Item>>, baseTexture: String, name: String) {
+            source.forEach { obj ->
+                val item = obj.get()
+                val itemId = ForgeRegistries.ITEMS.getKey(item)!!
+
+                getBuilder(itemId.path)
+                    .parent(getExistingFile(mcLoc("item/generated")))
+                    .texture("layer0", modLoc("item/$baseTexture"))
+
+                LOG.info("Registered {} model for {}", name, itemId)
+            }
+        }
+
+        fromTemplate(Eln2Ingredients.INGOTS_FOR_TINT_AND_DATAGEN, "ingot_base", "ingot")
+        fromTemplate(Eln2Ingredients.HOT_ITEMS_FOR_MODEL_AND_RECIPE_DATAGEN, "hot_ingot_base", "hot")
+        fromTemplate(Eln2Ingredients.PLATES_FOR_MODEL_DATAGEN, "plate_base", "plate")
     }
 }

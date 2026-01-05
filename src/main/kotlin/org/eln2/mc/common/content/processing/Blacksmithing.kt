@@ -12,6 +12,7 @@ import net.minecraft.client.renderer.entity.ItemRenderer
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.RegistryAccess
+import net.minecraft.data.recipes.FinishedRecipe
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.Connection
 import net.minecraft.network.FriendlyByteBuf
@@ -34,10 +35,10 @@ import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.context.BlockPlaceContext
 import net.minecraft.world.item.crafting.*
 import net.minecraft.world.level.BlockGetter
+import net.minecraft.world.level.ItemLike
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.LightLayer
 import net.minecraft.world.level.block.Block
-import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.EntityBlock
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.entity.BlockEntity
@@ -60,6 +61,7 @@ import org.eln2.mc.ServerOnly
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.content.processing.BlacksmithingToolItem.Companion.DEFAULT_VARIANT
+import org.eln2.mc.common.recipes.RecipeRegistry
 import org.eln2.mc.extensions.eln2Consume
 import org.eln2.mc.extensions.eln2StandardBlockProperties
 import org.eln2.mc.extensions.preserve
@@ -69,6 +71,7 @@ import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.randomFloat
 import org.joml.Quaternionf
 import java.util.*
+import java.util.function.Consumer
 import kotlin.math.PI
 
 /**
@@ -187,6 +190,90 @@ class BlacksmithingRecipe(
             pBuffer.writeInt(pRecipe.cooldown)
             pBuffer.writeUtf(if(pRecipe.sound == null) "" else pRecipe.sound.toString())
         }
+    }
+}
+
+class BlacksmithingRecipeBuilder(val input: Ingredient, val result: Item, val count: Int) {
+    private var tool: BlacksmithingToolItem? = null
+    private var toolMode: String = ""
+    private var cooldown: Int = 100
+    private var sound: ResourceLocation? = null
+
+    companion object {
+        fun blacksmithing(input: Ingredient, output: ItemLike, count: Int = 1): BlacksmithingRecipeBuilder {
+            return BlacksmithingRecipeBuilder(input, output.asItem(), count)
+        }
+    }
+
+    fun setTool(toolItem: BlacksmithingToolItem): BlacksmithingRecipeBuilder {
+        this.tool = toolItem
+        return this
+    }
+
+    fun setMode(mode: String): BlacksmithingRecipeBuilder {
+        this.toolMode = mode
+        return this
+    }
+
+    fun setCooldown(ticks: Int): BlacksmithingRecipeBuilder {
+        this.cooldown = ticks
+        return this
+    }
+
+    fun setSound(sound: ResourceLocation): BlacksmithingRecipeBuilder {
+        this.sound = sound
+        return this
+    }
+
+    fun save(consumer: Consumer<FinishedRecipe?>, id: ResourceLocation) {
+        val tool = tool ?: error(DEBUGGER_BREAK("Did not set blacksmithing tool"))
+        check(tool.variants.contains(toolMode)) { DEBUGGER_BREAK("Set invalid tool variant \"$toolMode\"")}
+
+        consumer.accept(
+            Serializer(
+                id, input,
+                ItemStack(result, count),
+                Ingredient.of(tool),
+                toolMode,
+                cooldown,
+                sound
+            )
+        )
+    }
+
+    class Serializer(
+        val recipeId: ResourceLocation,
+        val input: Ingredient,
+        val output: ItemStack,
+        val tool: Ingredient,
+        val toolMode: String,
+        val cooldown: Int,
+        val sound: ResourceLocation?
+    ) : FinishedRecipe {
+        override fun serializeRecipeData(json: JsonObject) {
+            json.add("ingredient", input.toJson())
+
+            json.add(
+                "result",
+                JsonObject().also { resultJson ->
+                    resultJson.addProperty("item", ForgeRegistries.ITEMS.getKey(output.item).toString())
+                    resultJson.addProperty("count", output.count)
+                }
+            )
+
+            json.add("tool", tool.toJson())
+            json.addProperty("tool_mode", toolMode)
+            json.addProperty("cooldown", cooldown)
+
+            if (sound != null) {
+                json.addProperty("sound", sound.toString())
+            }
+        }
+
+        override fun getId(): ResourceLocation = recipeId
+        override fun getType(): RecipeSerializer<*> = RecipeRegistry.getRecipeSerializer(Eln2Processing.BLACKSMITHING_RECIPE)!!.get()
+        override fun serializeAdvancement(): JsonObject? = null
+        override fun getAdvancementId(): ResourceLocation? = null
     }
 }
 

@@ -18,6 +18,7 @@ import org.eln2.mc.common.content.modules.ContentManager.withBlockTint
 import org.eln2.mc.common.content.modules.ContentManager.withItemTint
 import org.eln2.mc.common.content.modules.ContentModule
 import org.eln2.mc.common.content.modules.ContentManager.withTagDatagen
+import org.eln2.mc.common.content.modules.Eln2Ingredients
 import org.eln2.mc.common.items.ItemRegistry
 import java.util.function.Supplier
 
@@ -116,4 +117,18 @@ object Eln2Ores : ContentModule() {
         .withLootDatagen()
         .withModelDatagen(MyColor(0xFF333333))
         .withVanillaSmeltingDatagen { Items.IRON_INGOT }
+
+    val LEAD_ORE = basicOre("lead")
+        .withTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
+        .withTagDatagen(BlockTags.NEEDS_STONE_TOOL)
+        .withLootDatagen()
+        .withModelDatagen(MyColor(90, 90, 120))
+        .withVanillaSmeltingDatagen(Eln2Ingredients.LEAD_INGOT)
+
+    val TIN_ORE = basicOre("tin")
+        .withTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
+        .withTagDatagen(BlockTags.NEEDS_IRON_TOOL)
+        .withLootDatagen()
+        .withModelDatagen(MyColor(144, 135, 131))
+        .withVanillaSmeltingDatagen(Eln2Ingredients.TIN_INGOT)
 }

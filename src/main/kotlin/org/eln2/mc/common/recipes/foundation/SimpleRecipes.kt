@@ -2,6 +2,7 @@ package org.eln2.mc.common.recipes.foundation
 
 import com.google.gson.JsonObject
 import net.minecraft.core.RegistryAccess
+import net.minecraft.data.recipes.FinishedRecipe
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.resources.ResourceLocation
@@ -13,17 +14,21 @@ import net.minecraft.world.item.crafting.Recipe
 import net.minecraft.world.item.crafting.RecipeSerializer
 import net.minecraft.world.item.crafting.RecipeType
 import net.minecraft.world.item.crafting.ShapedRecipe
+import net.minecraft.world.level.ItemLike
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraftforge.items.ItemStackHandler
+import net.minecraftforge.registries.ForgeRegistries
 import org.eln2.mc.CrossThreadAccess
 import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.OnServerThread
 import org.eln2.mc.ServerOnly
+import org.eln2.mc.common.recipes.RecipeRegistry
 import org.eln2.mc.extensions.bindToSimpleContainer
 import org.eln2.mc.extensions.getInt
 import org.eln2.mc.extensions.recipeExists
 import java.util.Optional
+import java.util.function.Consumer
 import java.util.function.Supplier
 
 /**
@@ -149,6 +154,88 @@ class DirectSimpleProcessingRecipe(
             pBuffer.writeDouble(pRecipe.duration)
             pBuffer.writeInt(pRecipe.tier)
         }
+    }
+}
+
+class DirectSimpleProcessingRecipeBuilder(val recipe: RecipeType<DirectSimpleProcessingRecipe>) {
+    private var input: Ingredient = Ingredient.EMPTY
+    private var output: ItemStack = ItemStack.EMPTY
+    private var duration: Double = 200.0
+    private var tier: Int = 0
+
+    fun withInput(input: ItemLike): DirectSimpleProcessingRecipeBuilder {
+        this.input = Ingredient.of(input)
+        return this
+    }
+
+    fun withInput(input: Ingredient): DirectSimpleProcessingRecipeBuilder {
+        this.input = input
+        return this
+    }
+
+    fun withOutput(output: ItemLike, count: Int = 1): DirectSimpleProcessingRecipeBuilder {
+        this.output = ItemStack(output, count)
+        return this
+    }
+
+    fun withDuration(duration: Double): DirectSimpleProcessingRecipeBuilder {
+        this.duration = duration
+        return this
+    }
+
+    fun withTier(tier: Int): DirectSimpleProcessingRecipeBuilder {
+        this.tier = tier
+        return this
+    }
+
+    fun save(consumer: Consumer<FinishedRecipe?>, id: ResourceLocation) {
+        check(!input.isEmpty) {
+            DEBUGGER_BREAK("Input for direct simple processing recipe cannot be empty")
+        }
+
+        check(!output.isEmpty) {
+            DEBUGGER_BREAK("Output for direct simple processing recipe cannot be empty")
+        }
+
+        consumer.accept(
+            Serializer(
+                id,
+                recipe,
+                input,
+                output,
+                duration,
+                tier
+            )
+        )
+    }
+
+    class Serializer(
+        val recipeId: ResourceLocation,
+        val recipe: RecipeType<DirectSimpleProcessingRecipe>,
+        val input: Ingredient,
+        val output: ItemStack,
+        val duration: Double,
+        val tier: Int
+    ) : FinishedRecipe {
+        override fun serializeRecipeData(json: JsonObject) {
+            json.add("ingredient", input.toJson())
+
+            json.add("result", JsonObject().also { resultJson ->
+                resultJson.addProperty("item", ForgeRegistries.ITEMS.getKey(output.item)!!.toString())
+                resultJson.addProperty("count", output.count)
+            })
+
+            json.addProperty("duration", duration)
+
+            if (tier != 0) {
+                json.addProperty("tier", tier)
+            }
+        }
+
+        override fun getId(): ResourceLocation = recipeId
+        override fun getType(): RecipeSerializer<*> = RecipeRegistry.getRecipeSerializer(recipe)!!.get()
+        override fun serializeAdvancement(): JsonObject? = null
+        override fun getAdvancementId(): ResourceLocation? = null
     }
 }
 

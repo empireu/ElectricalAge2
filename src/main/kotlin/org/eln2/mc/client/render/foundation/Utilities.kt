@@ -543,14 +543,28 @@ value class MyColor(val data : Int) {
                 lerp(from.bF, to.bF, blend),
             )
 
-        fun lerpA(from: MyColor, to: MyColor, blend: Float) : Float =
-            lerp(from.aF, to.aF, blend)
-        fun lerpR(from: MyColor, to: MyColor, blend: Float) : Float =
-            lerp(from.rF, to.rF, blend)
-        fun lerpG(from: MyColor, to: MyColor, blend: Float) : Float =
-            lerp(from.gF, to.gF, blend)
-        fun lerpB(from: MyColor, to: MyColor, blend: Float) : Float =
-            lerp(from.bF, to.bF, blend)
+        fun lerpA(from: MyColor, to: MyColor, blend: Float) : Float = lerp(from.aF, to.aF, blend)
+        fun lerpR(from: MyColor, to: MyColor, blend: Float) : Float = lerp(from.rF, to.rF, blend)
+        fun lerpG(from: MyColor, to: MyColor, blend: Float) : Float = lerp(from.gF, to.gF, blend)
+        fun lerpB(from: MyColor, to: MyColor, blend: Float) : Float = lerp(from.bF, to.bF, blend)
+
+        fun fromVector(argbVector: Vector4d) = MyColor(argbVector)
+        fun fromRGBAVector(rgbaVector: Vector4d) = MyColor(Vector4d(rgbaVector.w, rgbaVector.x, rgbaVector.y, rgbaVector.z))
+
+        /**
+         * Creates a color from the [argbVector], given any positive components.
+         * The components are normalized to at most 1, given the largest component.
+         * */
+        fun fromVectorNormalizing(argbVector: Vector4d) : MyColor {
+            val max = max(max(argbVector.x, argbVector.y), max(argbVector.z, argbVector.w))
+
+            return if(max <= 1.0) {
+                MyColor(argbVector)
+            }
+            else {
+                MyColor(argbVector / max)
+            }
+        }
     }
 
     /**
@@ -592,6 +606,15 @@ value class MyColor(val data : Int) {
             (r * 255).toInt().coerceIn(0, 255),
             (g * 255).toInt().coerceIn(0, 255),
             (b * 255).toInt().coerceIn(0, 255)
+        )
+    )
+
+    constructor(argbVector: Vector4d) : this(
+        FastColor.ARGB32.color(
+            (argbVector.x * 255).toInt().coerceIn(0, 255),
+            (argbVector.y * 255).toInt().coerceIn(0, 255),
+            (argbVector.z * 255).toInt().coerceIn(0, 255),
+            (argbVector.w * 255).toInt().coerceIn(0, 255)
         )
     )
 

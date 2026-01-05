@@ -6,6 +6,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.data.loot.LootTableProvider
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.item.BucketItem
+import net.minecraft.world.item.Item
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets
 import net.minecraftforge.client.event.EntityRenderersEvent
@@ -56,13 +57,16 @@ import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.foundation.SpecPlacementOverlayServer
 import org.eln2.mc.AveragingList
 import org.eln2.mc.DEBUGGER_BREAK
+import org.eln2.mc.ELN2_DEBUG
 import org.eln2.mc.Eln2BlockTagsDatagen
 import org.eln2.mc.Eln2BlockSelfDropLootDatagen
 import org.eln2.mc.Eln2ItemModelProviderDatagen
 import org.eln2.mc.Eln2BlockStateProviderDatagen
 import org.eln2.mc.Eln2RecipeProviderDatagen
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
+import org.eln2.mc.common.content.modules.Eln2Ingredients
 import org.eln2.mc.extensions.formatted
+import java.util.function.Supplier
 
 @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.MOD)
 object ModEvents {
@@ -135,6 +139,27 @@ object ModEvents {
                 }
             }, item)
         }
+
+        /**
+         * Tints texture 0 for these items.
+         * */
+        fun derivedItems(pairs: Iterable<Pair<MyColor, Supplier<Item>>>) {
+            pairs.forEach { (tint, supplier) ->
+                val item = supplier.get()
+
+                event.register({ _, tintIndex ->
+                    if(tintIndex == 0) {
+                        tint.data
+                    }
+                    else {
+                        MyColor.WHITE.data
+                    }
+                }, item)
+            }
+        }
+
+        derivedItems(Eln2Ingredients.INGOTS_FOR_TINT_AND_DATAGEN.map { it.tint to it.ingotItem })
+        derivedItems(Eln2Ingredients.TRANSFORMED_ITEMS_FOR_TINT.map { it.tint to it.registeredTransformedItem })
     }
 
     @SubscribeEvent @JvmStatic
@@ -155,6 +180,10 @@ object ModEvents {
             isFullyLoaded = true
             BlockRegistry.finalize()
             PartRegistry.finalize()
+
+            if(ELN2_DEBUG) {
+                LOG.warn("ELN2 is running in debug mode, simulation performance will be affected!")
+            }
         }
     }
 
