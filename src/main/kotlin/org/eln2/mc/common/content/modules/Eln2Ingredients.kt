@@ -191,6 +191,10 @@ object Eln2Ingredients : ContentModule() {
         fromCrushing(COKE)
     }
 
+    val CARBON_PUTTY = itemDefault("carbon_putty")
+    val RAW_CARBON_BRUSH = itemDefault("raw_carbon_brush")
+    val CARBON_BRUSH = itemDefault("carbon_brush")
+
     //#region Crushed Ores
 
     val CRUSHED_IRON_ORE = itemDefault("crushed_iron_ore")

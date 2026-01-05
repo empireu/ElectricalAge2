@@ -1,0 +1,17 @@
+{
+    "type": "minecraft:crafting_shaped",
+    "pattern": [
+        "CCW"
+    ],
+    "key": {
+        "C": {
+            "item": "eln2:carbon_putty"
+        },
+        "W": {
+            "item": "eln2:copper_wire"
+        }
+    },
+    "result": {
+        "item": "eln2:raw_carbon_brush"
+    }
+}
