@@ -1,10 +1,11 @@
-@file:Suppress("unused")
+@file:Suppress("unused", "RedundantSamConstructor")
 
 package org.eln2.mc.common.content.modules
 
 import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.minecraftforge.client.event.EntityRenderersEvent
+import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.CELSIUS
 import org.ageseries.libage.data.HENRY
 import org.ageseries.libage.data.KILO
@@ -17,6 +18,7 @@ import org.ageseries.libage.data.NEWTON_METER_PER_AMPERE
 import org.ageseries.libage.data.OHM
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.REVOLUTION_PER_SECOND
+import org.ageseries.libage.data.Torque
 import org.ageseries.libage.data.VOLT
 import org.ageseries.libage.data.VOLT_PER_RADIAN_PER_SECOND
 import org.ageseries.libage.data.WATT
@@ -25,6 +27,7 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
+import org.ageseries.libage.utils.addUnique
 import org.eln2.mc.FrictionNodeDescription
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.BasicKineticPartVisual
@@ -39,8 +42,10 @@ import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
 import org.eln2.mc.common.blocks.BlockRegistry.defineDelegateMap
 import org.eln2.mc.common.blocks.foundation.BigBlockItem
+import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
+import org.eln2.mc.common.cells.foundation.CellProvider
 import org.eln2.mc.common.cells.foundation.ElectricalSize
 import org.eln2.mc.common.cells.foundation.KineticSize
 import org.eln2.mc.common.content.DcMotorCell
@@ -57,6 +62,7 @@ import org.eln2.mc.common.content.WindTurbineBlockEntityVisual
 import org.eln2.mc.common.content.WindTurbineCell
 import org.eln2.mc.common.content.WindTurbineOptions
 import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
+import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
 import org.eln2.mc.common.parts.PartRegistry.partMemoizeBB
 import org.eln2.mc.common.parts.foundation.PartFactory
@@ -69,6 +75,122 @@ import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
 
 object Eln2Kinetic : ContentModule() {
+    //#region Registration Helpers
+
+    interface JointInfo {
+        val partRegistryItem: PartRegistry.PartRegistryItem
+        val visualizer: PartVisualizer<*>
+    }
+
+    data class DoubleJointInfo(
+        val plus: Base6Direction3d,
+        val minus: Base6Direction3d,
+        val cell: RegistryObject<CellProvider<DoubleJointCell>>,
+        override val partRegistryItem: PartRegistry.PartRegistryItem,
+        override val visualizer: PartVisualizer<JointPart<DoubleJointCell>>
+    ) : JointInfo
+
+    data class TripleJointInfo(
+        val e1: Base6Direction3d,
+        val e2: Base6Direction3d,
+        val e3: Base6Direction3d,
+        val cell: RegistryObject<CellProvider<TripleJointCell>>,
+        override val partRegistryItem: PartRegistry.PartRegistryItem,
+        override val visualizer: PartVisualizer<JointPart<TripleJointCell>>
+    ) : JointInfo
+
+    private val JOINTS_FOR_VISUALIZER_REGISTRY = LinkedHashSet<JointInfo>()
+
+    val SHAFT_BREAKDOWN_VELOCITY = Quantity(100.0, REVOLUTION_PER_SECOND)
+
+    fun doubleJoint(
+        id: String,
+        plus: Base6Direction3d,
+        minus: Base6Direction3d,
+        thermal: ThermalMassDefinition,
+        node: FrictionNodeDescription,
+        ratio: Double,
+        maxTorque: Quantity<Torque>,
+        size: Vector3d,
+        visualizer: PartVisualizer<JointPart<DoubleJointCell>>
+    ) : DoubleJointInfo {
+        val map = directionPoleMapPlanar(plus, minus)
+
+        val cell = CellRegistry.cellImmediate(id) {
+            DoubleJointCell(it,
+                thermal,
+                map,
+                node,
+                ratio,
+                SHAFT_BREAKDOWN_VELOCITY,
+                maxTorque
+            )
+        }
+
+        val part = partImmediateBB(id, size) {
+            JointPart(
+                it,
+                cell,
+                plus + minus
+            )
+        }
+
+        val obj = DoubleJointInfo(plus, minus, cell, part, visualizer)
+        JOINTS_FOR_VISUALIZER_REGISTRY.addUnique(obj)
+
+        return obj
+    }
+
+    fun tripleJoint(
+        id: String,
+        e1: Base6Direction3d,
+        e2: Base6Direction3d,
+        e3: Base6Direction3d,
+        thermal: ThermalMassDefinition,
+        node: FrictionNodeDescription,
+        ratio: Double,
+        maxTorque: Quantity<Torque>,
+        size: Vector3d,
+        visualizer: PartVisualizer<JointPart<TripleJointCell>>
+    ) : TripleJointInfo {
+        val map1 = monopolarMapPlanar(e1)
+        val map2 = monopolarMapPlanar(e2)
+        val map3 = monopolarMapPlanar(e3)
+
+        val cell = CellRegistry.cellImmediate(id) {
+            TripleJointCell(it,
+                thermal,
+                map1,
+                map2,
+                map3,
+                node,
+                SHAFT_BREAKDOWN_VELOCITY,
+                maxTorque
+            )
+        }
+
+        val part = partImmediateBB(id, size) {
+            JointPart(
+                it,
+                cell,
+                e1 + e2 + e3
+            )
+        }
+
+        val obj = TripleJointInfo(e1, e2, e3, cell, part, visualizer)
+        JOINTS_FOR_VISUALIZER_REGISTRY.addUnique(obj)
+
+        return obj
+    }
+
+    private fun registerJointVisualizers() {
+        JOINTS_FOR_VISUALIZER_REGISTRY.forEach {
+            setPartVisualizer(it.partRegistryItem.part.get(), it.visualizer)
+        }
+    }
+
+    //#endregion
+
     override fun registerBlockEntityVisualizers() {
         VisualizerRegistry.setVisualizer(
             WIND_TURBINE_BLOCK_ENTITY.get(),
@@ -77,6 +199,8 @@ object Eln2Kinetic : ContentModule() {
     }
 
     override fun registerPartVisualizers() {
+        registerJointVisualizers()
+/*
         setPartVisualizer<JointPart<DoubleJointCell>>(STANDARD_IRON_DOUBLE_JOINT_PART.part.get()) { ctx, part ->
             BasicKineticPartVisual(
                 ctx, part,
@@ -157,7 +281,7 @@ object Eln2Kinetic : ContentModule() {
                     descriptions
                 )
             }
-        }
+        }*/
 
         setPartVisualizer<DcMotorPart>(BASIC_DC_MOTOR_PART.part.get()) { ctx, part ->
             BasicPartVisual(
@@ -178,38 +302,29 @@ object Eln2Kinetic : ContentModule() {
 
     val JOINT_SOUND = soundEventVariableRange("shaft")
 
-    val STANDARD_IRON_DOUBLE_JOINT_CELL_PLUS = Base6Direction3d.Front
-    val STANDARD_IRON_DOUBLE_JOINT_CELL_MINUS = Base6Direction3d.Back
-
-    val STANDARD_IRON_DOUBLE_JOINT_CELL = cellMemoize("standard_iron_double_joint") {
-        val thermal = ThermalMassDefinition(
+    val STANDARD_IRON_DOUBLE_JOINT = doubleJoint(
+        "standard_iron_double_joint", Base6Direction3d.Front, Base6Direction3d.Back,
+        ThermalMassDefinition(
             ChemicalElement.Iron.asMaterial,
             mass = Quantity(60.25, KILOGRAM)
-        )
-
-        val map = directionPoleMapPlanar(
-            STANDARD_IRON_DOUBLE_JOINT_CELL_PLUS,
-            STANDARD_IRON_DOUBLE_JOINT_CELL_MINUS
-        )
-
-        val friction = FrictionNodeDescription(
+        ),
+        FrictionNodeDescription(
             Quantity(0.0770, KILOGRAM_METER2),
             0.01,
             Quantity(1e-5, NEWTON_METER),
             Quantity(0.1, NEWTON_METER)
-        )
-
-        CellFactory {
-            DoubleJointCell(it,
-                thermal,
-                map,
-                friction,
-                1.0,
-                Quantity(120.0, REVOLUTION_PER_SECOND),
-                Quantity(750.0, NEWTON_METER)
+        ),
+        1.0,
+        Quantity(750.0, NEWTON_METER),
+        Vector3d(6.0, 10.0, 16.0),
+        PartVisualizer { ctx, part ->
+            BasicKineticPartVisual(
+                ctx, part,
+                FlwModels.STANDARD_IRON_DOUBLE_JOINT_BODY,
+                FlwModels.STANDARD_IRON_DOUBLE_JOINT_SHAFT
             )
         }
-    }
+    )
 
     val STANDARD_IRON_DOUBLE_JOINT_90DEG_CELL_PLUS = Base6Direction3d.Front
     val STANDARD_IRON_DOUBLE_JOINT_90DEG_CELL_MINUS = Base6Direction3d.Left
@@ -309,14 +424,6 @@ object Eln2Kinetic : ContentModule() {
                 Quantity(700.0, NEWTON_METER)
             )
         }
-    }
-
-    val STANDARD_IRON_DOUBLE_JOINT_PART = partImmediateBB("standard_iron_double_joint", 6.0, 10.0, 16.0) {
-        JointPart(
-            it,
-            STANDARD_IRON_DOUBLE_JOINT_CELL,
-            STANDARD_IRON_DOUBLE_JOINT_CELL_PLUS + STANDARD_IRON_DOUBLE_JOINT_CELL_MINUS
-        )
     }
 
     val STANDARD_IRON_DOUBLE_JOINT_90DEG_PART = partImmediateBB("standard_iron_double_joint_90deg", 16.0, 10.0, 16.0) {

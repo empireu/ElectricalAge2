@@ -13,11 +13,13 @@ import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.ThermalMassDefinition
+import org.ageseries.libage.sim.kinetic.FrictionKineticNode
 import org.ageseries.libage.sim.kinetic.KineticDouble
 import org.ageseries.libage.sim.kinetic.KineticExtension
 import org.ageseries.libage.sim.kinetic.KineticNode
 import org.ageseries.libage.sim.kinetic.KineticNodeSet
 import org.ageseries.libage.sim.kinetic.KineticTriple
+import org.ageseries.libage.sim.kinetic.RigidKineticExtension
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.BasicKineticPart
 import org.eln2.mc.common.cells.foundation.*

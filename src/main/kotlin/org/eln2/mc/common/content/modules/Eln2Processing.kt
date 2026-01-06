@@ -618,6 +618,7 @@ object Eln2Processing : ContentModule() {
 
     val EXTRUDER_ROD_DIE = itemNoStack("extruder_rod_die")
     val EXTRUDER_WIRE_DIE = itemNoStack("extruder_wire_die")
+    val EXTRUDER_SHAFT_DIE = itemNoStack("extruder_shaft_die")
 
     //#endregion
 
