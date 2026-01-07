@@ -385,6 +385,11 @@ abstract class KineticObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
  * */
 interface PersistentObject {
     fun saveObjectNbt(): CompoundTag
+
+    /**
+     * Called when the graph is being loaded.
+     * Connections are not available at this stage.
+     * */
     fun loadObjectNbt(tag: CompoundTag)
 }
 

@@ -795,7 +795,10 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
     @OnServerThread
     val serverThreadSubscribers = SubscriberPool<ServerPhase>()
 
-    var isLoading = false
+    /**
+     * Flag set when the graph is being deserialized. Its scope is only data serialization; it will be set to false just after that is done, but before the graph is built.
+     * */
+    var isLoadingData = false
         private set
 
     fun captureAllInScope() {
@@ -870,7 +873,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
     }
 
     fun setChanged() {
-        if(!isLoading) {
+        if(!isLoadingData) {
             manager.setDirty()
         }
     }
@@ -1216,7 +1219,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
             val graphId = graphCompound.getUUID(NBT_ID)
             val result = CellGraph(graphId, manager, level)
 
-            result.isLoading = true
+            result.isLoadingData = true
 
             val cellListTag = graphCompound.get(NBT_CELLS) as ListTag?
                 ?: // No cells are available
@@ -1267,16 +1270,14 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
                 try {
                     cell.loadTag(cellData[cell]!!)
                 } catch (t: Throwable) {
-                    LOG.error("Cell loading exception: $t")
+                    LOG.error(DEBUGGER_BREAK("Cell loading exception: $t"))
                 }
             }
 
             result.cells.forEach { it.onLoadedFromDisk() }
-            result.cells.forEach {
-                it.onCreated()
-            }
+            result.cells.forEach { it.onCreated() }
 
-            result.isLoading = false
+            result.isLoadingData = false
 
             return result
         }

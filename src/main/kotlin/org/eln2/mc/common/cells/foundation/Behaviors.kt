@@ -666,6 +666,12 @@ class KineticStressBehavior private constructor(
     }
 
     companion object {
+        fun create(torque: Quantity<Torque>, cell: Cell, accessor: () -> Double) = KineticStressBehavior(
+            { abs(accessor()) },
+            KineticStressBehaviorOptions(addToleranceQ(torque, 0, cell.locator)),
+            { defaultNotifier(cell) }
+        )
+
         fun create(torque: Quantity<Torque>, cell: Cell, node: KineticDouble) = KineticStressBehavior(
             {
                 max(

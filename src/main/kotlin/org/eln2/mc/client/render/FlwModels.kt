@@ -48,17 +48,13 @@ object FlwModels {
 
     //#region Shafts
 
-    val STANDARD_IRON_DOUBLE_JOINT_BODY = partialBlock("joint/double/standard/iron/body")
-    val STANDARD_IRON_DOUBLE_JOINT_SHAFT = partialBlock("joint/double/standard/iron/shaft")
+    val STANDARD_IRON_HUB_JOINT_HUB = partialBlock("joint/standard_iron_hub_joint/hub")
+    val STANDARD_IRON_HUB_JOINT_SHAFT = partialBlock("joint/standard_iron_hub_joint/shaft")
+    val STANDARD_IRON_HUB_JOINT_SHAFT_BODY = partialBlock("joint/standard_iron_hub_joint/shaft_body")
 
-    val STANDARD_IRON_DOUBLE_JOINT_90DEG_BODY = partialBlock("joint/double_90deg/standard/iron/body")
-    val STANDARD_IRON_DOUBLE_JOINT_90DEG_SHAFT1 = partialBlock("joint/double_90deg/standard/iron/shaft1")
-    val STANDARD_IRON_DOUBLE_JOINT_90DEG_SHAFT2 = partialBlock("joint/double_90deg/standard/iron/shaft2")
-
-    val STANDARD_IRON_TRIPLE_T_JOINT_BODY = partialBlock("joint/triple_t/standard/iron/body")
-    val STANDARD_IRON_TRIPLE_T_JOINT_SHAFT1 = partialBlock("joint/triple_t/standard/iron/shaft1")
-    val STANDARD_IRON_TRIPLE_T_JOINT_SHAFT2 = partialBlock("joint/triple_t/standard/iron/shaft2")
-    val STANDARD_IRON_TRIPLE_T_JOINT_SHAFT3 = partialBlock("joint/triple_t/standard/iron/shaft3")
+    val STANDARD_IRON_STRAIGHT_JOINT_BODY = partialBlock("joint/standard_iron_straight_joint/body")
+    val STANDARD_IRON_STRAIGHT_JOINT_SHAFT = partialBlock("joint/standard_iron_straight_joint/shaft")
+    val STANDARD_IRON_STRAIGHT_JOINT_SHAFT_BODY = partialBlock("joint/standard_iron_straight_joint/shaft_body")
 
     //#endregion
 

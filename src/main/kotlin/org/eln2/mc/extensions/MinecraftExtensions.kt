@@ -481,6 +481,9 @@ val Base6Direction3d.alias: Direction
         Base6Direction3d.Down -> Direction.DOWN
     }
 
+val Base6Direction3d.data3D: Int
+    get() = this.alias.get3DDataValue()
+
 fun Rotation.inverse() = when (this) {
     Rotation.NONE -> Rotation.NONE
     Rotation.CLOCKWISE_90 -> Rotation.COUNTERCLOCKWISE_90

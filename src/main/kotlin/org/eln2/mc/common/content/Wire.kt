@@ -64,9 +64,27 @@ import kotlin.math.PI
  * Generalized thermal conductor, in the form of a single thermal body that gets connected to all neighbor cells.
  * */
 class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass, val environmentLeakageParameters: ConnectionParameters = ConnectionParameters.DEFAULT) : ThermalObject<Cell>(cell), PersistentObject, ThermalContactInfo {
+    /**
+     * The way the thermal state is persisted.
+     * */
+    enum class ThermalStateSavingPolicy {
+        /**
+         * The default policy. Saves temperature; useful if the mass and material is constant for the specific use case.
+         * If the mod updates and the material or mass gets changed, temperature will be the same, which is the most stable option.
+         * */
+        Temperature,
+        /**
+         * Used when the thermal body is mutated externally (specifically, during the loading of another object, which sets mass and material).
+         * Persisting by temperature would not work if the thermal object is deserialized before the object that sets the mass and material acts. The thermal energy would change.
+         * Shuffling the fields around might not work if the other object accesses this one in its constructor, so this gives more flexibility.
+         * */
+        Energy
+    }
+
     companion object {
         // Storing temperature. If I change the properties of the material, it will be the same temperature in game.
         private const val TEMPERATURE = "temperature"
+        private const val ENERGY = "energy"
     }
 
     constructor(cell: Cell) : this(cell, ThermalMass(ChemicalElement.Copper.asMaterial))
@@ -88,15 +106,33 @@ class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass, val environmen
         cell.environmentData.connect(simulator, environmentLeakageParameters, thermalBody)
     }
 
+    var savePolicy = ThermalStateSavingPolicy.Temperature
+
     override fun saveObjectNbt(): CompoundTag {
-        return CompoundTag().also {
-            it.putQuantity(TEMPERATURE, thermalBody.temperature)
+        val tag = CompoundTag()
+
+        when(savePolicy) {
+            ThermalStateSavingPolicy.Temperature -> {
+                tag.putQuantity(TEMPERATURE, thermalBody.temperature)
+            }
+            ThermalStateSavingPolicy.Energy -> {
+                tag.putQuantity(ENERGY, thermalBody.energy)
+            }
         }
+
+        return tag
     }
 
     override fun loadObjectNbt(tag: CompoundTag) {
-        if(tag.contains(TEMPERATURE)) {
-            thermalBody.temperature = tag.getQuantity(TEMPERATURE)
+        when(savePolicy) {
+            ThermalStateSavingPolicy.Temperature -> {
+                thermalBody.temperature = tag.getQuantity(TEMPERATURE)
+
+            }
+            ThermalStateSavingPolicy.Energy -> {
+                thermalBody.energy = tag.getQuantity(ENERGY)
+
+            }
         }
     }
 

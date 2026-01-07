@@ -21,6 +21,13 @@ fun<T> DEBUGGER_BREAK(r: T) : T {
     return r
 }
 
+@Suppress("NOTHING_TO_INLINE", "FunctionName")
+inline fun FTL(obj: Any? = null): Nothing {
+    DEBUGGER_BREAK()
+    LOG.fatal("ELN2 has encountered a fatal error: $obj")
+    error("ELN2 has encountered a fatal error: $obj")
+}
+
 private fun defaultHandleInvalid(property: KProperty1<*, *>) {
     error("Invalid field $property")
 }

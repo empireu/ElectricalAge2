@@ -491,7 +491,7 @@ value class Base6Direction3dMask(val value: Int) {
 /**
  * Gets the x, y, z components in order from [Direction.values]
  * */
-val DIRECTION_COMPONENTS = Direction.values().let {
+val DIRECTION_COMPONENTS = Direction.entries.toTypedArray().let {
     val result = ArrayList<Byte>()
 
     it.forEach { direction ->
