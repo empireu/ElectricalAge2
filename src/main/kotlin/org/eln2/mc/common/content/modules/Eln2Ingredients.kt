@@ -312,6 +312,8 @@ object Eln2Ingredients : ContentModule() {
 
     val IRON_AXLE_MOUNT = itemDefault("iron_axle_mount")
 
+    val IRON_GEAR = itemDefault("iron_gear")
+
     //#region Tree Extraction
 
     val RAW_LATEX = itemDefault("raw_latex")

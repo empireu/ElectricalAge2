@@ -216,6 +216,22 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .define('P', Eln2Ingredients.IRON_PLATE.get())
             .unlockedBy("has_mount", has(Eln2Ingredients.IRON_AXLE_MOUNT.get()))
             .save(pWriter, resource("crafting/primitive_standard_iron_straight_joint"))
+
+        BlacksmithingRecipeBuilder(Eln2Ingredients.IRON_PLATE.get(), Eln2Ingredients.IRON_GEAR.get())
+            .withTool(Eln2Processing.BLACKSMITHING_CHISEL_AND_HAMMER_ITEM.get())
+            .withDefaultToolMode()
+            .unlockedBy("has_iron_plate", has(Eln2Ingredients.IRON_PLATE.get()))
+            .save(pWriter, resource("blacksmithing/iron_gear"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Kinetic.PRIMITIVE_STANDARD_IRON_HUB_JOINT.partInfo.item.get())
+            .pattern(" M ")
+            .pattern("RGR")
+            .pattern(" M ")
+            .define('M', Eln2Ingredients.IRON_AXLE_MOUNT.get())
+            .define('R', Eln2Ingredients.IRON_SHAFT.get())
+            .define('G', Eln2Ingredients.IRON_GEAR.get())
+            .unlockedBy("has_gear", has(Eln2Ingredients.IRON_GEAR.get()))
+            .save(pWriter, resource("crafting/primitive_standard_iron_hub_joint"))
     }
 
     override fun buildRecipes(pWriter: Consumer<FinishedRecipe?>) {
