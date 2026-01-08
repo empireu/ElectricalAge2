@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "key": {
+    "H": {
+      "item": "eln2:blacksmithing_hammer"
+    },
+    "I": {
+      "item": "minecraft:iron_ingot"
+    }
+  },
+  "pattern": [
+    "H  ",
+    "I  "
+  ],
+  "result": {
+    "item": "eln2:blacksmithing_chisel_and_hammer"
+  },
+  "show_notification": true
+}

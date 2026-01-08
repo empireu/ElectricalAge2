@@ -148,6 +148,31 @@ class Eln2BlockStateProviderDatagen(output: PackOutput, existingFileHelper: Exis
  * */
 class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
     private fun buildManualRecipes(pWriter: Consumer<FinishedRecipe?>) {
+        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, Eln2Processing.BLACKSMITHING_HAMMER_ITEM.get())
+            .pattern(" IS")
+            .pattern(" SI")
+            .pattern("S  ")
+            .define('I', Items::IRON_INGOT)
+            .define('S', Items::STICK)
+            .unlockedBy("has_iron", has(Items::IRON_INGOT))
+            .save(pWriter, resource("crafting/blacksmithing_hammer"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, Eln2Processing.BLACKSMITHING_FILE_ITEM.get())
+            .pattern(" I ")
+            .pattern(" S ")
+            .define('I', Items::IRON_INGOT)
+            .define('S', Items::STICK)
+            .unlockedBy("has_iron", has(Items::IRON_INGOT))
+            .save(pWriter, resource("crafting/blacksmithing_file"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, Eln2Processing.BLACKSMITHING_CHISEL_AND_HAMMER_ITEM.get())
+            .pattern("H  ")
+            .pattern("I  ")
+            .define('H', Eln2Processing.BLACKSMITHING_HAMMER_ITEM.get())
+            .define('I', Items::IRON_INGOT)
+            .unlockedBy("has_hammer", has(Eln2Processing.BLACKSMITHING_HAMMER_ITEM.get()))
+            .save(pWriter, resource("crafting/blacksmithing_chisel_and_hammer"))
+
         ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, Eln2ForgeFluids.INSULATING_VARNISH.requireBottle().bottleItem.get())
             .requires(Eln2ForgeFluids.NAPHTHA.requireBottle().bottleItem.get())
             .requires(Eln2Ingredients.RAW_RESIN.get())
@@ -232,6 +257,8 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .define('G', Eln2Ingredients.IRON_GEAR.get())
             .unlockedBy("has_gear", has(Eln2Ingredients.IRON_GEAR.get()))
             .save(pWriter, resource("crafting/primitive_standard_iron_hub_joint"))
+
+        LOG.info("Generated manual recipes.")
     }
 
     override fun buildRecipes(pWriter: Consumer<FinishedRecipe?>) {
