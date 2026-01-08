@@ -310,6 +310,8 @@ object Eln2Ingredients : ContentModule() {
 
     val COPPER_ROD = itemDefault("copper_rod")
 
+    val IRON_AXLE_MOUNT = itemDefault("iron_axle_mount")
+
     //#region Tree Extraction
 
     val RAW_LATEX = itemDefault("raw_latex")

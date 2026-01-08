@@ -4,7 +4,6 @@ package org.eln2.mc.common.content.modules
 
 import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
-import net.minecraft.core.Direction
 import net.minecraftforge.client.event.EntityRenderersEvent
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.*
@@ -184,7 +183,7 @@ object Eln2Kinetic : ContentModule() {
     /**
      * Standard straight shaft. Not dynamically instanced, for visual purposes.
      * */
-    val STANDARD_IRON_STRAIGHT_JOINT = joint("standard_iron_straight_joint", Vector3d(6.0, 10.0, 16.0)) {
+    val PRIMITIVE_STANDARD_IRON_STRAIGHT_JOINT = joint("primitive_standard_iron_straight_joint", Vector3d(6.0, 10.0, 16.0)) {
         withShaft(Base6Direction3d.Front, 1.0)
         withShaft(Base6Direction3d.Back, 1.0)
 
@@ -203,7 +202,7 @@ object Eln2Kinetic : ContentModule() {
      * Dynamic 5-ended joint. The mother of all kinetic joints.
      * It is not 6-ended because the part attaches to the substrate via a pedestal, so the system looks more rugged.
      * */
-    val STANDARD_IRON_HUB_JOINT = joint("standard_iron_hub_joint", Vector3d(6.0, 10.0, 6.0)) {
+    val PRIMITIVE_STANDARD_IRON_HUB_JOINT = joint("primitive_standard_iron_hub_joint", Vector3d(16.0, 10.0, 16.0)) {
         withShaft(Base6Direction3d.Front, 1.0)
         withShaft(Base6Direction3d.Back, 1.0)
         withShaft(Base6Direction3d.Left, -1.0)

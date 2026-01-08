@@ -12,6 +12,7 @@ import net.minecraftforge.fluids.FluidType
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.DEBUGGER_BREAK
+import org.eln2.mc.FTL
 import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
@@ -85,6 +86,10 @@ object Eln2ForgeFluids : ContentModule() {
 
         return entry.value.bottleItem.get()
     }
+
+    fun getChemicalBottle(fluid: ForgeFluidRegistry.ForgeFluidRegistryItem) = CHEMICAL_BOTTLES_FOR_RESOLVE_AND_DATAGEN[fluid]
+
+    fun ForgeFluidRegistry.ForgeFluidRegistryItem.requireBottle() = getChemicalBottle(this) ?: FTL("Chemical bottle doesn't exist for $this")
 
     //#endregion
 

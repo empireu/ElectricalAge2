@@ -2,6 +2,10 @@ package org.eln2.mc.extensions
 
 import com.google.gson.JsonObject
 import com.mojang.blaze3d.vertex.PoseStack
+import net.minecraft.advancements.Advancement
+import net.minecraft.advancements.AdvancementRewards
+import net.minecraft.advancements.RequirementsStrategy
+import net.minecraft.advancements.critereon.RecipeUnlockedTrigger
 import net.minecraft.client.renderer.block.model.BakedQuad
 import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.client.resources.model.SimpleBakedModel
@@ -53,7 +57,6 @@ import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.network.NetworkHooks
 import net.minecraftforge.registries.ForgeRegistries
 import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.debug.DEBUG
 import org.ageseries.libage.mathematics.geometry.*
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
@@ -68,6 +71,13 @@ import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
 import kotlin.math.PI
 import kotlin.math.cos
+
+fun Advancement.Builder.eln2Unlock(recipeId: ResourceLocation) {
+    this.parent(ResourceLocation.parse("minecraft:recipes/root"))
+        .addCriterion("has_the_recipe", RecipeUnlockedTrigger.unlocked(recipeId))
+        .rewards(AdvancementRewards.Builder.recipe(recipeId))
+        .requirements(RequirementsStrategy.OR)
+}
 
 val Block.blockID : ResourceLocation get() {
     val result = ForgeRegistries.BLOCKS.getKey(this)

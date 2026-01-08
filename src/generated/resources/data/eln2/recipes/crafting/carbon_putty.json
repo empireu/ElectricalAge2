@@ -1,0 +1,22 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "B": {
+      "item": "eln2:pitch_bottle"
+    },
+    "C": {
+      "item": "eln2:coke_dust"
+    }
+  },
+  "pattern": [
+    "CCC",
+    "CBC",
+    "CCC"
+  ],
+  "result": {
+    "count": 8,
+    "item": "eln2:carbon_putty"
+  },
+  "show_notification": true
+}

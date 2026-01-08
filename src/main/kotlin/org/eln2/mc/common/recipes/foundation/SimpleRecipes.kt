@@ -3,6 +3,11 @@
 package org.eln2.mc.common.recipes.foundation
 
 import com.google.gson.JsonObject
+import net.minecraft.advancements.Advancement
+import net.minecraft.advancements.AdvancementRewards
+import net.minecraft.advancements.CriterionTriggerInstance
+import net.minecraft.advancements.RequirementsStrategy
+import net.minecraft.advancements.critereon.RecipeUnlockedTrigger
 import net.minecraft.core.RegistryAccess
 import net.minecraft.data.recipes.FinishedRecipe
 import net.minecraft.nbt.CompoundTag
@@ -11,11 +16,7 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.util.GsonHelper
 import net.minecraft.world.SimpleContainer
 import net.minecraft.world.item.ItemStack
-import net.minecraft.world.item.crafting.Ingredient
-import net.minecraft.world.item.crafting.Recipe
-import net.minecraft.world.item.crafting.RecipeSerializer
-import net.minecraft.world.item.crafting.RecipeType
-import net.minecraft.world.item.crafting.ShapedRecipe
+import net.minecraft.world.item.crafting.*
 import net.minecraft.world.level.ItemLike
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntity
@@ -23,13 +24,15 @@ import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.registries.ForgeRegistries
 import org.eln2.mc.CrossThreadAccess
 import org.eln2.mc.DEBUGGER_BREAK
+import org.eln2.mc.LOG
 import org.eln2.mc.OnServerThread
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.common.recipes.RecipeRegistry
 import org.eln2.mc.extensions.bindToSimpleContainer
+import org.eln2.mc.extensions.eln2Unlock
 import org.eln2.mc.extensions.getInt
 import org.eln2.mc.extensions.recipeExists
-import java.util.Optional
+import java.util.*
 import java.util.function.Consumer
 import java.util.function.Supplier
 
@@ -164,6 +167,7 @@ class DirectSimpleProcessingRecipeBuilder(val recipe: RecipeType<DirectSimplePro
     private var output: ItemStack = ItemStack.EMPTY
     private var duration: Double = 200.0
     private var tier: Int = 0
+    val advancement: Advancement.Builder = Advancement.Builder.advancement()
 
     fun withInput(input: ItemLike): DirectSimpleProcessingRecipeBuilder {
         this.input = Ingredient.of(input)
@@ -190,6 +194,11 @@ class DirectSimpleProcessingRecipeBuilder(val recipe: RecipeType<DirectSimplePro
         return this
     }
 
+    fun unlockedBy(pCriterionName: String, pCriterionTrigger: CriterionTriggerInstance): DirectSimpleProcessingRecipeBuilder {
+        advancement.addCriterion(pCriterionName, pCriterionTrigger)
+        return this
+    }
+
     fun save(consumer: Consumer<FinishedRecipe?>, id: ResourceLocation) {
         check(!input.isEmpty) {
             DEBUGGER_BREAK("Input for direct simple processing recipe cannot be empty")
@@ -199,45 +208,35 @@ class DirectSimpleProcessingRecipeBuilder(val recipe: RecipeType<DirectSimplePro
             DEBUGGER_BREAK("Output for direct simple processing recipe cannot be empty")
         }
 
-        consumer.accept(
-            Serializer(
-                id,
-                recipe,
-                input,
-                output,
-                duration,
-                tier
-            )
-        )
+        if (advancement.criteria.isEmpty()) {
+            LOG.error("No criterion for direct simple processing recipe $id")
+        }
+        else {
+            advancement.eln2Unlock(id)
+        }
+
+        consumer.accept(Serializer(this, id))
     }
 
-    class Serializer(
-        val recipeId: ResourceLocation,
-        val recipe: RecipeType<DirectSimpleProcessingRecipe>,
-        val input: Ingredient,
-        val output: ItemStack,
-        val duration: Double,
-        val tier: Int
-    ) : FinishedRecipe {
+    class Serializer(val parent: DirectSimpleProcessingRecipeBuilder, val recipeId: ResourceLocation) : Eln2FinishedRecipe {
         override fun serializeRecipeData(json: JsonObject) {
-            json.add("ingredient", input.toJson())
+            json.add("ingredient", parent.input.toJson())
 
             json.add("result", JsonObject().also { resultJson ->
-                resultJson.addProperty("item", ForgeRegistries.ITEMS.getKey(output.item)!!.toString())
-                resultJson.addProperty("count", output.count)
+                resultJson.addProperty("item", ForgeRegistries.ITEMS.getKey(parent.output.item)!!.toString())
+                resultJson.addProperty("count", parent.output.count)
             })
 
-            json.addProperty("duration", duration)
+            json.addProperty("duration", parent.duration)
 
-            if (tier != 0) {
-                json.addProperty("tier", tier)
+            if (parent.tier != 0) {
+                json.addProperty("tier", parent.tier)
             }
         }
 
         override fun getId(): ResourceLocation = recipeId
-        override fun getType(): RecipeSerializer<*> = RecipeRegistry.getRecipeSerializer(recipe)!!.get()
-        override fun serializeAdvancement(): JsonObject? = null
-        override fun getAdvancementId(): ResourceLocation? = null
+        override fun getType(): RecipeSerializer<*> = RecipeRegistry.getRecipeSerializer(parent.recipe)!!.get()
+        override fun serializeAdvancement(): JsonObject = parent.advancement.serializeToJson()
     }
 }
 
@@ -329,11 +328,12 @@ class CatalyzedSimpleProcessingRecipe(
 }
 
 class CatalyzedSimpleProcessingRecipeBuilder(val recipe: RecipeType<CatalyzedSimpleProcessingRecipe>) {
-    private var input: Ingredient = Ingredient.EMPTY
-    private var catalyst: Ingredient = Ingredient.EMPTY
-    private var output: ItemStack = ItemStack.EMPTY
-    private var duration: Double = 200.0
-    private var tier: Int = 0
+    var input: Ingredient = Ingredient.EMPTY
+    var catalyst: Ingredient = Ingredient.EMPTY
+    var output: ItemStack = ItemStack.EMPTY
+    var duration: Double = 10.0
+    var tier: Int = 0
+    val advancement: Advancement.Builder = Advancement.Builder.advancement()
 
     fun withInput(input: ItemLike): CatalyzedSimpleProcessingRecipeBuilder {
         this.input = Ingredient.of(input)
@@ -370,6 +370,11 @@ class CatalyzedSimpleProcessingRecipeBuilder(val recipe: RecipeType<CatalyzedSim
         return this
     }
 
+    fun unlockedBy(pCriterionName: String, pCriterionTrigger: CriterionTriggerInstance): CatalyzedSimpleProcessingRecipeBuilder {
+        advancement.addCriterion(pCriterionName, pCriterionTrigger)
+        return this
+    }
+
     fun save(consumer: Consumer<FinishedRecipe?>, id: ResourceLocation) {
         check(!input.isEmpty) {
             DEBUGGER_BREAK("Input for catalyzed simple processing recipe cannot be empty")
@@ -383,49 +388,37 @@ class CatalyzedSimpleProcessingRecipeBuilder(val recipe: RecipeType<CatalyzedSim
             DEBUGGER_BREAK("Output for catalyzed simple processing recipe cannot be empty")
         }
 
-        consumer.accept(
-            Serializer(
-                id,
-                recipe,
-                input,
-                catalyst,
-                output,
-                duration,
-                tier
-            )
-        )
+        if (advancement.criteria.isEmpty()) {
+            LOG.error("No criterion for catalyzed simple processing recipe $id")
+        }
+        else {
+            advancement.eln2Unlock(id)
+        }
+
+        consumer.accept(Result(this, id))
     }
 
-    class Serializer(
-        val recipeId: ResourceLocation,
-        val recipe: RecipeType<CatalyzedSimpleProcessingRecipe>,
-        val input: Ingredient,
-        val catalyst: Ingredient,
-        val output: ItemStack,
-        val duration: Double,
-        val tier: Int
-    ) : FinishedRecipe {
+    class Result(val parent: CatalyzedSimpleProcessingRecipeBuilder, val recipeId: ResourceLocation) : Eln2FinishedRecipe {
         override fun serializeRecipeData(json: JsonObject) {
-            json.add("ingredient", input.toJson())
+            json.add("ingredient", parent.input.toJson())
 
-            json.add("catalyst", catalyst.toJson())
+            json.add("catalyst", parent.catalyst.toJson())
 
             json.add("result", JsonObject().also { resultJson ->
-                resultJson.addProperty("item", ForgeRegistries.ITEMS.getKey(output.item)!!.toString())
-                resultJson.addProperty("count", output.count)
+                resultJson.addProperty("item", ForgeRegistries.ITEMS.getKey(parent.output.item)!!.toString())
+                resultJson.addProperty("count", parent.output.count)
             })
 
-            json.addProperty("duration", duration)
+            json.addProperty("duration", parent.duration)
 
-            if (tier != 0) {
-                json.addProperty("tier", tier)
+            if (parent.tier != 0) {
+                json.addProperty("tier", parent.tier)
             }
         }
 
         override fun getId(): ResourceLocation = recipeId
-        override fun getType(): RecipeSerializer<*> = RecipeRegistry.getRecipeSerializer(recipe)!!.get()
-        override fun serializeAdvancement(): JsonObject? = null
-        override fun getAdvancementId(): ResourceLocation? = null
+        override fun getType(): RecipeSerializer<*> = RecipeRegistry.getRecipeSerializer(parent.recipe)!!.get()
+        override fun serializeAdvancement(): JsonObject = parent.advancement.serializeToJson()
     }
 }
 

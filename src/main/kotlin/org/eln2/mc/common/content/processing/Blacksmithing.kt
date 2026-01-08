@@ -2,6 +2,11 @@ package org.eln2.mc.common.content.processing
 
 import com.google.gson.JsonObject
 import com.mojang.blaze3d.vertex.PoseStack
+import net.minecraft.advancements.Advancement
+import net.minecraft.advancements.AdvancementRewards
+import net.minecraft.advancements.CriterionTriggerInstance
+import net.minecraft.advancements.RequirementsStrategy
+import net.minecraft.advancements.critereon.RecipeUnlockedTrigger
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.renderer.LightTexture
@@ -53,17 +58,21 @@ import net.minecraftforge.client.gui.overlay.IGuiOverlay
 import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
+import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.registries.ForgeRegistries
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.DEBUGGER_BREAK
+import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.content.processing.BlacksmithingToolItem.Companion.DEFAULT_VARIANT
 import org.eln2.mc.common.recipes.RecipeRegistry
+import org.eln2.mc.common.recipes.foundation.Eln2FinishedRecipe
 import org.eln2.mc.extensions.eln2Consume
 import org.eln2.mc.extensions.eln2StandardBlockProperties
+import org.eln2.mc.extensions.eln2Unlock
 import org.eln2.mc.extensions.preserve
 import org.eln2.mc.extensions.setSyncDirty
 import org.eln2.mc.extensions.takeDurability
@@ -194,16 +203,13 @@ class BlacksmithingRecipe(
 }
 
 class BlacksmithingRecipeBuilder(val input: Ingredient, val result: Item, val count: Int) {
-    private var tool: BlacksmithingToolItem? = null
-    private var toolMode: String = ""
-    private var cooldown: Int = 100
-    private var sound: ResourceLocation? = null
+    constructor(input: ItemLike, output: ItemLike, count: Int = 1) : this(Ingredient.of(input), output.asItem(), count)
 
-    companion object {
-        fun blacksmithing(input: Ingredient, output: ItemLike, count: Int = 1): BlacksmithingRecipeBuilder {
-            return BlacksmithingRecipeBuilder(input, output.asItem(), count)
-        }
-    }
+    var tool: BlacksmithingToolItem? = null
+    var toolMode: String = ""
+    var cooldown: Int = 40
+    var sound: ResourceLocation? = null
+    val advancement: Advancement.Builder = Advancement.Builder.advancement()
 
     fun withTool(toolItem: BlacksmithingToolItem): BlacksmithingRecipeBuilder {
         this.tool = toolItem
@@ -215,6 +221,8 @@ class BlacksmithingRecipeBuilder(val input: Ingredient, val result: Item, val co
         return this
     }
 
+    fun withDefaultToolMode() = withMode("")
+
     fun withCooldown(ticks: Int): BlacksmithingRecipeBuilder {
         this.cooldown = ticks
         return this
@@ -225,55 +233,49 @@ class BlacksmithingRecipeBuilder(val input: Ingredient, val result: Item, val co
         return this
     }
 
+    fun unlockedBy(pCriterionName: String, pCriterionTrigger: CriterionTriggerInstance): BlacksmithingRecipeBuilder {
+        advancement.addCriterion(pCriterionName, pCriterionTrigger)
+        return this
+    }
+
     fun save(consumer: Consumer<FinishedRecipe?>, id: ResourceLocation) {
         val tool = tool ?: error(DEBUGGER_BREAK("Did not set blacksmithing tool"))
         check(tool.variants.contains(toolMode)) { DEBUGGER_BREAK("Set invalid tool variant \"$toolMode\"")}
 
-        consumer.accept(
-            Serializer(
-                id, input,
-                ItemStack(result, count),
-                Ingredient.of(tool),
-                toolMode,
-                cooldown,
-                sound
-            )
-        )
+        if (advancement.criteria.isEmpty()) {
+            LOG.error("No criterion for blacksmithing recipe $id")
+        }
+        else {
+            advancement.eln2Unlock(id)
+        }
+
+        consumer.accept(Result(this, id))
     }
 
-    class Serializer(
-        val recipeId: ResourceLocation,
-        val input: Ingredient,
-        val output: ItemStack,
-        val tool: Ingredient,
-        val toolMode: String,
-        val cooldown: Int,
-        val sound: ResourceLocation?
-    ) : FinishedRecipe {
+    class Result(val parent: BlacksmithingRecipeBuilder, val recipeId: ResourceLocation) : Eln2FinishedRecipe {
         override fun serializeRecipeData(json: JsonObject) {
-            json.add("ingredient", input.toJson())
+            json.add("ingredient", parent.input.toJson())
 
             json.add(
                 "result",
                 JsonObject().also { resultJson ->
-                    resultJson.addProperty("item", ForgeRegistries.ITEMS.getKey(output.item).toString())
-                    resultJson.addProperty("count", output.count)
+                    resultJson.addProperty("item", ForgeRegistries.ITEMS.getKey(parent.result).toString())
+                    resultJson.addProperty("count", parent.count)
                 }
             )
 
-            json.add("tool", tool.toJson())
-            json.addProperty("tool_mode", toolMode)
-            json.addProperty("cooldown", cooldown)
+            json.add("tool", Ingredient.of(parent.tool).toJson())
+            json.addProperty("tool_mode", parent.toolMode)
+            json.addProperty("cooldown", parent.cooldown)
 
-            if (sound != null) {
-                json.addProperty("sound", sound.toString())
+            if (parent.sound != null) {
+                json.addProperty("sound", parent.sound.toString())
             }
         }
 
         override fun getId(): ResourceLocation = recipeId
         override fun getType(): RecipeSerializer<*> = RecipeRegistry.getRecipeSerializer(Eln2Processing.BLACKSMITHING_RECIPE)!!.get()
-        override fun serializeAdvancement(): JsonObject? = null
-        override fun getAdvancementId(): ResourceLocation? = null
+        override fun serializeAdvancement(): JsonObject = parent.advancement.serializeToJson()
     }
 }
 
@@ -375,7 +377,7 @@ class BlacksmithingStationBlockEntity(pPos: BlockPos, pState: BlockState) : Bloc
         inventoryHandlerLazy.invalidate()
     }
 
-    class InventoryHandler(val blockEntity: BlacksmithingStationBlockEntity) : net.minecraftforge.items.ItemStackHandler(1) {
+    class InventoryHandler(val blockEntity: BlacksmithingStationBlockEntity) : ItemStackHandler(1) {
         override fun insertItem(slot: Int, stack: ItemStack, simulate: Boolean): ItemStack {
             return stack
         }

@@ -1,13 +1,20 @@
 package org.eln2.mc.common.recipes.foundation
 
 import net.minecraft.core.RegistryAccess
+import net.minecraft.data.recipes.FinishedRecipe
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.SimpleContainer
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.crafting.Recipe
 import net.minecraft.world.item.crafting.RecipeSerializer
 import net.minecraft.world.item.crafting.RecipeType
-import org.eln2.mc.common.content.processing.CokingRecipe
+
+/**
+ * Derives the advancement ID automatically.
+ * */
+interface Eln2FinishedRecipe : FinishedRecipe {
+    override fun getAdvancementId(): ResourceLocation = ResourceLocation.fromNamespaceAndPath(this.id.namespace, "recipes/" + this.id.path)
+}
 
 // Standard inventory slots for input and output item in processing.
 // Applies to [SimpleProcessingRecipe], [SimpleCatalyzedProcessingRecipe]
