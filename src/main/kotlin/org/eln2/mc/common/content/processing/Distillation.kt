@@ -60,15 +60,15 @@ import kotlin.math.min
 
 /**
  * This system uses a novel architecture: exploiting the [CellGraph]'s construction to build a pseudo-multiblock and execute finely-grained server thread logic.
- * The structure is a sixtuply-linked list of [DistillationModuleCell]s, which are always persistent and not subject to chunk unloads.
- * Each [DistillationModuleCell] holds a list of (at most) 6 other module cells. When columns are placed/remove or neighbors change, or the graph loads from disk, the lists for the affected cells are rebuilt.
+ * The structure is a sixtuply-linked list of [PhaseChangeModuleCell]s, which are always persistent and not subject to chunk unloads.
+ * Each [PhaseChangeModuleCell] holds a list of (at most) 6 other module cells. When columns are placed/remove or neighbors change, or the graph loads from disk, the lists for the affected cells are rebuilt.
  * When we want to execute the actual logic, we simply exclude the cells whose block entities are not loaded.
  *
  * The distillation tower is a pseudo-multiblock in the sense that each module exchanges mass and energy with neighbor (see below what the neighbors are), but there isn't a pre-set structure. It's more like a cellular automata.
  * Neighbors are other distillation module block entities. Given a module, its neighbors may or may not be direct in-world neighbors. That distinction happens when distillation columns are used. Those don't simulate or hold anything; they are structural elements that connect modules vertically.
  * They act as perfectly insulated and volume-less pipes. They are improper cells, since they don't have simulation objects. The default connection logic doesn't allow them to connect to anything, but we override the logic to allow specifically connecting to distillation modules and other columns.
  *
- * The [DistillationModuleCell] has a thermal body, which participates in the thermal simulation.
+ * The [PhaseChangeModuleCell] has a thermal body, which participates in the thermal simulation.
  * The cell does the distillation and multiblock transfer logic, by subscribing to [ServerPhase] events.
  * It allows us to execute logic in multiple passes before the simulations are dispatched on the pool (see the documentation of [ServerPhase.Start]).
  * This also means we don't need locking during the simulation.
@@ -86,7 +86,7 @@ import kotlin.math.min
  * */
 
 /**
- * Improper cell, used only to facilitate the linkage between [DistillationModuleCell].
+ * Improper cell, used only to facilitate the linkage between [PhaseChangeModuleCell].
  * But when a series of columns links two modules, the modules won't act as if they are adjacent; there is a separate rule for that.
  * See the module itself for more information.
  * */
@@ -95,7 +95,7 @@ class DistillationColumnCell(ci: CellCreateInfo) : Cell(ci) {
      * Overrides the connection logic to allow the linkage.
      * */
     override fun allowsConnection(remote: Cell): Boolean {
-        if(remote !is DistillationColumnCell && remote !is DistillationModuleCell) {
+        if(remote !is DistillationColumnCell && remote !is PhaseChangeModuleCell) {
             return false
         }
 
@@ -124,7 +124,7 @@ class DistillationColumnBlock : UprightHorizontalDirectionCellBlock<Distillation
             if(targetBlockEntity is DistillationColumnBlockEntity) {
                 results.add(CellAndContainerHandle.captureInScope(targetBlockEntity.cell))
             }
-            else if(targetBlockEntity is DistillationModuleBlockEntity) {
+            else if(targetBlockEntity is PhaseChangeModuleBlockEntity) {
                 results.add(CellAndContainerHandle.captureInScope(targetBlockEntity.cell))
             }
         }
@@ -155,7 +155,7 @@ class DistillationColumnBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
                 continue
             }
 
-            if(front is DistillationModuleCell) {
+            if(front is PhaseChangeModuleCell) {
                 front.markForRebuild()
             }
             else {
@@ -184,17 +184,16 @@ class DistillationColumnBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
  * The distillation and the interactions are executed in [ServerPhase.Start] and its second and third passes, before the simulation runs.
  *
  * Also, thermal connections are only done horizontally. This might allow for more interesting builds (the modules adjacent above and below won't receive heat via conduction).
+ *
+ * @param allowExternalConnections If false, refuses cell connections to anything that isn't a distillation module that also has [allowExternalConnections] set to false.
  * */
-class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, val replicatesTemperature: Boolean) :
+class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, val maxTemperature: Quantity<Temperature>, val replicatesTemperature: Boolean, val allowExternalConnections: Boolean) :
     Cell(ci),
-    SidedThermalFLBR<DistillationModuleCell>,
-    SimulationExecutionSubgraph.SynchronizationPointCell<DistillationModuleCell>
+    SidedThermalFLBR<PhaseChangeModuleCell>,
+    SimulationExecutionSubgraph.SynchronizationPointCell<PhaseChangeModuleCell>
 {
     companion object {
-        val HULL_MATERIAL = ChemicalElement.Copper.asMaterial.copy(
-            thermalConductivity = Quantity(3159.0, WATT_PER_METER_KELVIN)
-        )
-
+        val HULL_MATERIAL = ChemicalElement.Copper.asMaterial.copy(thermalConductivity = Quantity(3159.0, WATT_PER_METER_KELVIN))
         val HULL_MASS = Quantity(50.0, KILOGRAM)
     }
 
@@ -202,11 +201,10 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
         get() = ThermalSize.Any
 
     @SimObject
-    val wire = ThermalWireObject(
-        this,
-        ThermalMass(HULL_MATERIAL, mass = HULL_MASS),
-        leakage
-    )
+    val wire = DistillationModuleThermalObject(this, ThermalMass(HULL_MATERIAL, mass = HULL_MASS), leakage)
+
+    @Behavior
+    val temperatureExplosion = ThermalBreakdownBehavior.create(maxTemperature, this, wire.thermalBody::temperature)
 
     /**
      * Used when the block entity's capability is accessed.
@@ -263,6 +261,10 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
      * Permits connections with the columns, on top of the default logic.
      * */
     override fun allowsConnection(remote: Cell): Boolean {
+        if(!allowExternalConnections) {
+            return remote is PhaseChangeModuleCell && !remote.allowExternalConnections
+        }
+
         if(remote is DistillationColumnCell) {
             val localBlockPos = locator.requireLocator(Locators.BLOCK)
             val remoteBlockPos = remote.locator.requireLocator(Locators.BLOCK)
@@ -299,7 +301,22 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
      * The neighbor cells, indexed by [Direction.get3DDataValue].
      * */
     @OnServerThread
-    var linkedCells = Array<DistillationModuleCell?>(6) { null }
+    var linkedCells = Array<PhaseChangeModuleCell?>(6) { null }
+
+    class DistillationModuleThermalObject(cell: Cell, thermalBody: ThermalMass, environmentLeakageParameters: ConnectionParameters) : ThermalWireObject(cell, thermalBody, environmentLeakageParameters) {
+        /**
+         * Increases conduction between distillation modules (to emulate the liquid transferring heat).
+         * */
+        override fun getParameters(remote: ThermalObject<*>): ConnectionParameters {
+            if(remote !is DistillationModuleThermalObject) {
+                return super.getParameters(remote)
+            }
+
+            return ConnectionParameters.DEFAULT.copy(
+                conductance = Quantity(100.0)
+            )
+        }
+    }
 
     /**
      * The complete distillation simulation. It handles phase change and thermal fluid transfer to neighbors.
@@ -307,7 +324,7 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
      * All logic runs on the game thread (because we are accessing the fluid storage a lot), before the simulation runs, so it doesn't need locks during the simulation.
      * */
     @OnServerThread
-    class DistillationSimulation(val cell: DistillationModuleCell) {
+    class PhaseChangeSimulation(val cell: PhaseChangeModuleCell) {
         companion object {
             // P.S. don't adjust this array, the indices are used in logic.
             val LIQUID_TARGETS = intArrayOf(
@@ -319,8 +336,9 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
             )
 
             const val MAX_PHASE_CHANGE_RATE = 1.0
-            const val MAX_LIQUID_FLOW_RATE = 1.0
-            const val MAX_GAS_FLOW_RATE = 5.0
+            const val DAMPENING_CONSTANT = 1.0 / 6.0
+            const val MAX_LIQUID_FLOW_RATE = 10.0
+            const val MAX_GAS_FLOW_RATE = 15.0
         }
 
         //#region Setup State
@@ -334,13 +352,13 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
         /**
          * The block entity associated with the [cell].
          * */
-        var blockEntity: DistillationModuleBlockEntity? = null
+        var blockEntity: PhaseChangeModuleBlockEntity? = null
             private set
 
         /**
          * The block entities associated with each cell in [linkedCells]. All of them are in scope.
          * */
-        val targetBlockEntities = Array<DistillationModuleBlockEntity?>(6) { null }
+        val targetBlockEntities = Array<PhaseChangeModuleBlockEntity?>(6) { null }
 
         /**
          * If true, the [blockEntity] is not in scope.
@@ -416,7 +434,7 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
 
             skipSimulation = false
 
-            blockEntity = cell.container as DistillationModuleBlockEntity
+            blockEntity = cell.container as PhaseChangeModuleBlockEntity
 
             for (i in 0 until 6) {
                 val targetCell = cell.linkedCells[i]
@@ -431,7 +449,7 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
                     continue
                 }
 
-                val targetBlockEntity = targetCell.container as? DistillationModuleBlockEntity
+                val targetBlockEntity = targetCell.container as? PhaseChangeModuleBlockEntity
 
                 if(targetBlockEntity == null) {
                     DEBUGGER_BREAK()
@@ -774,7 +792,7 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
                         /**
                          * For everything else, try to equalize:
                          * */
-                        0.5 * (sourceStack.amount - neighbor.liquidTank.getAmountOf(fluid))
+                        DAMPENING_CONSTANT * 0.5 * (sourceStack.amount - neighbor.liquidTank.getAmountOf(fluid))
                     }
 
                     if(transferToNeighbor > FractionalFluidStack.EPSILON) {
@@ -1019,7 +1037,7 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
         }
     }
 
-    val distillation = DistillationSimulation(this)
+    val distillation = PhaseChangeSimulation(this)
 
     /**
      * Registers 3 passes on the server thread.
@@ -1050,7 +1068,7 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
         val pos = locator.requireLocator(Locators.BLOCK)
 
         connections.forEach { other ->
-            if(other is DistillationModuleCell) {
+            if(other is PhaseChangeModuleCell) {
                 val remotePos = other.locator.requireLocator(Locators.BLOCK)
 
                 val face = pos.directionTo(remotePos)
@@ -1069,7 +1087,7 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
 
                 var current: Cell? = other
                 while (current != null) {
-                    if(current is DistillationModuleCell) {
+                    if(current is PhaseChangeModuleCell) {
                         linkedCells[face.get3DDataValue()] = current
                         break
                     }
@@ -1108,13 +1126,14 @@ class DistillationModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, 
 /**
  * @param isIncandescent If true, internal temperature will be synchronized and thermal tint will be applied.
  * */
-data class DistillationModuleModel(val isIncandescent: Boolean, val modelSupplier: Supplier<PartialModel>)
+data class PhaseChangeModuleModel(val isIncandescent: Boolean, val modelSupplier: Supplier<PartialModel>)
 
-class DistillationModuleBlock(
-    val cell: RegistryObject<CellProvider<DistillationModuleCell>>,
-    val blockEntityType: RegistryObject<BlockEntityType<DistillationModuleBlockEntity>>,
-    val model: DistillationModuleModel
-) : UprightHorizontalDirectionCellBlock<DistillationModuleCell>() {
+class PhaseChangeModuleBlock(
+    val cell: RegistryObject<CellProvider<PhaseChangeModuleCell>>,
+    val capacity: Int,
+    val blockEntityType: RegistryObject<BlockEntityType<PhaseChangeModuleBlockEntity>>,
+    val model: PhaseChangeModuleModel
+) : UprightHorizontalDirectionCellBlock<PhaseChangeModuleCell>() {
     @Deprecated("Deprecated in Java")
     override fun skipRendering(pState: BlockState, pAdjacentState: BlockState, pDirection: Direction) = true
 
@@ -1124,7 +1143,7 @@ class DistillationModuleBlock(
 
     override fun getCellProvider() = cell.get()
 
-    override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = DistillationModuleBlockEntity(pPos, pState)
+    override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = PhaseChangeModuleBlockEntity(pPos, pState)
 
     /**
      * Adds the vertical neighbor modules (we excluded verticals from the thermal connections, see the cell as for why), and adds the columns.
@@ -1140,7 +1159,7 @@ class DistillationModuleBlock(
             if(targetBlockEntity is DistillationColumnBlockEntity) {
                 results.add(CellAndContainerHandle.captureInScope(targetBlockEntity.cell))
             }
-            else if(targetBlockEntity is DistillationModuleBlockEntity) {
+            else if(targetBlockEntity is PhaseChangeModuleBlockEntity) {
                 // We only allow thermal connections horizontally (I thought it's more interesting that way, and we can just couple layers with external conduits if we need to),
                 // so we normally wouldn't connect to modules above and below.
                 // We allow the connection explicitly here:
@@ -1152,10 +1171,10 @@ class DistillationModuleBlock(
 
 /**
  * Handles incremental building just like [DistillationColumnBlockEntity] and capability and sync.
- * Doesn't actually tick, all the server-side logic is done by the [DistillationModuleCell].
+ * Doesn't actually tick, all the server-side logic is done by the [PhaseChangeModuleCell].
  * */
-class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
-    CellBlockEntity<DistillationModuleCell>(pos, state, (state.block as DistillationModuleBlock).blockEntityType.get()),
+class PhaseChangeModuleBlockEntity(pos: BlockPos, state: BlockState) :
+    CellBlockEntity<PhaseChangeModuleCell>(pos, state, (state.block as PhaseChangeModuleBlock).blockEntityType.get()),
     ComponentDisplay,
     WrenchInteractable,
     InternalTemperatureConsumer,
@@ -1163,8 +1182,19 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
 {
     //#region Capability
 
-    val liquidTank = MultipleFractionalFluidTank(1000.0, true, this::setChanged)
-    val gasTank = MultipleFractionalFluidTank(1000.0, true, this::setChanged)
+    val liquidTank = MultipleFractionalFluidTank(0.0, true)
+    val gasTank = MultipleFractionalFluidTank(0.0, true)
+
+    @Suppress("unused")
+    val capacityConstraint = FractionalFluidTankCapacityConstraint(
+        (state.block as PhaseChangeModuleBlock).capacity.toDouble(),
+        arrayOf(liquidTank, gasTank)
+    )
+
+    init {
+        liquidTank.onVersionChanged += this::setChanged
+        gasTank.onVersionChanged += this::setChanged
+    }
 
     /**
      * Gets an iterable over all fluids in the hull, for thermal calculations.
@@ -1185,7 +1215,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
      * Now, the [ThermalObjectBasedFractionalFluidHandlerThermalExpansion] will compose the thermal transfer logic on top of the transfer logic from [parent].
      * The thermal transfer logic will just mutate our thermal object.
      * */
-    class ThermalLayer<Handler : IFractionalFluidHandler>(val blockEntity: DistillationModuleBlockEntity, override val parent: Handler) : ThermalObjectBasedFractionalFluidHandlerThermalExpansion {
+    class ThermalLayer<Handler : IFractionalFluidHandler>(val blockEntity: PhaseChangeModuleBlockEntity, override val parent: Handler) : ThermalObjectBasedFractionalFluidHandlerThermalExpansion {
         override val handle: ThermalObjectBasedFractionalFluidHandlerThermalExpansion.ThermalBodyHandle
             get() = blockEntity.cell.handle
 
@@ -1342,8 +1372,8 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
 
         val body = cell.handle.acquire()
         val temperature = body.temperature
-        body.material = DistillationModuleCell.HULL_MATERIAL
-        body.mass = DistillationModuleCell.HULL_MASS
+        body.material = PhaseChangeModuleCell.HULL_MATERIAL
+        body.mass = PhaseChangeModuleCell.HULL_MASS
         body.temperature = temperature
         cell.handle.release()
 
@@ -1358,7 +1388,7 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
      * */
     fun recalculateBody() {
         val body = cell.wire.thermalBody
-        val (newMaterial, newMass) = ThermalFluidHandlerHelper.calculateDerivativeMaterialAndMass(DistillationModuleCell.HULL_MASS, DistillationModuleCell.HULL_MATERIAL, getFluids())
+        val (newMaterial, newMass) = ThermalFluidHandlerHelper.calculateDerivativeMaterialAndMass(PhaseChangeModuleCell.HULL_MASS, PhaseChangeModuleCell.HULL_MATERIAL, getFluids())
         body.material = newMaterial
         body.mass = newMass
         cell.setChanged()
@@ -1442,11 +1472,11 @@ class DistillationModuleBlockEntity(pos: BlockPos, state: BlockState) :
     }
 }
 
-class DistillationModuleBlockEntityVisual(ctx: VisualizationContext, blockEntity: DistillationModuleBlockEntity, partialTick: Float) :
-    AbstractBlockEntityVisual<DistillationModuleBlockEntity>(ctx, blockEntity, partialTick),
+class PhaseChangeModuleBlockEntityVisual(ctx: VisualizationContext, blockEntity: PhaseChangeModuleBlockEntity, partialTick: Float) :
+    AbstractBlockEntityVisual<PhaseChangeModuleBlockEntity>(ctx, blockEntity, partialTick),
     SimpleDynamicVisual
 {
-    val model = (blockState.block as DistillationModuleBlock).model
+    val model = (blockState.block as PhaseChangeModuleBlock).model
 
     val instance: TransformedLightOverrideInstance = visualizationContext.instancerProvider()
         .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, Models.partial(model.modelSupplier.get()))

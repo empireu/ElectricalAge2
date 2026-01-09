@@ -63,7 +63,7 @@ import kotlin.math.PI
 /**
  * Generalized thermal conductor, in the form of a single thermal body that gets connected to all neighbor cells.
  * */
-class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass, val environmentLeakageParameters: ConnectionParameters = ConnectionParameters.DEFAULT) : ThermalObject<Cell>(cell), PersistentObject, ThermalContactInfo {
+open class ThermalWireObject(cell: Cell, val thermalBody: ThermalMass, val environmentLeakageParameters: ConnectionParameters = ConnectionParameters.DEFAULT) : ThermalObject<Cell>(cell), PersistentObject, ThermalContactInfo {
     /**
      * The way the thermal state is persisted.
      * */

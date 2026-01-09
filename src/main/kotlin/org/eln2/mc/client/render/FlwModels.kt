@@ -215,6 +215,12 @@ object FlwModels {
 
     //#endregion
 
+    //#region Tanks
+
+    val IRON_TANK = partialBlock("tanks/iron_tank")
+
+    //#endregion
+
     fun partialBlock(path: String): PartialModel = PartialModel.of(resource("block/$path"))
     fun polarBlock(path: String): PolarModel = PolarModel(resource("block/$path"))
 

@@ -225,12 +225,12 @@ object Eln2Processing : ContentModule() {
 
         VisualizerRegistry.setVisualizer(
             INSULATED_DISTILLATION_MODULE_BLOCK_ENTITY.get(),
-            SimpleBlockEntityVisualizer(::DistillationModuleBlockEntityVisual) { true }
+            SimpleBlockEntityVisualizer(::PhaseChangeModuleBlockEntityVisual) { true }
         )
 
         VisualizerRegistry.setVisualizer(
             CONDENSER_DISTILLATION_MODULE_BLOCK_ENTITY.get(),
-            SimpleBlockEntityVisualizer(::DistillationModuleBlockEntityVisual) { true }
+            SimpleBlockEntityVisualizer(::PhaseChangeModuleBlockEntityVisual) { true }
         )
     }
 
@@ -453,51 +453,55 @@ object Eln2Processing : ContentModule() {
 
     val INSULATED_DISTILLATION_MODULE_CELL = cellMemoize("insulated_distillation_module") {
         val leakage = ConnectionParameters(conductance = Quantity(0.1, WATT_PER_KELVIN))
+        val maxTemperature = Quantity(500.0, CELSIUS)
 
         CellFactory {
-            DistillationModuleCell(it, leakage, false)
+            PhaseChangeModuleCell(it, leakage, maxTemperature, replicatesTemperature = false, allowExternalConnections = true)
         }
     }
 
     val INSULATED_DISTILLATION_MODULE_BLOCK = blockAndItem("insulated_distillation_module") {
-        DistillationModuleBlock(
+        PhaseChangeModuleBlock(
             INSULATED_DISTILLATION_MODULE_CELL,
+            500,
             INSULATED_DISTILLATION_MODULE_BLOCK_ENTITY,
-            DistillationModuleModel(false) {
+            PhaseChangeModuleModel(false) {
                 FlwModels.INSULATED_DISTILLATION_MODULE
             }
         )
     }
         .withSelfDrop()
 
-    val INSULATED_DISTILLATION_MODULE_BLOCK_ENTITY: RegistryObject<BlockEntityType<DistillationModuleBlockEntity>> = blockEntityOnly(
+    val INSULATED_DISTILLATION_MODULE_BLOCK_ENTITY: RegistryObject<BlockEntityType<PhaseChangeModuleBlockEntity>> = blockEntityOnly(
         "insulated_distillation_module",
         INSULATED_DISTILLATION_MODULE_BLOCK,
-        ::DistillationModuleBlockEntity
+        ::PhaseChangeModuleBlockEntity
     )
 
     val CONDENSER_DISTILLATION_MODULE_CELL = cellMemoize("condenser_distillation_module") {
         val leakage = ConnectionParameters(conductance = Quantity(5.0, WATT_PER_KELVIN))
+        val maxTemperature = Quantity(500.0, CELSIUS)
 
         CellFactory {
-            DistillationModuleCell(it, leakage, true)
+            PhaseChangeModuleCell(it, leakage, maxTemperature, replicatesTemperature = true, allowExternalConnections = true)
         }
     }
 
     val CONDENSER_DISTILLATION_MODULE_BLOCK = blockAndItem("condenser_distillation_module") {
-        DistillationModuleBlock(
+        PhaseChangeModuleBlock(
             CONDENSER_DISTILLATION_MODULE_CELL,
+            500,
             CONDENSER_DISTILLATION_MODULE_BLOCK_ENTITY,
-            DistillationModuleModel(true) {
+            PhaseChangeModuleModel(true) {
                 FlwModels.CONDENSER_DISTILLATION_MODULE
             }
         )
     }.withSelfDrop()
 
-    val CONDENSER_DISTILLATION_MODULE_BLOCK_ENTITY: RegistryObject<BlockEntityType<DistillationModuleBlockEntity>> = blockEntityOnly(
+    val CONDENSER_DISTILLATION_MODULE_BLOCK_ENTITY: RegistryObject<BlockEntityType<PhaseChangeModuleBlockEntity>> = blockEntityOnly(
         "condenser_distillation_module",
         CONDENSER_DISTILLATION_MODULE_BLOCK,
-        ::DistillationModuleBlockEntity
+        ::PhaseChangeModuleBlockEntity
     )
 
     //#endregion

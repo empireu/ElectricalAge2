@@ -708,7 +708,7 @@ open class GravityBasedMultipleFluidTank(val parent: MultipleFluidTank) : IFluid
 /**
  * Re-implementation of [MultipleFluidTank] that uses [FractionalFluidStack]s.
  * */
-open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalFluid: Boolean, val versionChangedHandler: Runnable? = null) : IFractionalFluidHandler {
+open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalFluid: Boolean) : IFractionalFluidHandler {
     var version = 0
         private set
 
@@ -717,7 +717,16 @@ open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalF
     /**
      * Gets the total amount of fluid in this tank (unless externally modified, it should be less than or equal to [capacity]).
      * */
-    val amount: Double get() = fluids.sumOf { it.amount }
+    val amount: Double get() {
+        val fluids = fluids
+
+        var result = 0.0
+        for (i in 0 until fluids.size) {
+            result += fluids[i].amount
+        }
+
+        return result
+    }
 
     /**
      * Gets the free volume in the tank. If the [amount] is larger than [capacity], the result will be 0.
@@ -732,9 +741,11 @@ open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalF
         return capacity - currentAmount
     }
 
+    val onVersionChanged = NotificationBus()
+
     open fun incrementVersion() {
         version++
-        versionChangedHandler?.run()
+        onVersionChanged.run()
     }
 
     /**
@@ -1145,6 +1156,58 @@ open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalF
         }
 
         incrementVersion()
+    }
+}
+
+/**
+ * Limits the capacity of multiple fluid tanks, so their total capacity is constrained by [capacity].
+ * Useful for e.g. separating the gas phase and liquid phase fluids in separate tanks, but limiting the total capacity of the machine.
+ * */
+class FractionalFluidTankCapacityConstraint(val capacity: Double, val tanks: Array<MultipleFractionalFluidTank>) {
+    init {
+        tanks.forEach { tank ->
+            tank.onVersionChanged += this::update
+        }
+
+        /**
+         * Set initial capacities:
+         * */
+        update()
+    }
+
+    /**
+     * Adjusts the capacity of each tank, so the constraint is satisfied:
+     * */
+    private fun update() {
+        var totalFill = 0.0
+        val tanks = tanks
+        for (i in 0 until tanks.size) {
+            totalFill += tanks[i].amount
+        }
+
+        val capacity = capacity
+
+        /**
+         * Set each tank's capacity to their current fill:
+         * */
+        if(totalFill >= capacity) {
+            for (i in 0 until tanks.size) {
+                val tank = tanks[i]
+                tank.capacity = tank.amount
+            }
+        }
+        /**
+         * Set each tank's capacity to their current fill, plus the remaining capacity.
+         * This means one tank could accept a fill request that fills the entire volume, and this will result in the rest of the tanks being capped at their current amount when we receive the event.
+         * */
+        else {
+            val remainingCapacity = capacity - totalFill
+
+            for(i in 0 until tanks.size) {
+                val tank = tanks[i]
+                tank.capacity = tank.amount + remainingCapacity
+            }
+        }
     }
 }
 

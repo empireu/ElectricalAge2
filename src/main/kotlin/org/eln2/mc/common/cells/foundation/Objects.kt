@@ -151,7 +151,7 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
 
     protected open fun getParameters(remote: ThermalObject<*>) = ConnectionParameters.DEFAULT
 
-    fun build() {
+    open fun build() {
         if (simulation == null) {
             error("Tried to build thermal obj with null simulation")
         }

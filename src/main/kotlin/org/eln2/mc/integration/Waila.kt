@@ -1,6 +1,5 @@
 package org.eln2.mc.integration
 
-import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.network.chat.Component
@@ -17,8 +16,8 @@ import org.eln2.mc.common.blocks.foundation.*
 import org.eln2.mc.common.content.processing.BlacksmithingStationBlock
 import org.eln2.mc.common.content.processing.BlacksmithingStationBlockEntity
 import org.eln2.mc.common.fluids.foundation.PhysicalFluidManager
-import org.eln2.mc.common.content.processing.DistillationModuleBlock
-import org.eln2.mc.common.content.processing.DistillationModuleBlockEntity
+import org.eln2.mc.common.content.processing.PhaseChangeModuleBlock
+import org.eln2.mc.common.content.processing.PhaseChangeModuleBlockEntity
 import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
 import org.eln2.mc.common.fluids.foundation.MultipleFractionalFluidTank
 import org.eln2.mc.common.parts.foundation.CellPart
@@ -37,13 +36,13 @@ import kotlin.math.absoluteValue
 @WailaPlugin
 class Eln2WailaPlugin : IWailaPlugin {
     override fun register(registration: IWailaCommonRegistration) {
-        registration.registerBlockDataProvider(DistillationFluidProvider, DistillationModuleBlockEntity::class.java)
+        registration.registerBlockDataProvider(DistillationFluidProvider, PhaseChangeModuleBlockEntity::class.java)
         registration.registerBlockDataProvider(BlacksmithingStationProvider, BlacksmithingStationBlockEntity::class.java)
         registration.registerBlockDataProvider(ComponentDisplayProvider, BlockEntity::class.java)
     }
 
     override fun registerClient(registration: IWailaClientRegistration) {
-        registration.registerBlockComponent(DistillationFluidProvider, DistillationModuleBlock::class.java)
+        registration.registerBlockComponent(DistillationFluidProvider, PhaseChangeModuleBlock::class.java)
         registration.registerBlockComponent(BlacksmithingStationProvider, BlacksmithingStationBlock::class.java)
         registration.registerBlockComponent(ComponentDisplayProvider, Block::class.java)
 
@@ -171,7 +170,7 @@ class Eln2WailaPlugin : IWailaPlugin {
         override fun getUid() = resource("distillation_fluids")
 
         override fun appendServerData(data: CompoundTag, accessor: BlockAccessor) {
-            val module = accessor.blockEntity as? DistillationModuleBlockEntity
+            val module = accessor.blockEntity as? PhaseChangeModuleBlockEntity
                 ?: return
 
             val fluids = ListTag()
