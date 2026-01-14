@@ -1217,7 +1217,7 @@ open class ProcessingMachineBlockEntityVisual<C : ProcessingCell, BE : Processin
             }
 
             specificData.interpolator.update()
-            poseShaft(specificData.instance, SHAFT_CENTER, specificData.interpolator.clientRotation.ln())
+            poseShaft(specificData.instance, SHAFT_CENTER, -specificData.interpolator.clientRotation.ln())
         }
 
         executeFrame(dt, renderState, processSpeed)

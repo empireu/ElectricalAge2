@@ -45,7 +45,7 @@ import kotlin.math.ceil
 class CrusherBlock<C : ProcessingCell>(
     cell: RegistryObject<CellProvider<C>>,
     val power: Quantity<Power>, val speed: Double, val tier: Int,
-    val thermalEfficiency: Double
+    val thermalCoefficient: Double
 ) : ProcessingMachineBlock<C, CrusherBlockEntity<C>>(cell) {
     override fun getTitle(): Component = Component.translatable("menu.$MODID.crusher")
 
@@ -162,7 +162,7 @@ class CrusherBlockEntity<C : ProcessingCell>(pPos: BlockPos, pState: BlockState)
 
         setDefaultRecipeOptions(block.speed, block.tier)
         cell.loadPower = block.power
-        cell.thermalFactor = block.thermalEfficiency
+        cell.thermalFactor = block.thermalCoefficient
     }
 }
 

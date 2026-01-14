@@ -2,7 +2,6 @@
 
 package org.eln2.mc.common.content.modules
 
-import org.eln2.mc.common.content.processing.CrusherMenu
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
 import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
@@ -20,6 +19,7 @@ import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.utils.addUnique
+import org.eln2.mc.NodeFrictionDescription
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
 import org.eln2.mc.client.screens.BasicProgressScreen
@@ -39,6 +39,11 @@ import org.eln2.mc.common.cells.foundation.ThermalSize
 import org.eln2.mc.common.containers.ContainerRegistry.menu
 import org.eln2.mc.common.content.*
 import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
+import org.eln2.mc.common.content.modules.Eln2Processing.PROCESSING_MACHINES_FOR_VISUAL_REGISTRATION_AND_DATAGEN
+import org.eln2.mc.common.content.modules.Eln2Processing.registerBlockEntityRenderers
+import org.eln2.mc.common.content.modules.Eln2Processing.registerBlockEntityVisualizers
+import org.eln2.mc.common.content.modules.Eln2Processing.registerMachine
+import org.eln2.mc.common.content.modules.Eln2Processing.registerMachineHull
 import org.eln2.mc.common.content.processing.*
 import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
@@ -556,6 +561,29 @@ object Eln2Processing : ContentModule() {
         )
     )
 
+    val PRIMITIVE_KINETIC_WORK_BOX = KineticProcessingCell.register(
+        "primitive_kinetic_work_box", "primitive_kinetic",
+        KineticProcessingCellOptions(
+            Quantity(0.1, KILOGRAM_METER2),
+            NodeFrictionDescription(
+                0.1,
+                Quantity(0.01),
+                Quantity(0.01)
+            ),
+            Quantity(5.0, REVOLUTION_PER_SECOND),
+            Quantity(30.0, REVOLUTION_PER_SECOND),
+            Quantity(500.0, NEWTON_METER),
+            ProcessingCellThermalOptions(
+                ThermalMassDefinition(
+                    ChemicalElement.Iron.asMaterial,
+                    mass = Quantity(30.0, KILOGRAM)
+                ),
+                ConnectionParameters(conductance = Quantity(5.0, WATT_PER_KELVIN)),
+                Quantity(115.0, CELSIUS)
+            )
+        )
+    )
+
     //#endregion
 
     //#region Crusher
@@ -572,6 +600,22 @@ object Eln2Processing : ContentModule() {
     }
 
     val CRUSHER_HULL = registerMachineHull("crusher")
+
+    val CRUSHER_PRIMITIVE_KINETIC = registerMachine(
+        CRUSHER_HULL, PRIMITIVE_KINETIC_WORK_BOX,
+        {
+            CrusherBlock(
+                it,
+                Quantity(600.0, WATT),
+                1.0,
+                0,
+                0.225
+            )
+        },
+        ::CrusherBlockEntity,
+        CRUSHER_MODEL,
+        ::ProcessingMachineBlockEntityVisual
+    )
 
     val CRUSHER_BRUSHED_DC_MOTOR = registerMachine(
         CRUSHER_HULL, BRUSHED_DC_MOTOR_WORK_BOX,
@@ -610,6 +654,14 @@ object Eln2Processing : ContentModule() {
 
     val EXTRUDER_HULL = registerMachineHull("extruder")
 
+    val EXTRUDER_PRIMITIVE_KINETIC = registerMachine(
+        EXTRUDER_HULL, PRIMITIVE_KINETIC_WORK_BOX,
+        ::ExtruderBlock,
+        ::ExtruderBlockEntity,
+        EXTRUDER_MODEL,
+        ::ExtruderBlockEntityVisual
+    )
+
     val EXTRUDER_BRUSHED_DC_MOTOR = registerMachine(
         EXTRUDER_HULL, BRUSHED_DC_MOTOR_WORK_BOX,
         ::ExtruderBlock,
@@ -635,6 +687,14 @@ object Eln2Processing : ContentModule() {
     }
 
     val ROLLING_MACHINE_HULL = registerMachineHull("rolling_machine")
+
+    val ROLLING_MACHINE_PRIMITIVE_KINETIC = registerMachine(
+        ROLLING_MACHINE_HULL, PRIMITIVE_KINETIC_WORK_BOX,
+        ::RollingMachineBlock,
+        ::RollingMachineBlockEntity,
+        ROLLING_MACHINE_MODEL,
+        ::ProcessingMachineBlockEntityVisual
+    )
 
     val ROLLING_MACHINE_BRUSHED_DC_MOTOR = registerMachine(
         ROLLING_MACHINE_HULL, BRUSHED_DC_MOTOR_WORK_BOX,
