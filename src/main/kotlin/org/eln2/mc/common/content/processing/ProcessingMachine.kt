@@ -16,6 +16,7 @@ import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.chat.Component
 import net.minecraft.sounds.SoundEvent
 import net.minecraft.util.RandomSource
@@ -835,8 +836,8 @@ abstract class ProcessingMachineBlockEntity<C : ProcessingCell>(pPos: BlockPos, 
     @ServerOnly
     override fun getUpdateTag(): CompoundTag {
         if(hasCell) {
-            this.sendBulkPacket(ProcessingSyncPacket(cell.signedProcessingSpeed))
-            this.sendBulkPacket(cell.kineticState)
+            this.sendBulkPacket(ProcessingSyncPacket::serialize, ProcessingSyncPacket(cell.signedProcessingSpeed))
+            this.sendBulkPacket(RotatingKineticState::serialize, cell.kineticState)
         }
 
         return super.getUpdateTag()
@@ -852,14 +853,14 @@ abstract class ProcessingMachineBlockEntity<C : ProcessingCell>(pPos: BlockPos, 
             state.renderVersion++
         }
 
-        handler.withHandler<ProcessingSyncPacket> { packet ->
+        handler.withHandler<ProcessingSyncPacket>(ProcessingSyncPacket::deserialize) { packet ->
             modifyState {
                 targetClientSpeed = abs(packet.signedSpeed)
                 processingDirection = if(packet.signedSpeed >= 0.0) ProcessingCell.ProcessingDirection.Forward else ProcessingCell.ProcessingDirection.Reverse
             }
         }
 
-        handler.withHandler<RotatingKineticState> { state ->
+        handler.withHandler<RotatingKineticState>(RotatingKineticState::deserialize) { state ->
             modifyState {
                 targetClientKineticState = state
             }
@@ -868,16 +869,25 @@ abstract class ProcessingMachineBlockEntity<C : ProcessingCell>(pPos: BlockPos, 
 
     @OnSimulationThread
     fun onSignedProcessingSpeedChanged(newSpeed: Double) {
-        sendBulkPacket(ProcessingSyncPacket(newSpeed))
+        sendBulkPacket(ProcessingSyncPacket::serialize, ProcessingSyncPacket(newSpeed))
     }
 
     @OnSimulationThread
     override fun onKineticStateChanged(state: RotatingKineticState) {
-        sendBulkPacket(state)
+        sendBulkPacket(RotatingKineticState::serialize, state)
     }
 
-    @Serializable
-    class ProcessingSyncPacket(val signedSpeed: Double)
+    class ProcessingSyncPacket(val signedSpeed: Double) {
+        companion object {
+            fun serialize(packet: ProcessingSyncPacket, buffer: FriendlyByteBuf) {
+                buffer.writeDouble(packet.signedSpeed)
+            }
+
+            fun deserialize(buffer: FriendlyByteBuf) = ProcessingSyncPacket(
+                buffer.readDouble()
+            )
+        }
+    }
 
     //#endregion
 

@@ -6,6 +6,7 @@ import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import kotlinx.serialization.Serializable
+import net.minecraft.network.FriendlyByteBuf
 import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
@@ -48,17 +49,26 @@ class RadiatorPart(
         RadiantBodyPartVisual(ctx, this, FlwModels.RADIATOR, radiantColor)
 
     override fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) {
-        builder.withHandler<Sync> {
+        builder.withHandler<Sync>(Sync::deserialize) {
             renderTemperature = (Quantity(it.temperature, KELVIN))
         }
     }
 
     override fun onInternalTemperatureChanges(dirty: List<ThermalMass>) {
-        sendBulkPacket(Sync(!dirty.first().temperature))
+        sendBulkPacket(Sync::serialize, Sync(!dirty.first().temperature))
     }
 
-    @Serializable
-    private data class Sync(val temperature: Double)
+    private data class Sync(val temperature: Double) {
+        companion object {
+            fun serialize(packet: Sync, buffer: FriendlyByteBuf) {
+                buffer.writeDouble(packet.temperature)
+            }
+
+            fun deserialize(buffer: FriendlyByteBuf) = Sync(
+                buffer.readDouble()
+            )
+        }
+    }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         builder.quantity(cell.thermalWire.thermalBody.temperature)

@@ -2,6 +2,7 @@ package org.eln2.mc.common.content
 
 import kotlinx.serialization.Serializable
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.network.FriendlyByteBuf
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
@@ -349,7 +350,7 @@ class DcMotorPart(
 
     @ClientOnly
     override fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) {
-        builder.withHandler<SyncPacket> {
+        builder.withHandler<SyncPacket>(SyncPacket::deserialize) {
             val state = renderState!!
             state.targetAngularVelocity = abs(it.angularVelocity)
             state.targetPower = abs(it.power)
@@ -393,7 +394,7 @@ class DcMotorPart(
 
     @ServerOnly @OnSimulationThread
     fun replicate(angularVelocity: Double, power: Double) {
-        sendBulkPacket(SyncPacket(angularVelocity, power))
+        sendBulkPacket(SyncPacket::serialize, SyncPacket(angularVelocity, power))
     }
 
     @ServerOnly
@@ -403,8 +404,19 @@ class DcMotorPart(
         }
     }
 
-    @Serializable
-    private data class SyncPacket(val angularVelocity: Double, val power: Double)
+    private data class SyncPacket(val angularVelocity: Double, val power: Double) {
+        companion object {
+            fun serialize(packet: SyncPacket, buffer: FriendlyByteBuf) {
+                buffer.writeDouble(packet.angularVelocity)
+                buffer.writeDouble(packet.power)
+            }
+
+            fun deserialize(buffer: FriendlyByteBuf) = SyncPacket(
+                buffer.readDouble(),
+                buffer.readDouble()
+            )
+        }
+    }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         builder.debugInIDE { "Back-EMF: ${cell.electrical.voltageSource.readouts.potential}" }

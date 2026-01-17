@@ -2,6 +2,7 @@ package org.eln2.mc.common.cells.foundation
 
 import it.unimi.dsi.fastutil.objects.Reference2DoubleArrayMap
 import kotlinx.serialization.Serializable
+import net.minecraft.network.FriendlyByteBuf
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.approxEq
@@ -145,8 +146,17 @@ class InternalTemperatureReplicatorBehavior(val consumer: InternalTemperatureCon
         consumer.onInternalTemperatureChange(Quantity(temperature))
     }
 
-    @Serializable
-    class InternalTemperaturePacket(val temperature: Double)
+    class InternalTemperaturePacket(val temperature: Double) {
+        companion object {
+            fun serialize(packet: InternalTemperaturePacket, writer: FriendlyByteBuf) {
+                writer.writeDouble(packet.temperature)
+            }
+
+            fun deserialize(writer: FriendlyByteBuf) = InternalTemperaturePacket(
+                writer.readDouble()
+            )
+        }
+    }
 }
 
 fun interface ExternalTemperatureConsumer {
@@ -243,7 +253,6 @@ class ExternalTemperatureReplicatorBehavior(val cell: Cell, val consumer: Extern
     }
 }
 
-@Serializable
 data class RotatingKineticState(val angle: Double, val angularVelocity: Double) {
     companion object {
         fun accessor(node: KineticNode) : Supplier<RotatingKineticState> = Supplier {
@@ -252,6 +261,16 @@ data class RotatingKineticState(val angle: Double, val angularVelocity: Double) 
                 node.angularVelocity
             )
         }
+
+        fun serialize(packet: RotatingKineticState, buffer: FriendlyByteBuf) {
+            buffer.writeDouble(packet.angle)
+            buffer.writeDouble(packet.angularVelocity)
+        }
+
+        fun deserialize(buffer: FriendlyByteBuf) = RotatingKineticState(
+            buffer.readDouble(),
+            buffer.readDouble()
+        )
     }
 }
 

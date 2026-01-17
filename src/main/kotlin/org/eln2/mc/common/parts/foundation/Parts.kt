@@ -71,10 +71,12 @@ import org.eln2.mc.mathematics.FacingDirection
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.cells.foundation.CellLayer
+import org.eln2.mc.common.network.NetworkSerializer
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.network.serverToClient.DimensionMessageToServerPart
 import org.eln2.mc.common.network.serverToClient.ServerSidePacketHandler
 import org.eln2.mc.common.network.serverToClient.ServerSidePacketHandlerBuilder
+import org.eln2.mc.common.network.serverToClient.encodePacket
 import org.eln2.mc.common.network.serverToClient.id
 import org.eln2.mc.hasLocalFrame
 import org.eln2.mc.extensions.directionTo
@@ -349,9 +351,9 @@ abstract class Part(ci: PartCreateInfo) {
      * This makes sense to call if and only if [P] is registered on the client in [setupPacketsOnClient], and the default behavior of [handleBulkMessage] gets executed.
      * */
     @ServerOnly
-    protected inline fun <reified P> sendBulkPacket(packet: P) {
+    protected inline fun <reified P> sendBulkPacket(serializer: NetworkSerializer<P>, packet: P) {
         enqueueBulkMessage(
-            ClientSidePacketHandler.encode(packet)
+            encodePacket(serializer, packet)
         )
     }
 
@@ -359,9 +361,9 @@ abstract class Part(ci: PartCreateInfo) {
      * Sends the packet to the server.
      * This makes sense to call if and only if [P] is registered on the server in [setupPacketsOnServer], and the default behavior of [handleMessageFromClient] gets executed.
      * */
-    protected inline fun <reified P> sendPacketToServer(packet: P) {
+    protected inline fun <reified P> sendPacketToServer(serializer: NetworkSerializer<P>, packet: P) {
         sendMessageToServer(
-            ServerSidePacketHandler.encode(packet)
+            encodePacket(serializer, packet)
         )
     }
 

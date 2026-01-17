@@ -2,8 +2,9 @@
 
 package org.eln2.mc.common.network.serverToClient
 
-import kotlinx.serialization.*
-import kotlinx.serialization.cbor.Cbor
+import io.netty.buffer.PooledByteBufAllocator
+import io.netty.buffer.Unpooled
+import kotlinx.serialization.ExperimentalSerializationApi
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.core.BlockPos
@@ -18,18 +19,12 @@ import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.network.NetworkEvent
-import org.eln2.mc.ClientOnly
-import org.eln2.mc.CrossThreadAccess
-import org.eln2.mc.DEBUGGER_BREAK
-import org.eln2.mc.ELN2_DEBUG
-import org.eln2.mc.ELN2_LOG_STATS
-import org.eln2.mc.LOG
-import org.eln2.mc.ServerOnly
+import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
+import org.eln2.mc.common.network.NetworkDeserializer
+import org.eln2.mc.common.network.NetworkSerializer
 import org.eln2.mc.common.network.Networking
-import org.eln2.mc.AveragingList
 import org.eln2.mc.extensions.formatted
-import org.eln2.mc.reflectId
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedDeque
@@ -265,7 +260,7 @@ fun BlockEntity.enqueueBulkMessage(payload: ByteArray) : Boolean {
  * Enqueues a bulk packet to be sent to the client.
  * This makes sense to call if and only if [P] is registered on the client in [BulkPacketHandlerBlockEntity.setupPacketsOnClient], and the default behavior of [org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity.handleBulkMessage] gets executed.
  * */
-inline fun<reified P> BlockEntity.sendBulkPacket(packet: P) = this.enqueueBulkMessage(ClientSidePacketHandler.encode(packet))
+inline fun<reified P> BlockEntity.sendBulkPacket(serializer: NetworkSerializer<P>, packet: P) = this.enqueueBulkMessage(encodePacket(serializer, packet))
 
 /**
  * Implemented by block entities that wish to receive bulk packets, using the [ClientSidePacketHandler].
@@ -569,14 +564,22 @@ fun interface ServerSidePacketConsumer {
 class ClientSidePacketHandlerBuilder {
     val registeredIds = HashMap<Int, ClientSidePacketConsumer>()
 
-    inline fun <reified P> withHandler(crossinline consume: (P) -> Unit): ClientSidePacketHandlerBuilder {
+    inline fun <reified P> withHandler(deserializer: NetworkDeserializer<P>, crossinline consume: (P) -> Unit): ClientSidePacketHandlerBuilder {
         registeredIds[P::class.reflectId] = ClientSidePacketConsumer {
-            val instance = Cbor.decodeFromByteArray<P>(it)
+            val buffer = Unpooled.wrappedBuffer(it)
 
             try {
+                val wrapper = FriendlyByteBuf(buffer)
+                val instance = deserializer.read(wrapper)
+
                 consume(instance)
-            } catch (t: Throwable) {
-                LOG.error("Failed to handle ${P::class}: $t")
+            }
+            catch (t: Throwable) {
+                LOG.error("Failed to handle on client ${P::class}: $t")
+                DEBUGGER_BREAK()
+            }
+            finally {
+                buffer.release()
             }
         }
 
@@ -589,14 +592,22 @@ class ClientSidePacketHandlerBuilder {
 class ServerSidePacketHandlerBuilder {
     val registeredIds = HashMap<Int, ServerSidePacketConsumer>()
 
-    inline fun <reified P> withHandler(crossinline consume: (P, ServerPlayer) -> Unit): ServerSidePacketHandlerBuilder {
+    inline fun <reified P> withHandler(deserializer: NetworkDeserializer<P>, crossinline consume: (P, ServerPlayer) -> Unit): ServerSidePacketHandlerBuilder {
         registeredIds[P::class.reflectId] = ServerSidePacketConsumer { payload, player ->
-            val instance = Cbor.decodeFromByteArray<P>(payload)
+            val buffer = Unpooled.wrappedBuffer(payload)
 
             try {
+                val wrapper = FriendlyByteBuf(buffer)
+                val instance = deserializer.read(wrapper)
+
                 consume(instance, player)
-            } catch (t: Throwable) {
+            }
+            catch (t: Throwable) {
                 LOG.error("Failed to handle on server ${P::class}: $t, from $player")
+                DEBUGGER_BREAK()
+            }
+            finally {
+                buffer.release()
             }
         }
 
@@ -606,12 +617,32 @@ class ServerSidePacketHandlerBuilder {
     fun build() = ServerSidePacketHandler(registeredIds.toMap())
 }
 
+/**
+ * Encodes a packet prefixed with a reflection ID.
+ * */
+inline fun <reified P> encodePacket(serializer: NetworkSerializer<P>, packet: P): ByteArray {
+    val buffer = PooledByteBufAllocator.DEFAULT.buffer(128)
+
+    try {
+        buffer.writeInt(P::class.reflectId)
+
+        val wrapper = FriendlyByteBuf(buffer)
+        serializer.write(packet, wrapper)
+
+        val bytes = ByteArray(buffer.writerIndex())
+        buffer.getBytes(0, bytes)
+
+        return bytes
+    }
+    finally {
+        buffer.release()
+    }
+}
+
 class ClientSidePacketHandler(private val registeredIds: Map<Int, ClientSidePacketConsumer>) {
     fun handle(data: ByteArray): Boolean {
         val buffer = ByteBuffer.wrap(data)
-
         val id = buffer.int
-
         val handler = registeredIds[id]
 
         if (handler == null) {
@@ -624,28 +655,6 @@ class ClientSidePacketHandler(private val registeredIds: Map<Int, ClientSidePack
         handler.handle(payload)
 
         return true
-    }
-
-    companion object {
-        inline fun <reified P> encode(packet: P): ByteArray {
-            val data: ByteArray
-
-            try {
-                data = Cbor.encodeToByteArray(packet)
-            }
-            catch (t: Throwable) {
-                DEBUGGER_BREAK()
-                throw t
-            }
-
-            val sendBuffer = ByteArray(4 + data.size)
-            val result = ByteBuffer.wrap(sendBuffer)
-
-            result.putInt(P::class.reflectId)
-            result.put(data)
-
-            return sendBuffer
-        }
     }
 }
 
@@ -667,20 +676,6 @@ class ServerSidePacketHandler(private val registeredIds: Map<Int, ServerSidePack
         handler.handle(payload, source)
 
         return true
-    }
-
-    companion object {
-        inline fun <reified P> encode(packet: P): ByteArray {
-            val data = Cbor.encodeToByteArray(packet)
-
-            val sendBuffer = ByteArray(4 + data.size)
-            val result = ByteBuffer.wrap(sendBuffer)
-
-            result.putInt(P::class.reflectId)
-            result.put(data)
-
-            return sendBuffer
-        }
     }
 }
 

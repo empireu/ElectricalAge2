@@ -1421,19 +1421,25 @@ class PhaseChangeModuleBlockEntity(pos: BlockPos, state: BlockState) :
 
     @ClientOnly
     override fun setupPacketsOnClient(handler: ClientSidePacketHandlerBuilder) {
-        handler.withHandler<InternalTemperatureReplicatorBehavior.InternalTemperaturePacket> { packet ->
+        handler.withHandler<InternalTemperatureReplicatorBehavior.InternalTemperaturePacket>(InternalTemperatureReplicatorBehavior.InternalTemperaturePacket::deserialize) { packet ->
             renderState!!.temperature = packet.temperature
         }
     }
 
     @ServerOnly @OnSimulationThread
     override fun onInternalTemperatureChange(temperature: Quantity<Temperature>) {
-        sendBulkPacket(InternalTemperatureReplicatorBehavior.InternalTemperaturePacket(!temperature))
+        sendBulkPacket(
+            InternalTemperatureReplicatorBehavior.InternalTemperaturePacket::serialize,
+            InternalTemperatureReplicatorBehavior.InternalTemperaturePacket(!temperature)
+        )
     }
 
     // onSyncSuggested
     override fun getUpdateTag(): CompoundTag {
-        sendBulkPacket(InternalTemperatureReplicatorBehavior.InternalTemperaturePacket(!cell.wire.thermalBody.temperature))
+        sendBulkPacket(
+            InternalTemperatureReplicatorBehavior.InternalTemperaturePacket::serialize,
+            InternalTemperatureReplicatorBehavior.InternalTemperaturePacket(!cell.wire.thermalBody.temperature)
+        )
         return super.getUpdateTag()
     }
 

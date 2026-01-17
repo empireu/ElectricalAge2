@@ -8,6 +8,7 @@ import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import dev.engine_room.flywheel.lib.transform.Affine
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
+import it.unimi.dsi.fastutil.ints.Int2DoubleArrayMap
 import it.unimi.dsi.fastutil.ints.Int2DoubleOpenHashMap
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import kotlinx.serialization.Serializable
@@ -17,6 +18,7 @@ import net.minecraft.core.Direction
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
+import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.util.RandomSource
 import net.minecraft.world.InteractionResult
@@ -40,6 +42,7 @@ import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.*
 import org.ageseries.libage.sim.electrical.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
+import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.foundation.*
@@ -827,7 +830,7 @@ class WirePart<C : WireCell>(
 
     @ClientOnly
     override fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) {
-        builder.withHandler<InternalTemperaturePacket> {
+        builder.withHandler<InternalTemperaturePacket>(InternalTemperaturePacket::deserialize) {
             renderStateImpl!!.setInternalTemperature(it.temperature)
 
             if(it.temperature >= smokeTemperature) {
@@ -839,7 +842,7 @@ class WirePart<C : WireCell>(
         }
 
         if(isIncandescent) {
-            builder.withHandler<ExternalTemperaturesPacket> {
+            builder.withHandler<ExternalTemperaturesPacket>(ExternalTemperaturesPacket::deserialize) {
                 renderStateImpl!!.setExternalTemperatures(it.temperatures)
             }
         }
@@ -847,7 +850,10 @@ class WirePart<C : WireCell>(
 
     @ServerOnly
     override fun onInternalTemperatureChanges(dirty: List<ThermalMass>) {
-        sendBulkPacket(InternalTemperaturePacket(!dirty.first().temperature))
+        sendBulkPacket(
+            InternalTemperaturePacket::serialize,
+            InternalTemperaturePacket(!dirty.first().temperature)
+        )
     }
 
     /**
@@ -865,7 +871,10 @@ class WirePart<C : WireCell>(
             temperatures.put(solution.value, temperature)
         }
 
-        sendBulkPacket(ExternalTemperaturesPacket(temperatures))
+        sendBulkPacket(
+            ExternalTemperaturesPacket::serialize,
+            ExternalTemperaturesPacket(temperatures)
+        )
     }
 
     /**
@@ -878,7 +887,10 @@ class WirePart<C : WireCell>(
                 val cell = this.cell
 
                 if(cell is ThermalWireCell) {
-                    sendBulkPacket(InternalTemperaturePacket(!cell.thermalWire.thermalBody.temperature))
+                    sendBulkPacket(
+                        InternalTemperaturePacket::serialize,
+                        InternalTemperaturePacket(!cell.thermalWire.thermalBody.temperature)
+                    )
                 }
 
                 val externalTemperatures = Int2DoubleOpenHashMap()
@@ -891,7 +903,10 @@ class WirePart<C : WireCell>(
                 }
 
                 if(externalTemperatures.isNotEmpty()) {
-                    sendBulkPacket(ExternalTemperaturesPacket(externalTemperatures))
+                    sendBulkPacket(
+                        ExternalTemperaturesPacket::serialize,
+                        ExternalTemperaturesPacket(externalTemperatures)
+                    )
                 }
             }
         }
@@ -901,11 +916,44 @@ class WirePart<C : WireCell>(
         updateShapeServer()
     }
 
-    @Serializable
-    private data class InternalTemperaturePacket(val temperature: Double)
+    private data class InternalTemperaturePacket(val temperature: Double) {
+        companion object {
+            fun serialize(packet: InternalTemperaturePacket, buffer: FriendlyByteBuf) {
+                buffer.writeDouble(packet.temperature)
+            }
 
-    @Serializable
-    private data class ExternalTemperaturesPacket(val temperatures: Map<Int, Double>)
+            fun deserialize(buffer: FriendlyByteBuf) = InternalTemperaturePacket(
+                buffer.readDouble()
+            )
+        }
+    }
+
+    private data class ExternalTemperaturesPacket(val temperatures: Map<Int, Double>) {
+        companion object {
+            fun serialize(packet: ExternalTemperaturesPacket, buffer: FriendlyByteBuf) {
+                buffer.writeVarInt(packet.temperatures.size)
+
+                packet.temperatures.forEach { (dir, value) ->
+                    buffer.writeVarInt(dir)
+                    buffer.writeDouble(value)
+                }
+            }
+
+            fun deserialize(buffer: FriendlyByteBuf) : ExternalTemperaturesPacket {
+                val size = buffer.readVarInt()
+                val map = Int2DoubleArrayMap(size)
+
+                repeat(size) {
+                    val dir = buffer.readVarInt()
+                    val value = buffer.readDouble()
+
+                    map.putUnique(dir, value)
+                }
+
+                return ExternalTemperaturesPacket(map)
+            }
+        }
+    }
 
     override fun animationTick(random: RandomSource) {
         repeat(5) {

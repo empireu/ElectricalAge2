@@ -4,12 +4,14 @@ import com.google.gson.JsonObject
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.util.GsonHelper
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.MutableSetMapMultiMap
+import org.ageseries.libage.data.OptionalDouble
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.SubSolverSet
@@ -35,6 +37,64 @@ inline fun <reified T : Cell> Level.getCellOrNull(mb: MultiblockManager, cellPos
 inline fun <reified T : Cell> Level.getCell(mb: MultiblockManager, cellPosId: BlockPos): T =
     getCellOrNull(mb, cellPosId) ?: error("Cell was not present")
 */
+
+fun FriendlyByteBuf.writeDoubleArray(values: DoubleArray) {
+    this.writeVarInt(values.size)
+
+    for (i in 0 until values.size) {
+        this.writeDouble(values[i])
+    }
+}
+
+fun FriendlyByteBuf.readDoubleArray() : DoubleArray {
+    val size = this.readVarInt()
+    val result = DoubleArray(size)
+
+    for (i in 0 until size) {
+        result[i] = this.readDouble()
+    }
+
+    return result
+}
+
+fun FriendlyByteBuf.writeFloatArray(values: FloatArray) {
+    this.writeVarInt(values.size)
+
+    for (i in 0 until values.size) {
+        this.writeFloat(values[i])
+    }
+}
+
+fun FriendlyByteBuf.readFloatArray() : FloatArray {
+    val size = this.readVarInt()
+    val result = FloatArray(size)
+
+    for (i in 0 until size) {
+        result[i] = this.readFloat()
+    }
+
+    return result
+}
+
+fun FriendlyByteBuf.writeOptionalDouble(value: OptionalDouble) {
+    if(value.isPresent) {
+        this.writeDouble(value.unwrap())
+    }
+    else {
+        this.writeDouble(Double.NaN)
+    }
+}
+
+fun FriendlyByteBuf.readOptionalDouble() : OptionalDouble {
+    val value = this.readDouble()
+
+    return if(value.isNaN()) {
+        OptionalDouble.EMPTY
+    }
+    else {
+        OptionalDouble.wrap(value)
+    }
+}
 
 fun JsonObject.getBool(memberName: String): Boolean = GsonHelper.getAsBoolean(this, memberName)
 fun JsonObject.getString(memberName: String): String = GsonHelper.getAsString(this, memberName)

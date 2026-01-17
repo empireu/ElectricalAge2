@@ -374,11 +374,31 @@ class VulcanizingAutoclaveMainBlock : UprightHorizontalDirectionCellBlock<Vulcan
     }
 }
 
-@Serializable
-private data class DoorStateSwitchMessage(val previousState: Int, val newState: Int)
+private data class DoorStateSwitchMessage(val previousState: Int, val newState: Int) {
+    companion object {
+        fun serialize(packet: DoorStateSwitchMessage, buffer: FriendlyByteBuf) {
+            buffer.writeInt(packet.previousState)
+            buffer.writeInt(packet.newState)
+        }
 
-@Serializable
-private data class ChangeLoadMessage(val targetState: Int)
+        fun deserialize(buffer: FriendlyByteBuf) = DoorStateSwitchMessage(
+            buffer.readInt(),
+            buffer.readInt()
+        )
+    }
+}
+
+private data class ChangeLoadMessage(val targetState: Int) {
+    companion object {
+        fun serialize(packet: ChangeLoadMessage, buffer: FriendlyByteBuf) {
+            buffer.writeInt(packet.targetState)
+        }
+
+        fun deserialize(buffer: FriendlyByteBuf) = ChangeLoadMessage(
+            buffer.readInt()
+        )
+    }
+}
 
 class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
     CellBlockEntity<VulcanizingAutoclaveMainCell>(pos, state, Eln2Processing.VULCANIZING_AUTOCLAVE_MAIN_BLOCK_ENTITY.get()),
@@ -771,7 +791,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
             body(state)
         }
 
-        handler.withHandler<DoorStateSwitchMessage> {
+        handler.withHandler<DoorStateSwitchMessage>(DoorStateSwitchMessage::deserialize) {
             modifyState {
                 doorStatePair = Pair(
                     StateMachine.DoorState.entries[it.previousState],
@@ -780,19 +800,19 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
             }
         }
 
-        handler.withHandler<ChangeLoadMessage> {
+        handler.withHandler<ChangeLoadMessage>(ChangeLoadMessage::deserialize) {
             modifyState {
                 loadState = StateMachine.LoadState.entries[it.targetState]
             }
         }
 
-        handler.withHandler<IsProcessingPacket> {
+        handler.withHandler<IsProcessingPacket>(IsProcessingPacket::deserialize) {
             modifyState {
                 isProcessing = it.value
             }
         }
 
-        handler.withHandler<InternalTemperaturePacket> {
+        handler.withHandler<InternalTemperaturePacket>(InternalTemperaturePacket::deserialize) {
             modifyState {
                 internalTemperature = it.temperature
             }
@@ -800,21 +820,30 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
     }
 
     override fun onInternalTemperatureChange(temperature: Quantity<Temperature>) {
-        sendBulkPacket(InternalTemperaturePacket(!temperature))
+        sendBulkPacket(InternalTemperaturePacket::serialize, InternalTemperaturePacket(!temperature))
     }
 
-    @Serializable
-    private data class InternalTemperaturePacket(val temperature: Double)
+    data class InternalTemperaturePacket(val temperature: Double) {
+        companion object {
+            fun serialize(packet: InternalTemperaturePacket, buffer: FriendlyByteBuf) {
+                buffer.writeDouble(packet.temperature)
+            }
+
+            fun deserialize(buffer: FriendlyByteBuf) = InternalTemperaturePacket(
+                buffer.readDouble()
+            )
+        }
+    }
 
     // onSyncSuggested
     override fun getUpdateTag(): CompoundTag {
         val stateMachine = stateMachine!!
-        sendBulkPacket(DoorStateSwitchMessage(stateMachine.doorState.index, stateMachine.doorState.index))
-        sendBulkPacket(ChangeLoadMessage(stateMachine.loadState.index))
-        sendBulkPacket(IsProcessingPacket(stateMachine.isProcessing))
+        sendBulkPacket(DoorStateSwitchMessage::serialize, DoorStateSwitchMessage(stateMachine.doorState.index, stateMachine.doorState.index))
+        sendBulkPacket(ChangeLoadMessage::serialize, ChangeLoadMessage(stateMachine.loadState.index))
+        sendBulkPacket(IsProcessingPacket::serialize, IsProcessingPacket(stateMachine.isProcessing))
 
         if(cell.isFormed) {
-            sendBulkPacket(InternalTemperaturePacket(!cell.heatPort.thermalWire.thermalBody.temperature))
+            sendBulkPacket(InternalTemperaturePacket::serialize, InternalTemperaturePacket(!cell.heatPort.thermalWire.thermalBody.temperature))
         }
 
         return super.getUpdateTag()
@@ -969,7 +998,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
             }
 
             loadState = targetState
-            blockEntity.sendBulkPacket(ChangeLoadMessage(targetState.index))
+            blockEntity.sendBulkPacket(ChangeLoadMessage::serialize, ChangeLoadMessage(targetState.index))
             saveChanged = true
         }
 
@@ -981,13 +1010,22 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
             set(value) {
                 if(field != value) {
                     field = value
-                    blockEntity.sendBulkPacket(IsProcessingPacket(value))
+                    blockEntity.sendBulkPacket(IsProcessingPacket::serialize, IsProcessingPacket(value))
                     saveChanged = true
                 }
             }
 
-        @Serializable
-        data class IsProcessingPacket(val value: Boolean)
+        data class IsProcessingPacket(val value: Boolean) {
+            companion object {
+                fun serialize(packet: IsProcessingPacket, buffer: FriendlyByteBuf) {
+                    buffer.writeBoolean(packet.value)
+                }
+
+                fun deserialize(buffer: FriendlyByteBuf) = IsProcessingPacket(
+                    buffer.readBoolean()
+                )
+            }
+        }
 
         //#endregion
 
@@ -1005,7 +1043,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
                 if(doorState == DoorState.Opening) {
                     doorState = DoorState.Open
 
-                    blockEntity.sendBulkPacket(DoorStateSwitchMessage(
+                    blockEntity.sendBulkPacket(DoorStateSwitchMessage::serialize, DoorStateSwitchMessage(
                         DoorState.Opening.index,
                         DoorState.Open.index
                     ))
@@ -1013,7 +1051,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
                 else {
                     doorState = DoorState.Closed
 
-                    blockEntity.sendBulkPacket(DoorStateSwitchMessage(
+                    blockEntity.sendBulkPacket(DoorStateSwitchMessage::serialize, DoorStateSwitchMessage(
                         DoorState.Closing.index,
                         DoorState.Closed.index
                     ))
@@ -1026,7 +1064,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
         fun doorAction() = when(doorState) {
             DoorState.Open -> {
                 doorState = DoorState.Closing
-                blockEntity.sendBulkPacket(DoorStateSwitchMessage(
+                blockEntity.sendBulkPacket(DoorStateSwitchMessage::serialize, DoorStateSwitchMessage(
                     DoorState.Open.index,
                     DoorState.Closing.index
                 ))
@@ -1034,7 +1072,7 @@ class VulcanizingAutoclaveMainBlockEntity(pos: BlockPos, state: BlockState) :
             }
             DoorState.Closed ->  {
                 doorState = DoorState.Opening
-                blockEntity.sendBulkPacket(DoorStateSwitchMessage(
+                blockEntity.sendBulkPacket(DoorStateSwitchMessage::serialize, DoorStateSwitchMessage(
                     DoorState.Closed.index,
                     DoorState.Opening.index
                 ))

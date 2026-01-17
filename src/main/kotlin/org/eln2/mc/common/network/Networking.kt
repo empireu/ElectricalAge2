@@ -18,14 +18,14 @@ import org.eln2.mc.common.specs.foundation.SpecOverlayMessage
 import java.util.*
 
 object Networking {
-    private const val protocolVersion = "1"
-    private const val channelName = "main"
+    private const val PROTOCOL_VERSION = "1"
+    private const val CHANNEL_NAME = "main"
 
     private val channel = NetworkRegistry.newSimpleChannel(
-        ResourceLocation.fromNamespaceAndPath(MODID, channelName),
-        { protocolVersion },
-        { it == protocolVersion },
-        { it == protocolVersion })
+        ResourceLocation.fromNamespaceAndPath(MODID, CHANNEL_NAME),
+        { PROTOCOL_VERSION },
+        { it == PROTOCOL_VERSION },
+        { it == PROTOCOL_VERSION })
 
     private var id = 0
     fun id() = id++

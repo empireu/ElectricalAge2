@@ -826,14 +826,14 @@ class WindTurbineBlockEntity(pos: BlockPos, state: BlockState) :
 
     @ClientOnly
     override fun setupPacketsOnClient(handler: ClientSidePacketHandlerBuilder) {
-        handler.withHandler<RotatingKineticState> {
+        handler.withHandler<RotatingKineticState>(RotatingKineticState::deserialize) {
             renderState?.load(it)
         }
     }
 
     @ServerOnly
     override fun onKineticStateChanged(state: RotatingKineticState) {
-        sendBulkPacket(state)
+        sendBulkPacket(RotatingKineticState::serialize, state)
     }
 
     @ServerOnly

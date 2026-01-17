@@ -17,6 +17,7 @@ import net.minecraft.core.Direction
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
+import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerPlayer
@@ -777,7 +778,7 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
         if(newParameter != parameter) {
             cell.controlParameter = newParameter
             cell.setChanged()
-            sendBulkPacket(ControlValvePacket(newParameter))
+            sendBulkPacket(ControlValvePacket::serialize, ControlValvePacket(newParameter))
             return true
         }
 
@@ -798,7 +799,7 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
 
     class RenderState {
         var hullTemperature = 0.0
-        var externalTemperature: Double? = null
+        var externalTemperature = OptionalDouble.EMPTY
         var controlParameter = 0.0
     }
 
@@ -822,19 +823,19 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
             action(renderState)
         }
 
-        handler.withHandler<HullTemperaturePacket> {
+        handler.withHandler<HullTemperaturePacket>(HullTemperaturePacket::deserialize) {
             modifyState {
                 hullTemperature = it.hullTemperature
             }
         }
 
-        handler.withHandler<ExternalTemperaturePacket> {
+        handler.withHandler<ExternalTemperaturePacket>(ExternalTemperaturePacket::deserialize) {
             modifyState {
                 externalTemperature = it.externalTemperature
             }
         }
 
-        handler.withHandler<ControlValvePacket> {
+        handler.withHandler<ControlValvePacket>(ControlValvePacket::deserialize) {
             modifyState {
                 controlParameter = it.controlParameter
             }
@@ -847,7 +848,7 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
 
     @ServerOnly
     override fun onInternalTemperatureChanges(dirty: List<ThermalMass>) {
-        sendBulkPacket(HullTemperaturePacket(!dirty[0].temperature))
+        sendBulkPacket(HullTemperaturePacket::serialize, HullTemperaturePacket(!dirty[0].temperature))
     }
 
     @ServerOnly
@@ -857,11 +858,12 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
         all: HashMap<ThermalObject<*>, Double>,
     ) {
         sendBulkPacket(
+            ExternalTemperaturePacket::serialize,
             if (removed.isNotEmpty()) {
-                ExternalTemperaturePacket(null)
+                ExternalTemperaturePacket(OptionalDouble.EMPTY)
             }
             else {
-                ExternalTemperaturePacket(dirty.values.first())
+                ExternalTemperaturePacket(OptionalDouble.wrap(dirty.values.first()))
             }
         )
 
@@ -870,27 +872,66 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
     // onSyncSuggested
     @ServerOnly
     override fun getUpdateTag(): CompoundTag {
-        sendBulkPacket(HullTemperaturePacket(!cell.hull.thermalBody.temperature))
+        sendBulkPacket(
+            HullTemperaturePacket::serialize,
+            HullTemperaturePacket(!cell.hull.thermalBody.temperature)
+        )
 
         sendBulkPacket(
+            ExternalTemperaturePacket::serialize,
             ExternalTemperaturePacket(
                 if (cell.hull.connections.isNotEmpty()) {
-                    !cell.hull.getContactTemperature(cell.hull.connections[0].cell)
+                    OptionalDouble.wrap(!cell.hull.getContactTemperature(cell.hull.connections[0].cell))
                 }
                 else {
-                    null
+                    OptionalDouble.EMPTY
                 }
             )
         )
 
-        sendBulkPacket(ControlValvePacket(cell.controlParameter))
+        sendBulkPacket(
+            ControlValvePacket::serialize,
+            ControlValvePacket(cell.controlParameter)
+        )
 
         return super.getUpdateTag()
     }
 
-    @Serializable data class HullTemperaturePacket(val hullTemperature: Double)
-    @Serializable data class ExternalTemperaturePacket(val externalTemperature: Double?)
-    @Serializable data class ControlValvePacket(val controlParameter: Double)
+    data class HullTemperaturePacket(val hullTemperature: Double) {
+        companion object {
+            fun serialize(packet: HullTemperaturePacket, buffer: FriendlyByteBuf) {
+                buffer.writeDouble(packet.hullTemperature)
+            }
+
+            fun deserialize(buffer: FriendlyByteBuf) = HullTemperaturePacket(
+                buffer.readDouble()
+            )
+        }
+    }
+
+    data class ExternalTemperaturePacket(val externalTemperature: OptionalDouble) {
+        companion object {
+            fun serialize(packet: ExternalTemperaturePacket, buffer: FriendlyByteBuf) {
+                buffer.writeOptionalDouble(packet.externalTemperature)
+            }
+
+            fun deserialize(buffer: FriendlyByteBuf) = ExternalTemperaturePacket(
+                buffer.readOptionalDouble()
+            )
+        }
+    }
+
+    data class ControlValvePacket(val controlParameter: Double) {
+        companion object {
+            fun serialize(packet: ControlValvePacket, buffer: FriendlyByteBuf) {
+                buffer.writeDouble(packet.controlParameter)
+            }
+
+            fun deserialize(buffer: FriendlyByteBuf) = ControlValvePacket(
+                buffer.readDouble()
+            )
+        }
+    }
 
     //#endregion
 }
@@ -990,7 +1031,7 @@ class PrimitiveBurnerBlockEntityVisual(ctx: VisualizationContext, blockEntity: P
         .createInstance()
 
     var hullTemperature = 0.0
-    var externalTemperature: Double? = null
+    var externalTemperature = OptionalDouble.EMPTY
     var controlParameter = 0.0
 
     private fun applyHullTemperature() {
@@ -1001,7 +1042,7 @@ class PrimitiveBurnerBlockEntityVisual(ctx: VisualizationContext, blockEntity: P
     }
 
     private fun updateConduit() {
-        if(externalTemperature == null) {
+        if(!externalTemperature.isPresent) {
             conduit.delete()
             return
         }
@@ -1012,7 +1053,7 @@ class PrimitiveBurnerBlockEntityVisual(ctx: VisualizationContext, blockEntity: P
 
         conduit.update(
             hullTemperature,
-            externalTemperature!!,
+            externalTemperature.unwrap(),
             blockEntity.blockPos - blockState.getValue(HorizontalDirectionalBlock.FACING)
         )
     }

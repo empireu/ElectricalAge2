@@ -10,6 +10,7 @@ import kotlinx.serialization.Serializable
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
+import net.minecraft.network.FriendlyByteBuf
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.AngularVelocity
 import org.ageseries.libage.data.JOULE
@@ -51,8 +52,10 @@ import org.eln2.mc.extensions.debugInIDE
 import org.eln2.mc.extensions.forEachCompound
 import org.eln2.mc.extensions.getListTag
 import org.eln2.mc.extensions.loadNbt
+import org.eln2.mc.extensions.readDoubleArray
 import org.eln2.mc.extensions.rotationFast
 import org.eln2.mc.extensions.saveNbt
+import org.eln2.mc.extensions.writeDoubleArray
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d
@@ -446,12 +449,21 @@ class MultiJointCell(
             }
         }
 
-        @Serializable
         class State private constructor(val angles: DoubleArray, val velocities: DoubleArray) {
             companion object {
                 fun create() = State(
                     DoubleArray(6) { Double.NaN },
                     DoubleArray(6) { Double.NaN }
+                )
+
+                fun serialize(packet: State, buffer: FriendlyByteBuf) {
+                    buffer.writeDoubleArray(packet.angles)
+                    buffer.writeDoubleArray(packet.velocities)
+                }
+
+                fun deserialize(buffer: FriendlyByteBuf) = State(
+                    buffer.readDoubleArray(),
+                    buffer.readDoubleArray()
                 )
             }
         }
@@ -553,7 +565,7 @@ class JointPart(
 
     @ClientOnly
     override fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) {
-        builder.withHandler<MultiJointCell.KineticAndConnectivityReplicator.State> {
+        builder.withHandler<MultiJointCell.KineticAndConnectivityReplicator.State>(MultiJointCell.KineticAndConnectivityReplicator.State::deserialize) {
             val renderState = renderState!!
             renderState.rotatingStates = it
             renderState.version++
@@ -601,7 +613,7 @@ class JointPart(
 
     @ServerOnly
     fun onKineticUpdate(state: MultiJointCell.KineticAndConnectivityReplicator.State) {
-        sendBulkPacket(state)
+        sendBulkPacket(MultiJointCell.KineticAndConnectivityReplicator.State::serialize, state)
     }
 
     @ServerOnly

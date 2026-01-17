@@ -21,6 +21,7 @@ import net.minecraft.client.renderer.ShaderInstance
 import net.minecraft.client.renderer.texture.DynamicTexture
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
+import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerPlayer
@@ -86,10 +87,14 @@ import org.eln2.mc.common.parts.foundation.PartUseInfo
 import org.eln2.mc.common.parts.foundation.stillValid
 import org.eln2.mc.common.parts.foundation.eln2WritePartGuiData
 import org.eln2.mc.MonopoleMap
+import org.eln2.mc.common.content.OscilloscopePart.GuiMessage
 import org.eln2.mc.extensions.getListTag
 import org.eln2.mc.extensions.mulPose
 import org.eln2.mc.extensions.preserve
+import org.eln2.mc.extensions.readFloatArray
 import org.eln2.mc.extensions.rotationFast
+import org.eln2.mc.extensions.writeDoubleArray
+import org.eln2.mc.extensions.writeFloatArray
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.isDigit
@@ -807,7 +812,6 @@ private fun sanitizeUnit(unit: String) =
  * Persistent settings for the oscilloscope **game object**. They are saved in the part's NBT.
  * Clients receive them as well, and they also send new settings to the server from the GUI.
  * */
-@Serializable
 class OscilloscopeParameters(var timeWindow: Int, val channelParameters: Array<ChannelParameters>) {
     constructor(specification: OscilloscopeSpecification) : this(
         specification.maxWindow / 2,
@@ -825,7 +829,6 @@ class OscilloscopeParameters(var timeWindow: Int, val channelParameters: Array<C
      * A linear map is used like all signal devices.
      * @param unit The optional unit displayed in the GUIs. Empty if no unit is specified.
      * */
-    @Serializable
     data class ChannelParameters(
         var signalMin: Float,
         var signalMax: Float,
@@ -895,6 +898,34 @@ class OscilloscopeParameters(var timeWindow: Int, val channelParameters: Array<C
         private const val DISPLAY_MIN = "displayMin"
         private const val DISPLAY_MAX = "displayMax"
         private const val UNIT = "unit"
+
+        fun serialize(packet: OscilloscopeParameters, buffer: FriendlyByteBuf) {
+            buffer.writeInt(packet.timeWindow)
+            buffer.writeVarInt(packet.channelParameters.size)
+            packet.channelParameters.forEach { element ->
+                buffer.writeFloat(element.signalMin)
+                buffer.writeFloat(element.signalMax)
+                buffer.writeFloat(element.displayMin)
+                buffer.writeFloat(element.displayMax)
+                buffer.writeUtf(element.unit)
+            }
+        }
+
+        fun deserialize(buffer: FriendlyByteBuf) : OscilloscopeParameters {
+            val timeWindow = buffer.readInt()
+            val arraySize = buffer.readVarInt()
+            val array = Array(arraySize) {
+                val signalMin = buffer.readFloat()
+                val signalMax = buffer.readFloat()
+                val displayMin = buffer.readFloat()
+                val displayMax = buffer.readFloat()
+                val unit = buffer.readUtf()
+
+                OscilloscopeParameters.ChannelParameters(signalMin, signalMax, displayMin, displayMax, unit)
+            }
+
+            return OscilloscopeParameters(timeWindow, array)
+        }
     }
 }
 
@@ -1480,7 +1511,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
                 )
 
                 if(desiredParameters != renderState.serverOptions) {
-                    part.sendPacketToServer(GuiMessage(desiredParameters))
+                    part.sendPacketToServer(GuiMessage::serialize, GuiMessage(desiredParameters))
                 }
             }
 
@@ -1862,6 +1893,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
         }
 
         sendBulkPacket(
+            OscilloscopeSyncMessage::serialize,
             OscilloscopeSyncMessage(
                 mappedSamples,
                 timestamp,
@@ -1883,7 +1915,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
     @ClientOnly
     override fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) {
         super.setupPacketsOnClient(builder)
-        builder.withHandler<OscilloscopeSyncMessage>(this::importFromSimulation)
+        builder.withHandler<OscilloscopeSyncMessage>(OscilloscopeSyncMessage::deserialize, this::importFromSimulation)
     }
 
     @OnClientThread
@@ -1927,7 +1959,7 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
 
     @ServerOnly
     override fun setupPacketsOnServer(builder: ServerSidePacketHandlerBuilder) {
-        builder.withHandler(this::applyGUIChanges)
+        builder.withHandler(GuiMessage::deserialize, this::applyGUIChanges)
     }
 
     @ServerOnly
@@ -1969,18 +2001,36 @@ class OscilloscopePart(ci: PartCreateInfo, val specification: OscilloscopeSpecif
      * @param timestamp The strictly-increasing simulation time.
      * @param options The latest parameters.
      * */
-    @Serializable
-    private class OscilloscopeSyncMessage(
-        val normalizedSamples: FloatArray,
-        val timestamp: Double,
-        val options: OscilloscopeParameters,
-    )
+    private class OscilloscopeSyncMessage(val normalizedSamples: FloatArray, val timestamp: Double, val options: OscilloscopeParameters) {
+        companion object {
+            fun serialize(packet: OscilloscopeSyncMessage, buffer: FriendlyByteBuf) {
+                buffer.writeFloatArray(packet.normalizedSamples)
+                buffer.writeDouble(packet.timestamp)
+                OscilloscopeParameters.serialize(packet.options, buffer)
+            }
+
+            fun deserialize(buffer: FriendlyByteBuf) = OscilloscopeSyncMessage(
+                buffer.readFloatArray(),
+                buffer.readDouble(),
+                OscilloscopeParameters.deserialize(buffer)
+            )
+        }
+    }
 
     /**
      * Message with settings set by a client.
      * */
-    @Serializable
-    private class GuiMessage(val parameters: OscilloscopeParameters)
+    private class GuiMessage(val parameters: OscilloscopeParameters) {
+        companion object {
+            fun serialize(packet: GuiMessage, buffer: FriendlyByteBuf) {
+                OscilloscopeParameters.serialize(packet.parameters, buffer)
+            }
+
+            fun deserialize(buffer: FriendlyByteBuf) = GuiMessage(
+                OscilloscopeParameters.deserialize(buffer)
+            )
+        }
+    }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         for(i in 0 until specification.channelCount) {

@@ -304,19 +304,19 @@ class PotentialProbePart(ci: PartCreateInfo, val models: Map<Base6Direction3d, W
                 cell.setChanged()
             }
 
-            sendBulkPacket(knobMap.getSyncPacket())
+            sendBulkPacket(KnobMap.SyncPacket::serialize, knobMap.getSyncPacket())
         }
     }
 
     @ServerOnly
     override fun onSyncSuggested() {
         super.onSyncSuggested() // connected part
-        sendBulkPacket(knobMap.getSyncPacket())
+        sendBulkPacket(KnobMap.SyncPacket::serialize, knobMap.getSyncPacket())
     }
 
     @ClientOnly
     override fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) {
-        builder.withHandler<KnobMap.SyncPacket> {
+        builder.withHandler<KnobMap.SyncPacket>(KnobMap.SyncPacket::deserialize) {
             knobMap.loadSyncPacket(it)
         }
     }

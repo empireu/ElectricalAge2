@@ -10,6 +10,7 @@ import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import kotlinx.serialization.Serializable
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.network.FriendlyByteBuf
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.RotationUpdateProfile2d
 import org.ageseries.libage.mathematics.computeRotationUpdateAccelerationProfileWithAccelerationEstimate
@@ -371,12 +372,12 @@ class ElectricalHeatEnginePart(ci: PartCreateInfo) :
     override fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) {
         val renderState = renderStateImpl!!
 
-        builder.withHandler<TemperatureSyncPacket> {
+        builder.withHandler<TemperatureSyncPacket>(TemperatureSyncPacket::deserialize) {
             renderState.b1Temperature = Quantity(it.b1Temp, KELVIN)
             renderState.b2Temperature = Quantity(it.b2Temp, KELVIN)
         }
 
-        builder.withHandler<RotationSyncPacket> {
+        builder.withHandler<RotationSyncPacket>(RotationSyncPacket::deserialize) {
             renderState.angle = it.angle
             renderState.angularVelocity = it.angularVelocity
             renderState.kinematicVersion++
@@ -386,6 +387,7 @@ class ElectricalHeatEnginePart(ci: PartCreateInfo) :
     @ServerOnly
     override fun onInternalTemperatureChanges(dirty: List<ThermalMass>) {
         sendBulkPacket(
+            TemperatureSyncPacket::serialize,
             TemperatureSyncPacket(
                 !cell.thermalBipole.b1.temperature,
                 !cell.thermalBipole.b2.temperature
@@ -396,6 +398,7 @@ class ElectricalHeatEnginePart(ci: PartCreateInfo) :
     @ServerOnly
     override fun onKineticStateChanged(state: RotatingKineticState) {
         sendBulkPacket(
+            RotationSyncPacket::serialize,
             RotationSyncPacket(
                 state.angle,
                 state.angularVelocity
@@ -416,14 +419,33 @@ class ElectricalHeatEnginePart(ci: PartCreateInfo) :
         builder.quantityOutput(cell.source.generator.readouts.power)
     }
 
-    @Serializable
-    private data class TemperatureSyncPacket(
-        val b1Temp: Double,
-        val b2Temp: Double
-    )
+    private data class TemperatureSyncPacket(val b1Temp: Double, val b2Temp: Double) {
+        companion object {
+            fun serialize(packet: TemperatureSyncPacket, buffer: FriendlyByteBuf) {
+                buffer.writeDouble(packet.b1Temp)
+                buffer.writeDouble(packet.b2Temp)
+            }
 
-    @Serializable
-    private data class RotationSyncPacket(val angle: Double, val angularVelocity: Double)
+            fun deserialize(buffer: FriendlyByteBuf) = TemperatureSyncPacket(
+                buffer.readDouble(),
+                buffer.readDouble()
+            )
+        }
+    }
+
+    private data class RotationSyncPacket(val angle: Double, val angularVelocity: Double) {
+        companion object {
+            fun serialize(packet: RotationSyncPacket, buffer: FriendlyByteBuf) {
+                buffer.writeDouble(packet.angle)
+                buffer.writeDouble(packet.angularVelocity)
+            }
+
+            fun deserialize(buffer: FriendlyByteBuf) = RotationSyncPacket(
+                buffer.readDouble(),
+                buffer.readDouble()
+            )
+        }
+    }
 }
 
 class ElectricalHeatEnginePartVisual(

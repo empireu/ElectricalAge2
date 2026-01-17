@@ -35,6 +35,7 @@ import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
+import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.level.block.entity.BlockEntity
@@ -71,8 +72,10 @@ import org.eln2.mc.extensions.bind
 import org.eln2.mc.extensions.cast
 import org.eln2.mc.extensions.getListTag
 import org.eln2.mc.extensions.getViewRay
+import org.eln2.mc.extensions.readDoubleArray
 import org.eln2.mc.extensions.rotationFast
 import org.eln2.mc.extensions.vector3d
+import org.eln2.mc.extensions.writeDoubleArray
 import org.eln2.mc.mathematics.Axis3d
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.maskXY
@@ -1064,7 +1067,6 @@ class KnobMap(val changedNotifier: (() -> Unit)?) {
     /**
      * Synchronization packet for bulk part messages. Contains the new knob states in order.
      * */
-    @Serializable
     data class SyncPacket(val newStates: DoubleArray) {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
@@ -1077,6 +1079,16 @@ class KnobMap(val changedNotifier: (() -> Unit)?) {
 
         override fun hashCode(): Int {
             return newStates.contentHashCode()
+        }
+
+        companion object {
+            fun serialize(packet: SyncPacket, buffer: FriendlyByteBuf) {
+                buffer.writeDoubleArray(packet.newStates)
+            }
+
+            fun deserialize(buffer: FriendlyByteBuf) = SyncPacket(
+                buffer.readDoubleArray()
+            )
         }
     }
 
