@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "eln2:copper_wire"
+    },
+    {
+      "item": "eln2:rubber"
+    }
+  ],
+  "result": {
+    "item": "eln2:standard_insulated_copper_electrical_wire"
+  }
+}

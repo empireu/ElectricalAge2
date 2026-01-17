@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "P": {
+      "item": "eln2:copper_plate"
+    }
+  },
+  "pattern": [
+    "P",
+    "P",
+    "P"
+  ],
+  "result": {
+    "count": 4,
+    "item": "eln2:standard_uninsulated_copper_thermal_wire"
+  },
+  "show_notification": true
+}

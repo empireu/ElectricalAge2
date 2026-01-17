@@ -25,6 +25,7 @@ import org.eln2.mc.common.content.modules.Eln2ForgeFluids.requireBottle
 import org.eln2.mc.common.content.modules.Eln2Ingredients
 import org.eln2.mc.common.content.modules.Eln2Kinetic
 import org.eln2.mc.common.content.modules.Eln2Processing
+import org.eln2.mc.common.content.modules.Eln2Wires
 import org.eln2.mc.common.content.modules.world.Eln2Ores
 import org.eln2.mc.common.content.processing.BlacksmithingRecipeBuilder
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
@@ -257,6 +258,51 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .define('G', Eln2Ingredients.IRON_GEAR.get())
             .unlockedBy("has_gear", has(Eln2Ingredients.IRON_GEAR.get()))
             .save(pWriter, resource("crafting/primitive_standard_iron_hub_joint"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Processing.COKE_OVEN_BLOCK_ITEM.get())
+            .pattern("PBP")
+            .pattern("B B")
+            .pattern("BFB")
+            .define('P', Eln2Ingredients.IRON_PLATE.get())
+            .define('B', Items.BRICKS)
+            .define('F', Items.FURNACE)
+            .unlockedBy("has_bricks", has(Items.BRICKS))
+            .save(pWriter, resource("crafting/coke_oven"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2ForgeFluids.FLUID_PIPE_BLOCK.item.get(), 8)
+            .pattern("PPP")
+            .define('P', Eln2Ingredients.IRON_PLATE.get())
+            .unlockedBy("has_iron_plate", has(Eln2Ingredients.IRON_PLATE.get()))
+            .save(pWriter, resource("crafting/fluid_pipe"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2ForgeFluids.IRON_TANK.blockAndItem.item.get())
+            .pattern("PPP")
+            .pattern("P P")
+            .pattern("PPP")
+            .define('P', Eln2Ingredients.IRON_PLATE.get())
+            .unlockedBy("has_iron_plate", has(Eln2Ingredients.IRON_PLATE.get()))
+            .save(pWriter, resource("crafting/iron_tank"))
+
+        ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, Eln2Wires.STANDARD_INSULATED_COPPER_ELECTRICAL_WIRE.part.item.get())
+            .requires(Eln2Ingredients.COPPER_WIRE.get())
+            .requires(Eln2Ingredients.RUBBER.get())
+            .unlockedBy("has_rubber", has(Eln2Ingredients.RUBBER.get()))
+            .save(pWriter, resource("crafting/standard_insulated_copper_wire"))
+
+        ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, Eln2Wires.SIGNAL_WIRE.part.item.get(), 8)
+            .requires(Eln2Ingredients.COPPER_WIRE.get())
+            .requires(Eln2Ingredients.RUBBER.get())
+            .requires(Items.REDSTONE)
+            .unlockedBy("has_rubber", has(Eln2Ingredients.RUBBER.get()))
+            .save(pWriter, resource("crafting/signal_wire"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Wires.STANDARD_UNINSULATED_COPPER_THERMAL_WIRE.part.item.get(), 4)
+            .pattern("P")
+            .pattern("P")
+            .pattern("P")
+            .define('P', Eln2Ingredients.COPPER_PLATE.get())
+            .unlockedBy("has_copper_plate", has(Eln2Ingredients.COPPER_PLATE.get()))
+            .save(pWriter, resource("crafting/standard_uninsulated_copper_thermal_wire"))
 
         LOG.info("Generated manual recipes.")
     }

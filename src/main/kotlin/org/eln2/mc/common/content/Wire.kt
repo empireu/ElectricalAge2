@@ -217,7 +217,8 @@ data class WireRenderModel(val hub: PartialModel, val connection: WireConnection
 data class ThermalWireRegistryObject(
     val size: ThermalSize,
     val thermalProperties: WireThermalProperties,
-    val id: ResourceLocation
+    val id: ResourceLocation,
+    val part: PartRegistry.PartRegistryItem
 )
 
 /**
@@ -230,7 +231,8 @@ data class ElectricalWireRegistryObject(
     val size: ElectricalSize,
     val thermalProperties: WireThermalProperties,
     val electricalProperties: WireElectricalProperties,
-    val id: ResourceLocation
+    val id: ResourceLocation,
+    val part: PartRegistry.PartRegistryItem
 )
 
 abstract class WireBuilder<C : WireCell>(val id: String) {
@@ -265,7 +267,7 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
         leakageParameters
     )
 
-    protected fun registerPart(properties: WireThermalProperties, provider: RegistryObject<CellProvider<C>>) {
+    protected fun registerPart(properties: WireThermalProperties, provider: RegistryObject<CellProvider<C>>) : PartRegistry.PartRegistryItem {
         fun createShapes(size: Vector3d) : HashMap<Pair<Direction, Direction>, VoxelShape> {
             val results = HashMap<Pair<Direction, Direction>, VoxelShape>()
 
@@ -303,7 +305,7 @@ abstract class WireBuilder<C : WireCell>(val id: String) {
 
         val smokeTemperature = this.smokeTemperature ?: (!properties.temperatureThreshold * 0.9)
 
-        PartRegistry.partAndItemWithProvider(
+        return PartRegistry.partAndItemWithProvider(
             id,
             BasicPartProvider(hubSize) { ci ->
                 WirePart(
@@ -345,12 +347,13 @@ class ThermalWireBuilder(id: String) : WireBuilder<ThermalWireCell>(id) {
             )
         }
 
-        registerPart(material, cell)
+        val part = registerPart(material, cell)
 
         return ThermalWireRegistryObject(
             size,
             material,
-            cell.id
+            cell.id,
+            part
         )
     }
 }
@@ -388,13 +391,14 @@ class ElectricalWireBuilder(id: String) : WireBuilder<ElectrothermalWireCell>(id
             )
         }
 
-        registerPart(material, cell)
+        val part = registerPart(material, cell)
 
         return ElectricalWireRegistryObject(
             size,
             material,
             electrical,
-            cell.id
+            cell.id,
+            part
         )
     }
 }

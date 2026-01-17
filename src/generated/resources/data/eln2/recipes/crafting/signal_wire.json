@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "eln2:copper_wire"
+    },
+    {
+      "item": "eln2:rubber"
+    },
+    {
+      "item": "minecraft:redstone"
+    }
+  ],
+  "result": {
+    "count": 8,
+    "item": "eln2:signal_wire"
+  }
+}

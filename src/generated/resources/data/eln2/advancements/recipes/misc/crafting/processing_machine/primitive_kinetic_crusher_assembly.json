@@ -1,0 +1,48 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_hull": {
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "eln2:crusher"
+            ]
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_the_recipe": {
+      "conditions": {
+        "recipe": "eln2:crafting/processing_machine/primitive_kinetic_crusher_assembly"
+      },
+      "trigger": "minecraft:recipe_unlocked"
+    },
+    "has_work_box": {
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "eln2:primitive_kinetic_work_box"
+            ]
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    }
+  },
+  "requirements": [
+    [
+      "has_hull",
+      "has_work_box",
+      "has_the_recipe"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "eln2:crafting/processing_machine/primitive_kinetic_crusher_assembly"
+    ]
+  },
+  "sends_telemetry_event": false
+}
