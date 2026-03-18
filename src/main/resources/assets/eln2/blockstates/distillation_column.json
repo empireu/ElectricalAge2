@@ -1,0 +1,21 @@
+{
+    "variants": {
+        "facing=east": {
+            "model": "eln2:block/distillation/distillation_column",
+            "y": 90
+        },
+        "facing=north": {
+            "model": "eln2:block/distillation/distillation_column"
+        },
+
+        "facing=south": {
+            "model": "eln2:block/distillation/distillation_column",
+            "y": 180
+        },
+
+        "facing=west": {
+            "model": "eln2:block/distillation/distillation_column",
+            "y": 270
+        }
+    }
+}

@@ -1,24 +1,64 @@
 package org.eln2.mc.common.cells.foundation
 
 import org.ageseries.libage.data.mutableMultiMapOf
-import org.eln2.mc.common.cells.foundation.SubscriberPool.SubscriberPool
 import kotlin.math.max
 
 /**
  * Represents a function that is executed periodically from the simulation thread.
  * */
-fun interface Subscriber {
+fun interface SimulationSubscriber<Phase> {
     /**
      * Called when the simulation updates.
      * @param dt The fixed time step.
      * @param phase The update phase, as specified in [SubscriberOptions].
      * */
-    fun update(dt: Double, phase: SubscriberPhase)
+    fun update(dt: Double, phase: Phase)
 }
 
-enum class SubscriberPhase {
+/**
+ * Execution points during the simulation.
+ * */
+enum class SimulationPhase {
+    /**
+     * Called before all subsolvers are dispatched in parallel.
+     * */
     Pre,
+    /**
+     * Called after all subsolvers have finished.
+     * */
     Post
+}
+
+/**
+ * Execution points of the server's loop called by forge events.
+ * */
+enum class ServerPhase {
+    /**
+     * Called when [net.minecraftforge.event.TickEvent.ServerTickEvent], [net.minecraftforge.event.TickEvent.Phase.START] is received:
+     * - After the [org.eln2.mc.common.events.Scheduler] is executed
+     * - **Before any simulations are dispatched**. Use this fact to execute all Game State <-> Cell State changes without any locking.
+     * */
+    Start,
+    /**
+     * Called right after [Start] is dispatched, if algorithms need a second pass.
+     * */
+    AfterStart1,
+    /**
+     * Called right after [AfterStart1] is dispatched, if algorithms need a third pass.
+     * */
+    AfterStart2,
+    /**
+     * Called when [net.minecraftforge.event.TickEvent.ServerTickEvent], [net.minecraftforge.event.TickEvent.Phase.END] is received:
+     * - After the [org.eln2.mc.common.events.Scheduler] is executed
+     * - After the simulations are all awaited
+     * - Before the bulk messages are flushed
+     * - Before the fluid pipes are updated
+     * */
+    End,
+    /**
+     * Called right after [End] is dispatched, if algorithms need a second pass.
+     * */
+    AfterEnd
 }
 
 /**
@@ -26,15 +66,15 @@ enum class SubscriberPhase {
  * @param interval The interval, in ticks.
  * @param phase The update phase to listen for.
  * */
-data class SubscriberOptions(val interval: Int, val phase: SubscriberPhase)
+data class SubscriberOptions<Phase>(val interval: Int, val phase: Phase)
 
 /**
  * The Subscriber Collection is used to manage sets of subscribers, with different execution policies.
  * [SubscriberOptions] will be used to choose a [SubscriberPool].
  * */
-class SubscriberPool : SubscriberCollection {
-    private val pools = HashMap<SubscriberOptions, SubscriberPool>()
-    private val subscribers = mutableMultiMapOf<Subscriber, SubscriberPool>()
+class SubscriberPool<Phase> : SubscriberCollection<Phase> {
+    private val pools = HashMap<SubscriberOptions<Phase>, SubscriberPool<Phase>>()
+    private val subscribers = mutableMultiMapOf<SimulationSubscriber<Phase>, SubscriberPool<Phase>>()
 
     private var iterating = false
 
@@ -43,19 +83,21 @@ class SubscriberPool : SubscriberCollection {
     val poolCount get() = pools.size
     val subscriberCount get() = subscribers.keyMappingSize
 
-    private fun getPool(parameters: SubscriberOptions): SubscriberPool {
+    private fun getPool(parameters: SubscriberOptions<Phase>): SubscriberPool<Phase> {
         return pools.computeIfAbsent(parameters) { SubscriberPool(parameters) }
     }
 
-    fun hasPool(parameters: SubscriberOptions): Boolean {
+    fun hasPool(parameters: SubscriberOptions<Phase>): Boolean {
         return pools.containsKey(parameters)
     }
 
     private fun applyUpdate(update: Update) {
         when (update) {
-            is AddUpdate -> {
-                val subscriber = update.subscriber
-                val parameters = update.parameters
+            is AddUpdate<*> -> {
+                @Suppress("UNCHECKED_CAST")
+                val subscriber = update.subscriber as SimulationSubscriber<Phase>
+                @Suppress("UNCHECKED_CAST")
+                val parameters = update.parameters as SubscriberOptions<Phase>
                 val pool = getPool(parameters)
 
                 pool.add(subscriber)
@@ -63,8 +105,9 @@ class SubscriberPool : SubscriberCollection {
                 subscribers[subscriber].add(pool)
             }
 
-            is RemoveAllUpdate -> {
-                val subscriber = update.subscriber
+            is RemoveAllUpdate<*> -> {
+                @Suppress("UNCHECKED_CAST")
+                val subscriber = update.subscriber as SimulationSubscriber<Phase>
 
                 subscribers[subscriber].forEach { pool ->
                     pool.remove(subscriber)
@@ -91,15 +134,15 @@ class SubscriberPool : SubscriberCollection {
         }
     }
 
-    override fun addSubscriber(parameters: SubscriberOptions, subscriber: Subscriber) {
+    override fun addSubscriber(parameters: SubscriberOptions<Phase>, subscriber: SimulationSubscriber<Phase>) {
         enqueueOrApply(AddUpdate(subscriber, parameters))
     }
 
-    override fun remove(subscriber: Subscriber) {
+    override fun remove(subscriber: SimulationSubscriber<Phase>) {
         enqueueOrApply(RemoveAllUpdate(subscriber))
     }
 
-    fun update(dt: Double, phase: SubscriberPhase) {
+    fun update(dt: Double, phase: Phase) {
         iterating = true
 
         pools.values
@@ -113,11 +156,12 @@ class SubscriberPool : SubscriberCollection {
     }
 
     private interface Update
-    private class AddUpdate(val subscriber: Subscriber, val parameters: SubscriberOptions) : Update
-    private class RemoveAllUpdate(val subscriber: Subscriber) : Update
+    private class AddUpdate<Phase>(val subscriber: SimulationSubscriber<Phase>, val parameters: SubscriberOptions<Phase>) : Update
+    private class RemoveAllUpdate<Phase>(val subscriber: SimulationSubscriber<Phase>) : Update
 
-    class SubscriberPool(val parameters: SubscriberOptions) {
-        private val pool = ArrayList<Subscriber>()
+    class SubscriberPool<Phase>(val parameters: SubscriberOptions<Phase>) {
+        private val pool = ArrayList<SimulationSubscriber<Phase>>()
+        private var isIterating = false
 
         val isEmpty get() = pool.isEmpty()
         val size get() = pool.size
@@ -125,18 +169,29 @@ class SubscriberPool : SubscriberCollection {
         private var countdown = parameters.interval
 
         fun update(dtId: Double): Boolean {
-            val dt = dtId * max(parameters.interval, 1)
+            try {
+                val dt = dtId * max(parameters.interval, 1)
 
-            if (--countdown <= 0) {
-                countdown = parameters.interval
-                pool.forEach { it.update(dt, parameters.phase) }
-                return true
+                if (--countdown <= 0) {
+                    countdown = parameters.interval
+                    isIterating = true
+                    for (sub in pool) {
+                        sub.update(dt, parameters.phase)
+                    }
+                    isIterating = false
+                    return true
+                }
+
+                return false
             }
-
-            return false
+            finally {
+                isIterating = false
+            }
         }
 
-        fun add(subscriber: Subscriber) {
+        fun add(subscriber: SimulationSubscriber<Phase>) {
+            require(!isIterating) { "Tried to add subscriber $subscriber while iterating" }
+
             if (pool.contains(subscriber)) {
                 error("Duplicate add $subscriber in $parameters")
             }
@@ -144,7 +199,9 @@ class SubscriberPool : SubscriberCollection {
             pool.add(subscriber)
         }
 
-        fun remove(subscriber: Subscriber) {
+        fun remove(subscriber: SimulationSubscriber<Phase>) {
+            require(!isIterating) { "Tried to remove subscriber $subscriber while iterating" }
+
             if (!pool.remove(subscriber)) {
                 error("Failed to remove $subscriber from $parameters")
             }
@@ -152,38 +209,50 @@ class SubscriberPool : SubscriberCollection {
     }
 }
 
-interface SubscriberCollection {
-    fun addSubscriber(parameters: SubscriberOptions, subscriber: Subscriber)
+interface SubscriberCollection<Phase> {
+    fun addSubscriber(parameters: SubscriberOptions<Phase>, subscriber: SimulationSubscriber<Phase>)
 
-    fun remove(subscriber: Subscriber)
+    fun remove(subscriber: SimulationSubscriber<Phase>)
 }
 
 /**
- * Adds a subscriber that runs on [SubscriberPhase.Pre] every tick (interval is 0).
+ * Adds a subscriber that runs on [SimulationPhase.Pre] every tick (interval is 0).
  * */
-fun SubscriberCollection.addPre(subscriber: Subscriber) {
-    this.addSubscriber(SubscriberOptions(0, SubscriberPhase.Pre), subscriber)
-}
-
-fun SubscriberCollection.addPre10(subscriber: Subscriber) {
-    this.addSubscriber(SubscriberOptions(10, SubscriberPhase.Pre), subscriber)
-}
-
-fun SubscriberCollection.addPre100(subscriber: Subscriber) {
-    this.addSubscriber(SubscriberOptions(100, SubscriberPhase.Pre), subscriber)
+fun SubscriberCollection<SimulationPhase>.addPre(subscriber: SimulationSubscriber<SimulationPhase>) {
+    this.addSubscriber(SubscriberOptions(0, SimulationPhase.Pre), subscriber)
 }
 
 /**
- * Adds a subscriber that runs on [SubscriberPhase.Post] every tick (interval is 0).
+ * Adds a subscriber that runs on [SimulationPhase.Post] every tick (interval is 0).
  * */
-fun SubscriberCollection.addPost(subscriber: Subscriber) {
-    this.addSubscriber(SubscriberOptions(0, SubscriberPhase.Post), subscriber)
+fun SubscriberCollection<SimulationPhase>.addPost(subscriber: SimulationSubscriber<SimulationPhase>) {
+    this.addSubscriber(SubscriberOptions(0, SimulationPhase.Post), subscriber)
 }
 
-fun SubscriberCollection.addPost10(subscriber: Subscriber) {
-    this.addSubscriber(SubscriberOptions(10, SubscriberPhase.Post), subscriber)
+/**
+ * Adds a subscriber that runs on [ServerPhase.Start] every tick (interval is 0).
+ * */
+fun SubscriberCollection<ServerPhase>.addStart(subscriber: SimulationSubscriber<ServerPhase>) {
+    this.addSubscriber(SubscriberOptions(0, ServerPhase.Start), subscriber)
 }
 
-fun SubscriberCollection.addPost100(subscriber: Subscriber) {
-    this.addSubscriber(SubscriberOptions(100, SubscriberPhase.Post), subscriber)
+/**
+ * Adds a subscriber that runs on [ServerPhase.AfterStart1] every tick (interval is 0).
+ * */
+fun SubscriberCollection<ServerPhase>.addAfterStart1(subscriber: SimulationSubscriber<ServerPhase>) {
+    this.addSubscriber(SubscriberOptions(0, ServerPhase.AfterStart1), subscriber)
+}
+
+/**
+ * Adds a subscriber that runs on [ServerPhase.AfterStart2] every tick (interval is 0).
+ * */
+fun SubscriberCollection<ServerPhase>.addAfterStart2(subscriber: SimulationSubscriber<ServerPhase>) {
+    this.addSubscriber(SubscriberOptions(0, ServerPhase.AfterStart2), subscriber)
+}
+
+/**
+ * Adds a subscriber that runs on [ServerPhase.End] every tick (interval is 0).
+ * */
+fun SubscriberCollection<ServerPhase>.addEnd(subscriber: SimulationSubscriber<ServerPhase>) {
+    this.addSubscriber(SubscriberOptions(0, ServerPhase.End), subscriber)
 }

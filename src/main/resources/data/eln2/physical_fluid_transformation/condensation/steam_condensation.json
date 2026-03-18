@@ -1,0 +1,8 @@
+{
+    "fluid": "eln2:steam",
+    "condensation": {
+        "temperature": 373.15,
+        "enthalpy": 2260000.0,
+        "resultLiquid": "minecraft:water"
+    }
+}

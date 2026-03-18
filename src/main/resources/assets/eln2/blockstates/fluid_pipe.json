@@ -1,0 +1,31 @@
+{
+    "multipart": [
+        {
+            "apply": { "model": "eln2:block/fluid_pipe/core" }
+        },
+        {
+            "when": { "north": "true" },
+            "apply": { "model": "eln2:block/fluid_pipe/pipe"}
+        },
+        {
+            "when": { "east": "true" },
+            "apply": { "model": "eln2:block/fluid_pipe/pipe", "y": 90}
+        },
+        {
+            "when": { "south": "true" },
+            "apply": { "model": "eln2:block/fluid_pipe/pipe", "y": 180}
+        },
+        {
+            "when": { "west": "true" },
+            "apply": { "model": "eln2:block/fluid_pipe/pipe", "y": 270}
+        },
+        {
+            "when": { "up": "true" },
+            "apply": { "model": "eln2:block/fluid_pipe/pipe", "x": 270}
+        },
+        {
+            "when": { "down": "true" },
+            "apply": { "model": "eln2:block/fluid_pipe/pipe", "x": 90}
+        }
+    ]
+}

@@ -1,0 +1,9 @@
+{
+    "fluid": "eln2:liquid_acetylene",
+    "boiling": {
+        "temperature": 189.0,
+        "enthalpy": 496000.0,
+        "resultGas": "eln2:acetylene",
+        "resultGasProportion": 1000
+    }
+}

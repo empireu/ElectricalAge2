@@ -1,0 +1,8 @@
+{
+    "fluid": "eln2:acetylene",
+    "condensation": {
+        "temperature": 189.0,
+        "enthalpy": 496000.0,
+        "resultLiquid": "eln2:liquid_acetylene"
+    }
+}

@@ -1,0 +1,9 @@
+{
+    "fluid": "eln2:liquid_propane",
+    "boiling": {
+        "temperature": 231.0,
+        "enthalpy": 246000.0,
+        "resultGas": "eln2:propane",
+        "resultGasProportion": 1000
+    }
+}

@@ -1,19 +1,27 @@
+@file:Suppress("NOTHING_TO_INLINE")
+
 package org.eln2.mc.mathematics
 
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
 import net.minecraft.core.Direction
-import org.eln2.mc.alias
-import org.eln2.mc.index
-import org.eln2.mc.isHorizontal
-import org.eln2.mc.isVertical
+import org.ageseries.libage.data.ImmutableByteArrayView
+import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.eln2.mc.extensions.*
 import org.joml.Matrix4f
 
+enum class Axis3d(val id: Int, val direction: Vector3d, val maskExclude: Vector3d) {
+    X(0, Vector3d.unitX, Vector3d(0.0, 1.0, 1.0)),
+    Y(1, Vector3d.unitY, Vector3d(1.0, 0.0, 1.0)),
+    Z(2, Vector3d.unitZ, Vector3d(1.0, 1.0, 0.0))
+}
+
 enum class Base6Direction3d(val id: Int) {
-    Front(1),
-    Back(2),
-    Left(3),
-    Right(4),
-    Up(5),
-    Down(6);
+    Front(0),
+    Back(1),
+    Left(2),
+    Right(3),
+    Up(4),
+    Down(5);
 
     /**
      * Gets the opposite of this direction.
@@ -38,56 +46,79 @@ enum class Base6Direction3d(val id: Int) {
      * */
     val isVertical get() = this == Up || this == Down
 
+    operator fun plus(other: Base6Direction3d) = Base6Direction3dMask.ofRelative(this) + Base6Direction3dMask.ofRelative(other)
+    operator fun plus(other: Base6Direction3dMask) = other + Base6Direction3dMask.ofRelative(this)
+
     companion object {
-        fun fromForwardUp(facing: Direction, normal: Direction, direction: Direction): Base6Direction3d {
-            if (facing.isVertical()) {
-                error("Facing cannot be vertical")
-            }
+        private val FROM_FORWARD_UP = let {
+            val map = Int2IntOpenHashMap()
 
-            if (direction == normal) {
-                return Up
-            }
+            for (facing in FacingDirection.entries) {
+                for (normal in Direction.entries) {
+                    for (direction in Direction.entries) {
+                        val result = when (direction) {
+                            normal -> {
+                                Up
+                            }
 
-            if (direction == normal.opposite) {
-                return Down
-            }
+                            normal.opposite -> {
+                                Down
+                            }
 
-            val adjustedFacing = Direction.rotate(Matrix4f().set(normal.rotation), facing)
+                            else -> {
+                                val adjustedFacing = Direction.rotate(
+                                    Matrix4f()
+                                        .identity()
+                                        .rotate(normal.rotationFast),
+                                    facing.direction
+                                )
 
-            var result = when (direction) {
-                adjustedFacing -> Front
-                adjustedFacing.opposite -> Back
-                adjustedFacing.getClockWise(normal.axis) -> Right
-                adjustedFacing.getCounterClockWise(normal.axis) -> Left
-                else -> error("Adjusted facing did not match")
-            }
+                                var result = when (direction) {
+                                    adjustedFacing -> Front
+                                    adjustedFacing.opposite -> Back
+                                    adjustedFacing.getClockWise(normal.axis) -> Right
+                                    adjustedFacing.getCounterClockWise(normal.axis) -> Left
+                                    else -> error("Adjusted facing did not match")
+                                }
 
-            if (normal.axisDirection == Direction.AxisDirection.NEGATIVE) {
-                if (result == Left || result == Right) {
-                    result = result.opposite
+                                if (normal.axisDirection == Direction.AxisDirection.NEGATIVE) {
+                                    if (result == Left || result == Right) {
+                                        result = result.opposite
+                                    }
+                                }
+
+                                result
+                            }
+                        }
+
+                        map.put(BlockPosInt.pack(
+                            facing.index,
+                            normal.get3DDataValue(),
+                            direction.get3DDataValue()
+                        ), result.id)
+                    }
                 }
             }
 
-            return result
+            map
         }
 
-        fun fromId(id: Int): Base6Direction3d {
-            return when (id) {
-                Front.id -> Front
-                Back.id -> Back
-                Left.id -> Left
-                Right.id -> Right
-                Up.id -> Up
-                Down.id -> Down
-
-                else -> error("Invalid local direction id: $id")
-            }
+        fun fromForwardUp(facing: FacingDirection, normal: Direction, direction: Direction): Base6Direction3d {
+            return Base6Direction3d.entries[
+                FROM_FORWARD_UP.get(
+                    BlockPosInt.pack(
+                        facing.index,
+                        normal.get3DDataValue(),
+                        direction.get3DDataValue()
+                    )
+                )
+            ]
         }
     }
 }
 
 @JvmInline
-value class DirectionMask(val mask: Int) {
+value class Base6Direction3dMask(val value: Int) {
     companion object {
         /**
          * Gets the mask bit associated with the specified direction.
@@ -106,21 +137,21 @@ value class DirectionMask(val mask: Int) {
         /**
          * Gets a Direction Mask without any directions in it.
          * */
-        val EMPTY = DirectionMask(0)
+        val EMPTY = Base6Direction3dMask(0)
 
         /**
          * Gets a Direction Mask with all 6 directions in it.
          * */
-        val FULL = DirectionMask(
-            Direction.values()
+        val FULL = Base6Direction3dMask(
+            Direction.entries
                 .map { getBit(it) }
                 .reduce { acc, b -> acc or b }
         )
 
         // This cache maps single directions to masks.
-        private val perDirection = Direction.values()
-            .sortedBy { it.index() }
-            .map { DirectionMask(getBit(it)) }
+        private val perDirection = Direction.entries
+            .sortedBy { it.get3DDataValue() }
+            .map { Base6Direction3dMask(getBit(it)) }
             .toTypedArray()
 
         // P.S these are not overloads because I had some strange issues caused by overloads.
@@ -129,26 +160,26 @@ value class DirectionMask(val mask: Int) {
         /**
          * Gets the cached mask for the specified direction.
          * */
-        fun of(direction: Direction): DirectionMask {
-            return perDirection[direction.index()]
+        fun of(direction: Direction): Base6Direction3dMask {
+            return perDirection[direction.get3DDataValue()]
         }
 
         /**
          * Gets the cached mask for the specified direction.
          * */
-        fun ofRelative(direction: Base6Direction3d): DirectionMask {
+        fun ofRelative(direction: Base6Direction3d): Base6Direction3dMask {
             return of(direction.alias)
         }
 
         /**
          * **Computes** the mask for the specified directions.
          * */
-        fun of(directions: List<Direction>): DirectionMask {
+        fun of(directions: List<Direction>): Base6Direction3dMask {
             if (directions.isEmpty()) {
                 return EMPTY
             }
 
-            return DirectionMask(directions
+            return Base6Direction3dMask(directions
                 .map { getBit(it) }
                 .reduce { acc, mask -> acc or mask }
             )
@@ -157,19 +188,19 @@ value class DirectionMask(val mask: Int) {
         /**
          * **Computes** the mask for the specified directions.
          * */
-        fun of(vararg directions: Direction): DirectionMask {
+        fun of(vararg directions: Direction): Base6Direction3dMask {
             return of(directions.asList())
         }
 
         /**
          * **Computes** the mask for the specified directions.
          * */
-        fun ofRelatives(directions: List<Base6Direction3d>): DirectionMask {
+        fun ofRelatives(directions: List<Base6Direction3d>): Base6Direction3dMask {
             if (directions.isEmpty()) {
                 return EMPTY
             }
 
-            return DirectionMask(directions
+            return Base6Direction3dMask(directions
                 .map { getBit(it.alias) }
                 .reduce { acc, mask -> acc or mask }
             )
@@ -178,7 +209,7 @@ value class DirectionMask(val mask: Int) {
         /**
          * **Computes** the mask for the specified directions.
          * */
-        fun ofRelatives(vararg directions: Base6Direction3d): DirectionMask {
+        fun ofRelatives(vararg directions: Base6Direction3d): Base6Direction3dMask {
             return ofRelatives(directions.asList())
         }
 
@@ -201,31 +232,31 @@ value class DirectionMask(val mask: Int) {
         val VERTICALS = UP + DOWN
 
         // This cache maps single directions to masks with the 4 perpendicular directions.
-        private val perpendiculars = Direction.values()
+        private val perpendiculars = Direction.entries
             .map { direction ->
                 var result = 0
 
-                Direction.values()
-                    .sortedBy { it.index() }
+                Direction.entries
+                    .sortedBy { it.get3DDataValue() }
                     .filter { it != direction && it != direction.opposite }
                     .forEach { perpendicular ->
                         result = result or getBit(perpendicular)
                     }
 
-                return@map DirectionMask(result)
+                return@map Base6Direction3dMask(result)
             }
             .toTypedArray()
 
         /**
          * Gets the cached mask with perpendicular directions to the specified direction.
          * */
-        fun perpendicular(direction: Direction): DirectionMask {
-            return perpendiculars[direction.index()]
+        fun perpendicular(direction: Direction): Base6Direction3dMask {
+            return perpendiculars[direction.get3DDataValue()]
         }
 
         // These are all mask combinations.
-        private val allMasks = (0..FULL.mask)
-            .map { DirectionMask(it) }
+        private val allMasks = (0..FULL.value)
+            .map { Base6Direction3dMask(it) }
             .toList()
             .toTypedArray()
 
@@ -239,8 +270,7 @@ value class DirectionMask(val mask: Int) {
             val list = ArrayList<Direction>()
             mask.toList(list)
             return@map list.toList()
-        }
-            .toTypedArray()
+        }.toTypedArray()
 
         // We precompute the most common transformations here.
         // I chose to allow all masks to be transformed using clockwise/counterclockwise.
@@ -270,20 +300,20 @@ value class DirectionMask(val mask: Int) {
      * Gets the index used in all caches.
      * This actually corresponds to the mask itself.
      * */
-    val index get() = mask
+    val index get() = value
 
-    val horizontalComponent get() = DirectionMask(mask and HORIZONTALS.mask)
-    val verticalComponent get() = DirectionMask(mask and VERTICALS.mask)
-    val isEmpty get() = (mask == 0)
+    val horizontalComponent get() = Base6Direction3dMask(value and HORIZONTALS.value)
+    val verticalComponent get() = Base6Direction3dMask(value and VERTICALS.value)
+    val isEmpty get() = (value == 0)
     val isNotEmpty get() = !isEmpty
-    fun hasFlag(direction: Direction) = (mask and getBit(direction)) > 0
+    fun hasFlag(direction: Direction) = (value and getBit(direction)) > 0
     fun hasFlag(direction: Base6Direction3d) = hasFlag(direction.alias)
-    fun hasAll(flags: DirectionMask) = (mask and flags.mask) == flags.mask
-    fun hasAny(flags: DirectionMask) = (mask and flags.mask) > 0
+    fun hasAll(flags: Base6Direction3dMask) = (value and flags.value) == flags.value
+    fun hasAny(flags: Base6Direction3dMask) = (value and flags.value) > 0
 
     infix fun has(direction: Direction) = hasFlag(direction)
     infix fun has(direction: Base6Direction3d) = hasFlag(direction)
-    infix fun has(flags: DirectionMask) = hasAll(flags)
+    infix fun has(flags: Base6Direction3dMask) = hasAll(flags)
 
     //#endregion
 
@@ -305,7 +335,7 @@ value class DirectionMask(val mask: Int) {
     /**
      * Gets the cached list of directions in this mask.
      * */
-    val directionList get() = directionLists[this.mask]
+    val directionList get() = directionLists[this.value]
 
     override fun toString(): String {
         val sb = StringBuilder()
@@ -324,8 +354,8 @@ value class DirectionMask(val mask: Int) {
     /**
      * Calls a consumer function for every direction in this mask.
      * */
-    inline fun process(action: (Direction) -> Unit) {
-        Direction.values().forEach { direction ->
+    inline fun forEach(action: (Direction) -> Unit) {
+        Direction.entries.forEach { direction ->
             if (hasFlag(direction)) {
                 action(direction)
             }
@@ -337,7 +367,7 @@ value class DirectionMask(val mask: Int) {
     /**
      * Computes a mask using the directions in this mask, transformed via the specified transform function.
      * */
-    fun transformed(transform: ((Direction) -> Direction)): DirectionMask {
+    fun transformed(transform: ((Direction) -> Direction)): Base6Direction3dMask {
         if (isEmpty) {
             // REQUIRED
             return EMPTY
@@ -350,7 +380,7 @@ value class DirectionMask(val mask: Int) {
      * Computes a mask using the directions in this mask, transformed via the specified transform function.
      * Only directions that match the filter are transformed. If a direction does not match the filter, it is left unaffected.
      * */
-    fun transformed(transform: ((Direction) -> Direction), filter: ((Direction) -> Boolean)): DirectionMask {
+    fun transformed(transform: ((Direction) -> Direction), filter: ((Direction) -> Boolean)): Base6Direction3dMask {
         if (isEmpty) {
             // REQUIRED
             return EMPTY
@@ -362,17 +392,17 @@ value class DirectionMask(val mask: Int) {
     /**
      * Gets the cached clockwise mask. Vertical directions are left unaffected.
      * */
-    val clockWise get() = clockwiseMasks[this.mask]
+    val clockWise get() = clockwiseMasks[this.value]
 
     /**
      * Gets the cached counterclockwise mask. Vertical directions are left unaffected.
      * */
-    val counterClockWise get() = counterClockwiseMasks[this.mask]
+    val counterClockWise get() = counterClockwiseMasks[this.value]
 
     /**
      * Gets the cached mask, with all directions inverted.
      * */
-    val opposite get() = oppositeMasks[this.mask]
+    val opposite get() = oppositeMasks[this.value]
 
     // P.S. when we use OPPOSITE here, we ensure that vertical directions don't get included.
     // We want these APIs to not affect vertical directions, and OPPOSITE would.
@@ -381,7 +411,7 @@ value class DirectionMask(val mask: Int) {
     /**
      * Gets the cached mask, rotated clockwise by the specified number of steps. Vertical directions are left unaffected.
      * */
-    fun clockWise(steps: Int): DirectionMask {
+    fun clockWise(steps: Int): Base6Direction3dMask {
         return when (val remainder = steps % 4) {
             0 -> this
             1 -> this.clockWise
@@ -394,7 +424,7 @@ value class DirectionMask(val mask: Int) {
     /**
      * Gets the cached mask, rotated counterclockwise by the specified number of steps. Vertical directions are left unaffected.
      * */
-    fun counterClockWise(steps: Int): DirectionMask {
+    fun counterClockWise(steps: Int): Base6Direction3dMask {
         return when (val remainder = steps % 4) {
             0 -> this
             1 -> this.counterClockWise
@@ -410,7 +440,7 @@ value class DirectionMask(val mask: Int) {
      * Tries to match the source mask to this mask, by rotating it clockwise a number of steps.
      * @return The number of steps needed to match the 2 masks, or -1 if no match was found.
      * */
-    fun matchClockwise(targetMask: DirectionMask): Int {
+    fun matchClockwise(targetMask: Base6Direction3dMask): Int {
         for (i in 0..3) {
             val rotated = this.clockWise(i)
 
@@ -426,7 +456,7 @@ value class DirectionMask(val mask: Int) {
      * Tries to match the source mask to this mask, by rotating it counterclockwise a number of steps.
      * @return The number of steps needed to match the 2 masks, or -1 if no match was found.
      * */
-    fun matchCounterClockWise(targetMask: DirectionMask): Int {
+    fun matchCounterClockWise(targetMask: Base6Direction3dMask): Int {
         for (i in 0..3) {
             val rotated = this.counterClockWise(i)
 
@@ -442,15 +472,38 @@ value class DirectionMask(val mask: Int) {
      * Populates the specified list with the directions in this mask.
      * */
     fun toList(results: MutableList<Direction>) {
-        this.process {
+        this.forEach {
             results.add(it)
         }
     }
 
-    val count get() = mask.countOneBits()
+    val count get() = value.countOneBits()
 
-    operator fun plus(other: DirectionMask) = DirectionMask(this.mask or other.mask)
-    operator fun plus(direction: Direction) = DirectionMask(this.mask or getBit(direction))
-    operator fun minus(direction: Direction) = DirectionMask(this.mask and getBit(direction).inv())
-    operator fun minus(mask: DirectionMask) = DirectionMask(this.mask and mask.mask.inv())
+    operator fun plus(other: Base6Direction3dMask) = Base6Direction3dMask(this.value or other.value)
+    operator fun plus(direction: Direction) = Base6Direction3dMask(this.value or getBit(direction))
+    operator fun plus(direction: Base6Direction3d) = Base6Direction3dMask(this.value or getBit(direction.alias))
+    operator fun minus(direction: Direction) = Base6Direction3dMask(this.value and getBit(direction).inv())
+    operator fun minus(direction: Base6Direction3d) = Base6Direction3dMask(this.value and getBit(direction.alias).inv())
+    operator fun minus(mask: Base6Direction3dMask) = Base6Direction3dMask(this.value and mask.value.inv())
 }
+
+
+/**
+ * Gets the x, y, z components in order from [Direction.values]
+ * */
+val DIRECTION_COMPONENTS = Direction.entries.toTypedArray().let {
+    val result = ArrayList<Byte>()
+
+    it.forEach { direction ->
+        result.add(direction.stepX.toByte())
+        result.add(direction.stepY.toByte())
+        result.add(direction.stepZ.toByte())
+    }
+
+    ImmutableByteArrayView(result.toByteArray())
+}
+
+inline fun directionIncrementX(dir3dDataValue: Int) = DIRECTION_COMPONENTS[dir3dDataValue * 3 + 0]
+inline fun directionIncrementY(dir3dDataValue: Int) = DIRECTION_COMPONENTS[dir3dDataValue * 3 + 1]
+inline fun directionIncrementZ(dir3dDataValue: Int) = DIRECTION_COMPONENTS[dir3dDataValue * 3 + 2]
+

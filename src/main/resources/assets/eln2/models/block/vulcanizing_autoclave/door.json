@@ -1,0 +1,231 @@
+{
+    "format_version": "1.9.0",
+    "credit": "Made with Blockbench",
+    "texture_size": [128, 128],
+    "textures": {
+        "0": "eln2:block/vulcanizing_autoclave/vulcanizing_autoclave",
+        "particle": "eln2:block/vulcanizing_autoclave/vulcanizing_autoclave"
+    },
+    "elements": [
+        {
+            "name": "door0", "forge_data": {"calculate_normals": true},
+            "from": [4, 17.41371, 0],
+            "to": [12, 19.41371, 5],
+            "rotation": {"angle": 0, "axis": "y", "origin": [9, 19.41371, -11]},
+            "faces": {
+                "north": {"uv": [0, 1.5, 4, 2.375], "texture": "#0"},
+                "east": {"uv": [0, 1.5, 4, 2.375], "texture": "#0"},
+                "south": {"uv": [0, 1.5, 4, 2.375], "texture": "#0"},
+                "west": {"uv": [0, 1.5, 4, 2.375], "texture": "#0"},
+                "up": {"uv": [0, 4, 2, 5.125], "rotation": 180, "texture": "#0"},
+                "down": {"uv": [0, 4, 2, 5.125], "rotation": 180, "texture": "#0"}
+            }
+        },
+        {
+            "name": "door1", "forge_data": {"calculate_normals": true},
+            "from": [-3.12132, 15.29239, 0.05],
+            "to": [4.87868, 17.29239, 5.05],
+            "rotation": {"angle": 45, "axis": "z", "origin": [1.87868, 17.29239, -11]},
+            "faces": {
+                "north": {"uv": [0, 1.5, 4, 2.375], "texture": "#0"},
+                "east": {"uv": [1, 1.5, 3, 2.375], "texture": "#0"},
+                "south": {"uv": [0, 1.5, 4, 2.375], "texture": "#0"},
+                "west": {"uv": [1, 1.5, 3, 2.375], "texture": "#0"},
+                "up": {"uv": [0, 4, 2, 5.125], "rotation": 180, "texture": "#0"},
+                "down": {"uv": [0, 4, 2, 5.125], "rotation": 180, "texture": "#0"}
+            }
+        },
+        {
+            "name": "door2", "forge_data": {"calculate_normals": true},
+            "from": [-1.65685, 5.75685, 0],
+            "to": [0.34315, 13.75685, 5],
+            "rotation": {"angle": 0, "axis": "y", "origin": [-1.65685, 10.75685, -11]},
+            "faces": {
+                "north": {"uv": [0, 1.5, 4, 2.375], "rotation": 90, "texture": "#0"},
+                "east": {"uv": [0, 4, 2, 5.125], "rotation": 90, "texture": "#0"},
+                "south": {"uv": [0, 1.5, 4, 2.375], "rotation": 90, "texture": "#0"},
+                "west": {"uv": [0, 4, 2, 5.125], "rotation": 270, "texture": "#0"},
+                "up": {"uv": [0, 1.5, 4, 2.375], "rotation": 90, "texture": "#0"},
+                "down": {"uv": [0, 1.5, 4, 2.375], "rotation": 90, "texture": "#0"}
+            }
+        },
+        {
+            "name": "door3", "forge_data": {"calculate_normals": true},
+            "from": [0.46447, -1.36447, 0.05],
+            "to": [2.46447, 6.63553, 5.05],
+            "rotation": {"angle": 45, "axis": "z", "origin": [0.46447, 3.63553, -11]},
+            "faces": {
+                "north": {"uv": [0, 1.5, 4, 2.375], "rotation": 90, "texture": "#0"},
+                "east": {"uv": [0, 4, 2, 5.125], "rotation": 90, "texture": "#0"},
+                "south": {"uv": [0, 1.5, 4, 2.375], "rotation": 90, "texture": "#0"},
+                "west": {"uv": [0, 4, 2, 5.125], "rotation": 270, "texture": "#0"},
+                "up": {"uv": [1, 1.5, 3, 2.375], "rotation": 90, "texture": "#0"},
+                "down": {"uv": [1, 1.5, 3, 2.375], "rotation": 90, "texture": "#0"}
+            }
+        },
+        {
+            "name": "door4", "forge_data": {"calculate_normals": true},
+            "from": [4, 0.1, 0],
+            "to": [12, 2.1, 5],
+            "rotation": {"angle": 0, "axis": "y", "origin": [8, 1.1, -10]},
+            "faces": {
+                "north": {"uv": [0, 1.5, 4, 2.375], "rotation": 180, "texture": "#0"},
+                "east": {"uv": [0, 1.5, 4, 2.375], "texture": "#0"},
+                "south": {"uv": [0, 1.5, 4, 2.375], "rotation": 180, "texture": "#0"},
+                "west": {"uv": [0, 1.5, 4, 2.375], "texture": "#0"},
+                "up": {"uv": [0, 4, 2, 5.125], "rotation": 180, "texture": "#0"},
+                "down": {"uv": [0, 4, 1.125, 6], "rotation": 270, "texture": "#0"}
+            }
+        },
+        {
+            "name": "door5", "forge_data": {"calculate_normals": true},
+            "from": [11.12132, 2.22132, 0.05],
+            "to": [19.12132, 4.22132, 5.05],
+            "rotation": {"angle": 45, "axis": "z", "origin": [14.12132, 2.22132, -11]},
+            "faces": {
+                "north": {"uv": [0, 1.5, 4, 2.375], "rotation": 180, "texture": "#0"},
+                "east": {"uv": [1, 1.5, 3, 2.375], "texture": "#0"},
+                "south": {"uv": [0, 1.5, 4, 2.375], "rotation": 180, "texture": "#0"},
+                "west": {"uv": [1, 1.5, 3, 2.375], "texture": "#0"},
+                "up": {"uv": [0, 4, 2, 5.125], "rotation": 180, "texture": "#0"},
+                "down": {"uv": [0, 4, 2, 5.125], "rotation": 180, "texture": "#0"}
+            }
+        },
+        {
+            "name": "door6", "forge_data": {"calculate_normals": true},
+            "from": [15.65685, 5.75685, 0],
+            "to": [17.65685, 13.75685, 5],
+            "rotation": {"angle": 0, "axis": "y", "origin": [17.65685, 8.75685, -11]},
+            "faces": {
+                "north": {"uv": [0, 1.5, 4, 2.375], "rotation": 270, "texture": "#0"},
+                "east": {"uv": [0, 4, 2, 5.125], "rotation": 270, "texture": "#0"},
+                "south": {"uv": [0, 1.5, 4, 2.375], "rotation": 270, "texture": "#0"},
+                "west": {"uv": [0, 4, 2, 5.125], "rotation": 90, "texture": "#0"},
+                "up": {"uv": [0, 1.5, 4, 2.375], "rotation": 90, "texture": "#0"},
+                "down": {"uv": [0, 1.5, 4, 2.375], "rotation": 90, "texture": "#0"}
+            }
+        },
+        {
+            "name": "door7", "forge_data": {"calculate_normals": true},
+            "from": [13.53553, 12.87817, 0.05],
+            "to": [15.53553, 20.87817, 5.05],
+            "rotation": {"angle": 45, "axis": "z", "origin": [15.53553, 15.87817, -11]},
+            "faces": {
+                "north": {"uv": [0, 1.5, 4, 2.375], "rotation": 270, "texture": "#0"},
+                "east": {"uv": [0, 4, 2, 5.125], "rotation": 270, "texture": "#0"},
+                "south": {"uv": [0, 1.5, 4, 2.375], "rotation": 270, "texture": "#0"},
+                "west": {"uv": [0, 4, 2, 5.125], "rotation": 90, "texture": "#0"},
+                "up": {"uv": [1, 1.5, 3, 2.375], "rotation": 90, "texture": "#0"},
+                "down": {"uv": [1, 1.5, 3, 2.375], "rotation": 90, "texture": "#0"}
+            }
+        },
+        {
+            "name": "door_wall0", "forge_data": {"calculate_normals": true},
+            "from": [0, 2.1, 0.1],
+            "to": [16, 17.41371, 0.2],
+            "rotation": {"angle": 0, "axis": "y", "origin": [8, 2.1, -0.9]},
+            "faces": {
+                "north": {"uv": [0, 0, 4, 4], "texture": "#0"}
+            }
+        },
+        {
+            "name": "door_wall1", "forge_data": {"calculate_normals": true},
+            "from": [0, 2.1, 2.1],
+            "to": [16, 17.41371, 2.2],
+            "rotation": {"angle": 0, "axis": "y", "origin": [8, 9.75686, 2.15]},
+            "faces": {
+                "south": {"uv": [0, 0, 4, 4], "texture": "#0"}
+            }
+        },
+        {
+            "name": "door_handle0", "forge_data": {"calculate_normals": true},
+            "from": [15.2, 11.175, -0.7],
+            "to": [16, 11.75, 0.2],
+            "rotation": {"angle": 0, "axis": "y", "origin": [14, 7.3, -1.8]},
+            "faces": {
+                "north": {"uv": [0, 10.875, 0.375, 11.05537], "texture": "#0"},
+                "east": {"uv": [0, 10.875, 0.25962, 11.05537], "texture": "#0"},
+                "west": {"uv": [0.11539, 10.875, 0.375, 11.05537], "texture": "#0"},
+                "up": {"uv": [0, 11.25865, 0.375, 12.12188], "texture": "#0"},
+                "down": {"uv": [0, 10.875, 0.375, 11.73822], "texture": "#0"}
+            }
+        },
+        {
+            "name": "door_handle1", "forge_data": {"calculate_normals": true},
+            "from": [15.2, 7.775, -1.1],
+            "to": [16, 11.75, -0.7],
+            "rotation": {"angle": 0, "axis": "y", "origin": [14, 7.3, -1.8]},
+            "faces": {
+                "north": {"uv": [0, 10.875, 0.375, 12.12188], "texture": "#0"},
+                "east": {"uv": [0.25962, 10.875, 0.375, 12.12188], "texture": "#0"},
+                "west": {"uv": [0, 10.875, 0.11539, 12.12188], "texture": "#0"},
+                "up": {"uv": [0, 10.875, 0.375, 11.25865], "texture": "#0"},
+                "down": {"uv": [0, 11.73822, 0.375, 12.12188], "texture": "#0"}
+            }
+        },
+        {
+            "name": "door_handle2", "forge_data": {"calculate_normals": true},
+            "from": [15.2, 7.775, -0.7],
+            "to": [16, 8.35, 0.2],
+            "rotation": {"angle": 0, "axis": "y", "origin": [14, 7.3, -1.8]},
+            "faces": {
+                "north": {"uv": [0, 11.05537, 0.375, 12.12188], "texture": "#0"},
+                "east": {"uv": [0, 10.875, 0.25962, 11.05537], "texture": "#0"},
+                "west": {"uv": [0.11539, 11.05537, 0.375, 12.12188], "texture": "#0"},
+                "up": {"uv": [0, 11.25865, 0.375, 12.12188], "texture": "#0"},
+                "down": {"uv": [0, 10.875, 0.375, 11.73822], "texture": "#0"}
+            }
+        }
+    ],
+    "display": {
+        "thirdperson_righthand": {
+            "translation": [0, 2, 0],
+            "scale": [0.25, 0.25, 0.25]
+        },
+        "thirdperson_lefthand": {
+            "translation": [0, 2, 0],
+            "scale": [0.25, 0.25, 0.25]
+        },
+        "firstperson_righthand": {
+            "scale": [0.25, 0.25, 0.25]
+        },
+        "firstperson_lefthand": {
+            "scale": [0.25, 0.25, 0.25]
+        },
+        "ground": {
+            "translation": [0, 1.5, 0],
+            "scale": [0.25, 0.25, 0.25]
+        },
+        "gui": {
+            "rotation": [12.46, 33.51, 0.63],
+            "translation": [-1.75, 0, 0],
+            "scale": [0.4, 0.4, 0.4]
+        },
+        "fixed": {
+            "rotation": [0, 90, 0],
+            "translation": [-1.5, 0, -1.5],
+            "scale": [0.25, 0.25, 0.25]
+        },
+        "on_shelf": {
+            "scale": [0.5, 0.5, 0.5]
+        }
+    },
+    "groups": [
+        {
+            "name": "door", "forge_data": {"calculate_normals": true},
+            "origin": [1.87868, 17.19239, 2],
+            "color": 0,
+            "children": [
+                {
+                    "name": "door_walls", "forge_data": {"calculate_normals": true},
+                    "origin": [9, 19.31371, -16],
+                    "color": 0,
+                    "children": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+                },
+                10,
+                11,
+                12
+            ]
+        }
+    ]
+}

@@ -1,66 +1,59 @@
 package org.eln2.mc.common.content
 
-import net.minecraft.resources.ResourceLocation
-import org.ageseries.libage.sim.electrical.mna.Circuit
-import org.eln2.mc.client.render.PartialModels
-import org.eln2.mc.client.render.PartialModels.bbOffset
-import org.eln2.mc.client.render.foundation.BasicPartRenderer
+import org.ageseries.libage.data.OHM
+import org.ageseries.libage.data.Quantity
+import org.eln2.mc.OnServerThread
+import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.BasicPartVisual
+import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.parts.foundation.CellPart
-import org.eln2.mc.common.parts.foundation.PartPlacementInfo
-import org.eln2.mc.data.withDirectionActualRule
-import org.eln2.mc.mathematics.DirectionMask
-import org.eln2.mc.mathematics.bbVec
+import org.eln2.mc.common.content.modules.Eln2BasicComponents
+import org.eln2.mc.common.grids.GridNode
+import org.eln2.mc.common.parts.foundation.GridCellPart
+import org.eln2.mc.common.parts.foundation.PartCreateInfo
+import org.eln2.mc.common.specs.foundation.CellSpec
+import org.eln2.mc.common.specs.foundation.SpecCreateInfo
+import org.eln2.mc.integration.ComponentDisplay
+import org.eln2.mc.integration.ComponentDisplayList
 
-/**
- * The ground object is simply a bundle of resistors, with one grounded pin.
- * The ungrounded pin is exported to other Electrical Objects.
- * */
-class GroundObject(cell: Cell) : ElectricalObject(cell) {
-    private val resistors = ResistorBundle(0.01, this)
+class GroundCell(ci: CellCreateInfo) : Cell(ci), SidedElectricalFLBR<GroundCell> {
+    override val electricalSize: ElectricalSize
+        get() = ElectricalSize.Standard
 
-    /**
-     * Gets or sets the resistance of the bundle.
-     * Only applied when the circuit is re-built.
-     * */
-    var resistance: Double
-        get() = resistors.resistance
-        set(value) {
-            resistors.resistance = value
-        }
-
-    override fun offerComponent(neighbour: ElectricalObject): ElectricalComponentInfo {
-        return resistors.getOfferedResistor(neighbour)
-    }
-
-    override fun clearComponents() {
-        resistors.clear()
-    }
-
-    override fun addComponents(circuit: Circuit) {
-        resistors.register(connections, circuit)
-    }
-
-    override fun build() {
-        resistors.connect(connections, this)
-        resistors.process { it.ground(INTERNAL_PIN) }
-    }
-}
-
-class GroundCell(ci: CellCreateInfo) : Cell(ci) {
     @SimObject
-    val groundObj = GroundObject(this)
+    val ground = GroundObject(self())
 
-    init {
-        ruleSet.withDirectionActualRule(DirectionMask.FRONT)
+    @Node
+    val grid = GridNode(self())
+
+    @OnServerThread
+    fun submitDisplay(builder: ComponentDisplayList) {
+        builder.quantity(Quantity(ground.resistors.resistance, OHM))
+        builder.quantity(ground.resistors.totalCurrentDisplay)
+        builder.quantity(ground.resistors.totalPowerDisplay)
     }
 }
 
-class GroundPart(id: ResourceLocation, placementContext: PartPlacementInfo) :
-    CellPart<BasicPartRenderer>(id, placementContext, Content.GROUND_CELL.get()) {
-    override val sizeActual = bbVec(4.0, 4.0, 4.0)
+class GroundPart(ci: PartCreateInfo) : GridCellPart<GroundCell>(ci, Eln2BasicComponents.GROUND_CELL.get()), WrenchRotatable, ComponentDisplay {
+    val terminal = defineCellBoxTerminal(
+        0.0, 0.0, 0.0,
+        placement.provider.placementCollisionSize.x,
+        placement.provider.placementCollisionSize.y,
+        placement.provider.placementCollisionSize.z
+    )
 
-    override fun createRenderer() = BasicPartRenderer(this, PartialModels.GROUND).also {
-        it.downOffset = bbOffset(3 + 1)
-    }
+    override fun createVisual(ctx: MultipartVisualizationContext) = BasicPartVisual(ctx, this, FlwModels.GROUND)
+
+    override fun submitDisplay(builder: ComponentDisplayList) = cell.submitDisplay(builder)
+}
+
+class GroundSpec(ci: SpecCreateInfo) : CellSpec<GroundCell>(ci, Eln2BasicComponents.GROUND_CELL.get()), ComponentDisplay {
+    val terminal = defineCellBoxTerminal(
+        0.0, 0.0, 0.0,
+        placement.provider.placementCollisionSize.x,
+        placement.provider.placementCollisionSize.y,
+        placement.provider.placementCollisionSize.z
+    )
+
+    override fun submitDisplay(builder: ComponentDisplayList) = cell.submitDisplay(builder)
 }

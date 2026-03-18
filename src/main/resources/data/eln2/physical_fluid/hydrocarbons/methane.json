@@ -1,0 +1,7 @@
+{
+    "forgeFluid": "eln2:methane",
+    "specificHeatCapacity": 924.0,
+    "density": 0.42,
+    "isGaseous": true,
+    "mixabilityTags": ["lng_miscible"]
+}

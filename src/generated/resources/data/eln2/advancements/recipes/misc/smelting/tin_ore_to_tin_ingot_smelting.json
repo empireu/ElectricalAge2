@@ -1,0 +1,35 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_the_recipe": {
+      "conditions": {
+        "recipe": "eln2:smelting/tin_ore_to_tin_ingot_smelting"
+      },
+      "trigger": "minecraft:recipe_unlocked"
+    },
+    "has_tin_ore": {
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "eln2:tin_ore"
+            ]
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    }
+  },
+  "requirements": [
+    [
+      "has_tin_ore",
+      "has_the_recipe"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "eln2:smelting/tin_ore_to_tin_ingot_smelting"
+    ]
+  },
+  "sends_telemetry_event": false
+}

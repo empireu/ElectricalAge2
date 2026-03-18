@@ -1,0 +1,27 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "B": {
+      "item": "eln2:iron_axle_mount"
+    },
+    "L": {
+      "item": "eln2:creosote_bottle"
+    },
+    "P": {
+      "item": "eln2:iron_plate"
+    },
+    "S": {
+      "item": "eln2:iron_shaft"
+    }
+  },
+  "pattern": [
+    " L ",
+    "BSB",
+    " P "
+  ],
+  "result": {
+    "item": "eln2:primitive_standard_iron_straight_joint"
+  },
+  "show_notification": true
+}

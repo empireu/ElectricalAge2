@@ -1,0 +1,5 @@
+{
+    "loader": "forge:obj",
+    "model": "eln2:models/block/small_thermal_electric_generator/hot_side.obj",
+    "flip_v": true
+}

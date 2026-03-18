@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "G": {
+      "item": "eln2:iron_gear"
+    },
+    "M": {
+      "item": "eln2:iron_axle_mount"
+    },
+    "R": {
+      "item": "eln2:iron_shaft"
+    }
+  },
+  "pattern": [
+    " M ",
+    "RGR",
+    " M "
+  ],
+  "result": {
+    "item": "eln2:primitive_standard_iron_hub_joint"
+  },
+  "show_notification": true
+}

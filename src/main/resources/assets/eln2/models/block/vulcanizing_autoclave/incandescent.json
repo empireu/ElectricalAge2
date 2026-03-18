@@ -1,0 +1,104 @@
+{
+	"format_version": "1.9.0",
+	"credit": "Made with Blockbench",
+	"texture_size": [128, 128],
+	"textures": {
+		"0": "eln2:block/vulcanizing_autoclave/vulcanizing_autoclave",
+		"particle": "eln2:block/vulcanizing_autoclave/vulcanizing_autoclave"
+	},
+	"elements": [
+		{
+			"name": "heat_port_incandescent",
+			"from": [7, 0.1, 30.95],
+			"to": [9, 1.55, 31.05],
+			"rotation": {"angle": 0, "axis": "y", "origin": [8, 0.05, 31]},
+			"faces": {
+				"north": {"uv": [0, 5.125, 1.375, 6.41667], "rotation": 90, "texture": "#0"},
+				"east": {"uv": [0, 5.125, 1.375, 6.25], "rotation": 180, "texture": "#0"},
+				"south": {"uv": [0.5, 10.75, 1.875, 12.04167], "rotation": 270, "texture": "#0"},
+				"west": {"uv": [0, 5.125, 1.375, 6.25], "texture": "#0"},
+				"down": {"uv": [0, 5.125, 1.375, 6.41667], "rotation": 270, "texture": "#0"}
+			}
+		},
+		{
+			"name": "heat_diffuser0",
+			"from": [9.5, 2.1, 5.7],
+			"to": [10.5, 3.1, 27.8],
+			"rotation": {"angle": 0, "axis": "y", "origin": [9, 2.1, 5]},
+			"faces": {
+				"north": {"uv": [0.375, 12.875, 2, 14.5], "rotation": 180, "texture": "#0"},
+				"east": {"uv": [0.375, 10.25, 2, 16], "rotation": 270, "texture": "#0"},
+				"south": {"uv": [0.375, 12.125, 2, 13.75], "rotation": 180, "texture": "#0"},
+				"west": {"uv": [0.375, 10.25, 2, 16], "rotation": 270, "texture": "#0"},
+				"up": {"uv": [0.375, 10.25, 2, 16], "rotation": 180, "texture": "#0"}
+			}
+		},
+		{
+			"name": "heat_diffuser1",
+			"from": [5.5, 2.1, 5.7],
+			"to": [6.5, 3.1, 27.8],
+			"rotation": {"angle": 0, "axis": "y", "origin": [5, 2.1, 5]},
+			"faces": {
+				"north": {"uv": [0.375, 12.875, 2, 14.5], "rotation": 180, "texture": "#0"},
+				"east": {"uv": [0.375, 10.25, 2, 16], "rotation": 270, "texture": "#0"},
+				"south": {"uv": [0.375, 12.125, 2, 13.75], "rotation": 180, "texture": "#0"},
+				"west": {"uv": [0.375, 10.25, 2, 16], "rotation": 270, "texture": "#0"},
+				"up": {"uv": [0.375, 10.25, 2, 16], "rotation": 180, "texture": "#0"}
+			}
+		},
+		{
+			"name": "heat_diffuser2",
+			"from": [7.5, 2.1, 5.7],
+			"to": [8.5, 3.1, 27.8],
+			"rotation": {"angle": 0, "axis": "y", "origin": [7, 2.1, 5]},
+			"faces": {
+				"north": {"uv": [0.375, 12.875, 2, 14.5], "rotation": 180, "texture": "#0"},
+				"east": {"uv": [0.375, 10.25, 2, 16], "rotation": 270, "texture": "#0"},
+				"south": {"uv": [0.375, 12.125, 2, 13.75], "rotation": 180, "texture": "#0"},
+				"west": {"uv": [0.375, 10.25, 2, 16], "rotation": 270, "texture": "#0"},
+				"up": {"uv": [0.375, 10.25, 2, 16], "rotation": 180, "texture": "#0"}
+			}
+		}
+	],
+	"display": {
+		"thirdperson_righthand": {
+			"translation": [0, 2, 0],
+			"scale": [0.25, 0.25, 0.25]
+		},
+		"thirdperson_lefthand": {
+			"translation": [0, 2, 0],
+			"scale": [0.25, 0.25, 0.25]
+		},
+		"firstperson_righthand": {
+			"scale": [0.25, 0.25, 0.25]
+		},
+		"firstperson_lefthand": {
+			"scale": [0.25, 0.25, 0.25]
+		},
+		"ground": {
+			"translation": [0, 1.5, 0],
+			"scale": [0.25, 0.25, 0.25]
+		},
+		"gui": {
+			"rotation": [12.46, 33.51, 0.63],
+			"translation": [-1.75, 0, 0],
+			"scale": [0.4, 0.4, 0.4]
+		},
+		"fixed": {
+			"rotation": [0, 90, 0],
+			"translation": [-1.5, 0, -1.5],
+			"scale": [0.25, 0.25, 0.25]
+		},
+		"on_shelf": {
+			"scale": [0.5, 0.5, 0.5]
+		}
+	},
+	"groups": [
+		{
+			"name": "incandescent",
+			"origin": [8, 8, 8],
+			"color": 0,
+			"children": [0, 1, 2, 3]
+		}
+	]
+}

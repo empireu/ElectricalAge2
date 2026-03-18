@@ -1,0 +1,9 @@
+{
+    "fluid": "eln2:creosote",
+    "boiling": {
+        "temperature": 470.0,
+        "enthalpy": 350000.0,
+        "resultGas": "eln2:creosote_gas",
+        "resultGasProportion": 1000
+    }
+}

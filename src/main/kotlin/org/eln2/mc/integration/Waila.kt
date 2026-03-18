@@ -1,323 +1,541 @@
 package org.eln2.mc.integration
 
-import mcp.mobius.waila.api.*
-import mcp.mobius.waila.api.component.PairComponent
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.network.chat.Component
-import org.ageseries.libage.sim.electrical.mna.component.Pin
-import org.eln2.mc.LOG
-import org.eln2.mc.MODID
-import org.eln2.mc.common.blocks.foundation.CellBlockEntity
-import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
-import org.eln2.mc.data.DataEntity
-import org.eln2.mc.data.UnitType
-import org.eln2.mc.data.valueText
-import org.eln2.mc.integration.WailaTooltipEntryType.Companion.getTooltipEntryType
-import org.eln2.mc.integration.WailaTooltipEntryType.Companion.putTooltipEntryType
+import net.minecraft.network.chat.contents.LiteralContents
+import net.minecraft.world.InteractionHand
+import net.minecraft.world.item.ItemStack
+import net.minecraft.world.level.block.Block
+import net.minecraft.world.level.block.entity.BlockEntity
+import net.minecraft.world.phys.Vec2
+import org.ageseries.libage.data.*
+import org.ageseries.libage.utils.sourceName
+import org.eln2.mc.*
+import org.eln2.mc.common.blocks.foundation.*
+import org.eln2.mc.common.content.processing.BlacksmithingStationBlock
+import org.eln2.mc.common.content.processing.BlacksmithingStationBlockEntity
+import org.eln2.mc.common.fluids.foundation.PhysicalFluidManager
+import org.eln2.mc.common.content.processing.PhaseChangeModuleBlock
+import org.eln2.mc.common.content.processing.PhaseChangeModuleBlockEntity
+import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
+import org.eln2.mc.common.fluids.foundation.MultipleFractionalFluidTank
+import org.eln2.mc.common.parts.foundation.CellPart
+import org.eln2.mc.common.specs.foundation.CellSpec
+import org.eln2.mc.common.specs.foundation.GridSpec
+import org.eln2.mc.common.specs.foundation.SpecContainerPart
+import org.eln2.mc.extensions.forEachCompound
+import org.eln2.mc.extensions.formattedPercentNormalized
+import org.eln2.mc.extensions.getListTag
+import snownee.jade.api.*
+import snownee.jade.api.config.IPluginConfig
+import snownee.jade.api.fluid.JadeFluidObject
+import java.util.function.Supplier
+import kotlin.math.absoluteValue
 
-@WailaPlugin(id = "$MODID:waila_plugin")
+@WailaPlugin
 class Eln2WailaPlugin : IWailaPlugin {
-    override fun register(registrar: IRegistrar?) {
-        if (registrar == null) {
-            return
+    override fun register(registration: IWailaCommonRegistration) {
+        registration.registerBlockDataProvider(DistillationFluidProvider, PhaseChangeModuleBlockEntity::class.java)
+        registration.registerBlockDataProvider(BlacksmithingStationProvider, BlacksmithingStationBlockEntity::class.java)
+        registration.registerBlockDataProvider(ComponentDisplayProvider, BlockEntity::class.java)
+    }
+
+    override fun registerClient(registration: IWailaClientRegistration) {
+        registration.registerBlockComponent(DistillationFluidProvider, PhaseChangeModuleBlock::class.java)
+        registration.registerBlockComponent(BlacksmithingStationProvider, BlacksmithingStationBlock::class.java)
+        registration.registerBlockComponent(ComponentDisplayProvider, Block::class.java)
+
+        registration.addRayTraceCallback { _, accessor, _ ->
+            if (accessor is BlockAccessor) {
+                val representativePos = when {
+                    accessor.block is MultiblockDelegateBlock -> {
+                        val delegateBlockEntity = accessor.blockEntity
+                                as? MultiblockDelegateBlockEntity
+
+                        delegateBlockEntity?.representativePos
+                    }
+                    accessor.block is MultiblockDelegateUprightHorizontalDirectionCellBlock<*> -> {
+                        val delegateBlockEntity = accessor.blockEntity
+                                as? MultiblockDelegateCellBlockEntity<*>
+
+                        delegateBlockEntity?.representativePos
+                    }
+                    else -> {
+                        null
+                    }
+                }
+
+                if(representativePos != null) {
+                    return@addRayTraceCallback registration
+                        .blockAccessor()
+                        .from(accessor)
+                        .blockState(accessor.level.getBlockState(representativePos))
+                        .blockEntity(accessor.level.getBlockEntity(representativePos))
+                        .build()
+                }
+            }
+
+            return@addRayTraceCallback accessor
+        }
+    }
+
+    private object ComponentDisplayProvider : IBlockComponentProvider, IServerDataProvider<BlockAccessor> {
+        private const val COMPONENT_DISPLAY = "component_display"
+
+        override fun getUid() = resource(COMPONENT_DISPLAY)
+
+        private inline fun<reified T> castGameObject(p1: BlockAccessor) : T? {
+            val blockEntity = p1.blockEntity
+                ?: return null
+
+            if(blockEntity is MultipartBlockEntity) {
+                val part = blockEntity.pickPart(p1.player)
+
+                if(part is SpecContainerPart) {
+                    val spec = part.pickSpec(p1.player)?.second
+
+                    if(spec is GridSpec) {
+                        val terminal = spec.pickTerminal(p1.player)
+
+                        if(terminal is T) {
+                            return terminal
+                        }
+                    }
+
+                    return spec as? T
+                }
+
+                return part as? T
+            }
+
+            return blockEntity as? T
         }
 
-        val component = object : IBlockComponentProvider {
-            override fun appendBody(tooltip: ITooltip?, accessor: IBlockAccessor?, config: IPluginConfig?) {
-                if (tooltip == null || accessor == null || config == null) {
-                    return
-                }
+        override fun appendServerData(p0: CompoundTag, p1: BlockAccessor) {
+            val display = castGameObject<ComponentDisplay>(p1)
 
-                val entries = WailaTooltip.fromNbt(accessor.data.raw())
+            val components = mutableListOf<Component>()
+            val builder = ComponentDisplayList(components)
 
-                entries.values.forEach { entry ->
-                    entry.write(tooltip)
+            if(display != null) {
+                try {
+                    run {
+                        if(display is CellBlockEntity<*>) {
+                            if(!display.hasCell) {
+                                return@run
+                            }
+                        }
+
+                        if(display is CellPart<*>) {
+                            if(!display.hasCell) {
+                                return@run
+                            }
+                        }
+
+                        if(display is CellSpec<*>) {
+                            if(!display.hasCell) {
+                                return@run
+                            }
+                        }
+
+                        display.submitDisplay(builder)
+                    }
+                } catch (e : Throwable) {
+                    LOG.error(DEBUGGER_BREAK("Display error $display: $e"))
                 }
+            }
+
+            if(components.isNotEmpty()) {
+                p0.put(COMPONENT_DISPLAY, packComponentList(components))
             }
         }
 
-        registrar.addBlockData(IDataProvider<MultipartBlockEntity> { data, accessor, config ->
-            appendWailaEntity(data, accessor?.target, config)
-        }, MultipartBlockEntity::class.java)
+        override fun appendTooltip(p0: ITooltip, p1: BlockAccessor, p2: IPluginConfig) {
+            val tag = p1.serverData.get(COMPONENT_DISPLAY) as? CompoundTag
+                ?: return
 
-        registrar.addComponent(component, TooltipPosition.BODY, MultipartBlockEntity::class.java)
+            val components = unpackComponentList(tag)
 
-        registrar.addBlockData(IDataProvider<CellBlockEntity> { data, accessor, config ->
-            appendWailaEntity(data, accessor?.target, config)
-        }, CellBlockEntity::class.java)
-
-        registrar.addComponent(component, TooltipPosition.BODY, CellBlockEntity::class.java)
+            components.forEach {
+                p0.add(it)
+            }
+        }
     }
 
-    private fun appendWailaEntity(data: IDataWriter?, entity: WailaEntity?, config: IPluginConfig?) {
-        if (data == null || entity == null) {
-            return
+    /**
+     * Shows liquids and gases.
+     * */
+    private object DistillationFluidProvider : IBlockComponentProvider, IServerDataProvider<BlockAccessor> {
+        override fun getUid() = resource("distillation_fluids")
+
+        override fun appendServerData(data: CompoundTag, accessor: BlockAccessor) {
+            val module = accessor.blockEntity as? PhaseChangeModuleBlockEntity
+                ?: return
+
+            val fluids = ListTag()
+
+            fun addTank(tank: MultipleFractionalFluidTank) {
+                tank.fluids.forEach { stack ->
+                    if (!stack.isEmpty) {
+                        fluids.add(stack.toNbt())
+                    }
+                }
+            }
+
+            addTank(module.liquidTank)
+            addTank(module.gasTank)
+
+            data.put("fluids", fluids)
         }
 
-        val builder = WailaTooltip.builder()
+        override fun appendTooltip(tooltip: ITooltip, accessor: BlockAccessor, config: IPluginConfig) {
+            if (!accessor.serverData.contains("fluids")) {
+                return
+            }
 
-        try {
-            entity.appendWaila(builder, config)
-        } catch (_: Exception) {
-            // Handle errors caused by simulator
-            // Make sure you add a breakpoint here if you aren't getting your toolip properly
-            LOG.error("Tooltip ex")
+            val list = accessor.serverData.getListTag("fluids")
+            val helper = tooltip.elementHelper
+
+            val liquids = ArrayList<FractionalFluidStack>()
+            val gases = ArrayList<FractionalFluidStack>()
+
+            list.forEachCompound { tag ->
+                val stack = FractionalFluidStack.fromNbt(tag)
+
+                if (!stack.isEmpty) {
+                    val thermalFluid = PhysicalFluidManager.getProperties(stack.fluid)
+
+                    if(thermalFluid != null) {
+                        if(thermalFluid.isGaseous) {
+                            gases.add(stack)
+                        }
+                        else {
+                            liquids.add(stack)
+                        }
+                    }
+                    else {
+                        if (stack.fluid.fluidType.density < 0 || stack.fluid.fluidType.isLighterThanAir) {
+                            gases.add(stack)
+                        }
+                        else {
+                            liquids.add(stack)
+                        }
+                    }
+                }
+            }
+
+            val scale = Eln2Config.clientConfig.getScaleOverride(Volume::class.java)
+
+            fun renderRow(stack: FractionalFluidStack) {
+                tooltip.add(
+                    helper
+                        .fluid(JadeFluidObject.of(stack.fluid, stack.unit().amount.toLong()))
+                        .size(Vec2(12.0f, 12.0f)))
+
+                tooltip.append(
+                    helper.text(stack.unit().displayName).apply {
+                        translate(Vec2(2.0f, 3.0f))
+                    }
+                )
+
+                val quantity = if(scale == null) {
+                    Quantity(stack.amount, LITER).classify()
+                }
+                else {
+                    classifyAuxiliary(scale, !Quantity(stack.amount, LITER))
+                }
+
+                tooltip.append(
+                    helper.text(Component.literal(quantity)).apply {
+                        translate(Vec2(4.0f, 3.0f))
+                    }
+                )
+            }
+
+            fun renderCollection(fluids: List<FractionalFluidStack>) {
+                if(fluids.isEmpty()) {
+                    return
+                }
+
+                fluids.forEach {
+                    renderRow(it)
+                    tooltip.add(helper.spacer(0, 2))
+                }
+
+                tooltip.add(helper.spacer(0, 5))
+            }
+
+            renderCollection(liquids)
+            renderCollection(gases)
+        }
+    }
+
+    /**
+     * Shows the result of applying the recipe.
+     * */
+    private object BlacksmithingStationProvider : IBlockComponentProvider, IServerDataProvider<BlockAccessor> {
+        override fun getUid() = resource("blacksmithing_help")
+
+        override fun appendServerData(p0: CompoundTag, p1: BlockAccessor) {
+            val blockEntity = p1.blockEntity as? BlacksmithingStationBlockEntity
+                ?: return
+
+            val stack = blockEntity.inventoryHandler.getStackInSlot(0)
+
+            if(stack.isEmpty) {
+                return
+            }
+
+            p0.put("stationInventory", stack.serializeNBT())
         }
 
-        builder.build().toNbt(data.raw())
+        override fun appendTooltip(p0: ITooltip, p1: BlockAccessor, p2: IPluginConfig) {
+            if(!p1.serverData.contains("stationInventory")) {
+                return
+            }
+
+            val blockEntity = p1.blockEntity as? BlacksmithingStationBlockEntity
+                ?: return
+
+            val player = p1.player
+                ?: return
+
+            val stationInventory = ItemStack.of(p1.serverData.getCompound("stationInventory"))
+
+            val toolStack = player.getItemInHand(InteractionHand.MAIN_HAND)
+            val recipeOptional = blockEntity.searchForRecipe(stationInventory, toolStack)
+
+            if(recipeOptional.isEmpty) {
+                return
+            }
+
+            val recipe = recipeOptional.get()
+
+            val helper = p0.elementHelper
+            p0.add(helper.text(Component.translatable("blacksmithing.eln2.result")))
+            p0.append(helper.smallItem(recipe.output))
+            p0.append(helper.text(recipe.output.displayName))
+        }
     }
 }
 
 /**
- * Implemented by classes that want to export data to WAILA.
+ * Implemented by classes that want to export simple text data to JADE quickly.
+ * Only [Component]s are supported.
  * */
-@FunctionalInterface
-interface WailaEntity {
-    fun appendWaila(builder: WailaTooltipBuilder, config: IPluginConfig?) {
-        if (this is DataEntity) {
-            val node = this.dataNode
+interface ComponentDisplay {
+    fun submitDisplay(builder: ComponentDisplayList)
+}
 
-            node.valueScan {
-                if (it is WailaEntity) {
-                    it.appendWaila(builder, config)
+private const val ENTRIES = "entries"
+private const val JSON = "json"
+
+private fun unpackComponentList(tag: CompoundTag): List<Component> {
+    val listTag = tag.get(ENTRIES) as? ListTag
+
+    if (listTag == null || listTag.isEmpty()) {
+        return emptyList()
+    }
+
+    val results = ArrayList<Component>(listTag.size)
+
+    listTag.forEachCompound {
+        val text = it.getString(JSON)
+            ?: return@forEachCompound
+
+        val component = Component.Serializer.fromJson(text)
+            ?: return@forEachCompound
+
+        for (i in component.siblings.indices) {
+            val sibling = component.siblings[i]
+            val contents = sibling.contents
+
+            if(contents is LiteralContents) {
+                if(contents.text.startsWith(ComponentDisplayList.QUANTITY_PREFIX)) {
+                    val dimensionName = contents.text
+                        .removePrefix(ComponentDisplayList.QUANTITY_PREFIX)
+                        .substringBefore(ComponentDisplayList.QUANTITY_SUFFIX)
+
+                    val number = contents.text
+                        .substringAfter(ComponentDisplayList.QUANTITY_SUFFIX)
+                        .toDouble()
+
+                    val dimensionClass = checkNotNull(DIMENSION_TYPES.backward[dimensionName])
+                    val auxiliaryScale = Eln2Config.clientConfig.getScaleOverride(dimensionClass)
+
+                    component.siblings[i] = Component.literal(
+                        if(auxiliaryScale == null) {
+                            classify(dimensionClass, number)
+                        }
+                        else {
+                            classifyAuxiliary(auxiliaryScale, number)
+                        }
+                    )
                 }
             }
         }
+
+        results.add(component)
     }
+
+    return results
 }
 
-enum class WailaTooltipEntryType(val id: Int) {
-    /**
-     * Tooltip entry with both key and value found in the language file.
-     * */
-    TranslatableTranslatable(0),
+private fun packComponentList(components: List<Component>) : CompoundTag {
+    val tag = CompoundTag()
+    val listTag = ListTag()
 
-    /**
-     * Tooltip entry with key found in the language file and literal value.
-     * */
-    TranslatableText(1),
+    components.forEach {
+        val text = Component.Serializer.toJson(it)
+        val compound = CompoundTag()
+        compound.putString(JSON, text)
+        listTag.add(compound)
+    }
 
-    /**
-     * Tooltip entry with literal key and value.
-     * */
-    TextText(2);
+    tag.put(ENTRIES, listTag)
 
+    return tag
+}
+
+class ComponentDisplayList(private val entries: MutableList<Component>) {
     companion object {
-        fun CompoundTag.putTooltipEntryType(key: String, type: WailaTooltipEntryType) {
-            this.putInt(key, type.id)
-        }
+        private const val QUANTITY_IDENTIFIER = "Eln2Quantity"
+        const val QUANTITY_PREFIX = "$QUANTITY_IDENTIFIER["
+        const val QUANTITY_SUFFIX = "]"
 
-        fun CompoundTag.getTooltipEntryType(key: String): WailaTooltipEntryType {
-            return when (val data = this.getInt(key)) {
-                TranslatableTranslatable.id -> TranslatableTranslatable
-                TranslatableText.id -> TranslatableText
-                TextText.id -> TextText
-                else -> error("Invalid tooltip type $data")
-            }
-        }
-    }
-}
-
-data class WailaTooltipEntry(val key: String, val value: String, val type: WailaTooltipEntryType) {
-    companion object {
-        fun fromNbt(nbt: CompoundTag): WailaTooltipEntry {
-            val key = nbt.getString("Key")
-            val value = nbt.getString("Value")
-            val type = nbt.getTooltipEntryType("Type")
-
-            return WailaTooltipEntry(key, value, type)
-        }
+        const val EPS = 1e-4
     }
 
-    fun createNbt(): CompoundTag {
-        val result = CompoundTag()
-
-        result.putString("Key", key)
-        result.putString("Value", value)
-        result.putTooltipEntryType("Type", type)
-
-        return result
+    fun add(component: Component) {
+        entries.add(component)
     }
 
-    fun write(tooltip: ITooltip) {
-        when (type) {
-            WailaTooltipEntryType.TranslatableTranslatable -> tooltip.addLine(
-                PairComponent(
-                    Component.translatable(key),
-                    Component.translatable(value)
-                )
-            )
-
-            WailaTooltipEntryType.TranslatableText -> tooltip.addLine(
-                PairComponent(
-                    Component.translatable(key),
-                    Component.literal(value)
-                )
-            )
-
-            WailaTooltipEntryType.TextText -> tooltip.addLine(
-                PairComponent(
-                    Component.literal(key),
-                    Component.literal(value)
-                )
-            )
-        }
-    }
-}
-
-data class WailaTooltip(val values: List<WailaTooltipEntry>) {
-    companion object {
-        fun builder(): WailaTooltipBuilder {
-            return WailaTooltipBuilder()
-        }
-
-        fun fromNbt(nbt: CompoundTag): WailaTooltip {
-            val listTag = nbt.get("TooltipEntries") as? ListTag
-
-            if (listTag == null || listTag.size == 0) {
-                return WailaTooltip(listOf())
-            }
-
-            val results = ArrayList<WailaTooltipEntry>(listTag.size)
-
-            listTag.forEach {
-                results.add(WailaTooltipEntry.fromNbt(it as CompoundTag))
-            }
-
-            return WailaTooltip(results.toList())
-        }
+    private fun translationKey(identifier: String): String {
+        return "waila.$MODID.$identifier"
     }
 
-    fun toNbt(tag: CompoundTag) {
-        val listTag = ListTag()
-
-        values.forEach { listTag.add(it.createNbt()) }
-
-        tag.put("TooltipEntries", listTag)
-    }
-}
-
-class WailaTooltipBuilder {
-    private val entries = ArrayList<WailaTooltipEntry>()
-
-    private fun getTranslationKey(identifier: String): String {
-        return "waila.eln2.$identifier"
+    @Deprecated("Use debugInIDE")
+    fun debug(text: String) {
+        add(Component.literal("*$text"))
     }
 
     /**
-     * Adds an entry with language file [key] and [value].
+     * Displays if the mod is running in IDE.
      * */
-    fun translate(key: String, value: String): WailaTooltipBuilder {
-        entries.add(
-            WailaTooltipEntry(
-                getTranslationKey(key),
-                getTranslationKey(value),
-                WailaTooltipEntryType.TranslatableTranslatable
-            )
+    fun debugInIDE(supplier: Supplier<String>) {
+        if(ELN2_DEBUG) {
+            debug("*" + supplier.get()) // another star to indicate [debugInIDE] was called and not just [debug]
+        }
+    }
+
+    fun translatePercent(key: String, percentage: Double) {
+        add(
+            Component.translatable(translationKey(key)).apply {
+                append(": ")
+                append(percentage.formattedPercentNormalized())
+            }
         )
-        return this
     }
 
-    /**
-     * Adds an entry with language file [key] and literal [value].
-     * */
-    fun translateText(key: String, value: String): WailaTooltipBuilder {
-        entries.add(WailaTooltipEntry("waila.eln2.$key", value, WailaTooltipEntryType.TranslatableText))
-        return this
+    fun translateRow(key: String, text: String) {
+        add(
+            Component.translatable(translationKey(key)).apply {
+                append(": ")
+                append(text)
+            }
+        )
     }
 
-    /**
-     * Adds an entry with literal [key] and [value].
-     * */
-    fun text(key: String, value: String): WailaTooltipBuilder {
-        entries.add(WailaTooltipEntry(key, value, WailaTooltipEntryType.TextText))
-        return this
+    fun translateBoolean(key: String, value: Boolean) {
+        add(
+            Component.translatable(translationKey(key)).apply {
+                append(": ")
+                append(
+                    Component.translatable(
+                        if(value) {
+                            translationKey("boolean_true")
+                        }
+                        else {
+                            translationKey("boolean_false")
+                        }
+                    )
+                )
+            }
+        )
     }
 
-    /**
-     * Adds an entry with literal [key] and [value].
-     * */
-    fun text(key: String, value: Any): WailaTooltipBuilder {
-        entries.add(WailaTooltipEntry(key, value.toString(), WailaTooltipEntryType.TextText))
-        return this
+    // Not sure how to do it with Component in a cleaner way -- Component hard-codes
+    // serialization for contents, so we can't just make QuantityContents or something like that without some involved
+    // mixin (there's no easy place to attach to) so I rather just do it like this
+
+    inline fun<reified T> translateQuantityRow(key: String, quantity: Quantity<T>, eps: Double = 1e-6) {
+        val name = DIMENSION_TYPES.forward[T::class.java]
+
+        checkNotNull(name) {
+            "Invalid dimension ${T::class.java}"
+        }
+
+        translateRow(
+            key,
+            "${QUANTITY_PREFIX}${name}${QUANTITY_SUFFIX}${if(quantity.value.absoluteValue < eps) 0.0 else quantity.value}"
+        )
     }
 
-    /**
-     * Adds an entry with translated "mode" and value.
-     * */
-    fun mode(value: String): WailaTooltipBuilder {
-        return translateText("mode", value)
+    data class Domain(val identifier: String) {
+        companion object {
+            val None = Domain("implicit")
+            val Electrical = Domain("electrical")
+            val Thermal = Domain("thermal")
+        }
     }
 
-    /**
-     * Adds an entry with translated "current" and formatted value.
-     * */
-    fun current(value: Double): WailaTooltipBuilder {
-        return translateText("current", valueText(value, UnitType.AMPERE))
+    inline fun<reified T> quantity(quantity: Quantity<T>, domain: Domain = Domain.None, eps: Double = EPS) {
+        translateQuantityRow(T::class.java.sourceName() + "_${domain.identifier}", quantity, eps)
     }
 
-    /**
-     * Adds an entry with translated "energy" and formatted value.
-     * */
-    fun energy(value: Double): WailaTooltipBuilder {
-        return translateText("energy", valueText(value, UnitType.JOULE))
+    inline fun<reified T> quantityInput(quantity: Quantity<T>, domain: Domain = Domain.None,eps: Double = EPS) {
+        translateQuantityRow(T::class.java.sourceName() + "_input_${domain.identifier}", quantity, eps)
     }
 
-    /**
-     * Adds an entry with translated "mass" and formatted value.
-     * */
-    fun mass(value: Double): WailaTooltipBuilder {
-        return translateText("mass", valueText(value * 1000.0, UnitType.GRAM))
+    inline fun<reified T> quantityOutput(quantity: Quantity<T>, domain: Domain = Domain.None,eps: Double = EPS) {
+        translateQuantityRow(T::class.java.sourceName() + "_output_${domain.identifier}", quantity, eps)
     }
 
-    /**
-     * Adds an entry with translated "voltage" and formatted value.
-     * */
-    fun voltage(value: Double): WailaTooltipBuilder {
-        return translateText("voltage", valueText(value, UnitType.VOLT))
+    inline fun<reified T> quantitySetpoint(quantity: Quantity<T>, domain: Domain = Domain.None,eps: Double = EPS) {
+        translateQuantityRow(T::class.java.sourceName() + "_setpoint_${domain.identifier}", quantity, eps)
     }
 
-    /**
-     * Adds an entry with translated "resistance" and formatted value.
-     * */
-    fun resistance(value: Double): WailaTooltipBuilder {
-        return translateText("resistance", valueText(value, UnitType.OHM))
+    inline fun<reified T> quantityMax(quantity: Quantity<T>, domain: Domain = Domain.None,eps: Double = EPS) {
+        translateQuantityRow(T::class.java.sourceName() + "_max_${domain.identifier}", quantity, eps)
     }
 
-    /**
-     * Adds an entry with translated "inductance" and formatted value.
-     * */
-    fun inductance(value: Double): WailaTooltipBuilder {
-        return translateText("inductance", valueText(value, UnitType.HENRY))
+    inline fun<reified T> quantityInputMax(quantity: Quantity<T>, domain: Domain = Domain.None,eps: Double = EPS) {
+        translateQuantityRow(T::class.java.sourceName() + "_input_max_${domain.identifier}", quantity, eps)
     }
 
-    /**
-     * Adds an entry with translated "capacitance" and formatted value.
-     * */
-    fun capacitance(value: Double): WailaTooltipBuilder {
-        return translateText("capacitance", valueText(value, UnitType.FARAD))
+    inline fun<reified T> quantityOutputMax(quantity: Quantity<T>, domain: Domain = Domain.None,eps: Double = EPS) {
+        translateQuantityRow(T::class.java.sourceName() + "_output_max_${domain.identifier}", quantity, eps)
     }
 
-    /**
-     * Adds an entry with translated "power" and formatted value.
-     * */
-    fun power(value: Double): WailaTooltipBuilder {
-        return translateText("power", valueText(value, UnitType.WATT))
+    inline fun<reified T> quantityDissipated(quantity: Quantity<T>, domain: Domain = Domain.None,eps: Double = EPS) {
+        translateQuantityRow(T::class.java.sourceName() + "_dissipated_${domain.identifier}", quantity, eps)
     }
 
-    /**
-     * Adds an entry with translated "temperature" and formatted value.
-     * */
-    fun temperature(value: Double): WailaTooltipBuilder {
-        return translateText("temperature", valueText(value, UnitType.KELVIN))
+    fun coldTemperature(temperature: Quantity<Temperature>, eps: Double = EPS) {
+        translateQuantityRow("cold_temperature", temperature, eps)
     }
 
-    fun pinVoltages(pins: MutableList<Pin>) {
-        pins.forEach { voltage(it.node?.potential ?: 0.0) }
+    fun hotTemperature(temperature: Quantity<Temperature>, eps: Double = EPS) {
+        translateQuantityRow("hot_temperature", temperature, eps)
     }
 
-    fun build(): WailaTooltip {
-        return WailaTooltip(entries.toList())
+    fun signalOutput(value: Double, eps: Double = EPS) {
+        translateQuantityRow("signal_output", Quantity(value, VOLT), eps)
     }
+
+    fun charge(value: Double) = translatePercent("charge", value)
+    fun integrity(value: Double) = translatePercent("integrity", value)
+    fun progress(value: Double) = translatePercent("progress", value)
+    fun efficiency(value: Double) = translatePercent("eta", value)
 }

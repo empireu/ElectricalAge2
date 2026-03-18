@@ -8,40 +8,129 @@ import net.minecraftforge.network.NetworkDirection
 import net.minecraftforge.network.NetworkRegistry
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
+import org.eln2.mc.common.*
+import org.eln2.mc.common.content.ScrewdriverItem
+import org.eln2.mc.common.grids.GridConnectionCreateMessage
+import org.eln2.mc.common.grids.GridConnectionDeleteMessage
+import org.eln2.mc.common.grids.GridConnectionUpdateRenderMessage
 import org.eln2.mc.common.network.serverToClient.*
+import org.eln2.mc.common.specs.foundation.SpecOverlayMessage
 import java.util.*
 
 object Networking {
-    private const val protocolVersion = "1"
-    private const val channelName = "main"
+    private const val PROTOCOL_VERSION = "1"
+    private const val CHANNEL_NAME = "main"
 
     private val channel = NetworkRegistry.newSimpleChannel(
-        ResourceLocation(MODID, channelName),
-        { protocolVersion },
-        { it == protocolVersion },
-        { it == protocolVersion })
+        ResourceLocation.fromNamespaceAndPath(MODID, CHANNEL_NAME),
+        { PROTOCOL_VERSION },
+        { it == PROTOCOL_VERSION },
+        { it == PROTOCOL_VERSION })
 
+    private var id = 0
+    fun id() = id++
+
+    @Suppress("INFERRED_INVISIBLE_RETURN_TYPE_WARNING") // what?
     fun setup() {
-        LOG.info("Network packets registered")
-
-        var idx = 0
-
         channel.registerMessage(
-            idx++,
-            BulkPartMessage::class.java,
-            BulkMessages::encodeBulkPartMessage,
-            BulkMessages::decodeBulkPartMessage,
-            BulkMessages::handleBulkPartMessage,
+            id(),
+            BulkDimensionMessagePart::class.java,
+            BulkDimensionMessagePart::encode,
+            BulkDimensionMessagePart::decode,
+            BulkDimensionMessagePart::handle,
             Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         )
+
+        channel.registerMessage(
+            id(),
+            BulkDimensionMessageBlockEntity::class.java,
+            BulkDimensionMessageBlockEntity::encode,
+            BulkDimensionMessageBlockEntity::decode,
+            BulkDimensionMessageBlockEntity::handle,
+            Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        )
+
+        channel.registerMessage(
+            id(),
+            DimensionMessageToServerPart::class.java,
+            DimensionMessageToServerPart::encode,
+            DimensionMessageToServerPart::decode,
+            DimensionMessageToServerPart::handle,
+            Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        )
+
+        channel.registerMessage(
+            id(),
+            GhostLightCommandMessage::class.java,
+            GhostLightCommandMessage::encode,
+            GhostLightCommandMessage::decode,
+            GhostLightCommandMessage::handle,
+            Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        )
+
+        channel.registerMessage(
+            id(),
+            GhostLightChunkDataMessage::class.java,
+            GhostLightChunkDataMessage::encode,
+            GhostLightChunkDataMessage::decode,
+            GhostLightChunkDataMessage::handle,
+            Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        )
+
+        channel.registerMessage(
+            id(),
+            GridConnectionCreateMessage::class.java,
+            GridConnectionCreateMessage::encode,
+            GridConnectionCreateMessage::decode,
+            GridConnectionCreateMessage::handle,
+            Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        )
+
+        channel.registerMessage(
+            id(),
+            GridConnectionDeleteMessage::class.java,
+            GridConnectionDeleteMessage::encode,
+            GridConnectionDeleteMessage::decode,
+            GridConnectionDeleteMessage::handle,
+            Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        )
+
+        channel.registerMessage(
+            id(),
+            GridConnectionUpdateRenderMessage::class.java,
+            GridConnectionUpdateRenderMessage::encode,
+            GridConnectionUpdateRenderMessage::decode,
+            GridConnectionUpdateRenderMessage::handle,
+            Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        )
+
+        channel.registerMessage(
+            id(),
+            SpecOverlayMessage::class.java,
+            SpecOverlayMessage::encode,
+            SpecOverlayMessage::decode,
+            SpecOverlayMessage::handle,
+            Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        )
+
+        channel.registerMessage(
+            id(),
+            ScrewdriverItem.Scroll::class.java,
+            ScrewdriverItem.Scroll::encode,
+            ScrewdriverItem.Scroll::decode,
+            ScrewdriverItem.Scroll::handle,
+            Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        )
+
+        LOG.info("Network packets registered")
     }
 
     /**
      * Sends a message from the server to the client.
      * @param player The player to send the message to.
      */
-    fun sendTo(message: Any?, player: ServerPlayer) {
-        channel.sendTo(message, player.connection.getConnection(), NetworkDirection.PLAY_TO_CLIENT)
+    fun send(message: Any?, player: ServerPlayer) {
+        channel.sendTo(message, player.connection.connection, NetworkDirection.PLAY_TO_CLIENT)
     }
 
     /**

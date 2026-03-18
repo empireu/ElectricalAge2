@@ -1,148 +1,43 @@
 package org.eln2.mc.common.cells.foundation
 
-import org.ageseries.libage.sim.electrical.mna.Circuit
-import org.ageseries.libage.sim.electrical.mna.component.Component
-import org.ageseries.libage.sim.electrical.mna.component.Resistor
-import org.eln2.mc.connect
-import org.eln2.mc.data.BlockLocator
-import org.eln2.mc.data.FaceLocator
-import org.eln2.mc.data.FacingLocator
-import org.eln2.mc.data.requireLocator
+import org.ageseries.libage.data.AMPERE
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.WATT
+import org.ageseries.libage.data.abs
+import org.ageseries.libage.sim.electrical.ElectricalComponentSet
+import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
+import org.ageseries.libage.sim.electrical.Resistor
+import org.eln2.mc.offerExternal
 import kotlin.math.abs
 
-class ComponentHolder<T : Component>(private val factory: () -> T) {
-    private var value: T? = null
-
-    val instance: T
-        get() {
-            if (value == null) {
-                value = factory()
-            }
-
-            return value!!
-        }
-
-    fun connect(pin: Int, component: Component, remotePin: Int) {
-        instance.connect(pin, component, remotePin)
+open class ResistorBundle(val cell: Cell) {
+    constructor(cell: Cell, resistance: Double) : this(cell) {
+        this.resistance = resistance
     }
 
-    fun connect(pin: Int, componentInfo: ElectricalComponentInfo) {
-        instance.connect(pin, componentInfo)
-    }
-
-    fun connectInternal(component: Component, remotePin: Int) {
-        connect(INTERNAL_PIN, component, remotePin)
-    }
-
-    fun connectInternal(componentInfo: ElectricalComponentInfo) {
-        connectInternal(componentInfo.component, componentInfo.index)
-    }
-
-    fun connectExternal(component: Component, remotePin: Int) {
-        connect(EXTERNAL_PIN, component, remotePin)
-    }
-
-    fun connectExternal(componentInfo: ElectricalComponentInfo) {
-        connectExternal(componentInfo.component, componentInfo.index)
-    }
-
-    fun connectExternal(owner: ElectricalObject, connection: ElectricalObject) {
-        connectExternal(connection.offerComponent(owner))
-    }
-
-    fun connectPositive(component: Component, remotePin: Int) {
-        connect(POSITIVE_PIN, component, remotePin)
-    }
-
-    fun connectPositive(componentInfo: ElectricalComponentInfo) {
-        connectPositive(componentInfo.component, componentInfo.index)
-    }
-
-    fun connectPositive(owner: ElectricalObject, connection: ElectricalObject) {
-        connectPositive(connection.offerComponent(owner))
-    }
-
-    fun connectNegative(component: Component, remotePin: Int) {
-        connect(NEGATIVE_PIN, component, remotePin)
-    }
-
-    fun connectNegative(componentInfo: ElectricalComponentInfo) {
-        connectNegative(componentInfo.component, componentInfo.index)
-    }
-
-    fun connectNegative(owner: ElectricalObject, connection: ElectricalObject) {
-        connectNegative(connection.offerComponent(owner))
-    }
-
-    fun ground(pin: Int) {
-        instance.ground(pin)
-    }
-
-    fun groundInternal() {
-        ground(INTERNAL_PIN)
-    }
-
-    fun groundNegative() {
-        ground(NEGATIVE_PIN)
-    }
-
-    fun groundExternal() {
-        ground(EXTERNAL_PIN)
-    }
-
-    fun offerInternal(): ElectricalComponentInfo {
-        return ElectricalComponentInfo(instance, INTERNAL_PIN)
-    }
-
-    fun offerExternal(): ElectricalComponentInfo {
-        return ElectricalComponentInfo(instance, EXTERNAL_PIN)
-    }
-
-    fun offerPositive(): ElectricalComponentInfo {
-        return ElectricalComponentInfo(instance, POSITIVE_PIN)
-    }
-
-    fun offerNegative(): ElectricalComponentInfo {
-        return ElectricalComponentInfo(instance, NEGATIVE_PIN)
-    }
-
-    fun clear() {
-        value = null
-    }
-
-    val isPresent get() = value != null
-
-    fun ifPresent(action: ((T) -> Unit)): Boolean {
-        if (value == null) {
-            return false
-        }
-
-        action(value!!)
-
-        return true
-    }
-}
-
-/**
- * Utility class that holds a collection of resistors to be used as contact points for external components.
- * */
-class ResistorBundle(var resistance: Double, obj: ElectricalObject) {
-    init {
-        obj.cell.pos.requireLocator<BlockLocator>()
-        obj.cell.pos.requireLocator<FacingLocator>()
-        obj.cell.pos.requireLocator<FaceLocator>()
-    }
-
-    private val resistors = HashMap<ElectricalObject, Resistor>()
-
+    private val resistors = HashMap<ElectricalObject<*>, Resistor>()
     private var prepared = false
+
+    var resistance: Double = 1.0
+        set(value) {
+            if(field != value) {
+                field = value
+                resistors.values.forEach {
+                    it.resistance = value
+                }
+            }
+        }
+
+    var crossResistance
+        get() = resistance * 2.0
+        set(value) { resistance = value / 2.0 }
 
     /**
      * This must be called once the circuit is made available, in order to register the resistors.
      * This "prepares" the bundle, so future calls to *getOfferedResistor* that result in a new resistor being created will cause an error.
      * @see ElectricalObject.addComponents
      * */
-    fun register(connections: List<ElectricalObject>, circuit: Circuit) {
+    fun addComponents(connections: List<ElectricalObject<*>>, circuit: ElectricalComponentSet) {
         if (prepared) {
             error("Already prepared")
         }
@@ -159,29 +54,27 @@ class ResistorBundle(var resistance: Double, obj: ElectricalObject) {
      * This must be called after "prepare", to finalize connections.
      * @see ElectricalObject.build
      * */
-    fun connect(connections: List<ElectricalObject>, sender: ElectricalObject) {
+    fun build(connections: List<ElectricalObject<*>>, sender: ElectricalObject<*>, map: ElectricalConnectivityMap) {
         if (!prepared) {
             error("Not prepared")
         }
 
-        connections.forEach { remoteObj ->
+        for (remoteObj in connections) {
             val resistor = getResistor(remoteObj)
             val offered = remoteObj.offerComponent(sender)
-            resistor.connect(EXTERNAL_PIN, offered.component, offered.index)
+                ?: continue
+            map.join(resistor.offerExternal(), offered)
         }
     }
 
-    private fun getResistor(remote: ElectricalObject): Resistor {
-        return resistors.computeIfAbsent(remote) {
-            if (prepared) {
-                error("Tried to create resistors after bundle was prepared")
-            }
-
-            val result = Resistor()
-            result.resistance = resistance
-
-            return@computeIfAbsent result
+    private fun getResistor(remote: ElectricalObject<*>) = resistors.computeIfAbsent(remote) {
+        if (prepared) {
+            error("Tried to create resistors after bundle was prepared")
         }
+
+        val result = Resistor()
+        result.resistance = resistance
+        result
     }
 
     /**
@@ -189,15 +82,13 @@ class ResistorBundle(var resistance: Double, obj: ElectricalObject) {
      * unless *clear* is called.
      * If a resistor is not initialized for *direction*, and the bundle was prepared by *register*, an error will be produced.
      * */
-    fun getOfferedResistor(remote: ElectricalObject): ElectricalComponentInfo {
-        return ElectricalComponentInfo(getResistor(remote), EXTERNAL_PIN)
-    }
+    fun getOfferedResistor(remote: ElectricalObject<*>) = getResistor(remote).offerExternal()
 
     /**
      * Iterates through all the initialized resistors.
      * Keep in mind that a resistor is initialized __after__ *getOfferedResistor* is called.
      * */
-    fun process(action: ((Resistor) -> Unit)) {
+    fun forEach(action: ((Resistor) -> Unit)) {
         resistors.values.forEach { action(it) }
     }
 
@@ -210,5 +101,9 @@ class ResistorBundle(var resistance: Double, obj: ElectricalObject) {
         prepared = false
     }
 
-    val power get() = resistors.values.sumOf { abs(it.power) }
+    val totalCurrentSimulation get() = resistors.values.sumOf { abs(it.current) }
+    val totalPowerSimulation get() = resistors.values.sumOf { abs(it.power) }
+
+    val totalCurrentDisplay get() = Quantity(resistors.values.sumOf { !abs(it.readouts.current) }, AMPERE)
+    val totalPowerDisplay get() = Quantity(resistors.values.sumOf { !abs(it.readouts.power) }, WATT)
 }

@@ -1,0 +1,9 @@
+{
+    "fluid": "minecraft:water",
+    "boiling": {
+        "temperature": 373.15,
+        "enthalpy": 2260000.0,
+        "resultGas": "eln2:steam",
+        "resultGasProportion": 1000
+    }
+}

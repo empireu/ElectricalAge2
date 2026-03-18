@@ -1,0 +1,10 @@
+{
+    "fluid": "eln2:heavy_oil",
+    "boiling": {
+        "temperature": 300.0,
+        "enthalpy": 180000.0,
+        "resultGas": "eln2:diesel_gas",
+        "resultGasProportion": 600,
+        "resultLiquidResidue": "eln2:bitumen"
+    }
+}

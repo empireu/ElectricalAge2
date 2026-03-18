@@ -1,0 +1,17 @@
+{
+    "type": "eln2:vulcanizing",
+    "ingredient": {
+        "item": "eln2:rubber_compound"
+    },
+    "result": {
+        "item": "eln2:rubber",
+        "count": 1
+    },
+    "resultBurnt": {
+        "item": "eln2:burnt_rubber",
+        "count": 1
+    },
+    "duration": 10,
+    "minTemperature": 393.591,
+    "maxTemperature": 453.13
+}

@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:smelting",
+  "category": "misc",
+  "cookingtime": 200,
+  "experience": 0.5,
+  "ingredient": {
+    "item": "eln2:copper_plate"
+  },
+  "result": "eln2:hot_copper_plate"
+}

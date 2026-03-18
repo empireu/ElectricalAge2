@@ -2,347 +2,153 @@
 
 package org.eln2.mc.common.content
 
-import com.mojang.blaze3d.vertex.PoseStack
-import mcp.mobius.waila.api.IPluginConfig
-import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
+import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.core.RegistryAccess
+import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.nbt.CompoundTag
-import net.minecraft.network.Connection
 import net.minecraft.network.chat.Component
-import net.minecraft.network.protocol.Packet
-import net.minecraft.network.protocol.game.ClientGamePacketListener
-import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket
-import net.minecraft.resources.ResourceLocation
-import net.minecraft.world.*
+import net.minecraft.sounds.SoundEvents
+import net.minecraft.sounds.SoundSource
+import net.minecraft.util.RandomSource
+import net.minecraft.world.InteractionHand
+import net.minecraft.world.InteractionResult
+import net.minecraft.world.SimpleContainer
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
-import net.minecraft.world.inventory.*
+import net.minecraft.world.inventory.AbstractContainerMenu
+import net.minecraft.world.inventory.ContainerLevelAccess
+import net.minecraft.world.inventory.SimpleContainerData
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.crafting.RecipeType
 import net.minecraft.world.item.crafting.SmeltingRecipe
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.AbstractFurnaceBlock
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.items.ItemStackHandler
-import net.minecraftforge.items.SlotItemHandler
-import org.ageseries.libage.sim.Material
-import org.ageseries.libage.sim.thermal.*
-import org.eln2.mc.*
-import org.eln2.mc.client.render.foundation.McColors
-import org.eln2.mc.client.render.foundation.renderColored
-import org.eln2.mc.client.render.foundation.renderTextured
-import org.eln2.mc.common.blocks.foundation.CellBlock
+import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.geometry.Vector2di
+import org.ageseries.libage.mathematics.map
+import org.ageseries.libage.sim.ChemicalElement
+import org.ageseries.libage.sim.ConnectionParameters
+import org.ageseries.libage.sim.Simulator
+import org.ageseries.libage.sim.ThermalMass
+import org.ageseries.libage.sim.electrical.ElectricalSimulation
+import org.eln2.mc.ClientOnly
+import org.eln2.mc.LOG
+import org.eln2.mc.ServerOnly
+import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.events.AtomicUpdate
-import org.eln2.mc.common.events.runPre
-import org.eln2.mc.data.withDirectionActualRule
-import org.eln2.mc.integration.WailaTooltipBuilder
-import org.eln2.mc.mathematics.*
-import java.util.*
+import org.eln2.mc.common.containers.ContainerHelper
+import org.eln2.mc.common.containers.MyAbstractContainerScreen
+import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
+import org.eln2.mc.common.content.modules.Eln2Processing
+import org.eln2.mc.PoleMap
+import org.eln2.mc.common.recipes.foundation.INPUT_SLOT
+import org.eln2.mc.common.recipes.foundation.OUTPUT_SLOT
+import org.eln2.mc.extensions.constructMenuHelper2
+import org.eln2.mc.extensions.getQuantity
+import org.eln2.mc.extensions.putQuantity
+import org.eln2.mc.extensions.recipeExists
+import org.eln2.mc.integration.ComponentDisplay
+import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.resource
+import kotlin.math.abs
 
 data class FurnaceOptions(
-    /**
-     * Resistance used when the furnace is inactive.
-     * */
-    var idleResistance: Double,
+    var idleResistance: Quantity<Resistance>,
+    var runningResistance: Quantity<Resistance>,
+    var temperatureThreshold: Quantity<Temperature>,
+    var targetTemperature: Quantity<Temperature>,
+    var leakageParameters: ConnectionParameters,
+)
 
-    /**
-     * Resistance used when the furnace is running.
-     * */
-    var runningResistance: Double,
-
-    /**
-     * Temperature needed for smelting bodies to begin smelting.
-     * */
-    var temperatureThreshold: Double,
-
-    /**
-     * This temperature will be held constantly by the furnace while in operation.
-     * */
-    var targetTemperature: Double,
-
-    /**
-     * The surface area of the resistor. This will affect the heat transfer rate.
-     * */
-    var surfaceArea: Double,
-
-    /**
-     * The connection parameters with the smelting body.
-     * */
-    var connectionParameters: ConnectionParameters,
-) {
-    fun serializeNbt(): CompoundTag {
-        val tag = CompoundTag()
-
-        tag.putDouble(IDLE_RES, idleResistance)
-        tag.putDouble(RUNNING_RES, runningResistance)
-        tag.putDouble(TEMP_THRESH, temperatureThreshold)
-        tag.putDouble(TARGET_TEMP, targetTemperature)
-        tag.putDouble(SURFACE_AREA, surfaceArea)
-
-        return tag
-    }
-
-    fun deserializeNbt(tag: CompoundTag) {
-        idleResistance = tag.getDouble(IDLE_RES)
-        runningResistance = tag.getDouble(RUNNING_RES)
-        temperatureThreshold = tag.getDouble(TEMP_THRESH)
-        targetTemperature = tag.getDouble(TARGET_TEMP)
-        surfaceArea = tag.getDouble(SURFACE_AREA)
-    }
-
+class FurnaceCell(ci: CellCreateInfo, override val electricalMap: PoleMap) : Cell(ci), SidedElectricalMapped<FurnaceCell> {
     companion object {
-        private const val IDLE_RES = "idleRes"
-        private const val RUNNING_RES = "runningRes"
-        private const val TARGET_TEMP = "targetTemp"
-        private const val TEMP_THRESH = "tempThresh"
-        private const val SURFACE_AREA = "surfaceArea"
+        private const val TEMPERATURE = "temperature"
     }
-}
 
-class FurnaceCell(
-    ci: CellCreateInfo,
-    val dir1: Base6Direction3d = Base6Direction3d.Left,
-    val dir2: Base6Direction3d = Base6Direction3d.Right,
-) : Cell(ci) {
-    companion object {
-        private const val OPTIONS = "options"
-        private const val RESISTOR_THERMAL_MASS = "resistorThermalMass"
-    }
+    override val electricalSize: ElectricalSize
+        get() = ElectricalSize.Any
 
     @SimObject
-    val resistorObj = ResistorObject(this, dir1, dir2)
+    val resistor = PolarResistorObject(this, electricalMap)
 
-    init {
-        ruleSet.withDirectionActualRule(DirectionMask.ofRelatives(dir1, dir2))
+    override fun saveCellData() = CompoundTag().also {
+        it.putQuantity(TEMPERATURE, resistorThermalMass.temperature)
     }
 
-    fun serializeNbt(): CompoundTag {
-        return CompoundTag().also {
-            it.put(OPTIONS, options.serializeNbt())
-            it.putThermalMassMapped(RESISTOR_THERMAL_MASS, resistorHeatBody.thermal)
-        }
+    override fun loadCellData(tag: CompoundTag) {
+        resistorThermalMass.temperature = tag.getQuantity(TEMPERATURE)
     }
 
-    fun deserializeNbt(tag: CompoundTag) {
-        options.deserializeNbt(tag.getCompound(OPTIONS))
-        resistorHeatBodyUpdate.setLatest(
-            ThermalBody(
-                tag.getThermalMassMapped(RESISTOR_THERMAL_MASS),
-                options.surfaceArea
-            )
-        )
-    }
-
+    // Move to heating element item or something
     val options = FurnaceOptions(
-        1000000.0,
-        100.0,
-        600.0,
-        800.0,
-        1.0,
-        ConnectionParameters.DEFAULT
+        idleResistance = Quantity(ElectricalSimulation.MAX_RESISTANCE),
+        runningResistance = Quantity(100.0),
+        temperatureThreshold = Quantity(600.0, CELSIUS),
+        targetTemperature = Quantity(800.0, CELSIUS),
+        ConnectionParameters.DEFAULT.copy(conductance = ConnectionParameters.DEFAULT.conductance * 0.25)
     )
 
-    private var resistorHeatBody = ThermalBody(ThermalMass(Material.IRON), 0.5)
-    private val resistorHeatBodyUpdate = AtomicUpdate<ThermalBody>()
-
-    //private var smeltingHeatBody = HeatBody.iron(10.0)
-
-    // Used to track the body added to the system.
-    // We only mutate this ref on our simulation thread.
-    private var knownSmeltingBody: ThermalBody? = null
-
-    // Used to hold the target smelting body. Mutated from e.g. the game object.
-    // In our simulation thread, we implemented a state machine using this.
-    // 1. If the external heating body is null, but our known (in-system) body is not, we remove the know body,
-    // and update its reference, to be null
-    // 2. If the external heating body is not null, and the known body is not equal to it, we update the body in the system.
-    // To update, we first check if the known body is not null. If that is so, we remove it from the simulation. This cleans up the previous body.
-    // Then, we set its reference to the new one, and insert it into the simulation, also setting up connections.
-    private var externalSmeltingBody: ThermalBody? = null
-
-    fun loadSmeltingBody(body: ThermalBody) {
-        externalSmeltingBody = body
+    // Move to heating element item or something
+    var resistorThermalMass = ThermalMass(
+        ChemicalElement.Iron.asMaterial,
+        mass = Quantity(0.5, KILOGRAM)
+    ).also {
+        environmentData.loadTemperature(it)
     }
 
-    fun unloadSmeltingBody() {
-        externalSmeltingBody = null
+    private val environmentSimulator = Simulator().also {
+        it.add(resistorThermalMass)
+
+        environmentData.connect(it, resistorThermalMass)
     }
 
-    private val needsBurn get() = knownSmeltingBody != null
-
-    private val simulator = Simulator().also {
-        it.add(resistorHeatBody)
-    }
-    var isHot: Boolean = false
-        private set
+    val isHot get() = resistorThermalMass.temperature >= options.temperatureThreshold
 
     /**
-     * Gets the temperature of the latest smelting body. This body has been visited by the update thread;
-     * it may be different from the latest body loaded with [loadSmeltingBody]
+     * Set this flag from the game thread to indicate if the furnace is active.
+     * If true, and power is available, the furnace will heat up.
      * */
-    val bodyTemperature: Temperature? get() = knownSmeltingBody?.temp
+    var isActive = false
 
-    /**
-     * Gets the temperature of the resistor's body.
-     * */
-    val resistorTemperature: Temperature get() = resistorHeatBody.temp
-
-    override fun onGraphChanged() {
-        graph.subscribers.addPre(this::simulationTick)
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
+        subscribers.addPre(this::simulationTick)
     }
 
-    override fun onRemoving() {
-        graph.subscribers.remove(this::simulationTick)
-    }
+    private fun simulationTick(elapsed: Double, phase: SimulationPhase) {
+        resistorThermalMass.energy += abs(resistor.component.power) * elapsed
+        environmentSimulator.step(elapsed)
 
-    /**
-     * Sets the resistance to the idle value as per [options] and sets [isHot] to **false**.
-     * */
-    private fun idle() {
-        resistorObj.resistance = options.idleResistance
-        isHot = false
-    }
-
-    /**
-     * Based on [options], applies an on-off signal by toggling between [FurnaceOptions.runningResistance] and [FurnaceOptions.idleResistance] to reach
-     * the specified [FurnaceOptions.targetTemperature].
-     * */
-    private fun applyControlSignal() {
-        resistorObj.resistance = if (resistorHeatBody.tempK < options.targetTemperature) {
-            options.runningResistance
-        } else {
-            options.idleResistance
-        }
-    }
-
-    private fun updateThermalSimulation(dt: Double) {
-        simulator.subStep(dt, 10) { _, elapsed ->
-            // Add converted energy into the system
-            resistorHeatBody.energy += resistorObj.power * elapsed
-        }
-    }
-
-    /**
-     * Updates the burn state [isHot] based on the temperature of the [knownSmeltingBody] and the threshold,
-     * specified in [options].
-     * */
-    private fun updateBurnState() {
-        // P.S. Known is not mutated outside!
-        val knownSmeltingBody = this.knownSmeltingBody
-
-        isHot = if (knownSmeltingBody == null) {
-            false
-        } else {
-            knownSmeltingBody.tempK > options.temperatureThreshold
-        }
-    }
-
-    private fun applyExternalUpdates() {
-        resistorHeatBodyUpdate.consume {
-            if (resistorHeatBody == it) {
-                // weird.
-                return@consume
+        resistor.component.updateResistance(
+            !if (isActive && resistorThermalMass.temperature < options.targetTemperature) {
+                options.runningResistance
+            } else {
+                options.idleResistance
             }
-
-            simulator.remove(resistorHeatBody)
-            resistorHeatBody = it
-            simulator.add(resistorHeatBody)
-
-            // Also refit the connection with the smelting body, if it exists
-            // Works because knownSmeltingBody reference is not mutated outside our simulation thread
-
-            if (knownSmeltingBody != null) {
-                simulator.connect(
-                    resistorHeatBody,
-                    knownSmeltingBody!!,
-                    options.connectionParameters
-                )
-            }
-        }
-
-        // externalSmeltingBody is mutated outside, so we copy it
-
-        // This state machine basically adds/removes the body from the System
-
-        val external = externalSmeltingBody
-
-        // This can be simplified, but makes more sense to me.
-
-        if (external == null) {
-            // We want to remove the body from the system, if it is in the system.
-
-            if (knownSmeltingBody != null) {
-                simulator.remove(knownSmeltingBody!!)
-                knownSmeltingBody = null
-            }
-        } else {
-            if (external != knownSmeltingBody) {
-                // We only want updates if the body we have in the system is not the same as the external one
-
-                if (knownSmeltingBody != null) {
-                    // Remove old body
-
-                    simulator.remove(knownSmeltingBody!!)
-                }
-
-                // Apply one update here.
-
-                knownSmeltingBody = external
-                simulator.add(external)
-                simulator.connect(external, resistorHeatBody, options.connectionParameters)
-            }
-        }
-    }
-
-    private fun simulationTick(elapsed: Double, phase: SubscriberPhase) {
-        applyExternalUpdates()
-
-        updateThermalSimulation(elapsed)
-        updateBurnState()
-
-        if (!needsBurn) {
-            // No bodies are loaded in, we will idle here.
-
-            idle()
-
-            return
-        }
-
-        // A body needs heating, so we start updating the resistor values.
-        applyControlSignal()
-    }
-
-    override fun appendWaila(builder: WailaTooltipBuilder, config: IPluginConfig?) {
-        resistorHeatBody.appendWaila(builder, config)
-        knownSmeltingBody?.appendWaila(builder, config)
-
-        super.appendWaila(builder, config)
+        )
     }
 }
 
-class FurnaceBlockEntity(pos: BlockPos, state: BlockState) :
-    CellBlockEntity(pos, state, Content.FURNACE_BLOCK_ENTITY.get()) {
-
+class FurnaceBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<FurnaceCell>(pos, state, Eln2Processing.FURNACE_BLOCK_ENTITY.get()), ComponentDisplay {
     companion object {
-        const val INPUT_SLOT = 0
-        const val OUTPUT_SLOT = 1
         private const val BURN_TIME_TARGET = 40
 
-        private const val FURNACE = "furnace"
         private const val INVENTORY = "inventory"
         private const val BURN_TIME = "burnTime"
-        private const val FURNACE_CELL = "furnaceCell"
-        private const val BURNING = "burning"
 
         fun tick(pLevel: Level?, pPos: BlockPos?, pState: BlockState?, pBlockEntity: BlockEntity?) {
             if (pLevel == null || pBlockEntity == null) {
@@ -361,457 +167,290 @@ class FurnaceBlockEntity(pos: BlockPos, state: BlockState) :
         }
     }
 
-    class InventoryHandler(private val furnaceBlockEntity: FurnaceBlockEntity) : ItemStackHandler(2) {
+    class InventoryHandler(val blockEntity: FurnaceBlockEntity) : ItemStackHandler(2) {
         override fun insertItem(slot: Int, stack: ItemStack, simulate: Boolean): ItemStack {
-            LOG.info("Inventory Handler inserts $slot $stack")
-
-            if (slot == INPUT_SLOT) {
-                return if (canSmelt(stack)) {
-                    super.insertItem(slot, stack, simulate).also {
-                        if (it != stack) {
-                            furnaceBlockEntity.inputChanged()
-                        }
-                    }
-                } else {
-                    stack
-                }
-            }
-
-            if (slot == OUTPUT_SLOT) {
+            if(slot == OUTPUT_SLOT) {
                 return stack
             }
 
-            error("Unknown slot $slot")
+            return super.insertItem(slot, stack, simulate)
         }
 
-        fun insertOutput(stack: ItemStack): Boolean {
-            return super.insertItem(OUTPUT_SLOT, stack, false) != stack
+        fun export(stack: ItemStack) = super.insertItem(OUTPUT_SLOT, stack, false) != stack
+
+        override fun isItemValid(slot: Int, stack: ItemStack): Boolean {
+            return if(slot == INPUT_SLOT) {
+                blockEntity.level!!.recipeExists(RecipeType.SMELTING, stack)
+            }
+            else {
+                true
+            }
         }
 
-        /**
-         * Checks if the specified item can be smelted.
-         * */
-        private fun canSmelt(stack: ItemStack): Boolean {
-            val recipeManager = furnaceBlockEntity.level!!.recipeManager
-            val recipe =
-                recipeManager.getRecipeFor(RecipeType.SMELTING, SimpleContainer(stack), furnaceBlockEntity.level!!)
-
-            return !recipe.isEmpty
+        override fun onContentsChanged(slot: Int) {
+            blockEntity.setChanged()
         }
-
-        fun clear() {
-            super.setStackInSlot(INPUT_SLOT, ItemStack.EMPTY)
-            super.setStackInSlot(OUTPUT_SLOT, ItemStack.EMPTY)
-        }
-
-        val isEmpty = super.getStackInSlot(INPUT_SLOT).isEmpty && super.getStackInSlot(OUTPUT_SLOT).isEmpty
     }
 
-    class FurnaceData : SimpleContainerData(5) {
+    class FurnaceData : SimpleContainerData(3) {
         companion object {
             private const val RESISTOR_TEMPERATURE = 0
             private const val RESISTOR_TARGET_TEMPERATURE = 1
-            private const val BODY_TEMPERATURE = 2
-            private const val BODY_TARGET_TEMPERATURE = 3
-            private const val SMELT_PROGRESS = 4
+            private const val SMELT_PROGRESS = 2
         }
 
         var resistorTemperature: Int
             get() = this.get(RESISTOR_TEMPERATURE)
-            set(value) {
-                this.set(RESISTOR_TEMPERATURE, value)
-            }
+            set(value) { this.set(RESISTOR_TEMPERATURE, value) }
 
         var resistorTargetTemperature: Int
             get() = this.get(RESISTOR_TARGET_TEMPERATURE)
-            set(value) {
-                this.set(RESISTOR_TARGET_TEMPERATURE, value)
-            }
+            set(value) { this.set(RESISTOR_TARGET_TEMPERATURE, value) }
 
         val resistorTemperatureProgress: Double
-            get() =
-                (resistorTemperature.toDouble() / resistorTargetTemperature.toDouble())
-                    .coerceIn(0.0, 1.0).defined()
-
-        var bodyTemperature: Int
-            get() = this.get(BODY_TEMPERATURE)
-            set(value) {
-                this.set(BODY_TEMPERATURE, value)
-            }
-
-        var bodyTargetTemperature: Int
-            get() = this.get(BODY_TARGET_TEMPERATURE)
-            set(value) {
-                this.set(BODY_TARGET_TEMPERATURE, value)
-            }
-
-        val bodyTemperatureProgress: Double
-            get() =
-                (bodyTemperature.toDouble() / bodyTargetTemperature.toDouble())
-                    .coerceIn(0.0, 1.0).defined()
+            get() = (resistorTemperature.toDouble() / resistorTargetTemperature.toDouble()).coerceIn(0.0, 1.0)
 
         var smeltProgress: Double
-            get() = unmapNormalizedDoubleShort(this.get(SMELT_PROGRESS))
-            set(value) {
-                this.set(SMELT_PROGRESS, mapNormalizedDoubleShort(value))
-            }
+            get() = (this.get(SMELT_PROGRESS) / 16384.0).coerceIn(0.0, 1.0)
+            set(value) { this.set(SMELT_PROGRESS, (value * 16384).toInt().coerceIn(0, 16384)) }
     }
 
-    private var burnTime = 0
+    private var operationBurnTime = 0
 
     val inventoryHandler = InventoryHandler(this)
-    private val inventoryHandlerLazy = LazyOptional.of { inventoryHandler }
-    private var saveTag: CompoundTag? = null
-
     val data = FurnaceData()
-
-    /**
-     * This is the last tracked value on the client.
-     * */
-    var clientBurning = false
-        private set
 
     override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
         if (cap == ForgeCapabilities.ITEM_HANDLER) {
-            return inventoryHandlerLazy.cast()
+            return LazyOptional.of { inventoryHandler }.cast()
         }
 
         return super.getCapability(cap, side)
     }
 
-    private var isBurning = false
-
-    private fun loadBurningItem() {
+    private fun loadOperation() {
         data.smeltProgress = 0.0
-
-        burnTime = 0
+        operationBurnTime = 0
 
         val inputStack = inventoryHandler.getStackInSlot(INPUT_SLOT)
 
-        isBurning = if (!inputStack.isEmpty) {
-            furnaceCell.loadSmeltingBody(ThermalBody(ThermalMass(Material.IRON, mass = 0.1), 1.0))
-
+        cell.isActive = if (inputStack.isEmpty) {
+            false
+        } else {
             recipe = level!!
                 .recipeManager
                 .getRecipeFor(RecipeType.SMELTING, SimpleContainer(inputStack), level!!)
                 .get()
 
             true
-        } else {
-            furnaceCell.unloadSmeltingBody()
-
-            false
         }
     }
 
     private var recipe: SmeltingRecipe? = null
 
-    fun inputChanged() {
-        if (!isBurning) {
-            runPre {
-                if (!isRemoved) {
-                    loadBurningItem()
-                }
-            }
-        }
-    }
-
     fun serverTick() {
-        if (furnaceCell.isHot != clientBurning) {
-            // A sync is needed here.
+        data.resistorTemperature = cell.resistorThermalMass.temperature.value.toInt()
+        data.resistorTargetTemperature = cell.options.targetTemperature.value.toInt()
 
-            clientBurning = furnaceCell.isHot
-            level!!.sendBlockUpdated(blockPos, blockState, blockState, Block.UPDATE_CLIENTS)
+        val isHot = cell.isHot
+
+        if (isHot != blockState.getValue(AbstractFurnaceBlock.LIT)) {
+            level!!.setBlock(
+                blockPos,
+                blockState.setValue(AbstractFurnaceBlock.LIT, isHot),
+                Block.UPDATE_ALL
+            )
         }
 
-        if (!isBurning) {
-            // Nothing can be smelted.
-
+        if (!cell.isActive) {
+            loadOperation()
             return
         }
 
         // The saved data is always changing while we're smelting.
         setChanged()
 
-        data.resistorTemperature = furnaceCell.resistorTemperature.kelvin.toInt()
-        data.resistorTargetTemperature = furnaceCell.options.targetTemperature.toInt()
+        val inputStack = inventoryHandler.getStackInSlot(INPUT_SLOT)
 
-        data.bodyTemperature = (furnaceCell.bodyTemperature ?: STANDARD_TEMPERATURE).kelvin.toInt()
-        data.bodyTargetTemperature = furnaceCell.options.temperatureThreshold.toInt()
+        if (inputStack.isEmpty) {
+            loadOperation()
+            return
+        }
 
-        inventoryHandlerLazy.ifPresent { inventory ->
-            val inputStack = inventory.getStackInSlot(INPUT_SLOT)
+        if (operationBurnTime >= BURN_TIME_TARGET) {
+            val recipe = this.recipe ?: error("Burning without recipe available")
 
-            if (inputStack.isEmpty) {
-                loadBurningItem()
-
-                return@ifPresent
-            }
-
-            if (burnTime >= BURN_TIME_TARGET) {
-                val recipe = this.recipe ?: error("Burning without recipe available")
-
-                if (!inventory.insertOutput(ItemStack(recipe.resultItem.item, 1))) {
-                    LOG.error("Failed to export item")
-                } else {
-                    // Done, load next (also remove input item)
-                    inventory.setStackInSlot(INPUT_SLOT, ItemStack(inputStack.item, inputStack.count - 1))
-
-                    loadBurningItem()
-                }
+            if (inventoryHandler.export(ItemStack(recipe.getResultItem(RegistryAccess.EMPTY).item, 1))) {
+                inventoryHandler.setStackInSlot(INPUT_SLOT, ItemStack(inputStack.item, inputStack.count - 1))
+                loadOperation()
             } else {
-                if (furnaceCell.isHot) {
-                    burnTime++
-                }
-
-                data.smeltProgress = (burnTime / BURN_TIME_TARGET.toDouble()).coerceIn(0.0, 1.0)
+                LOG.error("Failed to export item $recipe")
             }
+        } else {
+            if (isHot) {
+                operationBurnTime++
+            }
+
+            data.smeltProgress = (operationBurnTime / BURN_TIME_TARGET.toDouble()).coerceIn(0.0, 1.0)
         }
     }
 
     override fun saveAdditional(pTag: CompoundTag) {
         super.saveAdditional(pTag)
 
-        val tag = CompoundTag()
-
-        inventoryHandlerLazy.ifPresent {
-            tag.put(INVENTORY, it.serializeNBT())
-        }
-
-        tag.putInt(BURN_TIME, burnTime)
-        tag.put(FURNACE_CELL, furnaceCell.serializeNbt())
-
-        pTag.put(FURNACE, tag)
+        pTag.put(INVENTORY, inventoryHandler.serializeNBT())
+        pTag.putInt(BURN_TIME, operationBurnTime)
     }
 
     override fun load(pTag: CompoundTag) {
         super.load(pTag)
 
-        saveTag = pTag.get(FURNACE) as? CompoundTag
+        inventoryHandler.deserializeNBT(pTag.getCompound(INVENTORY))
+        operationBurnTime = pTag.getInt(BURN_TIME)
     }
 
-    override fun setLevel(pLevel: Level) {
-        super.setLevel(pLevel)
-
-        if (saveTag == null) {
-            return
-        }
-
-        inventoryHandlerLazy.ifPresent {
-            val inventoryTag = saveTag!!.get(INVENTORY) as? CompoundTag
-
-            if (inventoryTag != null) {
-                it.deserializeNBT(inventoryTag)
-            }
-        }
-
-        // This resets burnTime, so we load it before loading burnTime:
-        loadBurningItem()
-
-        burnTime = saveTag!!.getInt(BURN_TIME)
-        furnaceCell.deserializeNbt(saveTag!!.get(FURNACE_CELL) as CompoundTag)
-
-        // GC reference tracking
-        saveTag = null
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        builder.quantityInput(cell.resistor.component.readouts.power)
+        builder.quantity(cell.resistorThermalMass.temperature)
+        builder.progress(operationBurnTime / BURN_TIME_TARGET.toDouble())
     }
-
-    override fun getUpdatePacket(): Packet<ClientGamePacketListener>? {
-        return ClientboundBlockEntityDataPacket.create(this) { entity ->
-            if (entity !is FurnaceBlockEntity) {
-                return@create null
-            }
-
-            return@create CompoundTag().also { it.putBoolean(BURNING, furnaceCell.isHot) }
-        }
-    }
-
-    override fun onDataPacket(net: Connection?, pkt: ClientboundBlockEntityDataPacket?) {
-        super.onDataPacket(net, pkt)
-
-        if (pkt == null) {
-            return
-        }
-
-        clientBurning = pkt.tag!!.getBoolean(BURNING)
-    }
-
-    private val furnaceCell get() = cell as FurnaceCell
 }
 
-class FurnaceMenu constructor(
+class FurnaceMenu(
     pContainerId: Int,
     playerInventory: Inventory,
     handler: ItemStackHandler,
     val containerData: FurnaceBlockEntity.FurnaceData,
-    val entity: FurnaceBlockEntity?,
-) : AbstractContainerMenu(Content.FURNACE_MENU.get(), pContainerId) {
-    companion object {
-        fun create(id: Int, inventory: Inventory, player: Player, entity: FurnaceBlockEntity): FurnaceMenu {
-            return FurnaceMenu(
-                id,
-                inventory,
-                entity.inventoryHandler,
-                entity.data,
-                entity
-            )
-        }
-    }
+    val access: ContainerLevelAccess,
+    val level: Level
+) : AbstractContainerMenu(Eln2Processing.FURNACE_MENU.get(), pContainerId) {
+    @ServerOnly
+    constructor(entity: FurnaceBlockEntity, id: Int, inventory: Inventory): this(
+        id,
+        inventory,
+        entity.inventoryHandler,
+        entity.data,
+        ContainerLevelAccess.create(entity.level!!, entity.blockPos),
+        entity.level!!
+    )
 
+    @ClientOnly
     constructor(pContainerId: Int, playerInventory: Inventory) : this(
         pContainerId,
         playerInventory,
         ItemStackHandler(2),
         FurnaceBlockEntity.FurnaceData(),
-        null
+        ContainerLevelAccess.NULL,
+        playerInventory.player.level()
     )
 
-    private val playerGridStart: Int
-    private val playerGridEnd: Int
-
     init {
-        addSlot(SlotItemHandler(handler, FurnaceBlockEntity.INPUT_SLOT, 56, 35))
-        addSlot(SlotItemHandler(handler, FurnaceBlockEntity.OUTPUT_SLOT, 116, 35))
+        addSlot(
+            SlotItemHandlerWithPlacePredicate(handler, INPUT_SLOT, 56, 35) {
+                level.recipeExists(RecipeType.SMELTING, it)
+            }
+        )
+
+        addSlot(
+            SlotItemHandlerWithPlacePredicate(handler, OUTPUT_SLOT, 116, 35) {
+                false
+            }
+        )
+
         addDataSlots(containerData)
 
-        playerGridStart = 2
-        playerGridEnd = playerGridStart + this.addPlayerGrid(playerInventory, this::addSlot)
+        ContainerHelper.addPlayerGrid(playerInventory, this::addSlot)
     }
 
-    override fun stillValid(pPlayer: Player): Boolean {
-        return true
-    }
+    override fun stillValid(pPlayer: Player) = stillValid(access, pPlayer, Eln2Processing.FURNACE_BLOCK.block.get())
 
-    override fun quickMoveStack(pPlayer: Player, pIndex: Int): ItemStack {
-        val slot = slots[pIndex]
-
-        if (!slot.hasItem()) {
-            return ItemStack.EMPTY
-        }
-
-        val stack = slot.item
-
-        if (pIndex == FurnaceBlockEntity.INPUT_SLOT || pIndex == FurnaceBlockEntity.OUTPUT_SLOT) {
-            // Quick move from input/output to player
-
-            if (!moveItemStackTo(stack, playerGridStart, playerGridEnd, true)) {
-                return ItemStack.EMPTY
-            }
-        } else {
-            // Only move into input slot
-
-            if (!moveItemStackTo(
-                    stack,
-                    FurnaceBlockEntity.INPUT_SLOT,
-                    FurnaceBlockEntity.INPUT_SLOT + 1,
-                    true
-                )
-            ) {
-
-                return ItemStack.EMPTY
-            }
-        }
-
-        slot.setChanged()
-
-        entity?.inputChanged()
-
-        return stack
-    }
+    override fun quickMoveStack(pPlayer: Player, pIndex: Int) = ContainerHelper.quickMove(slots, pPlayer, pIndex)
 }
 
 class FurnaceScreen(menu: FurnaceMenu, playerInventory: Inventory, title: Component) :
-    AbstractContainerScreen<FurnaceMenu>(menu, playerInventory, title) {
+    MyAbstractContainerScreen<FurnaceMenu>(menu, playerInventory, title) {
     companion object {
-        private val TEXTURE = resource("textures/gui/container/furnace_test.png")
-        private val TEX_SIZE = Vector2I(256, 256)
-        private val BACKGROUND_UV_SIZE = Vector2I(176, 166)
+        private val TEXTURE = resource("textures/gui/container/furnace.png")
 
-        private val RESISTOR_INDICATOR_POS = Vector2I(13, 28)
-        private val BODY_INDICATOR_POS = Vector2I(27, 28)
+        private val INDICATOR_POS = Vector2di(13, 28)
 
         private const val INDICATOR_HEIGHT = 57 - 28
         private const val INDICATOR_WIDTH = 21 - 13
-        private val INDICATOR_SIZE = Vector2I(INDICATOR_WIDTH, 2)
-        private val INDICATOR_COLOR = McColors.red
 
-        private val PROGRESS_ARROW_POS = Vector2I(79, 34)
-        private val PROGRESS_UV_POS = Vector2F(176f, 14f)
-        private val PROGRESS_UV_SIZE = Vector2F(16f, 16f)
+        private val PROGRESS_ARROW_POS = Vector2di(79, 34)
+        private val PROGRESS_UV_POS = Vector2di(176, 14)
+        private val PROGRESS_UV_SIZE = Vector2di(24, 16)
     }
 
-    private val offset get() = Vector2I(leftPos, topPos)
+    private fun renderIndicator(pGuiGraphics: GuiGraphics) {
+        val progress = menu.containerData.resistorTemperatureProgress
 
-    private fun renderIndicator(stack: PoseStack, position: Vector2I, progress: Double) {
-        val vertical = map(
+        val height = map(
             progress,
             0.0,
             1.0,
-            (position.y + INDICATOR_HEIGHT).toDouble(),
-            position.y.toDouble()
+            0.0,
+            INDICATOR_HEIGHT.toDouble()
         )
 
-        renderColored(
-            stack, INDICATOR_COLOR, Rectangle4F(
-                (position.x + leftPos).toFloat(),
-                (vertical + topPos).toFloat(),
-                INDICATOR_SIZE.toVector2F()
-            )
+        val position = INDICATOR_POS
+
+        val cold = MyColor(100, 32,195,208)
+        val hot = MyColor(150, 255, 90, 0)
+
+        pGuiGraphics.fillGradient(
+            leftPos + position.x,
+            topPos + position.y + INDICATOR_HEIGHT - height.toInt(),
+            leftPos + position.x + INDICATOR_WIDTH,
+            topPos + position.y + INDICATOR_HEIGHT,
+            MyColor.lerp(cold, hot, progress.toFloat()).data,
+            cold.data
         )
     }
 
-    private fun renderTemperatureIndicators(stack: PoseStack) {
-        renderIndicator(stack, RESISTOR_INDICATOR_POS, menu.containerData.resistorTemperatureProgress)
-        renderIndicator(stack, BODY_INDICATOR_POS, menu.containerData.bodyTemperatureProgress)
-    }
-
-    private fun renderProgressArrow(stack: PoseStack) {
-        val uvSize = Vector2F(
+    private fun renderProgressArrow(pGuiGraphics: GuiGraphics) {
+        pGuiGraphics.blit(
+            TEXTURE,
+            leftPos + PROGRESS_ARROW_POS.x,
+            topPos + PROGRESS_ARROW_POS.y,
+            PROGRESS_UV_POS.x.toFloat(),
+            PROGRESS_UV_POS.y.toFloat(),
             map(
                 menu.containerData.smeltProgress.toFloat(),
                 0f,
                 1f,
                 0f,
-                PROGRESS_UV_SIZE.x
-            ),
-            PROGRESS_UV_SIZE.y
-        )
-
-        renderTextured(
-            texture = TEXTURE,
-            poseStack = stack,
-            blitOffset = 0,
-            color = vec4fOne(),
-            position = PROGRESS_ARROW_POS + offset,
-            uvSize = uvSize.toVector2I(),
-            uvPosition = PROGRESS_UV_POS,
-            textureSize = TEX_SIZE
+                PROGRESS_UV_SIZE.x.toFloat()
+            ).toInt(),
+            PROGRESS_UV_SIZE.y,
+            256,
+            256
         )
     }
 
-    override fun render(pPoseStack: PoseStack, pMouseX: Int, pMouseY: Int, pPartialTick: Float) {
-        super.render(pPoseStack, pMouseX, pMouseY, pPartialTick)
-
-        renderTemperatureIndicators(pPoseStack)
-        renderProgressArrow(pPoseStack)
+    override fun render(pGuiGraphics: GuiGraphics, pMouseX: Int, pMouseY: Int, pPartialTick: Float) {
+        super.render(pGuiGraphics, pMouseX, pMouseY, pPartialTick)
+        renderIndicator(pGuiGraphics)
+        renderProgressArrow(pGuiGraphics)
     }
 
-    override fun renderBg(pPoseStack: PoseStack, pPartialTick: Float, pMouseX: Int, pMouseY: Int) {
-        renderTextured(
-            texture = TEXTURE,
-            poseStack = pPoseStack,
-            blitOffset = 0,
-            color = vec4fOne(),
-            position = Vector2I(leftPos, topPos),
-            uvSize = BACKGROUND_UV_SIZE,
-            uvPosition = Vector2F.zero(),
-            textureSize = TEX_SIZE
-        )
+    override fun renderBg(pGuiGraphics: GuiGraphics, pPartialTick: Float, pMouseX: Int, pMouseY: Int) {
+        blitHelper(pGuiGraphics, TEXTURE)
     }
 }
 
-class FurnaceBlock : CellBlock() {
-    override fun getCellProvider(): ResourceLocation {
-        return Content.FURNACE_CELL.id
+class FurnaceBlock : UprightHorizontalDirectionCellBlock<FurnaceCell>() {
+    init {
+        registerDefaultState(defaultBlockState().setValue(AbstractFurnaceBlock.LIT, false))
+    }
+
+    override fun createBlockStateDefinition(pBuilder: StateDefinition.Builder<Block, BlockState>) {
+        super.createBlockStateDefinition(pBuilder)
+        pBuilder.add(AbstractFurnaceBlock.LIT)
+    }
+
+    override fun getCellProvider(): CellProvider<FurnaceCell> {
+        return Eln2Processing.FURNACE_CELL.get()
     }
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState): BlockEntity {
@@ -835,6 +474,37 @@ class FurnaceBlock : CellBlock() {
         pHand: InteractionHand,
         pHit: BlockHitResult,
     ): InteractionResult {
-        return pLevel.constructMenu(pPos, pPlayer, { Component.literal("Test") }, FurnaceMenu::create)
+        return pLevel.constructMenuHelper2(pPos, pPlayer, Component.literal("Furnace"), ::FurnaceMenu)
+    }
+
+    override fun animateTick(pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {
+        if(pState.getValue(AbstractFurnaceBlock.LIT)) {
+            val d0 = pPos.x.toDouble() + 0.5
+            val d1 = pPos.y.toDouble()
+            val d2 = pPos.z.toDouble() + 0.5
+            if (pRandom.nextDouble() < 0.5) {
+                pLevel.playLocalSound(
+                    d0,
+                    d1,
+                    d2,
+                    SoundEvents.FURNACE_FIRE_CRACKLE,
+                    SoundSource.BLOCKS,
+                    1.0f,
+                    1.0f,
+                    false
+                )
+            }
+
+            val direction = pState.getValue(AbstractFurnaceBlock.FACING)
+
+            repeat(4) {
+                val d4 = pRandom.nextDouble() * 0.6 - 0.3
+                val d5 = if (direction.axis === Direction.Axis.X) direction.stepX.toDouble() * 0.52 else d4
+                val d6 = pRandom.nextDouble() * 6.0 / 16.0
+                val d7 = if (direction.axis === Direction.Axis.Z) direction.stepZ.toDouble() * 0.52 else d4
+                pLevel.addParticle(ParticleTypes.SMOKE, d0 + d5, d1 + d6, d2 + d7, 0.0, 0.0, 0.0)
+                pLevel.addParticle(ParticleTypes.FLAME, d0 + d5, d1 + d6, d2 + d7, 0.0, 0.0, 0.0)
+            }
+        }
     }
 }

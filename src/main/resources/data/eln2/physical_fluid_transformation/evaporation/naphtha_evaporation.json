@@ -1,0 +1,9 @@
+{
+    "fluid": "eln2:naphtha",
+    "boiling": {
+        "temperature": 350.0,
+        "enthalpy": 300000.0,
+        "resultGas": "eln2:naphtha_gas",
+        "resultGasProportion": 1000
+    }
+}

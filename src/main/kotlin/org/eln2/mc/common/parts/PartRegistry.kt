@@ -1,20 +1,26 @@
+@file:Suppress("MemberVisibilityCanBePrivate")
+
 package org.eln2.mc.common.parts
 
 import net.minecraft.resources.ResourceLocation
 import net.minecraftforge.eventbus.api.IEventBus
 import net.minecraftforge.registries.*
 import org.ageseries.libage.data.mutableBiMapOf
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
-import org.eln2.mc.common.items.eln2Tab
-import org.eln2.mc.common.items.foundation.PartItem
+import org.eln2.mc.common.items.blacklistCreativeTab
+import org.eln2.mc.common.parts.foundation.PartItem
+import org.eln2.mc.common.parts.foundation.BasicPartProvider
+import org.eln2.mc.common.parts.foundation.PartFactory
 import org.eln2.mc.common.parts.foundation.PartProvider
+import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.resource
 import java.util.function.Supplier
 
 object PartRegistry {
-    private val PARTS = DeferredRegister.create<PartProvider>(resource("parts"), MODID)
-    private val PART_ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, MODID)!!
+    val PARTS: DeferredRegister<PartProvider> = DeferredRegister.create(resource("parts"), MODID)
+    val PART_ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, MODID)!!
 
     private lateinit var partRegistry: Supplier<IForgeRegistry<PartProvider>>
 
@@ -45,14 +51,26 @@ object PartRegistry {
      *  @param name The name for all the registry items.
      *  @param provider The part provider that will be used to create the part.
      * */
-    fun part(name: String, provider: PartProvider): PartRegistryItem {
+    fun partAndItemWithProvider(name: String, provider: PartProvider): PartRegistryItem {
         val part = PARTS.register(name) { provider }
-        val item = PART_ITEMS.register(name) { PartItem(provider, eln2Tab) }
+        val item = PART_ITEMS.register(name) { PartItem(provider) }
 
         parts.add(provider, part.id)
 
         return PartRegistryItem(name, part, item)
     }
+
+    fun partMemoizeBB(name: String, size: Vector3d, memoizer: Supplier<PartFactory>) =
+        partAndItemWithProvider(name, BasicPartProvider(size / 16.0, memoizer.get()))
+
+    fun partMemoizeBB(name: String, sx: Double, sy: Double, sz: Double, memoizer: Supplier<PartFactory>) =
+        partMemoizeBB(name, Vector3d(sx, sy, sz), memoizer)
+
+    fun partImmediateBB(name: String, size: Vector3d, factory: PartFactory) =
+        partAndItemWithProvider(name, BasicPartProvider(size / 16.0, factory))
+
+    fun partImmediateBB(name: String, sx: Double, sy: Double, sz: Double, factory: PartFactory) =
+        partImmediateBB(name, Vector3d(sx, sy, sz), factory)
 
     /**
      * Gets the Part Provider with the specified ID, or null, if it does not exist.
@@ -66,5 +84,23 @@ object PartRegistry {
      * */
     fun getPartItem(id: ResourceLocation): PartItem {
         return ForgeRegistries.ITEMS.getValue(id) as PartItem
+    }
+
+    val SPEC_CONTAINER_PART = partAndItemWithProvider(
+        "spec_container",
+        BasicPartProvider(Vector3d.zero) {
+            SpecContainerPart(it)
+        }
+    ).blacklistCreativeTab()
+
+    fun finalize() {
+        for (it in PART_ITEMS.entries) {
+            val item = it.get() as? PartItem
+                ?: continue
+
+            item.ensureResolved()
+        }
+
+        LOG.info("Finalized part registry")
     }
 }

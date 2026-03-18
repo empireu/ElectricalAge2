@@ -1,38 +1,42 @@
 package org.eln2.mc
 
+import com.mojang.blaze3d.systems.RenderSystem
+import net.minecraft.client.server.IntegratedServer
 import net.minecraft.core.BlockPos
-import net.minecraft.sounds.SoundEvent
-import net.minecraft.sounds.SoundEvents
-import net.minecraft.sounds.SoundSource
-import net.minecraft.world.InteractionHand
+import net.minecraft.core.Direction
+import net.minecraft.core.Vec3i
+import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
-import net.minecraft.world.item.Item
-import net.minecraft.world.item.ItemStack
-import net.minecraft.world.item.ItemUtils
+import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
+import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.Vec3
-import org.ageseries.libage.data.MultiMap
-import org.ageseries.libage.data.MutableSetMapMultiMap
-import org.eln2.mc.data.CsvLoader
-import org.eln2.mc.data.NANOSECONDS
-import org.eln2.mc.data.Quantity
-import org.eln2.mc.data.Time
-import org.eln2.mc.mathematics.*
+import net.minecraftforge.api.distmarker.Dist
+import net.minecraftforge.server.ServerLifecycleHooks
+import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.*
+import org.eln2.mc.common.ForgeEvents
+import org.eln2.mc.extensions.minus
+import org.eln2.mc.extensions.viewClip
+import org.eln2.mc.mathematics.FacingDirection
 import org.joml.Vector3f
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.system.measureNanoTime
+import kotlin.math.sin
+import kotlin.random.Random
+
+fun randomFloat(min: Float, max: Float) = map(Random.nextFloat(), 0f, 1f, min, max)
 
 fun <T> all(vararg items: T, condition: (T) -> Boolean) = items.asList().all(condition)
-
-fun measureDuration(block: () -> Unit) = Quantity(
-    measureNanoTime(block).toDouble(), NANOSECONDS
-)
 
 val digitRange = '0'..'9'
 val subscriptDigitRange = '₀'..'₉'
@@ -60,32 +64,6 @@ fun charDigitValue(c: Char): Char {
     if (c.isDigit) return c
     if (c.isSubscriptDigit) return subscriptToDigit(c)
     error("$c is not a digit or subscript digit")
-}
-
-inline fun <T, K> List<T>.associateByMulti(keySelector: (T) -> K): MultiMap<K, T> {
-    val result = MutableSetMapMultiMap<K, T>()
-    this.forEach { value -> result[keySelector(value)].add(value) }
-    return result
-}
-
-inline fun <T, K> Array<T>.associateByMulti(keySelector: (T) -> K): MultiMap<K, T> {
-    val result = MutableSetMapMultiMap<K, T>()
-    this.forEach { value -> result[keySelector(value)].add(value) }
-    return result
-}
-
-
-inline fun <T, K> Set<T>.associateByMulti(keySelector: (T) -> K): MultiMap<K, T> {
-    val result = MutableSetMapMultiMap<K, T>()
-    this.forEach { value -> result[keySelector(value)].add(value) }
-    return result
-}
-
-
-inline fun <T, K> Collection<T>.associateByMulti(keySelector: (T) -> K): MultiMap<K, T> {
-    val result = MutableSetMapMultiMap<K, T>()
-    this.forEach { value -> result[keySelector(value)].add(value) }
-    return result
 }
 
 @Suppress("UNCHECKED_CAST")
@@ -132,147 +110,175 @@ fun componentMax(a: Vector3f, b: Vector3f): Vector3f {
     )
 }
 
-class Stopwatch {
-    private var initialTimeStamp = System.nanoTime()
-    private var lastTimeStamp = initialTimeStamp
+fun isServerThread() = ServerLifecycleHooks.getCurrentServer().isSameThread
+fun isRenderThread() = RenderSystem.isOnRenderThread()
 
-    fun sample(): Quantity<Time> {
-        val current = System.nanoTime()
-        val elapsedNanoseconds = current - lastTimeStamp
-        lastTimeStamp = current
+inline fun requireIsOnServerThread(message: () -> String) = require(isServerThread()) {
+    message()
+}
 
-        return Quantity(elapsedNanoseconds.toDouble(), NANOSECONDS)
-    }
+fun requireIsOnServerThread() = requireIsOnServerThread { "Requirement failed: not on server thread (${Thread.currentThread()})" }
 
-    val total get() = Quantity((System.nanoTime() - initialTimeStamp).toDouble(), NANOSECONDS)
+inline fun requireIsOnRenderThread(message: () -> String) = require(isRenderThread()) {
+    message()
+}
 
-    fun resetTotal() {
-        initialTimeStamp = System.nanoTime()
+fun requireIsOnRenderThread() = requireIsOnRenderThread {
+    "Requirement failed: not on render thread (${Thread.currentThread()})"
+}
+
+fun<K, V> ConcurrentHashMap<K, V>.atomicRemoveIf(consumer: (Map.Entry<K, V>) -> Boolean) {
+    this.entries.forEach { entry ->
+        if(consumer(entry)) {
+            this.remove(entry.key, entry.value)
+        }
     }
 }
 
-fun readPairs(name: String): List<Pair<String, String>> = readDatasetString(name)
-    .lines().filter { it.isNotBlank() }.map { line ->
-        line.split("\\s".toRegex()).toTypedArray().let {
-            require(it.size == 2) {
-                "KVP \"$line\" mapped to ${it.joinToString(" ")}"
-            }
+private fun validateSide(side: Dist) = when(side) {
+    Dist.CLIENT -> requireIsOnRenderThread {
+        "Accessed client only"
+    }
+    Dist.DEDICATED_SERVER -> requireIsOnServerThread {
+        "Accessed server only"
+    }
+}
+class SidedLazy<T>(factory: () -> T, val side: Dist) {
+    private val lazy = lazy(factory)
 
-            Pair(it[0], it[1])
-        }
+    fun get() : T {
+        validateSide(side)
+        return lazy.value
     }
 
-fun loadPairInterpolator(
-    name: String,
-    mergeDuplicates: Boolean = true,
-    t: Double = 0.0,
-    b: Double = 0.0,
-    c: Double = 0.0,
-) = InterpolatorBuilder().let { sb ->
-    readPairs(name).map { (kStr, vStr) ->
-        Pair(
-            kStr.toDoubleOrNull() ?: error("Failed to parse key \"$kStr\""),
-            vStr.toDoubleOrNull() ?: error("Failed to parse value \"$vStr\"")
-        )
-    }.let {
-        if (mergeDuplicates) {
-            val buckets = ArrayList<Pair<Double, ArrayList<Double>>>()
-
-            it.forEach { (k, v) ->
-                fun create() = buckets.add(Pair(k, arrayListOf(v)))
-
-                if (buckets.isEmpty()) {
-                    create()
-                } else {
-                    val (lastKey, lastBucket) = buckets.last()
-
-                    if (lastKey == k) lastBucket.add(v)
-                    else create()
-                }
-            }
-
-            val results = ArrayList<Pair<Double, Double>>()
-
-            buckets.forEach { (key, values) ->
-                results.add(
-                    Pair(
-                        key,
-                        values.sum() / values.size
-                    )
-                )
-            }
-
-            results
-        } else {
-            it
-        }
-    }.forEach { (k, v) -> sb.with(k, v) }
-
-    sb.buildCubic(t, b, c)
+    operator fun invoke() = get()
 }
 
-fun readDatasetString(name: String) = getResourceString(resource("datasets/$name"))
-fun readCsvNumbers(name: String) = CsvLoader.loadNumericData(readDatasetString(name))
-fun loadCsvSpline(name: String, keyIndex: Int, valueIndex: Int): Spline1d {
-    val builder = InterpolatorBuilder()
+fun<T> clientOnlyHolder(factory: () -> T) = SidedLazy(factory, Dist.CLIENT)
+fun<T> serverOnlyHolder(factory: () -> T) = SidedLazy(factory, Dist.DEDICATED_SERVER)
 
-    readCsvNumbers(name).also { csv ->
-        csv.entries.forEach {
-            builder.with(it[keyIndex], it[valueIndex])
-        }
+private val UNIQUE_ID_ATOMIC = AtomicInteger()
+
+fun getUniqueId() = UNIQUE_ID_ATOMIC.getAndIncrement()
+
+fun directionByNormal(normal: Vec3i) = Direction.entries.firstOrNull { it.normal == normal }
+
+fun isServerPaused() : Boolean {
+    val server = ServerLifecycleHooks.getCurrentServer()
+
+    if(server == null) {
+        LOG.fatal(DEBUGGER_BREAK("ELN2: SERVER NULL"))
+        return true
     }
 
-    return builder.buildCubic()
-}
-
-fun loadCsvGrid2(name: String): MappedGridInterpolator {
-    val csv = readCsvNumbers(name)
-
-    var xSize = 0
-    var ySize = 0
-
-    val xMapping = InterpolatorBuilder().apply {
-        csv.headers.drop(1).forEach { header ->
-            with(header.toDouble(), (xSize++).toDouble())
-        }
-    }.buildCubic()
-
-    val yMapping = InterpolatorBuilder().apply {
-        csv.entries.forEach {
-            with(it[0], (ySize++).toDouble())
-        }
-    }.buildCubic()
-
-    val grid = arrayKDGridDOf(xSize, ySize)
-
-    for (y in 0 until ySize) {
-        val row = csv.entries[y]
-
-        row.values.drop(1).forEachIndexed { x, d ->
-            grid[x, y] = d
-        }
+    if(server is IntegratedServer) {
+        return server.paused
     }
 
-    return MappedGridInterpolator(grid.interpolator(), listOf(xMapping, yMapping))
+    val time = ForgeEvents.timeSinceLastTick
+
+    if(time > 1.0) {
+        LOG.fatal("ELN2: FOUND ${time.classify()} SINCE LAST SERVER TICK")
+        return true
+    }
+
+    return false
 }
 
-fun prepareBucket(
-    bucketStack: ItemStack,
-    target: Item,
-    player: Player,
-    hand: InteractionHand,
-    pos: BlockPos,
-    sound: SoundEvent = SoundEvents.BUCKET_FILL,
-    source: SoundSource = SoundSource.BLOCKS,
-) {
-    player.setItemInHand(
-        hand,
-        ItemUtils.createFilledResult(
-            bucketStack,
-            player,
-            ItemStack(target, 1)
+inline fun<reified T> buildDirectionTable(transform: (Direction) -> T) = Direction.entries
+    .map { it to transform(it) }
+    .sortedBy { it.first.get3DDataValue() }
+    .map { it.second }
+
+inline fun<reified T> buildHorizontalFacingTable(transform: (FacingDirection) -> T) = FacingDirection.entries
+    .map { it to transform(it) }
+    .sortedBy { it.first.index }
+    .map { it.second }
+
+enum class ItemPersistentLoadOrder {
+    /**
+     * The data is loaded before the simulation is built.
+     * */
+    BeforeSim,
+    /**
+     * The data is loaded after the simulation is built.
+     * */
+    AfterSim
+}
+
+interface ItemPersistent {
+    val order: ItemPersistentLoadOrder
+
+    /**
+     * Saves the part to an item tag.
+     * */
+    fun saveToItemNbt(tag: CompoundTag)
+
+    /**
+     * Loads the part from the item tag.
+     * @param tag The saved tag. Null if no data was present in the item (possibly because the item was newly created)
+     * */
+    fun loadFromItemNbt(tag: CompoundTag?)
+}
+
+fun getPlayerPOVHitResult(pLevel: Level, pPlayer: Player): BlockHitResult {
+    val f = pPlayer.xRot
+    val f1 = pPlayer.yRot
+    val vec3 = pPlayer.eyePosition
+    val f2 = cos(-f1 * (PI.toFloat() / 180f) - PI.toFloat())
+    val f3 = sin(-f1 * (PI.toFloat() / 180f) - PI.toFloat())
+    val f4 = -cos(-f * (PI.toFloat() / 180f))
+    val f5 = sin(-f * (PI.toFloat() / 180f))
+    val f6 = f3 * f4
+    val f7 = f2 * f4
+    val d0 = pPlayer.getBlockReach()
+    val vec31 = vec3.add(f6.toDouble() * d0, f5.toDouble() * d0, f7.toDouble() * d0)
+    return pLevel.clip(
+        ClipContext(
+            vec3,
+            vec31,
+            ClipContext.Block.OUTLINE,
+            ClipContext.Fluid.SOURCE_ONLY,
+            pPlayer
         )
     )
+}
 
-    player.level.playSound(null, pos, sound, source, 1.0F, 1.0F);
+class PIDController(var kP: Double, var kI: Double, var kD: Double) {
+    constructor() : this(1.0, 0.0, 0.0)
+
+    var errorSum = 0.0
+    var lastError = 0.0
+
+    /**
+     * Gets or sets the setpoint (desired value).
+     * */
+    var setPoint = 0.0
+
+    /**
+     * Gets or sets the minimum control signal returned by [update]
+     * */
+    var minControl = Double.MIN_VALUE
+
+    /**
+     * Gets or sets the maximum control signal returned by [update]
+     * */
+    var maxControl = Double.MAX_VALUE
+
+    fun update(value: Double, dt: Double): Double {
+        val error = setPoint - value
+
+        errorSum += (error + lastError) * 0.5 * dt
+
+        val derivative = (error - lastError) / dt
+
+        lastError = error
+
+        return (kP * error + kI * errorSum + kD * derivative).coerceIn(minControl, maxControl)
+    }
+
+    fun reset() {
+        errorSum = 0.0
+        lastError = 0.0
+    }
 }

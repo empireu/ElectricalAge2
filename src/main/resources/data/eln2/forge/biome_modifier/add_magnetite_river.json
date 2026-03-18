@@ -1,0 +1,6 @@
+{
+    "type": "forge:add_features",
+    "biomes": "#minecraft:is_river",
+    "features": "eln2:magnetite_ore_river",
+    "step": "underground_ores"
+}

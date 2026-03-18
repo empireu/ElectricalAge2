@@ -9,16 +9,15 @@ import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.mutableBiMapOf
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
-import org.eln2.mc.common.cells.foundation.Cell
-import org.eln2.mc.common.cells.foundation.CellProvider
-import org.eln2.mc.common.cells.foundation.InjCellProvider
+import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.resource
 import java.util.function.Supplier
 
 object CellRegistry {
-    private val CELLS = DeferredRegister.create<CellProvider>(resource("cells"), MODID)
+    private val CELLS = DeferredRegister.create<CellProvider<*>>(resource("cells"), MODID)
 
-    private lateinit var cellRegistry: Supplier<IForgeRegistry<CellProvider>>
+    private lateinit var cellRegistry: Supplier<IForgeRegistry<CellProvider<*>>>
 
     fun setup(bus: IEventBus) {
         cellRegistry = CELLS.makeRegistry { RegistryBuilder() }
@@ -27,14 +26,14 @@ object CellRegistry {
         LOG.info("Prepared cell registry.")
     }
 
-    private val cells = mutableBiMapOf<CellProvider, ResourceLocation>()
+    private val cells = mutableBiMapOf<CellProvider<*>, ResourceLocation>()
 
-    fun getId(provider: CellProvider) = cells.forward[provider] ?: error("Failed to get cell id $provider")
+    fun getCellId(provider: CellProvider<*>) = cells.forward[provider] ?: error("Failed to get cell id $provider")
 
     /**
-     * Registers a cell using the specified ID and Provider.
+     * Registers a cell with the specified [id] and [provider].
      * */
-    fun cell(id: String, provider: CellProvider): RegistryObject<CellProvider> {
+    fun<T : Cell> cellWithProvider(id: String, provider: CellProvider<T>): RegistryObject<CellProvider<T>> {
         val result = CELLS.register(id) { provider }
 
         cells.add(provider, result.id)
@@ -42,13 +41,23 @@ object CellRegistry {
         return result
     }
 
-    inline fun <reified T : Cell> injCell(id: String, vararg extraParams: Any): RegistryObject<CellProvider> =
-        cell(id, InjCellProvider(T::class.java, extraParams.asList()))
+    /**
+     * Registers a cell with the specified [id], and a provider supplied by the [memoizer].
+     * Meant to be used when DTOs (models/configuration objects) need to be created.
+     * They should be created in the body of the [memoizer], and then the [CellFactory] should be created, that calls the cell's constructor with all the pre-created DTOs.
+     * */
+    fun<T : Cell> cellMemoize(id: String, memoizer: Supplier<CellFactory<T>>) = cellWithProvider(id, BasicCellProvider(memoizer.get()))
 
     /**
-     * Gets the Cell Provider with the specified ID, or produces an error.
+     * Registers a cell with the specified [id]. The passed body is the cell factory. No DTOs should be created in this body.
      * */
-    fun getProvider(id: ResourceLocation): CellProvider {
+    fun<T : Cell> cellImmediate(id: String, factory: CellFactory<T>) = cellWithProvider(id, BasicCellProvider(factory))
+
+    fun getCellProvider(id: ResourceLocation): CellProvider<*> {
         return cellRegistry.get().getValue(id) ?: error("Could not get cell provider with id $id")
     }
+
+    val GRID_CONNECTION = cellWithProvider("grid_connection", BasicCellProvider {
+        GridConnectionCell(it)
+    })
 }

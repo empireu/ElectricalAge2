@@ -1,46 +1,264 @@
 {
-    "itemGroup.Electrical_Age": "Electrical Age",
+    "item_group.eln2.all": "Electrical Age",
 
-    "block.eln2.voltage_source": "Voltage Source",
-    "block.eln2.resistor": "Resistor",
-    "block.eln2.wire": "Wire",
-    "block.eln2.ground": "Ground",
-    "block.eln2.capacitor": "Capacitor",
-    "block.eln2.inductor": "Inductor",
-    "block.eln2.diode": "Diode",
-    "block.eln2.12v_battery": "12V Battery",
-    "block.eln2.light": "Light",
-    "block.eln2.solar_light": "Solar Light",
-    "block.eln2.solar_panel": "Solar Panel",
+    // Forge Fluids:
+    "fluid_type.eln2.steam": "Steam",
+    "fluid_type.eln2.bitumen": "Bitumen",
+    "fluid_type.eln2.coal_tar": "Coal Tar",
+    "fluid_type.eln2.coke_gas": "Coke Gas",
+    "fluid_type.eln2.crude_oil": "Crude Oil",
+    "fluid_type.eln2.creosote": "Creosote",
+    "fluid_type.eln2.creosote_gas": "Creosote Gas",
+    "fluid_type.eln2.diesel": "Diesel",
+    "fluid_type.eln2.diesel_gas": "Diesel Gas",
+    "fluid_type.eln2.naphtha_gas": "Naphtha Gas",
+    "fluid_type.eln2.naphtha": "Naphtha",
+    "fluid_type.eln2.heavy_oil": "Heavy Oil",
+    "fluid_type.eln2.heavy_coal_tar": "Heavy Coal Tar",
+    "fluid_type.eln2.fuel_gas": "Fuel Gas",
+    "fluid_type.eln2.pitch": "Pitch",
+    "fluid_type.eln2.liquid_methane": "Liquid Methane",
+    "fluid_type.eln2.methane": "Methane",
+    "fluid_type.eln2.liquid_propane": "Liquid Propane",
+    "fluid_type.eln2.propane": "Propane",
+    "fluid_type.eln2.liquid_butane": "Liquid Butane",
+    "fluid_type.eln2.butane": "Butane",
+    "fluid_type.eln2.liquid_hydrogen": "Liquid Hydrogen",
+    "fluid_type.eln2.hydrogen": "Hydrogen",
+    "fluid_type.eln2.liquid_nitrogen": "Liquid Nitrogen",
+    "fluid_type.eln2.nitrogen": "Nitrogen",
+    "fluid_type.eln2.liquid_acetylene": "Liquid Acetylene",
+    "fluid_type.eln2.acetylene": "Acetylene",
 
-    "item.eln2.voltmeter": "Voltmeter",
+    // Buckets:
+    "item.eln2.steam_bucket": "Steam",
+    "item.eln2.fuel_gas_bucket": "Fuel Gas Bucket",
+    "item.eln2.naphtha_gas_bucket": "Naphtha Gas Bucket",
+    "item.eln2.naphtha_bucket": "Naphtha Bucket",
+    "item.eln2.creosote_bucket": "Creosote Bucket",
+    "item.eln2.creosote_gas_bucket": "Creosote Gas Bucket",
+    "item.eln2.coke_gas_bucket": "Coke Gas Bucket",
+    "item.eln2.coal_tar_bucket": "Coal Tar Bucket",
+    "item.eln2.heavy_coal_tar_bucket": "Heavy Coal Tar Bucket",
+    "item.eln2.pitch_bucket": "Pitch Bucket",
+    "item.eln2.crude_oil_bucket": "Crude Oil Bucket",
+    "item.eln2.heavy_oil_bucket": "Heavy Oil Bucket",
+    "item.eln2.diesel_gas_bucket": "Diesel Gas Bucket",
+    "item.eln2.diesel_bucket": "Diesel Bucket",
+    "item.eln2.bitumen_bucket": "Bitumen Bucket",
+    "item.eln2.liquid_methane_bucket": "Liquid Methane Bucket",
+    "item.eln2.methane_bucket": "Methane Bucket",
+    "item.eln2.liquid_propane_bucket": "Liquid Propane Bucket",
+    "item.eln2.propane_bucket": "Propane Bucket",
+    "item.eln2.liquid_butane_bucket": "Liquid Butane Bucket",
+    "item.eln2.butane_bucket": "Butane Bucket",
+    "item.eln2.liquid_hydrogen_bucket": "Liquid Hydrogen Bucket",
+    "item.eln2.hydrogen_bucket": "Hydrogen Bucket",
+    "item.eln2.liquid_nitrogen_bucket": "Liquid Nitrogen Bucket",
+    "item.eln2.nitrogen_bucket": "Nitrogen Bucket",
+    "item.eln2.liquid_acetylene_bucket": "Liquid Acetylene Bucket",
+    "item.eln2.acetylene_bucket": "Acetylene Bucket",
 
-    "plotter.eln2.circuit_explorer": "Circuit Explorer",
-    "plotter.eln2.cell_count": "Cell Count",
-    "plotter.eln2.highlighted": "Highlighted",
-    "plotter.eln2.solve_time": "Solve Time",
-    "plotter.eln2.type": "Type",
+    // Fluid Blocks
+    "block.eln2.steam_block": "Steam",
+    "block.eln2.bitumen_block": "Bitumen",
+    "block.eln2.coal_tar_block": "Coal Tar",
+    "block.eln2.coke_gas_block": "Coke Gas",
+    "block.eln2.crude_oil_block": "Crude Oil",
+    "block.eln2.creosote_block": "Creosote",
+    "block.eln2.creosote_gas_block": "Creosote Gas",
+    "block.eln2.diesel_block": "Diesel",
+    "block.eln2.diesel_gas_block": "Diesel Gas",
+    "block.eln2.naphtha_gas_block": "Naphtha Gas",
+    "block.eln2.naphtha_block": "Naphtha",
+    "block.eln2.heavy_oil_block": "Heavy Oil",
+    "block.eln2.heavy_coal_tar_block": "Heavy Coal Tar",
+    "block.eln2.fuel_gas_block": "Fuel Gas",
+    "block.eln2.pitch_block": "Pitch",
+    "block.eln2.liquid_methane_block": "Liquid Methane",
+    "block.eln2.methane_block": "Methane",
+    "block.eln2.liquid_propane_block": "Liquid Propane",
+    "block.eln2.propane_block": "Propane",
+    "block.eln2.liquid_butane_block": "Liquid Butane",
+    "block.eln2.butane_block": "Butane",
+    "block.eln2.liquid_hydrogen_block": "Liquid Hydrogen",
+    "block.eln2.hydrogen_block": "Hydrogen",
+    "block.eln2.liquid_nitrogen_block": "Liquid Nitrogen",
+    "block.eln2.nitrogen_block": "Nitrogen",
+    "block.eln2.liquid_acetylene_block": "Liquid Acetylene",
+    "block.eln2.acetylene_block": "Acetylene",
 
-    "plotter.eln2.voltage": "Voltage",
-    "plotter.eln2.current": "Current",
-    "plotter.eln2.resistance": "Resistance",
-    "plotter.eln2.capacitance": "Capacitance",
-    "plotter.eln2.inductance": "Inductance",
-    "plotter.eln2.energy": "Energy",
-    "plotter.eln2.power": "Power",
-    "plotter.eln2.mode": "Mode",
+    // Actual blocks:
+    "block.eln2.heat_generator": "Heat Generator",
+    "block.eln2.furnace": "Electrical Furnace",
+    "block.eln2.lamp_pole": "Street Lamp Pole",
+    "block.eln2.basic_wind_turbine": "Basic Wind Turbine",
+    "block.eln2.primitive_burner": "Primitive Burner",
+    "block.eln2.blacksmithing_station": "Blacksmithing Station",
+    "block.eln2.coke_oven": "Coke Oven",
+    "block.eln2.distillation_column": "Distillation Column",
+    "block.eln2.insulated_distillation_module": "Insulated Distillation Module",
+    "block.eln2.condenser_distillation_module": "Condenser Distillation Module",
+    "block.eln2.electric_extruder": "Electric Extruder",
+    "block.eln2.kinetic_extruder": "Kinetic Extruder",
+    "block.eln2.kinetic_rolling_machine": "Kinetic Rolling Machine",
+    "block.eln2.vulcanizing_autoclave": "Autoclave",
+    "block.eln2.fluid_pipe": "Fluid Pipe",
 
-    "waila.eln2.voltage": "Voltage",
-    "waila.eln2.current": "Current",
-    "waila.eln2.resistance": "Resistance",
-    "waila.eln2.capacitance": "Capacitance",
-    "waila.eln2.inductance": "Inductance",
-    "waila.eln2.energy": "Energy",
-    "waila.eln2.power": "Power",
-    "waila.eln2.mode": "Mode",
+    // Wire Parts:
+    "item.eln2.standard_uninsulated_copper_thermal_wire": "Standard Uninsulated Copper Thermal Conduit",
+    "item.eln2.standard_insulated_copper_electrical_wire": "Standard Copper Electrical Cable",
+    "item.eln2.signal_wire": "Signal Cable",
 
-    "gui.eln2.save": "Save",
+    // Grid Cables:
+    "item.eln2.micro_grid_copper_cable": "Copper Micro-Grid Cable",
+    "item.eln2.micro_grid_iron_cable": "Iron Micro-Grid Cable",
+    "item.eln2.power_grid_copper_cable": "Copper Power Grid Cable",
+    "item.eln2.power_grid_iron_cable": "Iron Power Grid Cable",
+    "item.eln2.signal_grid_cable": "Signal Grid Cable",
 
-    "misc.eln2.acknowledge_analytics": "By default, Electrical Age 2 reports analytics to the mod author(s). If you wish to opt-out, please edit your config file. This message will not show again for 1 month.",
-    "misc.eln2.analytics_save_failure": "We were unable to save the analytics acknowledgement file. You will continue to be notified on each startup until the error is resolved. See your logs for more information"
+    // Grid Interfaces and Anchors:
+    "item.eln2.grid_tap": "Grid Tap",
+    "item.eln2.power_grid_interface": "Power Grid Interface",
+    "item.eln2.micro_grid_interface": "Micro-Grid Interface",
+    "item.eln2.signal_grid_interface": "Signal Grid Interface",
+    "item.eln2.micro_grid_anchor": "Micro-Grid Anchor",
+    "item.eln2.signal_grid_anchor": "Signal Grid Anchor",
+
+    // Tools:
+    "item.eln2.wrench": "Dragon Wrench",
+    "item.eln2.grid_cable_pliers": "Grid Cable Pliers",
+    "item.eln2.screwdriver": "Screwdriver",
+    "item.eln2.blacksmithing_hammer": "Blacksmithing Hammer",
+    "item.eln2.blacksmithing_file": "Blacksmithing File",
+    "item.eln2.blacksmithing_chisel_and_hammer": "Blacksmithing Chisel And Hammer",
+
+    // Valves:
+    "item.eln2.fluid_pipe_extraction_valve": "Fluid Pipe Extraction Valve",
+    "item.eln2.fluid_pipe_insertion_valve": "Fluid Pipe Insertion Valve",
+
+    // Lightbulbs:
+    "item.eln2.light_bulb_12v_100w": "12V 100W Light Bulb",
+    "item.eln2.light_bulb_800v_100w": "800V 100W Light Bulb",
+
+    // Batteries:
+    "item.eln2.lead_acid_battery_12v": "12V Lead-Acid Battery",
+    "item.eln2.micro_grid_lead_acid_battery_12v": "12V Lead-Acid Battery",
+
+    "item.eln2.voltage_source": "Voltage Source",
+    "item.eln2.ground": "Ground Pin",
+    "item.eln2.resistor": "Resistor",
+    "item.eln2.thermal_radiator": "Thermal Radiator",
+    "item.eln2.photovoltaic_panel": "Solar Panel",
+    "item.eln2.light_part": "Wall-Mounted Light",
+    "item.eln2.small_garden_light": "Small Garden Light",
+    "item.eln2.tall_garden_light": "Tall Garden Light",
+    "item.eln2.electrical_heat_engine": "Thermoelectric Generator",
+    "item.eln2.small_wall_lamp": "Small Lamp",
+    "item.eln2.small_wall_lamp_micro_grid": "Small Micro-Grid Lamp",
+    "item.eln2.ground_micro_grid": "Micro Grid Ground",
+    "item.eln2.micro_grid_dc_to_dc_converter_800w": "800W Micro-Grid Power Converter",
+    "item.eln2.potential_probe": "Potential Probe",
+    "item.eln2.basic_two_channel_oscilloscope": "Basic Oscilloscope",
+
+    // Materials:
+    "item.eln2.coke": "Coke",
+
+    "item.eln2.crushed_iron_ore": "Crushed Iron Ore",
+    "item.eln2.crushed_copper_ore": "Crushed Copper Ore",
+    "item.eln2.crushed_gold_ore": "Crushed Gold Ore",
+
+    "item.eln2.hot_iron_ingot": "Hot Iron Ingot",
+    "item.eln2.hot_copper_ingot": "Hot Copper Ingot",
+
+    "item.eln2.extruder_rod_die": "Extruder Rod Die",
+
+    "item.eln2.iron_plate": "Iron Plate",
+
+    "item.eln2.copper_rod": "Copper Rod",
+
+    "item.eln2.raw_latex": "Raw Latex",
+    "item.eln2.rubber_compound": "Rubber Compound",
+    "item.eln2.rubber": "Rubber",
+    "item.eln2.burnt_rubber": "Burnt Rubber",
+
+    // All implicit units:
+    "waila.eln2.Mass_implicit": "Mass",
+    "waila.eln2.Temperature_implicit": "Temperature",
+    "waila.eln2.Potential_implicit": "Potential",
+    "waila.eln2.Current_implicit": "Current",
+    "waila.eln2.Resistance_implicit": "Resistance",
+    "waila.eln2.Capacitance_implicit": "Capacitance",
+    "waila.eln2.Inductance_implicit": "Inductance",
+    "waila.eln2.Energy_implicit": "Energy",
+    "waila.eln2.Power_implicit": "Power",
+    "waila.eln2.AngularVelocity_implicit": "Angular Velocity",
+    "waila.eln2.Torque_implicit": "Torque",
+    "waila.eln2.TemperatureRate_implicit": "Heating Rate",
+
+    // All implicit setpoints:
+    "waila.eln2.Temperature_setpoint_implicit": "Setpoint Temperature",
+    "waila.eln2.Potential_setpoint_implicit": "Setpoint Potential",
+    "waila.eln2.Current_setpoint_implicit": "Setpoint Current",
+    "waila.eln2.Power_setpoint_implicit": "Setpoint Power",
+    "waila.eln2.AngularVelocity_setpoint_implicit": "Setpoint Angular Velocity",
+    "waila.eln2.Torque_setpoint_implicit": "Setpoint Torque",
+
+    // All implicit inputs:
+    "waila.eln2.Temperature_input_implicit": "Input Temperature",
+    "waila.eln2.Potential_input_implicit": "Input Potential",
+    "waila.eln2.Current_input_implicit": "Input Current",
+    "waila.eln2.Energy_input_implicit": "Input Energy",
+    "waila.eln2.Power_input_implicit": "Input Power",
+
+    // All implicit outputs:
+    "waila.eln2.Temperature_output_implicit": "Output Temperature",
+    "waila.eln2.Potential_output_implicit": "Output Potential",
+    "waila.eln2.Current_output_implicit": "Output Current",
+    "waila.eln2.Energy_output_implicit": "Output Energy",
+    "waila.eln2.Power_output_implicit": "Output Power",
+
+    // All thermal units:
+    "waila.eln2.Energy_thermal": "Thermal Energy",
+    "waila.eln2.Power_thermal": "Thermal Power",
+
+    // All thermal inputs:
+    "waila.eln2.Energy_input_thermal": "Input Thermal Energy",
+    "waila.eln2.Power_input_thermal": "Input Thermal Power",
+
+    // All thermal outputs:
+    "waila.eln2.Energy_output_thermal": "Output Thermal Energy",
+    "waila.eln2.Power_output_thermal": "Output Thermal Power",
+
+    // All electrical units:
+    "waila.eln2.Energy_electrical": "Electrical Energy",
+    "waila.eln2.Power_electrical": "Electrical Power",
+
+    // All electrical inputs:
+    "waila.eln2.Energy_input_electrical": "Input Electrical Energy",
+    "waila.eln2.Power_input_electrical": "Input Electrical Power",
+
+    // All electrical outputs:
+    "waila.eln2.Energy_output_electrical": "Output Electrical Energy",
+    "waila.eln2.Power_output_electrical": "Output Electrical Power",
+
+    "waila.eln2.cold_temperature": "Cold Temperature",
+    "waila.eln2.hot_temperature": "Hot Temperature",
+    "waila.eln2.eta": "Efficiency",
+
+    "waila.eln2.charge": "Charge",
+    "waila.eln2.integrity": "Integrity",
+    "waila.eln2.fuel_mass": "Fuel Amount",
+    "waila.eln2.fuel_remaining": "Remaining Fuel",
+    "waila.eln2.energy_remaining": "Remaining Energy",
+    "waila.eln2.progress": "Progress",
+    "waila.eln2.Irradiance": "Irradiance",
+
+    "config.jade.plugin_eln2.distillation_fluids": "ELN2",
+    "config.jade.plugin_eln2.component_display": "ELN2",
+    "config.jade.plugin_eln2.blacksmithing_help": "ELN2",
+
+    "key.eln2.category": "ELN2",
+    "key.eln2.cycle_spec_orientation": "Cycle Spec Orientation",
+    "blacksmithing.eln2.result": "Craft Result"
 }

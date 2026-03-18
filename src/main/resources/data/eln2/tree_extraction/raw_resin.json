@@ -1,0 +1,5 @@
+{
+    "logBlock": "minecraft:spruce_log",
+    "leavesBlock": "minecraft:spruce_leaves",
+    "resultItem": "eln2:raw_resin"
+}

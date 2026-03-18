@@ -1,0 +1,7 @@
+{
+    "forgeFluid": "eln2:steam",
+    "specificHeatCapacity": 2000.0,
+    "density": 1.0,
+    "isGaseous": true,
+    "mixabilityTags": ["water_miscible"]
+}

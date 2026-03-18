@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:smelting",
+  "category": "misc",
+  "cookingtime": 200,
+  "experience": 0.5,
+  "ingredient": {
+    "item": "eln2:raw_carbon_brush"
+  },
+  "result": "eln2:carbon_brush"
+}

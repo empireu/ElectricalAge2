@@ -1,0 +1,82 @@
+{
+    "crusher.rock": {
+        "sounds": [
+            {
+                "name": "eln2:crusher/crusher_rock",
+                "stream": false
+            }
+        ]
+    },
+    "extruder": {
+        "sounds": [
+            {
+                "name": "eln2:extruder/extruder",
+                "stream": false
+            }
+        ]
+    },
+    "shaft": {
+        "sounds": [
+            {
+                "name": "eln2:shaft/shaft",
+                "stream": false
+            }
+        ]
+    },
+    "motor.kinetic": {
+        "sounds": [
+            {
+                "name": "eln2:shaft/shaft",
+                "stream": false
+            }
+        ]
+    },
+    "motor.electromagnetic": {
+        "sounds": [
+            {
+                "name": "eln2:electromagnetic_hum",
+                "stream": false
+            }
+        ]
+    },
+    "steam.release0": {
+        "sounds": [
+            {
+                "name": "eln2:steam_release/steam_release0",
+                "stream": false
+            }
+        ]
+    },
+    "steam.release_long0": {
+        "sounds": [
+            {
+                "name": "eln2:steam_release/steam_release_long0",
+                "stream": false
+            }
+        ]
+    },
+    "steam.release_long1": {
+        "sounds": [
+            {
+                "name": "eln2:steam_release/steam_release_long1",
+                "stream": false
+            }
+        ]
+    },
+    "autoclave.hum": {
+        "sounds": [
+            {
+                "name": "eln2:autoclave/autoclave_hum",
+                "stream": false
+            }
+        ]
+    },
+    "blacksmithing/hammer_many_hits": {
+        "sounds": [
+            {
+                "name": "eln2:blacksmithing/hammer_many_hits",
+                "stream": false
+            }
+        ]
+    }
+}

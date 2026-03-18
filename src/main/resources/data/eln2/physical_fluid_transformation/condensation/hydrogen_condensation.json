@@ -1,0 +1,8 @@
+{
+    "fluid": "eln2:hydrogen",
+    "condensation": {
+        "temperature": 20.28,
+        "enthalpy": 32000.0,
+        "resultLiquid": "eln2:liquid_hydrogen"
+    }
+}

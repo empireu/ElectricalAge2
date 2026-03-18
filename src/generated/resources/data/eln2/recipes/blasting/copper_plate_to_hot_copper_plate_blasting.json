@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:blasting",
+  "category": "misc",
+  "cookingtime": 100,
+  "experience": 0.5,
+  "ingredient": {
+    "item": "eln2:copper_plate"
+  },
+  "result": "eln2:hot_copper_plate"
+}

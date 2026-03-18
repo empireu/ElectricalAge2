@@ -1,232 +1,326 @@
 package org.eln2.mc.common.content
 
-import com.jozufozu.flywheel.core.Materials
-import com.jozufozu.flywheel.core.PartialModel
-import com.jozufozu.flywheel.core.materials.FlatLit
-import com.jozufozu.flywheel.core.materials.model.ModelData
-import com.jozufozu.flywheel.util.Color
-import net.minecraft.resources.ResourceLocation
-import org.eln2.mc.ClientOnly
-import org.eln2.mc.ServerOnly
-import org.eln2.mc.Stopwatch
-import org.eln2.mc.client.render.PartialModels
-import org.eln2.mc.client.render.foundation.MultipartBlockEntityInstance
-import org.eln2.mc.client.render.foundation.applyBlockBenchTransform
-import org.eln2.mc.client.render.foundation.colorF
-import org.eln2.mc.client.render.foundation.colorLerp
+import dev.engine_room.flywheel.api.instance.Instance
+import dev.engine_room.flywheel.api.visual.DynamicVisual
+import dev.engine_room.flywheel.api.visual.SectionTrackedVisual
+import dev.engine_room.flywheel.api.visual.ShaderLightVisual
+import dev.engine_room.flywheel.api.visualization.VisualizationContext
+import dev.engine_room.flywheel.lib.instance.InstanceTypes
+import dev.engine_room.flywheel.lib.instance.TransformedInstance
+import dev.engine_room.flywheel.lib.model.Models
+import dev.engine_room.flywheel.lib.model.baked.PartialModel
+import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
+import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
+import it.unimi.dsi.fastutil.longs.LongSet
+import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
+import net.minecraft.core.SectionPos
+import net.minecraft.nbt.CompoundTag
+import net.minecraft.server.level.ServerLevel
+import net.minecraft.sounds.SoundEvents
+import net.minecraft.sounds.SoundSource
+import net.minecraft.world.InteractionHand
+import net.minecraft.world.InteractionResult
+import net.minecraft.world.entity.player.Player
+import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.phys.BlockHitResult
+import net.minecraftforge.client.extensions.common.IClientBlockExtensions
+import net.minecraftforge.registries.RegistryObject
+import org.ageseries.libage.data.CELSIUS
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.registerHandler
+import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.geometry.BoundingBox3d
+import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.sim.electrical.ElectricalSimulation
+import org.ageseries.libage.sim.electrical.Resistor
+import org.eln2.mc.*
+import org.eln2.mc.client.render.FlwMaterials
+import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.FlwInstanceTypes
+import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.client.render.foundation.PartialModelHelper
+import org.eln2.mc.client.render.foundation.TransformedLightOverrideInstance
+import org.eln2.mc.client.render.foundation.partTransformation
+import org.eln2.mc.common.*
+import org.eln2.mc.common.blocks.foundation.*
 import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.events.*
+import org.eln2.mc.common.content.modules.Eln2Lights
+import org.eln2.mc.common.events.EventListener
+import org.eln2.mc.common.events.EventQueue
+import org.eln2.mc.common.events.Scheduler
+import org.eln2.mc.common.grids.GridCableItem
+import org.eln2.mc.common.grids.GridNode
+import org.eln2.mc.common.network.serverToClient.BulkMessageHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.with
-import org.eln2.mc.common.parts.foundation.CellPart
-import org.eln2.mc.common.parts.foundation.PartPlacementInfo
-import org.eln2.mc.common.parts.foundation.PartRenderer
-import org.eln2.mc.data.TooltipField
-import org.eln2.mc.data.withDirectionActualRule
-import org.eln2.mc.mathematics.Base6Direction3d
-import org.eln2.mc.mathematics.DirectionMask
-import org.eln2.mc.mathematics.approxEq
-import org.eln2.mc.mathematics.bbVec
+import org.eln2.mc.common.parts.foundation.*
+import org.eln2.mc.PoleMap
+import org.eln2.mc.extensions.enqueueBulkMessage
+import org.eln2.mc.extensions.evaluateDiffuseIrradianceFactor
+import org.eln2.mc.extensions.plus
+import org.eln2.mc.extensions.vector3d
+import org.eln2.mc.integration.ComponentDisplay
+import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.mathematics.Base6Direction3dMask
 import java.nio.ByteBuffer
+import java.util.function.Consumer
+import kotlin.math.absoluteValue
+import kotlin.math.round
 
-data class LightModel(
-    val brightnessFunction: (Double) -> Double,
-    val resistance: Double,
-)
-
-data class LightChangeEvent(val brightness: Int) : Event
-
-fun interface RenderBrightnessConsumer {
-    fun consume(brightness: Double)
-}
-
-class LightCell(
-    ci: CellCreateInfo,
-    val model: LightModel,
-    // Probably doesn't make sense to use maps here:
-    dir1: Base6Direction3d = Base6Direction3d.Left,
-    dir2: Base6Direction3d = Base6Direction3d.Right,
-) :
-    Cell(ci) {
+abstract class LightCell(ci: CellCreateInfo, val lightVariantType: LightVariantType) : Cell(ci), LightView, LightBulbEmitterView {
     companion object {
-        private const val RENDER_SYNC_INTERVAL = 0.05
-        private const val RENDER_EPS = 10e-4
+        private const val RENDER_EPS = 1e-4
+        private const val RESISTANCE_EPS = 0.1
     }
 
-    init {
-        data.withField(TooltipField { b ->
-            b.text("Minecraft Brightness", trackedBr)
-            b.text("Model Brightness", rawBr)
-        })
-    }
+    // The last render brightness sent:
+    private var trackedRenderBrightness: Double = 0.0
 
-    private var trackedBr: Int = 0
+    // Accessor to send the render brightness:
+    private var renderBrightnessConsumer: LightTemperatureConsumer? = null
 
-    private var trackedRenderBr: Double = 0.0
-    private var renderBrSw = Stopwatch()
-
+    // An event queue hooked into the game object:
     private var serverThreadReceiver: EventQueue? = null
-    private var renderBrConsumer: RenderBrightnessConsumer? = null
+
+    /**
+     * Don't worry, it *is* implemented by an electrical object.
+     * We just used `by` to redirect the object's resistor to this field.
+     * */
+    abstract val resistor : Resistor
 
     @SimObject
-    val resistorObj = ResistorObject(this, dir1, dir2).also { it.resistance = model.resistance }
-
-    @SimObject
-    val thermalWireObj = ThermalWireObject(this)
+    val thermalWire = ThermalWireObject(self())
 
     @Behavior
-    val behavior = standardBehavior(this, { resistorObj.power }, { thermalWireObj.body })
+    val explosion = ThermalBreakdownBehavior.create(
+        Quantity(200.0, CELSIUS),
+        self(),
+        thermalWire.thermalBody::temperature
+    )
 
-    var rawBr: Double = 0.0
+    final override var volumeState: Int = 0
+
+    final override var modelTemperature = 0.0
         private set
 
-    fun bind(serverThreadAccess: EventQueue, renderBrightnessConsumer: RenderBrightnessConsumer) {
+    final override val power: Double get() = resistor.power
+    final override val current: Double get() = resistor.current
+    final override val potential: Double get() = resistor.potential
+
+    final override var life: Double = 0.0
+
+    final override var lightBulb: LightBulbItem? = null
+    var volume: LightVolume? = null
+
+    override fun afterConstruct() {
+        super.afterConstruct()
+        resistor.resistance = ElectricalSimulation.MAX_RESISTANCE
+    }
+
+    override fun resetValues() {
+        resistor.updateResistance(ElectricalSimulation.MAX_RESISTANCE)
+        modelTemperature = 0.0
+        trackedRenderBrightness = 0.0
+        volumeState = 0
+        life = 0.0
+        lightBulb = null
+        volume = null
+    }
+
+    fun bind(serverThreadAccess: EventQueue, renderBrightnessConsumer: LightTemperatureConsumer, pLoadExisting: Boolean) {
         this.serverThreadReceiver = serverThreadAccess
-        this.renderBrConsumer = renderBrightnessConsumer
+        this.renderBrightnessConsumer = renderBrightnessConsumer
+
+        if(pLoadExisting) {
+            // If we've been running, send the current state:
+            val life = this.life
+            val volume = this.volume
+
+            if(volume != null && life > 0.0) {
+                serverThreadAccess.place(VolumetricLightChangeEvent(volume, volumeState))
+                renderBrightnessConsumer.consume(modelTemperature)
+            }
+        }
     }
 
     fun unbind() {
         serverThreadReceiver = null
-        renderBrConsumer = null
+        renderBrightnessConsumer = null
     }
 
-    override fun subscribe(subs: SubscriberCollection) {
-        subs.addPre10(this::simulationTick)
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
+        subscribers.addPre(this::simulationTick) // maybe reduce interval
     }
 
-    private fun simulationTick(elapsed: Double, phase: SubscriberPhase) {
-        rawBr = model.brightnessFunction(resistorObj.power)
+    @OnSimulationThread
+    private fun simulationTick(dt: Double, phase: SimulationPhase) {
+        val lightModel = this.lightBulb?.model
 
-        if (!renderBrSw.total >= RENDER_SYNC_INTERVAL) {
-            renderBrSw.resetTotal()
-
-            if (!rawBr.approxEq(trackedRenderBr, RENDER_EPS)) {
-                trackedRenderBr = rawBr
-                renderBrConsumer?.consume(rawBr)
-            }
-        }
-
-        val actualBrightness = (rawBr * 15.0).toInt().coerceIn(0, 15)
-
-        val receiver = this.serverThreadReceiver
-
-        if (trackedBr == actualBrightness || receiver == null) {
+        if(lightModel == null || life approxEq 0.0) {
             return
         }
 
-        trackedBr = actualBrightness
+        // Fetch volume if not fetched:
+        volume = volume ?: lightModel
+            .getVolumeProvider(lightVariantType)
+            .getVolume(locator)
 
-        receiver.enqueue(LightChangeEvent(actualBrightness))
-    }
+        val volume = volume!!
 
-    init {
-        ruleSet.withDirectionActualRule(DirectionMask.ofRelatives(dir1, dir2))
-    }
-}
+        val gameEventReceiver = this.serverThreadReceiver
 
-class LightRenderer(private val part: LightPart, private val cage: PartialModel, private val emitter: PartialModel) :
-    PartRenderer {
-    companion object {
-        val COLD_TINT = colorF(1f, 1f, 1f, 1f)
-        val WARM_TINT = Color(254, 196, 127, 255)
-    }
+        // Tick down consumption:
+        val damage = lightModel.damageFunction.computeDamage(this, dt).absoluteValue
 
-    override fun isSetupWith(multipartBlockEntityInstance: MultipartBlockEntityInstance): Boolean {
-        return this::multipart.isInitialized && this.multipart == multipartBlockEntityInstance
-    }
-
-    private val brightnessUpdate = AtomicUpdate<Double>()
-
-    fun updateBrightness(newValue: Double) {
-        brightnessUpdate.setLatest(newValue)
-    }
-
-    var yRotation = 0f
-    var downOffset = 0.0
-
-    private var cageInstance: ModelData? = null
-    private var emitterInstance: ModelData? = null
-
-    private lateinit var multipart: MultipartBlockEntityInstance
-
-    override fun setupRendering(multipart: MultipartBlockEntityInstance) {
-        this.multipart = multipart
-
-        buildInstance()
-    }
-
-    private fun create(model: PartialModel): ModelData {
-        return multipart.materialManager
-            .defaultSolid()
-            .material(Materials.TRANSFORMED)
-            .getModel(model)
-            .createInstance()
-            .loadIdentity()
-            .applyBlockBenchTransform(part, downOffset, yRotation)
-    }
-
-    private fun buildInstance() {
-        if (!this::multipart.isInitialized) {
-            error("Multipart not initialized!")
+        if(damage > 0.0) {
+            life = (life - damage).coerceIn(0.0, 1.0)
+            setChanged()
         }
 
-        cageInstance?.delete()
-        emitterInstance?.delete()
+        if(life approxEq 0.0) {
+            life = 0.0
+            // Light has burned out:
+            gameEventReceiver?.enqueue(LightBurnedOutEvent)
+            resetValues()
+            setChanged()
+            return
+        }
 
-        cageInstance = create(cage)
-        emitterInstance = create(emitter)
+        // Evaluate temperature:
+        modelTemperature = lightModel.temperatureFunction.computeTemperature(this).coerceIn(0.0, 1.0)
 
-        multipart.relightPart(part)
+        // Update power consumption:
+        resistor.updateResistance(!lightModel.resistanceFunction.computeResistance(this), RESISTANCE_EPS)
+
+        // Send new value to client:
+        if (!modelTemperature.approxEq(trackedRenderBrightness, RENDER_EPS)) {
+            trackedRenderBrightness = modelTemperature
+            renderBrightnessConsumer?.consume(modelTemperature)
+        }
+
+        // Find target state based on temperature:s
+        val targetState = round(modelTemperature * volume.stateIncrements).toInt().coerceIn(0, volume.stateIncrements)
+
+        // Detect changes:
+        if (volumeState != targetState) {
+            volumeState = targetState
+            // Using this new "place" API, the game object will receive one event (with the latest values),
+            // even if we do multiple updates in our simulation thread:
+            gameEventReceiver?.place(VolumetricLightChangeEvent(volume, targetState))
+        }
     }
 
-    override fun relightModels(): List<FlatLit<*>> {
-        val list = ArrayList<ModelData>(2)
+    override fun saveCellData() = lightBulb?.toNbtWithState(life)
 
-        cageInstance?.also { list.add(it) }
-        emitterInstance?.also { list.add(it) }
-
-        return list
-    }
-
-    override fun remove() {
-        cageInstance?.delete()
-        emitterInstance?.delete()
-    }
-
-    override fun beginFrame() {
-        val model = emitterInstance
-            ?: return
-
-        brightnessUpdate.consume {
-            val brightness = it.coerceIn(0.0, 1.0).toFloat()
-
-            model.setColor(colorLerp(COLD_TINT, WARM_TINT, brightness))
+    override fun loadCellData(tag: CompoundTag) {
+        LightBulbItem.fromNbtWithState(tag)?.also { (bulb, life) ->
+            this.lightBulb = bulb
+            this.life = life
         }
     }
 }
 
-class LightPart(id: ResourceLocation, placementContext: PartPlacementInfo, cellProvider: CellProvider) :
-    CellPart<LightRenderer>(id, placementContext, cellProvider), EventListener {
-    override val sizeActual = bbVec(8.0, 1.0 + 2.302, 5.0)
+class PolarLightCell(
+    ci: CellCreateInfo,
+    override val electricalMap: PoleMap,
+    variantType: LightVariantType,
+    override val electricalSize: ElectricalSize?
+) : LightCell(ci, variantType), SidedElectricalMapped<PolarLightCell> {
+    @SimObject
+    val resistorObj = PolarResistorObject(self(), electricalMap)
 
-    override fun createRenderer() = LightRenderer(
-        this,
-        PartialModels.SMALL_WALL_LAMP_CAGE,
-        PartialModels.SMALL_WALL_LAMP_EMITTER
-    )
-        .also { it.downOffset = sizeActual.y / 2.0 }
+    override val resistor: Resistor
+        get() = resistorObj.component
+}
 
-    @ServerOnly
-    override fun onCellAcquired() {
-        Scheduler.register(this).registerHandler(this::onLightUpdate)
+class TerminalLightCell(ci: CellCreateInfo, variantType: LightVariantType, plus: Int = PLUS, minus: Int = MINUS) : LightCell(ci, variantType) {
+    override val isExclusivelyGridConnected: Boolean
+        get() = true
+    
+    @Node
+    val grid = GridNode(self())
 
-        lightCell.bind(
-            serverThreadAccess = Scheduler.getEventAccess(this),
-            renderBrightnessConsumer = ::sendRenderBrBulk
+    @SimObject
+    val resistorObj = TerminalResistorObject(self(), plus, minus)
+
+    override val resistor: Resistor
+        get() = resistorObj.component
+}
+
+abstract class PoweredLightPart<T : LightCell>(
+    ci: PartCreateInfo,
+    cellProvider: CellProvider<T>,
+) : GridCellPart<LightCell>(ci, cellProvider), EventListener, WrenchRotatable, ComponentDisplay, LightFixtureGameObject {
+    @ClientOnly
+    override var visualBrightness = 0.0
+        protected set
+
+    val instance = serverOnlyHolder {
+        LightVolumeInstance(
+            placement.level as ServerLevel,
+            placement.position
         )
     }
 
+    override fun onUsedBy(context: PartUseInfo): InteractionResult {
+        if (placement.level.isClientSide || context.hand != InteractionHand.MAIN_HAND) {
+            return InteractionResult.PASS
+        }
+
+        val instance = instance()
+        val stack = context.player.mainHandItem
+
+        var result = LightLoadResult.Fail
+
+        cell.graph.runSuspended {
+            result = LightVolumeInstance.loadLightFromBulb(instance, cell, stack)
+        }
+
+        return when (result) {
+            LightLoadResult.RemoveExisting -> {
+                sendClientBrightness(0.0)
+                InteractionResult.SUCCESS
+            }
+
+            LightLoadResult.AddNew -> {
+                InteractionResult.CONSUME
+            }
+
+            LightLoadResult.Fail -> {
+                InteractionResult.FAIL
+            }
+        }
+    }
+
     @ServerOnly
-    private fun sendRenderBrBulk(value: Double) {
+    @OnServerThread
+    override fun onCellAcquired() {
+        super.onCellAcquired()
+        val events = Scheduler.register(this)
+
+        events.registerHandler(this::onVolumeUpdated)
+        events.registerHandler(this::onLightBurnedOut)
+
+        cell.bind(
+            serverThreadAccess = Scheduler.getEventAccess(this),
+            renderBrightnessConsumer = ::sendClientBrightness,
+            true
+        )
+    }
+
+    private fun onVolumeUpdated(event: VolumetricLightChangeEvent) {
+        // Item is only mutated on onUsedBy (server thread), when the bulb is added/removed, so it is safe to access here
+        // if it is null, it means we got this update possibly after the bulb was removed by a player, so we will ignore it
+        if (!hasCell || cell.lightBulb == null) {
+            return
+        }
+
+        instance().checkoutState(event.volume, event.targetState)
+    }
+
+    @ServerOnly
+    private fun sendClientBrightness(value: Double) {
         val buffer = ByteBuffer.allocate(8) with value
         enqueueBulkMessage(buffer.array())
     }
@@ -234,19 +328,549 @@ class LightPart(id: ResourceLocation, placementContext: PartPlacementInfo, cellP
     @ClientOnly
     override fun handleBulkMessage(msg: ByteArray) {
         val buffer = ByteBuffer.wrap(msg)
-        lightRenderer.updateBrightness(buffer.double)
+        visualBrightness = buffer.getDouble()
     }
 
     @ServerOnly
-    private fun onLightUpdate(event: LightChangeEvent) {
-        updateBrightness(event.brightness)
+    @OnServerThread
+    private fun onLightBurnedOut(event: LightBurnedOutEvent) {
+        sendClientBrightness(0.0)
+        instance().destroyCells()
+        placement.level.playLocalSound(
+            placement.position.x.toDouble(),
+            placement.position.y.toDouble(),
+            placement.position.z.toDouble(),
+            SoundEvents.FIRE_EXTINGUISH,
+            SoundSource.BLOCKS,
+            1.0f,
+            randomFloat(0.9f, 1.1f),
+            false
+        )
+    }
+
+    @ServerOnly
+    @OnServerThread
+    override fun onSyncSuggested() {
+        super.onSyncSuggested()
+        sendClientBrightness(cell.modelTemperature)
     }
 
     override fun onCellReleased() {
-        lightCell.unbind()
+        super.onCellReleased()
+        cell.unbind()
         Scheduler.remove(this)
+        instance().destroyCells()
     }
 
-    private val lightCell get() = cell as LightCell
-    private val lightRenderer get() = renderer
+    override fun onRemoved() {
+        super.onRemoved()
+
+        if (!placement.level.isClientSide) {
+            instance().destroyCells()
+        }
+    }
+
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        builder.quantity(cell.thermalWire.thermalBody.temperature)
+        builder.quantity(cell.resistor.readouts.current)
+        builder.quantity(cell.resistor.readouts.power)
+        builder.integrity(cell.life)
+    }
+}
+
+class PolarPoweredLightPart(
+    ci: PartCreateInfo,
+    cellProvider: CellProvider<PolarLightCell>
+) : PoweredLightPart<PolarLightCell>(ci, cellProvider)
+
+class TerminalPoweredLightPart(
+    ci: PartCreateInfo,
+    cellProvider: CellProvider<TerminalLightCell>,
+    neg: BoundingBox3d,
+    pos: BoundingBox3d,
+    negAttachment: Vector3d? = null,
+    posAttachment: Vector3d? = null,
+) : PoweredLightPart<TerminalLightCell>(ci, cellProvider) {
+    val negative = defineCellBoxTerminal(
+        neg.center.x, neg.center.y, neg.center.z,
+        neg.size.x, neg.size.y, neg.size.z,
+        attachment = negAttachment
+    )
+
+    val positive = defineCellBoxTerminal(
+        pos.center.x, pos.center.y, pos.center.z,
+        pos.size.x, pos.size.y, pos.size.z,
+        attachment = posAttachment
+    )
+
+    override fun onUsedBy(context: PartUseInfo): InteractionResult {
+        if(context.player.getItemInHand(context.hand).item is GridCableItem) {
+            return InteractionResult.FAIL
+        }
+
+        return super.onUsedBy(context)
+    }
+}
+
+data class SolarLightModel(
+    val rechargeRate: Double,
+    val dischargeRate: Double,
+    val volumeProvider: LocatorLightVolumeProvider,
+)
+
+class SolarLightPart(
+    ci: PartCreateInfo,
+    val model: SolarLightModel,
+    normalSupplier: ((SolarLightPart) -> Vector3d)? = null,
+) : Part(ci), TickablePart, ComponentDisplay, LightFixtureGameObject {
+    val volume = model.volumeProvider.getVolume(placement.createLocator(Base6Direction3dMask.EMPTY))
+    val normal = if(normalSupplier == null) placement.face.vector3d else normalSupplier(this)
+
+    private val lightVolume = serverOnlyHolder {
+        LightVolumeInstance(
+            placement.level as ServerLevel,
+            placement.position
+        )
+    }
+
+    var energy = 0.5
+    private var savedEnergy = 0.0
+    private var isOn = true
+    private var trackedState = false
+
+    @ClientOnly
+    override var visualBrightness: Double = 0.0
+
+    override fun onUsedBy(context: PartUseInfo): InteractionResult {
+        if(placement.level.isClientSide) {
+            return InteractionResult.PASS
+        }
+
+        if(context.hand == InteractionHand.MAIN_HAND) {
+            isOn = !isOn
+            setSaveDirty()
+            return InteractionResult.SUCCESS
+        }
+
+        return InteractionResult.FAIL
+    }
+
+    override fun onAdded() {
+        if(!placement.level.isClientSide) {
+            placement.multipart.addTicker(this)
+        }
+    }
+
+    override fun serverTick() {
+        val state: Boolean
+
+        // Is day -> sky darken
+        if(placement.level.isDay && placement.level.canSeeSky(placement.position)) {
+            energy += model.rechargeRate * placement.level.evaluateDiffuseIrradianceFactor(normal)
+            state = false
+        }
+        else {
+            if(isOn) {
+                state = energy > model.dischargeRate
+
+                if(state) {
+                    energy -= model.dischargeRate
+                }
+                else {
+                    isOn = false
+                    setSaveDirty()
+                }
+            }
+            else {
+                state = false
+            }
+        }
+
+        val stateIncrement = if(state) {
+            volume.stateIncrements
+        }
+        else {
+            0
+        }
+
+        lightVolume().checkoutState(volume, stateIncrement)
+
+        if(state != trackedState) {
+            trackedState = state
+            setSyncDirty()
+        }
+
+        energy = energy.coerceIn(0.0, 1.0)
+
+        if(!savedEnergy.approxEq(energy)) {
+            savedEnergy = energy
+            setSaveDirty()
+        }
+    }
+
+    override fun getServerSaveTag() = CompoundTag().also {
+        it.putDouble(ENERGY, energy)
+        it.putBoolean(IS_ON, isOn)
+    }
+
+    override fun loadServerSaveTag(tag: CompoundTag) {
+        energy = tag.getDouble(ENERGY)
+        isOn = tag.getBoolean(IS_ON)
+    }
+
+    override fun getSyncTag() = CompoundTag().also {
+        it.putBoolean(STATE, trackedState)
+    }
+
+    override fun handleSyncTag(tag: CompoundTag) {
+        visualBrightness = if(tag.getBoolean(STATE)) {
+            1.0
+        }
+        else {
+            0.0
+        }
+    }
+
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        builder.charge(energy)
+        builder.translatePercent("Irradiance", placement.level.evaluateDiffuseIrradianceFactor(normal))
+    }
+
+    override fun onRemoved() {
+        super.onRemoved()
+        destroyLights()
+    }
+
+    override fun onUnloaded() {
+        super.onUnloaded()
+        destroyLights()
+    }
+
+    private fun destroyLights() {
+        if(!placement.level.isClientSide) {
+            lightVolume().destroyCells()
+        }
+    }
+
+    companion object {
+        private const val ENERGY = "energy"
+        private const val IS_ON = "isOn"
+        private const val STATE = "state"
+    }
+}
+
+/**
+ * Implemented by game objects that are rendered with a [LightFixturePartVisual].
+ * The [visualBrightness] is polled by the renderer, so safety must be guaranteed.
+ * */
+interface LightFixtureGameObject {
+    /**
+     * The intensity of the light, used to blend between the two tint colors.
+     * Range is from 0 to 1, but it is clamped by the renderer.
+     * */
+    @ClientOnly
+    val visualBrightness : Double
+}
+
+class LightFixturePartVisual<P>(
+    ctx: MultipartVisualizationContext,
+    part: P,
+    cageModel: PartialModel,
+    emitterModel: PartialModel,
+    val rotation: Double = 0.0,
+    val coldTint: MyColor = MyColor(255, 255, 255, 255),
+    val warmTint: MyColor = MyColor(255, 255, 196, 127),
+) : AbstractPartVisual<P>(ctx, part), SimpleDynamicVisual where P : Part, P : LightFixtureGameObject {
+    private val cageInstance = create(cageModel)
+    private val emitterInstance = create(emitterModel)
+    private var brightness = 0.0
+
+    private fun create(model: PartialModel): TransformedInstance {
+        return visualizationContext
+            .instancerProvider()
+            .instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
+            .createInstance()
+            .partTransformation(visualizationContext.parent, part, yRotation = rotation)
+    }
+
+    override fun updateLight(partialTick: Float) {
+        visualizationContext.parent.relightInstances(cageInstance, emitterInstance)
+    }
+
+    private fun applyLightTint() {
+        val t = brightness.toFloat()
+
+        emitterInstance
+            .color(
+                MyColor.lerpR(coldTint, warmTint, t),
+                MyColor.lerpG(coldTint, warmTint, t),
+                MyColor.lerpB(coldTint, warmTint, t),
+                MyColor.lerpA(coldTint, warmTint, t)
+            )
+            .handle()
+            .setChanged()
+    }
+
+    override fun beginFrame(ctx: DynamicVisual.Context) {
+        val desiredBrightness = part.visualBrightness.coerceIn(0.0, 1.0)
+
+        if(desiredBrightness != brightness) {
+            brightness = desiredBrightness
+            applyLightTint()
+        }
+    }
+
+    override fun _delete() {
+        cageInstance.delete()
+        emitterInstance.delete()
+    }
+}
+
+class LampPoleBlock(private val cellProvider: RegistryObject<CellProvider<PolarLightCell>>, val lightOffset: BlockPos) : UprightHorizontalDirectionCellBlock<PolarLightCell>() {
+    override fun initializeClient(consumer: Consumer<IClientBlockExtensions?>) {
+        consumer.accept(ReplaceVanillaParticlesBlockExtension)
+    }
+
+    @Deprecated("Deprecated in Java", ReplaceWith("true"))
+    override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction): Boolean {
+        return true
+    }
+
+    override fun getCellProvider() = cellProvider.get()
+    override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = LampPoleBlockEntity(pPos, pState)
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun use(
+        pState: BlockState,
+        pLevel: Level,
+        pPos: BlockPos,
+        pPlayer: Player,
+        pHand: InteractionHand,
+        pHit: BlockHitResult,
+    ): InteractionResult {
+        val blockEntity = pLevel.getBlockEntity(pPos) as? LampPoleBlockEntity
+        return blockEntity?.onUsedBy(pPlayer, pHand) ?: InteractionResult.FAIL
+    }
+}
+
+class LampPoleBlockEntityVisual(
+    ctx: VisualizationContext,
+    blockEntity: LampPoleBlockEntity,
+    partialTick: Float,
+) : AbstractBlockEntityVisual<LampPoleBlockEntity>(ctx, blockEntity, partialTick), ShaderLightVisual, SimpleDynamicVisual {
+    companion object {
+        private val coldTint = MyColor(0, 255, 255, 255)
+        private val warmTint = MyColor(255, 255, 196, 127)
+    }
+
+    val body: TransformedInstance = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.LAMP_POLE_BODY, FlwMaterials.OIT_NON_MIP_SMOOTH_LIT))
+        .createInstance()
+        .also {
+            it.translate(visualPosition)
+            it.center()
+            it.rotateToFace(blockEntity.representativeFacing.opposite)
+            it.uncenter()
+        }
+
+    val emitter: TransformedLightOverrideInstance = visualizationContext.instancerProvider()
+        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, PartialModelHelper.applyMaterial(FlwModels.LAMP_POLE_EMITTER, FlwMaterials.SMOOTH_LIT))
+        .createInstance()
+        .also {
+            it.translate(
+                visualPosition.x.toDouble(),
+                visualPosition.y.toDouble() + 5.0,
+                visualPosition.z.toDouble()
+            )
+            it.center()
+            it.rotateToFace(blockEntity.representativeFacing.opposite)
+            it.uncenter()
+        }
+
+    private var lastRenderBrightness = 0.0
+
+    override fun setSectionCollector(sectionCollector: SectionTrackedVisual.SectionCollector) {
+        this.lightSections = sectionCollector
+
+        val s0 = SectionPos.asLong(pos)
+        val s1 = SectionPos.asLong(pos.above(5))
+
+        if(s0 == s1) {
+            lightSections.sections(LongSet.of(s0))
+        }
+        else {
+            lightSections.sections(LongSet.of(s0, s1))
+        }
+    }
+
+    override fun beginFrame(p0: DynamicVisual.Context?) {
+        val targetRenderBrightness = blockEntity.visualBrightness
+
+        if(lastRenderBrightness != targetRenderBrightness) {
+            lastRenderBrightness = targetRenderBrightness
+            val tint = MyColor.lerp(coldTint, warmTint, targetRenderBrightness.toFloat())
+
+            emitter.color(tint.r, tint.g, tint.b)
+            emitter.lightOverride = tint.a / 255.0f
+            emitter.setChanged()
+        }
+    }
+
+    override fun collectCrumblingInstances(consumer: Consumer<Instance?>) {
+        consumer.accept(body)
+        consumer.accept(emitter)
+    }
+
+    override fun updateLight(partialTick: Float) {
+        // No-op since it looks like the smooth lights handle themselves
+        //FlatLit.relight(LevelRenderer.getLightColor(level, pos.above(2)), body)
+    }
+
+    override fun _delete() {
+        body.delete()
+        emitter.delete()
+    }
+}
+
+class LampPoleBlockEntity(pos: BlockPos, state: BlockState) :
+    CellBlockEntity<PolarLightCell>(pos, state, Eln2Lights.LAMP_POLE_BLOCK_ENTITY.get()),
+    BigBlockRepresentativeBlockEntity<LampPoleBlockEntity>,
+    EventListener,
+    ComponentDisplay,
+    LightFixtureGameObject,
+    BulkMessageHandlerBlockEntity
+{
+    val instance = serverOnlyHolder {
+        LightVolumeInstance(
+            level as ServerLevel,
+            blockPos + (blockState.block as LampPoleBlock).lightOffset
+        )
+    }
+
+    override var visualBrightness = 0.0
+        private set
+
+    override fun handleBulkMessage(payload: ByteArray) {
+        visualBrightness = ByteBuffer.wrap(payload).getDouble()
+    }
+
+    override val delegateMap: MultiblockDelegateMap
+        get() = Eln2Lights.LAMP_POLE_BLOCK_DELEGATE_MAP.value
+
+    override fun setDestroyed() {
+        destroyDelegates()
+
+        val level = this.level
+        if (level != null && !level.isClientSide) {
+            instance().destroyCells()
+        }
+
+        super.setDestroyed()
+    }
+
+    fun onUsedBy(player: Player, hand: InteractionHand): InteractionResult {
+        val level = this.level ?: return InteractionResult.FAIL
+
+        if (level.isClientSide || hand != InteractionHand.MAIN_HAND) {
+            return InteractionResult.PASS
+        }
+
+        val instance = instance()
+        val stack = player.mainHandItem
+
+        var result = LightLoadResult.Fail
+
+        cell.graph.runSuspended {
+            result = LightVolumeInstance.loadLightFromBulb(instance, cell, stack)
+        }
+
+        return when (result) {
+            LightLoadResult.RemoveExisting -> {
+                sendClientBrightness(0.0)
+                InteractionResult.SUCCESS
+            }
+
+            LightLoadResult.AddNew -> {
+                InteractionResult.CONSUME
+            }
+
+            LightLoadResult.Fail -> {
+                InteractionResult.FAIL
+            }
+        }
+    }
+
+    @ServerOnly
+    @OnServerThread
+    override fun onCellAcquired() {
+        super.onCellAcquired()
+        val events = Scheduler.register(this)
+
+        events.registerHandler(this::onVolumeUpdated)
+        events.registerHandler(this::onLightBurnedOut)
+
+        cell.bind(
+            serverThreadAccess = Scheduler.getEventAccess(this),
+            renderBrightnessConsumer = ::sendClientBrightness,
+            true
+        )
+    }
+
+    private fun onVolumeUpdated(event: VolumetricLightChangeEvent) {
+        // Item is only mutated on onUsedBy (server thread), when the bulb is added/removed, so it is safe to access here
+        // if it is null, it means we got this update possibly after the bulb was removed by a player, so we will ignore it
+        if (!hasCell || cell.lightBulb == null) {
+            return
+        }
+
+        instance().checkoutState(event.volume, event.targetState)
+    }
+
+    @ServerOnly
+    private fun sendClientBrightness(value: Double) {
+        val buffer = ByteBuffer.allocate(8) with value
+        enqueueBulkMessage(buffer.array())
+    }
+
+    override fun getUpdateTag(): CompoundTag {
+        if(hasCell) {
+            sendClientBrightness(cell.modelTemperature)
+        }
+
+        return super.getUpdateTag()
+    }
+
+    @ServerOnly
+    @OnServerThread
+    private fun onLightBurnedOut(event: LightBurnedOutEvent) {
+        sendClientBrightness(0.0)
+        instance().destroyCells()
+        level?.playLocalSound(
+            blockPos.x.toDouble(),
+            blockPos.y.toDouble(),
+            blockPos.z.toDouble(),
+            SoundEvents.FIRE_EXTINGUISH,
+            SoundSource.BLOCKS,
+            1.0f,
+            randomFloat(0.9f, 1.1f),
+            false
+        )
+    }
+
+    override fun onChunkUnloaded() {
+        super.onChunkUnloaded()
+
+        if(hasCell) {
+            cell.unbind()
+            Scheduler.remove(this)
+            instance().destroyCells()
+        }
+    }
+
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        builder.quantity(cell.thermalWire.thermalBody.temperature)
+        builder.quantity(cell.resistor.readouts.current)
+        builder.quantity(cell.resistor.readouts.power)
+        builder.integrity(cell.life)
+    }
 }

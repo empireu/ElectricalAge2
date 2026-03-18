@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "B": {
+      "item": "minecraft:bricks"
+    },
+    "F": {
+      "item": "minecraft:furnace"
+    },
+    "P": {
+      "item": "eln2:iron_plate"
+    }
+  },
+  "pattern": [
+    "PBP",
+    "B B",
+    "BFB"
+  ],
+  "result": {
+    "item": "eln2:coke_oven"
+  },
+  "show_notification": true
+}

@@ -1,0 +1,203 @@
+package org.eln2.mc.common.fluids.foundation
+
+import net.minecraft.nbt.CompoundTag
+import net.minecraft.resources.ResourceLocation
+import net.minecraft.world.level.material.Fluid
+import net.minecraft.world.level.material.Fluids
+import net.minecraftforge.fluids.FluidStack
+import net.minecraftforge.fluids.capability.IFluidHandler
+import net.minecraftforge.registries.ForgeRegistries
+import org.ageseries.libage.data.OptionalDouble
+import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.rounded
+import org.eln2.mc.common.fluids.foundation.FractionalFluidStack.Companion.EPSILON
+import kotlin.math.ceil
+import kotlin.math.floor
+
+/**
+ * Fluid stack with a [Double] representation of the amount. Useful for simulations such as boiling, where `1mB` (by convention, `1L`) is too much to handle discretely.
+ * For example, the boiling transformation for `1L` of oil would need `250kJ` of energy, which is too large for the smallest possible unit of fluid.
+ *
+ * This is only used for internal algorithms. Actual [FluidStack]s are handed out to pipes, which is done using the [quantized] API.
+ * */
+class FractionalFluidStack(val fluid: Fluid, var amount: Double) {
+    val isEmpty: Boolean get() = fluid == Fluids.EMPTY || amount < EPSILON
+    val isNotEmpty: Boolean get() = !isEmpty
+
+    /**
+     * Makes a copy of the instance.
+     * */
+    fun copy(): FractionalFluidStack = FractionalFluidStack(fluid, amount)
+
+    /**
+     * Copies the [fluid] into a stack with the specified [amount].
+     * */
+    fun copyWithAmount(amount: Double): FractionalFluidStack = FractionalFluidStack(fluid, amount)
+
+    /**
+     * Rounds the [amount] to an integer, taking into account numerical errors using [EPSILON].
+     * */
+    val roundedAmount : Int get() {
+        val upper = ceil(amount)
+
+        if(upper.approxEq(amount, EPSILON)) {
+            return upper.toInt()
+        }
+
+        return floor(amount).toInt()
+    }
+
+    /**
+     * Converts the fractional fluid stack into a Minecraft fluid stack using [roundedAmount].
+     *
+     * If the [roundedAmount] is zero, [FluidStack.EMPTY] will be returned.
+     * */
+    fun quantized(): FluidStack {
+        val rounded = roundedAmount
+
+        if(rounded == 0) {
+            return FluidStack.EMPTY
+        }
+
+        return FluidStack(fluid, rounded)
+    }
+
+    fun unit(): FluidStack {
+        return FluidStack(fluid, 1)
+    }
+
+    fun writeToNbt(tag: CompoundTag) {
+        tag.putString("Eln2FluidName", ForgeRegistries.FLUIDS.getKey(fluid).toString());
+        tag.putDouble("Eln2Amount", amount)
+    }
+
+    fun toNbt() : CompoundTag {
+        val result = CompoundTag()
+        writeToNbt(result)
+        return result
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as FractionalFluidStack
+
+        if (!amount.approxEq(other.amount, EPSILON)) return false
+        if (fluid != other.fluid) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        return fluid.hashCode()
+    }
+
+    override fun toString() = "FractionalFluidStack[$fluid, ${amount.rounded(4)}]"
+
+    companion object {
+        const val EPSILON = 1e-6
+
+        val EMPTY = FractionalFluidStack(Fluids.EMPTY, 0.0)
+
+        fun fromNbt(tag: CompoundTag) : FractionalFluidStack {
+            if(!tag.contains("Eln2FluidName")) {
+                return EMPTY
+            }
+
+            val fluidName = ResourceLocation.parse(tag.getString("Eln2FluidName"));
+            val fluid = ForgeRegistries.FLUIDS.getValue(fluidName)
+                ?: return EMPTY;
+
+            val amount = tag.getDouble("Eln2Amount")
+
+            return FractionalFluidStack(fluid, amount)
+        }
+    }
+}
+
+fun FluidStack.fractional() : FractionalFluidStack {
+    val fluid = this.fluid
+
+    if(fluid == Fluids.EMPTY) {
+        return FractionalFluidStack.EMPTY
+    }
+
+    val amount = this.amount
+
+    if(amount <= 0) {
+        return FractionalFluidStack.EMPTY
+    }
+
+    return FractionalFluidStack(fluid, amount.toDouble())
+}
+
+/**
+ * Extension of [IFluidHandler] that also works with fractional fluids.
+ * The normal [IFluidHandler] operations should use quantization, as implemented by [MultipleFractionalFluidTank].
+ * */
+interface IFractionalFluidHandler : IFluidHandler {
+    /**
+     * Fractional variant of [IFluidHandler.getFluidInTank].
+     * */
+    fun getFractionalFluidInTank(tank: Int): FractionalFluidStack
+
+    /**
+     * Fractional variant of [IFluidHandler.getTankCapacity].
+     * */
+    fun getFractionalTankCapacity(tank: Int): Double
+
+    /**
+     * Fractional variant of [IFluidHandler.fill]. If the [resource]'s amount is less than [FractionalFluidStack.EPSILON], the operation will be ignored.
+     * */
+    fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): Double
+
+    /**
+     * Fractional variant of [IFluidHandler.drain]. If the [resource]'s amount is less than [FractionalFluidStack.EPSILON], the operation will be ignored.
+     * */
+    fun drainFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): FractionalFluidStack
+
+    /**
+     * Fractional variant of [IFluidHandler.drain]. If the [maxDrain] is less than [FractionalFluidStack.EPSILON], the operation will be ignored.
+     * */
+    fun drainFractional(maxDrain: Double, action: IFluidHandler.FluidAction): FractionalFluidStack
+}
+
+/**
+ * Homogenous mass packet with a certain temperature.
+ * The [temperature] will always have a meaningful value.
+ * */
+data class ThermalFluidStack(val packet: FractionalFluidStack, val temperature: Double)
+
+/**
+ * Extension of [IFractionalFluidHandler] that supports exchange of heat during fluid transfer.
+ * It's implemented by some thermal machines. The following rules are set:
+ * - Fluid instantly equalizes in temperature with the machine and other fluids (so the mixture stays homogenous)
+ * - The thermal mass and energy of the machine is the constant thermal mass and energy of the "hull", combined with whatever fluids exist in the machine.
+ * - If no information is available on fill requests, it is assumed that fluid is entering at ambient temperature.
+ * */
+interface IThermalFluidHandler : IFractionalFluidHandler {
+    /**
+     * Fills a fluid ([resource]) that has a [temperature].
+     * If the [temperature] is not present, then the request came from a dumb source.
+     * It's best to consider the fluid entering at ambient temperature at the handler's location.
+     * If [action] is [IFluidHandler.FluidAction.EXECUTE], then this request should change the thermal state of the underlying machine.
+     * */
+    fun fillThermal(resource: FractionalFluidStack, temperature: OptionalDouble, action: IFluidHandler.FluidAction): Double
+
+    /**
+     * Drains [resource], also yielding information about its temperature.
+     * If [action] is [IFluidHandler.FluidAction.EXECUTE], then this request should change the thermal state of the underlying machine.
+     *
+     * @return The thermal stack or null, **if the result is empty or rejected**. If not null, the result must be nonempty.
+     * */
+    fun drainThermal(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): ThermalFluidStack?
+
+    /**
+     * Drains some fluid, also yielding information about its temperature.
+     * If [action] is [IFluidHandler.FluidAction.EXECUTE], then this request should change the thermal state of the underlying machine.
+     *
+     * @return The thermal stack or null, **if the result is empty or rejected**. If not null, the result must be nonempty.
+     * */
+    fun drainThermal(maxDrain: Double, action: IFluidHandler.FluidAction): ThermalFluidStack?
+}

@@ -1,207 +1,130 @@
 package org.eln2.mc.common.cells.foundation
 
-import mcp.mobius.waila.api.IPluginConfig
+import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerLevel
-import org.ageseries.libage.sim.thermal.Temperature
-import org.ageseries.libage.sim.thermal.ThermalUnits
-import org.eln2.mc.Inj
-import org.eln2.mc.ThermalBody
+import net.minecraft.sounds.SoundEvents
+import net.minecraft.sounds.SoundSource
+import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.map
+import org.ageseries.libage.sim.ThermalMass
+import org.ageseries.libage.sim.electrical.Port
+import org.ageseries.libage.sim.kinetic.KineticDouble
+import org.ageseries.libage.sim.kinetic.KineticNode
+import org.ageseries.libage.sim.kinetic.KineticTriple
+import org.eln2.mc.*
+import org.eln2.mc.common.LightVolume
+import org.eln2.mc.common.LightVolumeInstance
+import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.events.schedulePre
-import org.eln2.mc.common.parts.foundation.CellPart
-import org.eln2.mc.data.*
-import org.eln2.mc.destroyPart
-import org.eln2.mc.formattedPercentN
-import org.eln2.mc.integration.WailaEntity
-import org.eln2.mc.integration.WailaTooltipBuilder
+import org.eln2.mc.common.specs.foundation.CellSpec
+import org.eln2.mc.common.specs.foundation.SpecContainerPart
+import org.eln2.mc.common.specs.foundation.SpecContainerPart.Companion.spawnDrop
+import org.eln2.mc.Locators
+import org.eln2.mc.extensions.destroyPart
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.random.Random
 
 /**
- * *A cell behavior* manages routines ([Subscriber]) that run on the simulation thread.
+ * *A cell behavior* manages routines ([SimulationSubscriber]) that run on the simulation thread.
  * It is attached to a cell.
  * */
 interface CellBehavior {
     /**
      * Called when the behavior is added to the container.
      * */
-    fun onAdded(container: CellBehaviorContainer) {}
+    @OnServerThread
+    fun onAdded(container: CellBehaviorContainer) { }
 
     /**
      * Called when the subscriber collection is being set up.
      * Subscribers can be added here.
      * */
-    fun subscribe(subscribers: SubscriberCollection) {}
+    @OnServerThread
+    fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) { }
+
+    /**
+     * Called when the subscriber collection is being set up.
+     * Subscribers that are executed on the server thread can be added here. **The timing of these updates is designed especially for synchronization!**
+     *
+     * - The `Pre` updates are executed just before the simulations are dispatched, so all subscribers will see a coherent image of the simulation state.
+     * - The `Post` updates are executed just after the simulations have finished and just before the bulk data is dispatched, which means this is the ideal place to synchronize.
+     * */
+    @OnServerThread
+    fun subscribeServerThread(subscribers: SubscriberCollection<ServerPhase>) { }
 
     /**
      * Called when the behavior is destroyed.
      * This can be caused by the cell being destroyed.
      * It can also be caused by the game object being detached, in the case of [ReplicatorBehavior]s.
      * */
-    fun destroy() {}
+    @OnServerThread
+    fun destroy() { }
 }
 
-// to remove
 /**
- * Temporary staging storage for behaviors.
+ * [CellBehavior] that is allowed to be added multiple times.
  * */
-class CellBehaviorSource : CellBehavior {
-    private val behaviors = ArrayList<CellBehavior>()
-
-    fun add(behavior: CellBehavior): CellBehaviorSource {
-        if (behavior is CellBehaviorSource) {
-            behaviors.addAll(behavior.behaviors)
-        } else {
-            behaviors.add(behavior)
-        }
-
-        return this
-    }
-
-    override fun onAdded(container: CellBehaviorContainer) {
-        behaviors.forEach { behavior ->
-            if (container.behaviors.any { it.javaClass == behavior.javaClass }) {
-                error("Duplicate behavior")
-            }
-
-            container.behaviors.add(behavior)
-            behavior.onAdded(container)
-        }
-
-        require(container.behaviors.remove(this)) { "Failed to clean up behavior source" }
-    }
-}
-
-operator fun CellBehavior.times(b: CellBehavior) = CellBehaviorSource().also { it.add(this).add(b) }
-
-operator fun CellBehaviorSource.times(b: CellBehavior) = this.add(b)
+interface RepeatableCellBehavior : CellBehavior
 
 /**
  * Container for multiple [CellBehavior]s. It is a Set. As such, there may be one instance of each behavior type.
  * */
-class CellBehaviorContainer(private val cell: Cell) : DataEntity {
+class CellBehaviorContainer {
     val behaviors = ArrayList<CellBehavior>()
 
-    fun addBehaviorInstance(b: CellBehavior) {
-        if (behaviors.any { it.javaClass == b.javaClass }) {
-            error("Duplicate behavior $b")
-        }
+    fun addToCollection(b: CellBehavior) {
+        requireIsOnServerThread { "addToCollection" }
 
-        if (b is DataEntity) {
-            dataNode.withChild(b.dataNode)
+        if(b !is RepeatableCellBehavior) {
+            if (behaviors.any { it.javaClass == b.javaClass }) {
+                error("Duplicate behavior $b")
+            }
         }
 
         behaviors.add(b)
-
         b.onAdded(this)
     }
 
-    fun forEach(action: ((CellBehavior) -> Unit)) = behaviors.forEach(action)
-    inline fun <reified T : CellBehavior> getOrNull(): T? = behaviors.first { it is T } as? T
-    inline fun <reified T : CellBehavior> get(): T = getOrNull() ?: error("Failed to get behavior")
-
-    // todo remove
-    inline fun <reified T : CellBehavior> add(behavior: T): CellBehaviorContainer {
-        if (behaviors.any { it is T }) {
-            error("Duplicate add behavior $behavior")
-        }
-
-        behaviors.add(behavior)
-
-        if (behavior is DataEntity) {
-            dataNode.withChild(behavior.dataNode)
-        }
-
-        behavior.onAdded(this)
-
-        return this
-    }
-
     fun destroy(behavior: CellBehavior) {
-        require(behaviors.remove(behavior)) { "Illegal behavior remove $behavior" }
+        requireIsOnServerThread {
+            DEBUGGER_BREAK("CellBehaviorContainer#destroy")
+        }
 
-        if (behavior is DataEntity) {
-            dataNode.children.removeIf { access -> access == behavior.dataNode }
+        require(behaviors.remove(behavior)) {
+            DEBUGGER_BREAK("Illegal behavior remove $behavior")
         }
 
         behavior.destroy()
     }
 
     fun destroy() {
+        requireIsOnServerThread {
+            "CellBehaviorContainer#destroy"
+        }
+
         behaviors.toList().forEach { destroy(it) }
     }
-
-    override val dataNode: DataNode = DataNode()
-}
-
-fun interface ElectricalPowerAccessor {
-    fun get(): Double
 }
 
 /**
- * Integrates electrical power into energy. Injection is supported using [PowerField].
+ * Converts dissipated electrical energy to thermal energy.
  * */
-class ElectricalPowerConverterBehavior(private val accessor: ElectricalPowerAccessor) : CellBehavior {
-    @Inj
-    constructor(powerField: PowerField) : this(powerField.read)
-
-    var energy: Double = 0.0
-    var deltaEnergy: Double = 0.0
-
-    override fun onAdded(container: CellBehaviorContainer) {}
-
-    override fun subscribe(subscribers: SubscriberCollection) {
+class PowerHeatingBehavior(private val power: () -> Double, val body: ThermalMass) : CellBehavior {
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
         subscribers.addPre(this::simulationTick)
     }
 
-    private fun simulationTick(dt: Double, p: SubscriberPhase) {
-        deltaEnergy = accessor.get() * dt
-        energy += deltaEnergy
+    private fun simulationTick(dt: Double, p: SimulationPhase) {
+        body.energy += Quantity(power() * dt, JOULE)
     }
-}
-
-fun interface ThermalBodyAccessor {
-    fun get(): ThermalBody
-}
-
-fun ThermalBodyAccessor.temperature(): TemperatureAccessor = TemperatureAccessor {
-    this.get().tempK
-}
-
-/**
- * Converts dissipated electrical energy to thermal energy. Injection is supported using [ThermalBody]
- * */
-class ElectricalHeatTransferBehavior(private val bodyAccessor: ThermalBodyAccessor) : CellBehavior {
-    @Inj
-    constructor(body: ThermalBody) : this({ body })
-
-    private lateinit var converterBehavior: ElectricalPowerConverterBehavior
-
-    override fun onAdded(container: CellBehaviorContainer) {
-        converterBehavior = container.get()
-    }
-
-    override fun subscribe(subscribers: SubscriberCollection) {
-        subscribers.addPre(this::simulationTick)
-    }
-
-    private fun simulationTick(dt: Double, p: SubscriberPhase) {
-        bodyAccessor.get().energy += converterBehavior.deltaEnergy
-        converterBehavior.energy -= converterBehavior.deltaEnergy
-    }
-}
-
-fun CellBehaviorContainer.withElectricalPowerConverter(accessor: ElectricalPowerAccessor): CellBehaviorContainer =
-    this.add(ElectricalPowerConverterBehavior(accessor))
-
-fun CellBehaviorContainer.withElectricalHeatTransfer(getter: ThermalBodyAccessor): CellBehaviorContainer =
-    this.add(ElectricalHeatTransferBehavior(getter))
-
-fun interface TemperatureAccessor {
-    fun get(): Double
 }
 
 fun interface ExplosionConsumer {
-    fun explode()
+    fun explode() : Boolean // return false if game object is not
 }
 
 data class TemperatureExplosionBehaviorOptions(
@@ -209,7 +132,7 @@ data class TemperatureExplosionBehaviorOptions(
      * If the temperature is above this threshold, [increaseSpeed] will be used to increase the explosion score.
      * Otherwise, [decayRate] will be used to decrease it.
      * */
-    val temperatureThreshold: Double = Temperature.from(600.0, ThermalUnits.CELSIUS).kelvin,
+    val temperatureThreshold: Quantity<Temperature> = Quantity(350.0, KELVIN),
 
     /**
      * The score increase speed.
@@ -223,174 +146,680 @@ data class TemperatureExplosionBehaviorOptions(
     val decayRate: Double = 0.25,
 )
 
+private fun defaultNotifier(cell: Cell) : Boolean {
+    val container = cell.container ?: return false
+
+    fun sound(level: net.minecraft.world.level.Level, x: Double, y: Double, z: Double) {
+        level.playSound(
+            null,
+            x, y, z,
+            SoundEvents.GENERIC_EXPLODE,
+            SoundSource.BLOCKS,
+            randomFloat(0.9f, 1.1f),
+            randomFloat(0.9f, 1.1f)
+        )
+    }
+
+    when (container) {
+        /**
+         * Cell owned by a part:
+         * */
+        is MultipartBlockEntity -> {
+            if (container.isRemoved) {
+                return true
+            }
+
+            val part = container.getPart(cell.locator.requireLocator(Locators.SUBSTRATE_FACE))
+                ?: return true // Already removed
+
+            val level = part.placement.level as ServerLevel
+
+            level.destroyPart(part, true)
+
+            sound(
+                level,
+                part.placement.position.x + 0.5,
+                part.placement.position.y + 0.5,
+                part.placement.position.z + 0.5
+            )
+
+            return true
+        }
+
+        /**
+         * Cell owned by a block entity:
+         * */
+        is CellBlockEntity<*> -> {
+            if (container.isRemoved) {
+                return true
+            }
+
+            val level = container.level as? ServerLevel
+                ?: return false
+
+            val blockPos = container.blockPos
+                ?: return false
+
+            level.destroyBlock(blockPos, true)
+
+            sound(
+                container.level!!,
+                blockPos.x + 0.5,
+                blockPos.y + 0.5,
+                blockPos.z + 0.5
+            )
+
+            return true
+        }
+
+        /**
+         * Cell owned by a spec:
+         * */
+        is SpecContainerPart -> {
+            if(container.isRemoved) {
+                return true
+            }
+
+            val spec = container.specs.values.firstOrNull {
+                it is CellSpec<*> && it.hasCell && it.cell == cell
+            }
+
+            if(spec == null) {
+                return false
+            }
+
+            val specTag = CompoundTag()
+
+            // Removes spec:
+            container.breakSpec(
+                spec,
+                specTag,
+                false // Doesn't destroy the cell otherwise. Don't get fooled
+            )
+
+            // Spawns the spec item:
+            spawnDrop(
+                container.placement.level as ServerLevel,
+                spec,
+                specTag
+            )
+
+            // Destroys the spec container part:
+            if(container.specs.isEmpty()) {
+                container.placement.multipart.breakPart(
+                    container,
+                    null
+                )
+            }
+
+            val bounds = spec.placement.orientedBoundingBoxWorld.center
+
+            sound(
+                container.placement.level,
+                bounds.x,
+                bounds.y,
+                bounds.z
+            )
+
+            return true
+        }
+
+        else -> {
+            error(DEBUGGER_BREAK("Cannot explode $container"))
+        }
+    }
+}
+
+private const val EXPLOSION_BEHAVIOR_RANDOM_FACTOR = 0.05
+
+private fun randomizeThreshold(threshold: Double, index: Int, locator: Locator) : Double {
+    val random = Random(locator.hashCode())
+
+    repeat(index) {
+        random.nextDouble()
+    }
+
+    val factor = random.nextDouble(-EXPLOSION_BEHAVIOR_RANDOM_FACTOR, EXPLOSION_BEHAVIOR_RANDOM_FACTOR)
+    return threshold * (1.0 + factor)
+}
+
+private fun addTolerance(threshold: Double?, index: Int, locator: Locator) : Double? {
+    if(threshold == null) {
+        return null
+    }
+
+    val random = Random(31 * locator.hashCode() + index)
+    val factor = random.nextDouble(-EXPLOSION_BEHAVIOR_RANDOM_FACTOR, EXPLOSION_BEHAVIOR_RANDOM_FACTOR)
+    return threshold * (1.0 + factor)
+}
+
+private fun<T> addToleranceQ(q: Quantity<T>, index: Int, locator: Locator) = Quantity<T>(randomizeThreshold(!q, index, locator))
+
+abstract class ExplosionBehavior(private val consumer: ExplosionConsumer) : CellBehavior {
+    var interval = 10
+    var phase = SimulationPhase.Post
+
+    // Not saved, I didn't think it would be worthwhile
+    // Only some weird chunk unloading could cause this to matter
+    protected var score = 0.0
+    private var isTriggered = false
+
+    private enum class State {
+        Enqueued,
+        Failed,
+        Success
+    }
+
+    @OnServerThread @OnSimulationThread
+    private val explosionResult = AtomicReference<State>(null)
+    private var isGameObjectExploded = false
+
+    final override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
+        subscribers.addSubscriber(
+            SubscriberOptions(interval, phase),
+            this::simulationTick
+        )
+    }
+
+    private fun simulationTick(dt: Double, phase: SimulationPhase) {
+        if(isTriggered) {
+            updateTriggeredState()
+        }
+        else {
+            updateScore(dt, phase)
+
+            if(score.isNaN() || score.isInfinite()) {
+                LOG.error("Explosion behavior $this generated a score of $score")
+                score = 1.0 // explode
+            }
+
+            score = score.coerceIn(0.0, 1.0)
+
+            if (score >= 1.0) {
+                isTriggered = true
+                updateTriggeredState()
+            }
+        }
+    }
+
+    protected abstract fun updateScore(dt: Double, phase: SimulationPhase)
+
+    private fun updateTriggeredState() {
+        if(isGameObjectExploded) {
+            LOG.error(DEBUGGER_BREAK("Getting $this explosion ticks while finalized"))
+            return // weird that we're still getting ticks
+        }
+
+        when (val result = explosionResult.get()) {
+            null, State.Failed -> {
+                explosionResult.set(State.Enqueued)
+
+                schedulePre(0) {
+                    explosionResult.set(
+                        if(consumer.explode()) {
+                            State.Success
+                        }
+                        else {
+                            State.Failed
+                        }
+                    )
+                }
+            }
+            State.Success -> {
+                isGameObjectExploded = true
+            }
+            else -> {
+                check(result == State.Enqueued) {
+                    "Explosion state was not enqueued!"
+                }
+            }
+        }
+    }
+}
+
 /**
- * The [TemperatureExplosionBehavior] will destroy the game object if a temperature is held
+ * The [ThermalBreakdownBehavior] will destroy the game object if a temperature is held
  * above a threshold for a certain time period, as specified in [TemperatureExplosionBehaviorOptions]
  * A **score** is used to determine if the object should blow up. The score is increased when the temperature is above threshold
  * and decreased when the temperature is under threshold. Once a score of 1 is reached, the explosion is enqueued
  * using the [Scheduler]
  * The explosion uses an [ExplosionConsumer] to access the game object. [ExplosionConsumer.explode] is called from the game thread.
- * If no consumer is specified, a default one is used. Currently, only [CellPart] is implemented.
- * Injection is supported using [TemperatureAccessor], [TemperatureField]
+ * If no consumer is specified, a default one is used.
  * */
-class TemperatureExplosionBehavior(
-    val temperatureAccessor: TemperatureAccessor,
+class ThermalBreakdownBehavior private constructor(
+    val temperatureAccessor: () -> Quantity<Temperature>,
     val options: TemperatureExplosionBehaviorOptions,
-    val consumer: ExplosionConsumer,
-) : CellBehavior, WailaEntity {
-    private var score = 0.0
-    private var enqueued = false
-
-    @Inj
-    constructor(temperatureAccessor: TemperatureAccessor, options: TemperatureExplosionBehaviorOptions, cell: Cell) :
-        this(temperatureAccessor, options, { defaultNotifier(cell) })
-
-    @Inj
-    constructor(temperatureAccessor: TemperatureAccessor, consumer: ExplosionConsumer) :
-        this(temperatureAccessor, TemperatureExplosionBehaviorOptions(), consumer)
-
-    @Inj
-    constructor(temperatureField: TemperatureField, options: TemperatureExplosionBehaviorOptions, cell: Cell) :
-        this(temperatureField::readK, options, cell)
-
-    @Inj
-    constructor(temperatureField: TemperatureField, cell: Cell) :
-        this(temperatureField::readK, TemperatureExplosionBehaviorOptions(), cell)
-
-
-    override fun onAdded(container: CellBehaviorContainer) {}
-
-    override fun subscribe(subscribers: SubscriberCollection) {
-        subscribers.addSubscriber(SubscriberOptions(10, SubscriberPhase.Post), this::simulationTick)
-    }
-
-    private fun simulationTick(dt: Double, phase: SubscriberPhase) {
-        val temperature = temperatureAccessor.get()
+    consumer: ExplosionConsumer,
+) : ExplosionBehavior(consumer) {
+    override fun updateScore(dt: Double, phase: SimulationPhase) {
+        val temperature = temperatureAccessor()
 
         if (temperature > options.temperatureThreshold) {
             val difference = temperature - options.temperatureThreshold
-
-            score += options.increaseSpeed * difference * dt
+            score += options.increaseSpeed * !difference * dt
         } else {
             score -= options.decayRate * dt
         }
-
-        if (score >= 1) {
-            blowUp()
-        }
-
-        score = score.coerceIn(0.0, 1.0)
-    }
-
-    private fun blowUp() {
-        if (!enqueued) {
-            enqueued = true
-
-            schedulePre(0) {
-                consumer.explode()
-            }
-        }
-    }
-
-    override fun appendWaila(builder: WailaTooltipBuilder, config: IPluginConfig?) {
-        builder.text("Explode", score.formattedPercentN())
     }
 
     companion object {
-        fun defaultNotifier(cell: Cell) {
-            val container = cell.container ?: return
-
-            if (container is MultipartBlockEntity) {
-                if (container.isRemoved) {
-                    return
-                }
-
-                val part = container.getPart(cell.pos.requireLocator<FaceLocator>())
-                    ?: return
-
-                val level = (part.placement.level as ServerLevel)
-
-                level.destroyPart(part, true)
-            } else {
-                error("Cannot explode $container")
+        private fun create(options: TemperatureExplosionBehaviorOptions, consumer: ExplosionConsumer, temperatureAccessor: () -> Quantity<Temperature>) =
+            if(Eln2Config.serverConfig.explodeWhenHot.get()) {
+                ThermalBreakdownBehavior(temperatureAccessor, options, consumer)
             }
-        }
+            else {
+                null
+            }
+
+        private fun create(options: TemperatureExplosionBehaviorOptions, cell: Cell, temperatureAccessor: () -> Quantity<Temperature>) =
+            create(options, { defaultNotifier(cell) }, temperatureAccessor)
+
+        fun create(
+            temperature: Quantity<Temperature>,
+            cell: Cell, temperatureAccessor: () -> Quantity<Temperature>
+        ) = create(TemperatureExplosionBehaviorOptions(
+            addToleranceQ(temperature, 0, cell.locator)), cell, temperatureAccessor)
     }
 }
 
-fun CellBehaviorContainer.withExplosionBehavior(
-    temperatureAccessor: TemperatureAccessor,
-    options: TemperatureExplosionBehaviorOptions,
-    explosionNotifier: ExplosionConsumer,
-): CellBehaviorContainer {
+data class DielectricBreakdownBehaviorOptions(
+    /**
+     * The score increase speed.
+     * This value is **not** scaled by the difference between the potential and the threshold.
+     * I've chosen not to scale it, so very small potential spikes don't cause annoying explosions.
+     * As a result, at breakdown, it takes `1 / [increaseSpeed]` seconds to explode, regardless of potential.
+     * */
+    val increaseSpeed: Double = 0.25,
 
-    this.add(TemperatureExplosionBehavior(temperatureAccessor, options, explosionNotifier))
+    /**
+     * The score decrease speed. This value is not controlled by potential.
+     * */
+    val decayRate: Double = 0.5,
 
-    return this
-}
+    // Safeguard to detect unremoved objects, only for components that actually change (wires).
+    val maxObjects: Int = 25
+)
 
-fun CellBehaviorContainer.withStandardExplosionBehavior(
-    cell: Cell,
-    threshold: Double,
-    temperatureAccessor: TemperatureAccessor,
-): CellBehaviorContainer {
-    return withExplosionBehavior(temperatureAccessor, TemperatureExplosionBehaviorOptions(threshold, 0.1, 0.25)) {
-        val container = cell.container ?: return@withExplosionBehavior
+class DielectricBreakdownBehavior private constructor(val locator: Locator, val options: DielectricBreakdownBehaviorOptions, consumer: ExplosionConsumer) : ExplosionBehavior(consumer) {
+    val examined = ArrayList<ExaminedNPole>()
+    private var i = 0
 
-        if (container is MultipartBlockEntity) {
-            if (container.isRemoved) {
-                return@withExplosionBehavior
-            }
+    /**
+     * Adds a port for watching.
+     * @param breakdownToSelf If not null, the device will break down if the potential across the [port] is higher than [breakdownToSelf].
+     * @param breakdownToEarth If not null, the device will break down if the potential of any terminal of [port] relative to ground is higher than [breakdownToEarth].
+     * */
+    fun addPort(port: Port, breakdownToSelf: Double?, breakdownToEarth: Double?) : ExaminedPort {
+        val result = ExaminedPort(
+            port,
+            addTolerance(breakdownToSelf, i++, locator),
+            addTolerance(breakdownToEarth, i++, locator)
+        )
 
-            val part = container.getPart(cell.pos.requireLocator<FaceLocator>())
-                ?: return@withExplosionBehavior
+        examined.add(result)
+        return result
+    }
 
-            val level = (part.placement.level as ServerLevel)
+    fun clear() {
+        examined.clear()
+        i = 0
+    }
 
-            level.destroyPart(part, true)
+    override fun updateScore(dt: Double, phase: SimulationPhase) {
+        if(examined.size > options.maxObjects) {
+            error("Lingering dielectric breakdowns! ${examined.size}")
+        }
+
+        val isBreakingDown = examined.any {
+            it.isBreakingDown()
+        }
+
+        if (isBreakingDown) {
+            score += options.increaseSpeed * dt
         } else {
-            error("Cannot explode $container")
+            score -= options.decayRate * dt
         }
+    }
+
+    /**
+     * An examined N-Pole. Each pole can be compared to ground for breakdown. And each pole can be compared to each other pole for breakdown to self.
+     * */
+    interface ExaminedNPole {
+        /**
+         * Checks if the current potential difference across the poles, or the potential to ground causes a breakdown.
+         * */
+        fun isBreakingDown() : Boolean
+    }
+
+    /**
+     * An examined bipole.
+     * @param breakdownToSelf If not null, the potential difference across the two poles will be taken into account.
+     * @param breakdownToEarth If not null, the potential difference to ground will be taken into account.
+     * */
+    abstract class ExaminedBipole(val breakdownToSelf: Double?, val breakdownToEarth: Double?) : ExaminedNPole {
+        protected abstract fun getPotentialAcross() : Double
+        protected abstract fun getPotential1() : Double
+        protected abstract fun getPotential2() : Double
+
+        override fun isBreakingDown(): Boolean {
+            if(breakdownToSelf != null) {
+                if(abs(getPotentialAcross()) > breakdownToSelf) {
+                    return true
+                }
+            }
+
+            if(breakdownToEarth != null) {
+                if(abs(getPotential1()) > breakdownToEarth) {
+                    return true
+                }
+
+                if(abs(getPotential2()) > breakdownToEarth) {
+                    return true
+                }
+            }
+
+            return false
+        }
+    }
+
+    class ExaminedPort(val port: Port, breakdownToSelf: Double?, breakdownToEarth: Double?) : ExaminedBipole(breakdownToSelf, breakdownToEarth) {
+        override fun getPotentialAcross() = port.potential
+        override fun getPotential1() = port.negative.potential
+        override fun getPotential2() = port.positive.potential
+    }
+
+    companion object {
+        private fun create(
+            options: DielectricBreakdownBehaviorOptions,
+            cell: Cell
+        ) = DielectricBreakdownBehavior(cell.locator, options) { defaultNotifier(cell) }
+
+        fun create(cell: Cell) = create(DielectricBreakdownBehaviorOptions(), cell)
+
+        fun createToGround(
+            options: DielectricBreakdownBehaviorOptions,
+            cell: Cell,
+            groundBreakdownPotential: Double,
+            vararg ports: Port
+        ) = create(options, cell).also { behavior ->
+            var i = 0
+            ports.forEach {
+                behavior.addPort(
+                    it,
+                    null,
+                    randomizeThreshold(groundBreakdownPotential, i++, cell.locator)
+                )
+            }
+        }
+
+        fun createToGround(cell: Cell, groundBreakdownPotential: Double) = createToGround(
+            DielectricBreakdownBehaviorOptions(),
+            cell,
+            groundBreakdownPotential
+        )
     }
 }
 
-// todo remove
+data class OverPowerBehaviorOptions(
+    val powerThreshold: Quantity<Power>,
 
-/**
- * Registers a set of standard cell behaviors:
- * - [ElectricalPowerConverterBehavior]
- *      - converts power into energy
- * - [ElectricalHeatTransferBehavior]
- *      - moves energy to the heat mass from the electrical converter
- * - [TemperatureExplosionBehavior]
- *      - explodes part when a threshold temperature is held for a certain time period
- * */
-fun standardBehavior(cell: Cell, power: ElectricalPowerAccessor, thermal: ThermalBodyAccessor) =
-    ElectricalPowerConverterBehavior(power) *
-        ElectricalHeatTransferBehavior(thermal) *
-        TemperatureExplosionBehavior(
-            thermal.temperature(),
-            TemperatureExplosionBehaviorOptions(
-                temperatureThreshold = 600.0,
-                increaseSpeed = 0.1,
-                decayRate = 0.25
-            )
-        ) {
-            val container = cell.container
-                ?: return@TemperatureExplosionBehavior
+    /**
+     * The score increase speed.
+     * This value is **not** scaled by the difference between the power and the threshold power.
+     * I've chosen not to scale it, so very small power spikes don't cause annoying explosions.
+     * As a result, at breakdown, it takes `1 / [increaseSpeed]` seconds to explode, regardless of power.
+     * */
+    val increaseSpeed: Double = 0.75,
 
-            if (container is MultipartBlockEntity) {
-                if (container.isRemoved) {
-                    return@TemperatureExplosionBehavior
+    /**
+     * The score decrease speed. This value is not controlled by power.
+     * */
+    val decayRate: Double = 0.5
+)
+
+class OverPowerBehavior private constructor(
+    val powerAccessor: () -> Double,
+    val options: OverPowerBehaviorOptions,
+    consumer: ExplosionConsumer,
+) : ExplosionBehavior(consumer) {
+    override fun updateScore(dt: Double, phase: SimulationPhase) {
+        val power = abs(powerAccessor())
+
+        if (power > !options.powerThreshold) {
+            score += options.increaseSpeed * dt
+        } else {
+            score -= options.decayRate * dt
+        }
+    }
+
+    companion object {
+        fun create(power: Quantity<Power>, cell: Cell, powerAccessor: () -> Double) = OverPowerBehavior(
+            powerAccessor,
+            OverPowerBehaviorOptions(addToleranceQ(power, 0, cell.locator))
+        ) { defaultNotifier(cell) }
+    }
+}
+
+data class KineticBreakdownBehaviorOptions(
+    val angularVelocityThreshold: Quantity<AngularVelocity>,
+    val increaseSpeed: Double = 0.75,
+    val decayRate: Double = 0.5
+)
+
+class KineticBreakdownBehavior private constructor(
+    val omegaAccessor: () -> Double,
+    val options: KineticBreakdownBehaviorOptions,
+    consumer: ExplosionConsumer
+) : ExplosionBehavior(consumer) {
+    init {
+        interval = 0
+    }
+
+    override fun updateScore(dt: Double, phase: SimulationPhase) {
+        val speed = abs(omegaAccessor())
+
+        if(speed > !options.angularVelocityThreshold) {
+            score += options.increaseSpeed * dt
+        }
+        else {
+            score -= options.decayRate * dt
+        }
+    }
+
+    companion object {
+        fun create(velocity: Quantity<AngularVelocity>, cell: Cell, omegaAccessor: () -> Double) = KineticBreakdownBehavior(
+            omegaAccessor,
+            KineticBreakdownBehaviorOptions(velocity)
+        ) { defaultNotifier(cell) }
+
+        fun create(velocity: Quantity<AngularVelocity>, cell: Cell, node: KineticNode) = create(
+            addToleranceQ(velocity, 0, cell.locator),
+            cell
+        ) { node.angularVelocity }
+    }
+}
+
+data class KineticStressBehaviorOptions(
+    val torqueThreshold: Quantity<Torque>,
+    val increaseSpeed: Double = 0.75,
+    val decayRate: Double = 0.5
+)
+
+class KineticStressBehavior private constructor(
+    val torqueAccessor: () -> Double,
+    val options: KineticStressBehaviorOptions,
+    consumer: ExplosionConsumer
+) : ExplosionBehavior(consumer) {
+    init {
+        interval = 0
+    }
+
+    override fun updateScore(dt: Double, phase: SimulationPhase) {
+        val torque = abs(torqueAccessor())
+
+        if(torque > !options.torqueThreshold) {
+            score += (torque / !options.torqueThreshold) * options.increaseSpeed * dt
+        }
+        else {
+            score -= options.decayRate * dt
+        }
+    }
+
+    companion object {
+        fun create(torque: Quantity<Torque>, cell: Cell, accessor: () -> Double) = KineticStressBehavior(
+            { abs(accessor()) },
+            KineticStressBehaviorOptions(addToleranceQ(torque, 0, cell.locator)),
+            { defaultNotifier(cell) }
+        )
+
+        fun create(torque: Quantity<Torque>, cell: Cell, node: KineticDouble) = KineticStressBehavior(
+            {
+                max(
+                    abs(node.e1.impulse / node.simulation.dt),
+                    abs(node.e2.impulse / node.simulation.dt)
+                )
+            },
+            KineticStressBehaviorOptions(addToleranceQ(torque, 0, cell.locator)),
+            { defaultNotifier(cell) }
+        )
+
+        fun create(torque: Quantity<Torque>, cell: Cell, node: KineticTriple) = KineticStressBehavior(
+            {
+                if(!node.isInSimulation) {
+                    DEBUGGER_BREAK(0.0)
                 }
+                else {
+                    max(
+                        abs(node.e1.impulse / node.simulation.dt),
+                        max(
+                            abs(node.e2.impulse / node.simulation.dt),
+                            abs(node.e3.impulse / node.simulation.dt)
+                        )
+                    )
+                }
+            },
+            KineticStressBehaviorOptions(addToleranceQ(torque, 0, cell.locator)),
+            { defaultNotifier(cell) }
+        )
+    }
+}
 
-                val part = container.getPart(cell.pos.requireLocator<FaceLocator>())
-                    ?: return@TemperatureExplosionBehavior
+data class RadiantBodyEmissionDescription(
+    val volumeProvider: (Cell) -> LightVolume,
+    val coldTemperature: Quantity<Temperature> = Quantity(300.0, CELSIUS),
+    val hotTemperature: Quantity<Temperature> = Quantity(800.0, CELSIUS)
+) {
+    constructor(
+        volume: LightVolume,
+        coldTemperature: Quantity<Temperature> = Quantity(300.0, CELSIUS),
+        hotTemperature: Quantity<Temperature> = Quantity(800.0, CELSIUS)) : this(
+            { volume },
+            coldTemperature,
+            hotTemperature
+        )
+}
 
-                val level = (part.placement.level as ServerLevel)
+class RadiantEmissionBehavior private constructor(val cell: Cell, bodies: Map<ThermalMass, RadiantBodyEmissionDescription>) : CellBehavior {
+    private var isDestroyed = false
 
-                level.destroyPart(part, true)
-            } else {
-                error("Cannot explode $container")
+    init {
+        require(cell.hasGraph) {
+            "Illegal initialization of radiant emission behavior. Please move this into a Lazy<RadiantEmissionBehavior>"
+        }
+    }
+
+    private val instances = bodies.map { (mass, description) ->
+        require(description.coldTemperature < description.hotTemperature) {
+            "Tried to create with ${description.coldTemperature} ${description.hotTemperature}"
+        }
+
+        val volume = description.volumeProvider(cell)
+
+        val instance = LightVolumeInstance(
+            cell.graph.level,
+            cell.locator.requireLocator(Locators.BLOCK) {
+                "Radiant Emission Behavior requires block pos locator"
+            }
+        )
+
+        InstanceData(
+            mass,
+            volume,
+            description.coldTemperature,
+            description.hotTemperature,
+            instance
+        )
+    }
+
+    var interval = 10
+    var phase = SimulationPhase.Post
+
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
+        subscribers.addSubscriber(
+            SubscriberOptions(interval, phase),
+            this::simulationTick
+        )
+    }
+
+    private fun simulationTick(dt: Double, phase: SimulationPhase) {
+        val commandList = Scheduler.begin()
+
+        commandList.terminateIf {
+            this.isDestroyed
+        }
+
+        instances.forEach { instance ->
+            val targetIncrement = map(
+                (!instance.mass.temperature).coerceIn(
+                    !instance.coldTemperature,
+                    !instance.hotTemperature
+                ),
+                !instance.coldTemperature,
+                !instance.hotTemperature,
+                0.0,
+                instance.volume.stateIncrements.toDouble()
+            ).toInt().coerceIn(0, instance.volume.stateIncrements)
+
+            if(instance.lightInstance.isTransition(instance.volume, targetIncrement)) {
+                commandList.execute {
+                    check(!isDestroyed)
+
+                    instance.lightInstance.checkoutState(
+                        instance.volume,
+                        targetIncrement
+                    )
+                }
             }
         }
+
+        commandList.submit()
+    }
+
+    override fun destroy() {
+        requireIsOnServerThread()
+
+        isDestroyed = true
+
+        instances.forEach {
+            it.lightInstance.destroyCells()
+        }
+    }
+
+    private data class InstanceData(
+        val mass: ThermalMass,
+        val volume: LightVolume,
+        val coldTemperature: Quantity<Temperature>,
+        val hotTemperature: Quantity<Temperature>,
+        val lightInstance: LightVolumeInstance
+    )
+
+    companion object {
+        fun create(cell: Cell, vararg bodies: Pair<ThermalMass, RadiantBodyEmissionDescription>?) =
+            if(Eln2Config.serverConfig.hotRadiatesLight.get()) {
+                lazy { RadiantEmissionBehavior(cell, bodies.filterNotNull().toMap()) }
+            }
+            else {
+                null
+            }
+    }
+}

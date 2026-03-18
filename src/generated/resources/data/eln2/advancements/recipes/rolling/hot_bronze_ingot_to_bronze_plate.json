@@ -1,0 +1,35 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_item_to_roll": {
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "eln2:hot_bronze_ingot"
+            ]
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_the_recipe": {
+      "conditions": {
+        "recipe": "eln2:rolling/hot_bronze_ingot_to_bronze_plate"
+      },
+      "trigger": "minecraft:recipe_unlocked"
+    }
+  },
+  "requirements": [
+    [
+      "has_item_to_roll",
+      "has_the_recipe"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "eln2:rolling/hot_bronze_ingot_to_bronze_plate"
+    ]
+  },
+  "sends_telemetry_event": true
+}

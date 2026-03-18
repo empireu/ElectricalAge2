@@ -1,101 +1,313 @@
-@file:Suppress("unused") // Because block variables here would be suggested for deletion.
+@file:Suppress("unused", "MemberVisibilityCanBePrivate", "NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS") // Because block variables here would be suggested for deletion.
 
 package org.eln2.mc.common.blocks
 
+import net.minecraft.core.BlockPos
 import net.minecraft.world.item.*
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityType
+import net.minecraft.world.level.block.state.BlockBehaviour.Properties
+import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.phys.AABB
 import net.minecraftforge.eventbus.api.IEventBus
-import net.minecraftforge.registries.DeferredRegister
-import net.minecraftforge.registries.ForgeRegistries
-import net.minecraftforge.registries.RegistryObject
+import net.minecraftforge.registries.*
+import org.ageseries.libage.data.MutableSetMapMultiMap
+import org.ageseries.libage.utils.putUnique
+import org.eln2.mc.DEBUGGER_BREAK
+import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.common.blocks.foundation.*
+import java.util.function.Supplier
 
 object BlockRegistry {
-    private val BLOCK_REGISTRY = DeferredRegister.create(ForgeRegistries.BLOCKS, MODID)!!
-    private val BLOCK_ITEM_REGISTRY = DeferredRegister.create(ForgeRegistries.ITEMS, MODID)!!
-    private val BLOCK_ENTITY_REGISTRY = DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, MODID)!!
+    val BLOCKS = DeferredRegister.create(ForgeRegistries.BLOCKS, MODID)!!
+    val BLOCK_ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, MODID)!!
+    val BLOCK_ENTITIES = DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, MODID)!!
 
-    fun <T : BlockEntity> blockEntity(
+    val BLOCK_ENTITY_TYPE_BY_BLOCK = MutableSetMapMultiMap<Block, RegistryObject<BlockEntityType<*>>>()
+
+    fun getBlockEntityType(block: Block) : RegistryObject<BlockEntityType<*>> {
+        val set = BLOCK_ENTITY_TYPE_BY_BLOCK.map[block]
+            ?: error(DEBUGGER_BREAK("Could not get block entity types for $block"))
+
+        if(set.isEmpty() || set.size != 1) {
+            error(DEBUGGER_BREAK("Block entity types for $block are ${set.size}"))
+        }
+
+        return set.first()
+    }
+
+    fun <T : BlockEntity> blockEntityOnly(
         name: String,
         blockEntitySupplier: BlockEntityType.BlockEntitySupplier<T>,
-        blockSupplier: (() -> Block),
+        vararg blockSuppliers: (() -> Block),
     ): RegistryObject<BlockEntityType<T>> {
-
-        return BLOCK_ENTITY_REGISTRY.register(name) {
+        var rv: RegistryObject<BlockEntityType<T>>? = null
+        rv = BLOCK_ENTITIES.register(name) {
             @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS") // Thanks, Minecraft for the high quality code.
             BlockEntityType.Builder.of(
                 blockEntitySupplier,
-                blockSupplier()
-            )
-                .build(null)
+                *blockSuppliers.map {
+                    it.invoke().also { block ->
+                        @Suppress("UNCHECKED_CAST")
+                        BLOCK_ENTITY_TYPE_BY_BLOCK[block].add(rv as RegistryObject<BlockEntityType<*>>)
+                    }
+                }.toTypedArray()
+            ).build(null)
+        }
+
+        return rv
+    }
+
+    fun<T : BlockEntity> blockEntityOnly(
+        name: String,
+        blockEntitySupplier: BlockEntityType.BlockEntitySupplier<T>,
+        blockRegistryObjectListSupplier: Supplier<Iterable<Block>>
+    ) : RegistryObject<BlockEntityType<T>> {
+        return BLOCK_ENTITIES.register(name) {
+            @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS") // Thanks, Minecraft for the high quality code.
+            BlockEntityType.Builder.of(
+                blockEntitySupplier,
+                *blockRegistryObjectListSupplier.get().toList().toTypedArray()
+            ).build(null)
         }
     }
 
-    fun setup(bus: IEventBus) {
-        BLOCK_REGISTRY.register(bus)
-        BLOCK_ITEM_REGISTRY.register(bus)
-        BLOCK_ENTITY_REGISTRY.register(bus)
-    }
+    fun <T : BlockEntity, B : Block> blockEntityOnly(
+        name: String,
+        blockSupplier: RegistryObject<B>,
+        blockEntitySupplier: BlockEntityType.BlockEntitySupplier<T>,
+    ) = blockEntityOnly(name, blockEntitySupplier, { blockSupplier.get() })
 
-    val CELL_BLOCK_ENTITY: RegistryObject<BlockEntityType<CellBlockEntity>> = BLOCK_ENTITY_REGISTRY.register("cell") {
-        @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")
-        BlockEntityType.Builder.of(::CellBlockEntity).build(null)
+    fun <T : BlockEntity, B : Block> blockEntityOnly(
+        name: String,
+        blockSupplier: BlockRegistryItem<B>,
+        blockEntitySupplier: BlockEntityType.BlockEntitySupplier<T>,
+    ) = blockEntityOnly(name, blockEntitySupplier, { blockSupplier.get() })
+
+    fun setup(bus: IEventBus) {
+        BLOCKS.register(bus)
+        BLOCK_ITEMS.register(bus)
+        BLOCK_ENTITIES.register(bus)
     }
 
     val MULTIPART_BLOCK_ENTITY: RegistryObject<BlockEntityType<MultipartBlockEntity>> =
-        BLOCK_ENTITY_REGISTRY.register("multipart") {
-            @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS") // Thanks, Minecraft for the high quality code.
-            BlockEntityType.Builder.of(::MultipartBlockEntity, MULTIPART_BLOCK.block.get()).build(null)
+        BLOCK_ENTITIES.register("multipart") {
+            BlockEntityType.Builder.of(::MultipartBlockEntity, MULTIPART_BLOCK.get()).build(null)
         }
 
-    data class CellBlockRegistryItem(
-        val name: String,
-        val block: RegistryObject<CellBlock>,
-        val item: RegistryObject<BlockItem>,
-    )
+    val MULTIBLOCK_DELEGATE_BLOCK_ENTITY: RegistryObject<BlockEntityType<MultiblockDelegateBlockEntity>> =
+        BLOCK_ENTITIES.register("big_block_delegate") {
+            BlockEntityType.Builder.of({ a, b -> MultiblockDelegateBlockEntity(a, b, null) } ).build(null)
+        }
 
-    data class BlockRegistryItem(
-        val name: String,
-        val block: RegistryObject<Block>,
-        val item: RegistryObject<BlockItem>,
-    ) {
+    data class BlockRegistryItem<T : Block>(val name: String, val block: RegistryObject<T>, val item: RegistryObject<BlockItem>) : Supplier<T> by block {
         val registryName get() = block.id ?: error("Invalid registry name")
     }
 
-    private fun registerCellBlock(
-        name: String,
-        tab: CreativeModeTab? = null,
-        supplier: () -> CellBlock,
-    ): CellBlockRegistryItem {
-        val block = BLOCK_REGISTRY.register(name) { supplier() }
-        val item = BLOCK_ITEM_REGISTRY.register(name) {
-            BlockItem(
-                block.get(),
-                Item.Properties().also { /*TODO where did tabs go?*/ })
+    fun<B : Block> blockAndItem(name: String, blockSupplier: () -> B): BlockRegistryItem<B> {
+        val block = BLOCKS.register(name) {
+            blockSupplier()
         }
 
-        return CellBlockRegistryItem(name, block, item)
-    }
-
-    fun block(
-        name: String,
-        tab: CreativeModeTab? = null,
-        supplier: () -> Block,
-    ): BlockRegistryItem {
-        val block = BLOCK_REGISTRY.register(name) { supplier() }
-        val item = BLOCK_ITEM_REGISTRY.register(name) {
-            BlockItem(
-                block.get(),
-                Item.Properties().also { /* TODO where did tabs go? */ }
-            )
+        val item = BLOCK_ITEMS.register(name) {
+            BlockItem(block.get(), Item.Properties())
         }
 
         return BlockRegistryItem(name, block, item)
     }
 
-    val MULTIPART_BLOCK = block("multipart", tab = null) { MultipartBlock() }
-    val LIGHT_GHOST_BLOCK = block("light_ghost") { GhostLightBlock() }
+    fun<B : Block> blockAndItem(name: String, itemPropertiesSupplier: () -> Item.Properties, blockSupplier: () -> B): BlockRegistryItem<B> {
+        val block = BLOCKS.register(name) {
+            blockSupplier()
+        }
+
+        val item = BLOCK_ITEMS.register(name) {
+            BlockItem(block.get(), itemPropertiesSupplier())
+        }
+
+        return BlockRegistryItem(name, block, item)
+    }
+
+    fun<B : Block> blockAndItem(name: String, blockItemSupplier: (block: B) -> BlockItem, blockSupplier: () -> B): BlockRegistryItem<B> {
+        val block = BLOCKS.register(name) {
+            blockSupplier()
+        }
+
+        val item = BLOCK_ITEMS.register(name) {
+            blockItemSupplier(block.get())
+        }
+
+        return BlockRegistryItem(name, block, item)
+    }
+
+    fun<T : Block> blockOnly(
+        name: String,
+        supplier: () -> T
+    ) : RegistryObject<T> = BLOCKS.register(name) { supplier() }
+
+    fun blockItemOnly(name: String, supplier: () -> BlockItem): RegistryObject<BlockItem> = BLOCK_ITEMS.register(name) {
+        supplier()
+    }
+
+    val MULTIPART_BLOCK = blockOnly("multipart") { MultipartBlock() }
+    val MULTIBLOCK_DELEGATE_BLOCK = blockOnly("big_block_delegate") { MultiblockDelegateBlock() }
+
+    interface DelegateMapBuilder {
+        /**
+         * Gets a unique synthetic ID to register a delegate block.
+         * This method works by incrementing an internal counter. It is used by all the other methods that register delegates in the builder.
+         * */
+        fun getDelegateId(): String
+
+        /**
+         * Puts the [state] at the specified position [x] [y] [z].
+         * */
+        fun state(x: Int, y: Int, z: Int, state: Supplier<BlockState>)
+
+        /**
+         * Puts the default state of [block] at the specified position [x] [y] [z]
+         * */
+        fun <T : Block> principal(x: Int, y: Int, z: Int, block: Supplier<T>)
+
+        /**
+         * Puts a [MultiblockDelegateBlock] at the specified position [x] [y] [z] with a full block collider.
+         * */
+        fun delegateBlock(x: Int, y: Int, z: Int)
+
+        /**
+         * Registers a [MultiblockDelegateBlockWithCustomCollider] with a collider composed of the specified [colliders].
+         * */
+        fun registerDelegate(colliders: List<AABB>) : RegistryObject<MultiblockDelegateBlockWithCustomCollider>
+
+        /**
+         * Registers a [MultiblockDelegateBlockWithCustomCollider] with a custom collider with one cube with the specified bounds.
+         * */
+        fun registerDelegate(minX: Double, minY: Double, minZ: Double, maxX: Double, maxY: Double, maxZ: Double) = registerDelegate(
+            listOf(AABB(minX, minY, minZ, maxX, maxY, maxZ))
+        )
+
+        /**
+         * Registers a [MultiblockDelegateBlockWithCustomCollider] with a collider composed of the specified [colliders].
+         * */
+        fun registerDelegateOf(vararg colliders: AABB) = registerDelegate(colliders.asList())
+
+        /**
+         * Registers a [MultiblockDelegateBlockWithCustomCollider] with a collider composed of the specified [colliders] and with the specified block [properties].
+         * */
+        fun registerDelegate(properties: Properties, colliders: List<AABB>) : RegistryObject<MultiblockDelegateBlockWithCustomCollider>
+
+        /**
+         * Registers a [MultiblockDelegateBlockWithCustomCollider] with a collider composed of the specified [colliders] and with the specified block [properties].
+         * */
+        fun registerDelegateOf(properties: Properties, vararg colliders: AABB) = registerDelegate(properties, colliders.asList())
+
+        /**
+         * Puts a [MultiblockDelegateBlockWithCustomCollider] at the specified position [x] [y] [z] with a collider composed of the specified [colliders].
+         * */
+        fun delegate(x: Int, y: Int, z: Int, vararg colliders: AABB)
+
+        /**
+         * Puts a [MultiblockDelegateBlockWithCustomCollider] at the specified position [x] [y] [z] with a collider composed of the specified [colliders] and with the specified block [properties].
+         * */
+        fun delegate(properties: Properties, x: Int, y: Int, z: Int, vararg colliders: AABB)
+    }
+
+    private class DelegateMapBuilderImplementation(val id: String) : DelegateMapBuilder {
+        val deferredStates = LinkedHashMap<BlockPos, Supplier<BlockState>>()
+        var registeredDelegateCounter = 0
+
+        override fun state(x: Int, y: Int, z: Int, state: Supplier<BlockState>) {
+            require(x != 0 || y != 0 || z != 0) {
+                "Tried to replace representative"
+            }
+
+            require(deferredStates.put(BlockPos(x, y, z), state) == null) {
+                "Duplicate state $x $y $z $state"
+            }
+        }
+
+        override fun<T : Block> principal(x: Int, y: Int, z: Int, block: Supplier<T>) {
+            state(x, y, z) {
+                block.get().defaultBlockState()
+            }
+        }
+
+        override fun delegateBlock(x: Int, y: Int, z: Int) {
+            state(x, y, z) {
+                MULTIBLOCK_DELEGATE_BLOCK.get().defaultBlockState()
+            }
+        }
+
+        override fun getDelegateId() = "${id}_delegate_${registeredDelegateCounter++}"
+
+        override fun registerDelegate(colliders: List<AABB>): RegistryObject<MultiblockDelegateBlockWithCustomCollider> {
+            return blockOnly(getDelegateId()) {
+                MultiblockDelegateBlockWithCustomCollider(
+                    initialShapes = colliders
+                )
+            }
+        }
+
+        override fun registerDelegate(properties: Properties, colliders: List<AABB>): RegistryObject<MultiblockDelegateBlockWithCustomCollider> {
+            return blockOnly(getDelegateId()) {
+                MultiblockDelegateBlockWithCustomCollider(
+                    properties = properties,
+                    initialShapes = colliders
+                )
+            }
+        }
+
+        override fun delegate(x: Int, y: Int, z: Int, vararg colliders: AABB) {
+            val delegate = registerDelegate(colliders.asList())
+
+            state(x, y, z) {
+                delegate.get().defaultBlockState()
+            }
+        }
+
+        override fun delegate(properties: Properties, x: Int, y: Int, z: Int, vararg colliders: AABB) {
+            val delegate = registerDelegate(properties, colliders.asList())
+
+            state(x, y, z) {
+                delegate.get().defaultBlockState()
+            }
+        }
+    }
+
+    private val delegateDefinitions = HashMap<String, Lazy<MultiblockDelegateMap>>()
+
+    fun defineDelegateMap(id: String, action: DelegateMapBuilder.() -> Unit) : Lazy<MultiblockDelegateMap> {
+        require(!delegateDefinitions.containsKey(id)) {
+            "Duplicate delegate definition $id"
+        }
+
+        val builder = DelegateMapBuilderImplementation(id)
+
+        action(builder)
+
+        val lazy = lazy {
+            MultiblockDelegateMap(
+                builder.deferredStates.keys.associateWith {
+                    builder.deferredStates[it]!!.get()
+                }
+            )
+        }
+
+        delegateDefinitions.putUnique(id, lazy)
+
+        LOG.info("Registered delegate $id with ${builder.deferredStates.size} deferred states and ${builder.registeredDelegateCounter} new delegates")
+
+        return lazy
+    }
+
+    fun finalize() {
+        delegateDefinitions.forEach {
+            val value = it.value.value
+            LOG.debug("Resolved delegate definition {} to {}", it.key, value)
+        }
+
+        LOG.info("Finalized block registry")
+    }
 }
