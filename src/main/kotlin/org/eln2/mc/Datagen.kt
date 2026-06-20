@@ -27,7 +27,6 @@ import org.eln2.mc.common.content.modules.Eln2Kinetic
 import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.content.modules.Eln2Wires
 import org.eln2.mc.common.content.modules.world.Eln2Ores
-import org.eln2.mc.common.content.processing.BlacksmithingRecipeBuilder
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.recipes.foundation.CatalyzedSimpleProcessingRecipeBuilder
 import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipeBuilder
@@ -149,31 +148,6 @@ class Eln2BlockStateProviderDatagen(output: PackOutput, existingFileHelper: Exis
  * */
 class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
     private fun buildManualRecipes(pWriter: Consumer<FinishedRecipe?>) {
-        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, Eln2Processing.BLACKSMITHING_HAMMER_ITEM.get())
-            .pattern(" IS")
-            .pattern(" SI")
-            .pattern("S  ")
-            .define('I', Items::IRON_INGOT)
-            .define('S', Items::STICK)
-            .unlockedBy("has_iron", has(Items::IRON_INGOT))
-            .save(pWriter, resource("crafting/blacksmithing_hammer"))
-
-        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, Eln2Processing.BLACKSMITHING_FILE_ITEM.get())
-            .pattern(" I ")
-            .pattern(" S ")
-            .define('I', Items::IRON_INGOT)
-            .define('S', Items::STICK)
-            .unlockedBy("has_iron", has(Items::IRON_INGOT))
-            .save(pWriter, resource("crafting/blacksmithing_file"))
-
-        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, Eln2Processing.BLACKSMITHING_CHISEL_AND_HAMMER_ITEM.get())
-            .pattern("H  ")
-            .pattern("I  ")
-            .define('H', Eln2Processing.BLACKSMITHING_HAMMER_ITEM.get())
-            .define('I', Items::IRON_INGOT)
-            .unlockedBy("has_hammer", has(Eln2Processing.BLACKSMITHING_HAMMER_ITEM.get()))
-            .save(pWriter, resource("crafting/blacksmithing_chisel_and_hammer"))
-
         ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, Eln2ForgeFluids.INSULATING_VARNISH.requireBottle().bottleItem.get())
             .requires(Eln2ForgeFluids.NAPHTHA.requireBottle().bottleItem.get())
             .requires(Eln2Ingredients.RAW_RESIN.get())
@@ -210,19 +184,23 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_raw_carbon_brush", has(Eln2Ingredients.RAW_CARBON_BRUSH.get()))
             .save(pWriter, resource("smelting/raw_carbon_brush_to_carbon_brush_smelting"))
 
-        BlacksmithingRecipeBuilder(Eln2Ingredients.IRON_PLATE.get(), Eln2Ingredients.IRON_AXLE_MOUNT.get())
-            .withTool(Eln2Processing.BLACKSMITHING_HAMMER_ITEM.get())
-            .withDefaultToolMode()
-            .withCooldown(20)
-            .unlockedBy("has_plate", has(Eln2Ingredients.IRON_PLATE.get()))
-            .save(pWriter, resource("blacksmithing/iron_axle_mount"))
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.IRON_AXLE_MOUNT.get(), 4)
+            .pattern(" I ")
+            .pattern("P P")
+            .pattern(" I ")
+            .define('I', Items::IRON_INGOT)
+            .define('P', Eln2Ingredients.IRON_PLATE.get())
+            .unlockedBy("has_iron_plate", has(Eln2Ingredients.IRON_PLATE.get()))
+            .save(pWriter, resource("crafting/iron_axle_mount"))
 
-        BlacksmithingRecipeBuilder(Eln2Ingredients.HOT_IRON_INGOT.get(), Eln2Ingredients.IRON_SHAFT.get())
-            .withTool(Eln2Processing.BLACKSMITHING_HAMMER_ITEM.get())
-            .withMode(Eln2Processing.BLACKSMITHING_HAMMER_TWO_SIDE_FLATTENING)
-            .withCooldown(60)
-            .unlockedBy("has_hot_iron_ingot", has(Eln2Ingredients.HOT_IRON_INGOT.get()))
-            .save(pWriter, resource("blacksmithing/iron_shaft"))
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.IRON_GEAR.get(), 4)
+            .pattern(" I ")
+            .pattern("IPI")
+            .pattern(" I ")
+            .define('I', Items::IRON_INGOT)
+            .define('P', Eln2Ingredients.IRON_PLATE.get())
+            .unlockedBy("has_iron_plate", has(Eln2Ingredients.IRON_PLATE.get()))
+            .save(pWriter, resource("crafting/iron_gear"))
 
         CatalyzedSimpleProcessingRecipeBuilder(Eln2Processing.EXTRUDING_RECIPE)
             .withInput(Eln2Ingredients.HOT_IRON_INGOT.get())
@@ -242,12 +220,6 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .define('P', Eln2Ingredients.IRON_PLATE.get())
             .unlockedBy("has_mount", has(Eln2Ingredients.IRON_AXLE_MOUNT.get()))
             .save(pWriter, resource("crafting/primitive_standard_iron_straight_joint"))
-
-        BlacksmithingRecipeBuilder(Eln2Ingredients.IRON_PLATE.get(), Eln2Ingredients.IRON_GEAR.get())
-            .withTool(Eln2Processing.BLACKSMITHING_CHISEL_AND_HAMMER_ITEM.get())
-            .withDefaultToolMode()
-            .unlockedBy("has_iron_plate", has(Eln2Ingredients.IRON_PLATE.get()))
-            .save(pWriter, resource("blacksmithing/iron_gear"))
 
         ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Kinetic.PRIMITIVE_STANDARD_IRON_HUB_JOINT.partInfo.item.get())
             .pattern(" M ")
@@ -427,7 +399,6 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
         Eln2Ingredients.PLATES.itemsForRecipeDatagen.forEach { obj ->
             val plateItem = obj.info.get()
             val rollingItem = obj.sourceItemForRolling?.get()
-            val blacksmithingItem = obj.sourceItemForFlattening?.get()
 
             if(rollingItem != null) {
                 DirectSimpleProcessingRecipeBuilder(Eln2Processing.ROLLING_RECIPE)
@@ -439,34 +410,11 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
 
                 LOG.info("Added plate rolling recipe from {} to {}", rollingItem.itemID, plateItem.itemID)
             }
-
-            if(blacksmithingItem != null) {
-                BlacksmithingRecipeBuilder(Ingredient.of(blacksmithingItem), plateItem, 1)
-                    .withTool(Eln2Processing.BLACKSMITHING_HAMMER_ITEM.get())
-                    .withMode(Eln2Processing.BLACKSMITHING_HAMMER_FLATTENING)
-                    .withCooldown(obj.blacksmithingDuration)
-                    .unlockedBy("has_item_to_hammer", has(blacksmithingItem))
-                    .save(pWriter, resource("blacksmithing/${blacksmithingItem.itemID.path}_to_${plateItem.itemID.path}"))
-
-                LOG.info("Added plate blacksmithing recipe from {} to {}", blacksmithingItem.itemID, plateItem.itemID)
-            }
         }
 
         Eln2Ingredients.WIRES.itemsForRecipeDatagen.forEach { obj ->
             val wireItem = obj.info.get()
-            val itemForSlicing = obj.sourceItemForSlicing?.get()
             val itemForExtruding = obj.sourceItemForExtruding?.get()
-
-            if(itemForSlicing != null) {
-                BlacksmithingRecipeBuilder(Ingredient.of(itemForSlicing), wireItem, 1)
-                    .withTool(Eln2Processing.BLACKSMITHING_CHISEL_AND_HAMMER_ITEM.get())
-                    .withMode(Eln2Processing.BLACKSMITHING_CHISEL_AND_HAMMER_SLICING)
-                    .withCooldown(obj.blacksmithingDuration)
-                    .unlockedBy("has_item_to_slice", has(itemForSlicing))
-                    .save(pWriter, resource("blacksmithing/${itemForSlicing.itemID.path}_to_${wireItem.itemID.path}"))
-
-                LOG.info("Added wire blacksmithing recipe from {} to {}", itemForSlicing.itemID, wireItem.itemID)
-            }
 
             if(itemForExtruding != null) {
                 CatalyzedSimpleProcessingRecipeBuilder(Eln2Processing.EXTRUDING_RECIPE)

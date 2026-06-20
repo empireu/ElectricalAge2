@@ -94,7 +94,6 @@
     "block.eln2.lamp_pole": "Street Lamp Pole",
     "block.eln2.basic_wind_turbine": "Basic Wind Turbine",
     "block.eln2.primitive_burner": "Primitive Burner",
-    "block.eln2.blacksmithing_station": "Blacksmithing Station",
     "block.eln2.coke_oven": "Coke Oven",
     "block.eln2.distillation_column": "Distillation Column",
     "block.eln2.insulated_distillation_module": "Insulated Distillation Module",
@@ -129,9 +128,6 @@
     "item.eln2.wrench": "Dragon Wrench",
     "item.eln2.grid_cable_pliers": "Grid Cable Pliers",
     "item.eln2.screwdriver": "Screwdriver",
-    "item.eln2.blacksmithing_hammer": "Blacksmithing Hammer",
-    "item.eln2.blacksmithing_file": "Blacksmithing File",
-    "item.eln2.blacksmithing_chisel_and_hammer": "Blacksmithing Chisel And Hammer",
 
     // Valves:
     "item.eln2.fluid_pipe_extraction_valve": "Fluid Pipe Extraction Valve",
@@ -256,9 +252,7 @@
 
     "config.jade.plugin_eln2.distillation_fluids": "ELN2",
     "config.jade.plugin_eln2.component_display": "ELN2",
-    "config.jade.plugin_eln2.blacksmithing_help": "ELN2",
 
     "key.eln2.category": "ELN2",
-    "key.eln2.cycle_spec_orientation": "Cycle Spec Orientation",
-    "blacksmithing.eln2.result": "Craft Result"
+    "key.eln2.cycle_spec_orientation": "Cycle Spec Orientation"
 }

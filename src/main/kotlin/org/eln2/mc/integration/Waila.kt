@@ -13,8 +13,6 @@ import org.ageseries.libage.data.*
 import org.ageseries.libage.utils.sourceName
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.*
-import org.eln2.mc.common.content.processing.BlacksmithingStationBlock
-import org.eln2.mc.common.content.processing.BlacksmithingStationBlockEntity
 import org.eln2.mc.common.fluids.foundation.PhysicalFluidManager
 import org.eln2.mc.common.content.processing.PhaseChangeModuleBlock
 import org.eln2.mc.common.content.processing.PhaseChangeModuleBlockEntity
@@ -37,13 +35,11 @@ import kotlin.math.absoluteValue
 class Eln2WailaPlugin : IWailaPlugin {
     override fun register(registration: IWailaCommonRegistration) {
         registration.registerBlockDataProvider(DistillationFluidProvider, PhaseChangeModuleBlockEntity::class.java)
-        registration.registerBlockDataProvider(BlacksmithingStationProvider, BlacksmithingStationBlockEntity::class.java)
         registration.registerBlockDataProvider(ComponentDisplayProvider, BlockEntity::class.java)
     }
 
     override fun registerClient(registration: IWailaClientRegistration) {
         registration.registerBlockComponent(DistillationFluidProvider, PhaseChangeModuleBlock::class.java)
-        registration.registerBlockComponent(BlacksmithingStationProvider, BlacksmithingStationBlock::class.java)
         registration.registerBlockComponent(ComponentDisplayProvider, Block::class.java)
 
         registration.addRayTraceCallback { _, accessor, _ ->
@@ -271,53 +267,6 @@ class Eln2WailaPlugin : IWailaPlugin {
         }
     }
 
-    /**
-     * Shows the result of applying the recipe.
-     * */
-    private object BlacksmithingStationProvider : IBlockComponentProvider, IServerDataProvider<BlockAccessor> {
-        override fun getUid() = resource("blacksmithing_help")
-
-        override fun appendServerData(p0: CompoundTag, p1: BlockAccessor) {
-            val blockEntity = p1.blockEntity as? BlacksmithingStationBlockEntity
-                ?: return
-
-            val stack = blockEntity.inventoryHandler.getStackInSlot(0)
-
-            if(stack.isEmpty) {
-                return
-            }
-
-            p0.put("stationInventory", stack.serializeNBT())
-        }
-
-        override fun appendTooltip(p0: ITooltip, p1: BlockAccessor, p2: IPluginConfig) {
-            if(!p1.serverData.contains("stationInventory")) {
-                return
-            }
-
-            val blockEntity = p1.blockEntity as? BlacksmithingStationBlockEntity
-                ?: return
-
-            val player = p1.player
-                ?: return
-
-            val stationInventory = ItemStack.of(p1.serverData.getCompound("stationInventory"))
-
-            val toolStack = player.getItemInHand(InteractionHand.MAIN_HAND)
-            val recipeOptional = blockEntity.searchForRecipe(stationInventory, toolStack)
-
-            if(recipeOptional.isEmpty) {
-                return
-            }
-
-            val recipe = recipeOptional.get()
-
-            val helper = p0.elementHelper
-            p0.add(helper.text(Component.translatable("blacksmithing.eln2.result")))
-            p0.append(helper.smallItem(recipe.output))
-            p0.append(helper.text(recipe.output.displayName))
-        }
-    }
 }
 
 /**

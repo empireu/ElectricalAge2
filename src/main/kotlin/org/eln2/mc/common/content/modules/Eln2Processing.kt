@@ -246,11 +246,6 @@ object Eln2Processing : ContentModule() {
         registerWorkBoxMachineBlockEntityRenderers(event)
 
         event.registerBlockEntityRenderer(
-            BLACKSMITHING_STATION_BLOCK_ENTITY.get(),
-            BlacksmithingStationBlockEntityRenderer.Provider()
-        )
-
-        event.registerBlockEntityRenderer(
             COKE_OVEN_MAIN_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
@@ -296,53 +291,6 @@ object Eln2Processing : ContentModule() {
             )
        }
     }
-
-    //#region Blacksmithing
-
-    val BLACKSMITHING_RECIPE = RecipeRegistry.register<BlacksmithingRecipe>("blacksmithing") {
-        BlacksmithingRecipe.Serializer(it)
-    }
-
-    val BLACKSMITHING_HAMMER_MANY_HITS_SOUND = soundEventVariableRange("blacksmithing/hammer_many_hits")
-
-    val BLACKSMITHING_STATION_BLOCK = blockAndItem("blacksmithing_station", ::BlacksmithingStationBlock)
-        .withSelfDrop()
-
-    val BLACKSMITHING_STATION_BLOCK_ENTITY = blockEntityOnly(
-        "blacksmithing_station",
-        BLACKSMITHING_STATION_BLOCK.block,
-        ::BlacksmithingStationBlockEntity
-    )
-
-    const val BLACKSMITHING_HAMMER_FLATTENING = "flattening"
-    const val BLACKSMITHING_HAMMER_TWO_SIDE_FLATTENING = "two_side_flattening"
-
-    val BLACKSMITHING_HAMMER_ITEM = item("blacksmithing_hammer") {
-        BlacksmithingToolItem(
-            30,
-            listOf(
-                BLACKSMITHING_HAMMER_FLATTENING,
-                BLACKSMITHING_HAMMER_TWO_SIDE_FLATTENING
-            )
-        )
-    }
-
-    val BLACKSMITHING_FILE_ITEM = item("blacksmithing_file") {
-        BlacksmithingToolItem(14,
-            listOf()
-        )
-    }
-
-    const val BLACKSMITHING_CHISEL_AND_HAMMER_SLICING = "slicing"
-
-    val BLACKSMITHING_CHISEL_AND_HAMMER_ITEM = item("blacksmithing_chisel_and_hammer") {
-        BlacksmithingToolItem(
-            50,
-            listOf(BLACKSMITHING_CHISEL_AND_HAMMER_SLICING)
-        )
-    }
-
-    //#endregion
 
     //#region Coking
 

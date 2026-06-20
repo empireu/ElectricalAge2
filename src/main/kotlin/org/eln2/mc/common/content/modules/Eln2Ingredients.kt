@@ -100,15 +100,8 @@ object Eln2Ingredients : ContentModule() {
         var sourceItemForRolling: Supplier<Item>? = null
         var rollingDuration = 100.0
 
-        /**
-         * Registers a blacksmithing hammer (flattening mode) recipe that turns [sourceItemForFlattening] into [info] with cooldown [blacksmithingDuration].
-         * */
-        var sourceItemForFlattening: Supplier<Item>? = null
-        var blacksmithingDuration = 40
-
         fun allRecipes(sourceItem: Supplier<Item>) {
             sourceItemForRolling = sourceItem
-            sourceItemForFlattening = sourceItem
         }
     }
 
@@ -137,12 +130,6 @@ object Eln2Ingredients : ContentModule() {
     val WIRES = IngredientSetWithRecipes(::WireBuilder)
 
     class WireBuilder(val info: IngredientInfo<Wire>) {
-        /**
-         * Registers blacksmithing chisel and hammer recipe (slicing mode) that turns [sourceItemForSlicing] into [info].
-         * */
-        var sourceItemForSlicing: Supplier<Item>? = null
-        var blacksmithingDuration = 60
-
         /**
          * Registers extruding recipe that turns [sourceItemForExtruding] into [info].
          * */
@@ -212,7 +199,6 @@ object Eln2Ingredients : ContentModule() {
     }
 
     val LEAD_WIRE = WIRES.build("lead_wire", MyColor(110, 110, 130)) {
-        sourceItemForSlicing = LEAD_PLATE
         sourceItemForExtruding = LEAD_INGOT
     }
 
@@ -233,7 +219,6 @@ object Eln2Ingredients : ContentModule() {
     }
 
     val TIN_WIRE = WIRES.build("tin_wire", TIN_INGOT.tint) {
-        sourceItemForSlicing = TIN_PLATE
         sourceItemForExtruding = TIN_INGOT
     }
 
@@ -277,7 +262,6 @@ object Eln2Ingredients : ContentModule() {
     }
 
     val COPPER_WIRE = WIRES.build("copper_wire", MyColor(284, 185, 135)) {
-        sourceItemForSlicing = HOT_COPPER_PLATE
         sourceItemForExtruding = HOT_COPPER_INGOT
     }
 
