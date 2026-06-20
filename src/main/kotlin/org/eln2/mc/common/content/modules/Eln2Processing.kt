@@ -46,7 +46,6 @@ import org.eln2.mc.common.content.modules.Eln2Processing.registerMachine
 import org.eln2.mc.common.content.modules.Eln2Processing.registerMachineHull
 import org.eln2.mc.common.content.processing.*
 import org.eln2.mc.common.items.ItemRegistry
-import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.items.ItemRegistry.itemNoStack
 import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
 import org.eln2.mc.common.recipes.RecipeRegistry
@@ -289,7 +288,17 @@ object Eln2Processing : ContentModule() {
                 54.0f,
                 129.0f
             )
-       }
+        }
+
+        MenuScreens.register(ALLOYING_SMELTER_MENU.get()) { menu, inventory, title ->
+            BasicProgressScreen(
+                menu, inventory, title,
+                resource("textures/gui/container/crusher_base.png"),
+                resource("textures/gui/container/crusher_progress.png"),
+                79.0f,
+                103.0f
+            )
+        }
     }
 
     //#region Coking
@@ -710,6 +719,25 @@ object Eln2Processing : ContentModule() {
             VULCANIZING_AUTOCLAVE_MAIN_BLOCK.get()
         )
     }
+
+    //#endregion
+
+    //#region Alloying
+
+    val ALLOYING_RECIPE = RecipeRegistry.register<AlloyingRecipe>("alloying") {
+        AlloyingRecipe.Serializer(it)
+    }
+
+    val ALLOYING_SMELTER_BLOCK = blockAndItem("alloying_smelter", ::AlloyingSmelterBlock)
+        .withSelfDrop()
+
+    val ALLOYING_SMELTER_BLOCK_ENTITY = blockEntityOnly(
+        "alloying_smelter",
+        ALLOYING_SMELTER_BLOCK.block,
+        ::AlloyingSmelterBlockEntity
+    )
+
+    val ALLOYING_SMELTER_MENU = menu("alloying_smelter", ::AlloyingSmelterMenu)
 
     //#endregion
 }

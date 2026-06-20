@@ -7,10 +7,7 @@ import net.minecraft.data.loot.BlockLootSubProvider
 import net.minecraft.data.recipes.*
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.flag.FeatureFlags
-import net.minecraft.world.item.BucketItem
-import net.minecraft.world.item.Item
-import net.minecraft.world.item.ItemDisplayContext
-import net.minecraft.world.item.Items
+import net.minecraft.world.item.*
 import net.minecraft.world.item.crafting.Ingredient
 import net.minecraftforge.client.model.generators.BlockStateProvider
 import net.minecraftforge.client.model.generators.ItemModelBuilder
@@ -19,17 +16,14 @@ import net.minecraftforge.client.model.generators.loaders.DynamicFluidContainerM
 import net.minecraftforge.client.model.generators.loaders.ItemLayerModelBuilder
 import net.minecraftforge.common.data.BlockTagsProvider
 import net.minecraftforge.common.data.ExistingFileHelper
-import org.eln2.mc.common.content.modules.ContentManager
-import org.eln2.mc.common.content.modules.Eln2ForgeFluids
+import org.eln2.mc.common.content.modules.*
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids.requireBottle
-import org.eln2.mc.common.content.modules.Eln2Ingredients
-import org.eln2.mc.common.content.modules.Eln2Kinetic
-import org.eln2.mc.common.content.modules.Eln2Processing
-import org.eln2.mc.common.content.modules.Eln2Wires
 import org.eln2.mc.common.content.modules.world.Eln2Ores
+import org.eln2.mc.common.content.processing.AlloyingRecipeBuilder
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.recipes.foundation.CatalyzedSimpleProcessingRecipeBuilder
 import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipeBuilder
+import org.eln2.mc.common.recipes.foundation.Eln2WeightedItemIngredient
 import org.eln2.mc.extensions.blockID
 import org.eln2.mc.extensions.itemID
 import java.util.concurrent.CompletableFuture
@@ -444,6 +438,15 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
                 LOG.info("Added dust crushing recipe from {} to {}", crushingInfo.sourceItem.get().itemID, dustItem.itemID)
             }
         }
+
+        AlloyingRecipeBuilder(Eln2Processing.ALLOYING_RECIPE)
+            .withInput(Eln2WeightedItemIngredient(Ingredient.of(Items.COPPER_INGOT), 3))
+            .withInput(Eln2WeightedItemIngredient(Ingredient.of(Eln2Ingredients.TIN_INGOT.item.get()), 1))
+            .withOutput(ItemStack(Eln2Ingredients.BRONZE_INGOT.get(), 4))
+            .withDuration(600)
+            .unlockedBy("has_copper", has(Items.COPPER_INGOT))
+            .unlockedBy("has_tin", has(Eln2Ingredients.TIN_INGOT.item.get()))
+            .save(pWriter, resource("alloying/copper_tin_to_bronze"))
 
         buildManualRecipes(pWriter)
     }
