@@ -298,6 +298,33 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_copper_plate", has(Eln2Ingredients.COPPER_PLATE.get()))
             .save(pWriter, resource("crafting/standard_uninsulated_copper_thermal_wire"))
 
+        //#region Tools
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Tools.WRENCH.get())
+            .pattern("I I")
+            .pattern(" I ")
+            .pattern(" I ")
+            .define('I', Items.IRON_INGOT)
+            .unlockedBy("has_iron_ingot", has(Items.IRON_INGOT))
+            .save(pWriter, resource("crafting/wrench"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Tools.SCREWDRIVER.get())
+            .pattern(" I ")
+            .pattern("III")
+            .define('I', Items.IRON_INGOT)
+            .unlockedBy("has_iron_ingot", has(Items.IRON_INGOT))
+            .save(pWriter, resource("crafting/screwdriver"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Grid.GRID_CABLE_PLIERS.get())
+            .pattern("I I")
+            .pattern("I I")
+            .pattern(" I ")
+            .define('I', Items.IRON_INGOT)
+            .unlockedBy("has_iron_ingot", has(Items.IRON_INGOT))
+            .save(pWriter, resource("crafting/grid_cable_pliers"))
+
+        //#endregion
+
         LOG.info("Generated manual recipes.")
     }
 
