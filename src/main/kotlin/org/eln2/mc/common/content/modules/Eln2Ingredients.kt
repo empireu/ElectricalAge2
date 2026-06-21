@@ -9,7 +9,7 @@ import org.ageseries.libage.utils.addUnique
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.ModEvents
-import org.eln2.mc.common.items.ItemRegistry
+import org.eln2.mc.common.content.modules.ContentManager.withItemTagDatagen
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.items.ItemRegistry.itemDefault
 import java.util.function.Supplier
@@ -18,7 +18,7 @@ object Eln2Ingredients : ContentModule() {
     //#region Registration Helpers
 
     /**
-     * Item with a data-generated model (consisting of a base texture and a tint registered in [ITEMS_FOR_TINT]).
+     * Item with a data-generated model (consisting of a base texture and a tint).
      * @param id The item registry path.
      * @param tint The color of the item.
      * @param item The item itself.
@@ -40,12 +40,12 @@ object Eln2Ingredients : ContentModule() {
         val itemsForModelDatagen = LinkedHashSet<IngredientInfo<Type>>()
 
         /**
-         * Registers an item with the ID [name], and adds it to [ITEMS_FOR_TINT] (picked up automatically by a generic routine) and to [itemsForModelDatagen] (needs a specific implementation in [org.eln2.mc.Eln2ItemModelProviderDatagen]).
+         * Registers an item with the ID [name], and adds it to the items for tint (picked up automatically by a generic routine) and to [itemsForModelDatagen] (needs a specific implementation in [org.eln2.mc.Eln2ItemModelProviderDatagen]).
          * */
         fun register(name: String, tint: MyColor) : IngredientInfo<Type> {
             ContentManager.requireInit()
 
-            val ingredientItem = ItemRegistry.itemDefault(name)
+            val ingredientItem = itemDefault(name)
             val obj = IngredientInfo<Type>(name, tint, ingredientItem)
 
             ContentManager.addItemForTint(obj)
@@ -193,10 +193,11 @@ object Eln2Ingredients : ContentModule() {
     //#region Lead
 
     val LEAD_INGOT = INGOTS.register("lead_ingot", MyColor(150, 150, 160))
+        .withItemTagDatagen(Eln2ConventionTags.INGOT_LEAD)
 
     val LEAD_PLATE = PLATES.build("lead_plate", MyColor(165, 165, 180)) {
         allRecipes(LEAD_INGOT)
-    }
+    }.withItemTagDatagen(Eln2ConventionTags.PLATE_LEAD)
 
     val LEAD_WIRE = WIRES.build("lead_wire", MyColor(110, 110, 130)) {
         sourceItemForExtruding = LEAD_INGOT
@@ -206,17 +207,18 @@ object Eln2Ingredients : ContentModule() {
         fromCrushing(LEAD_INGOT, duration = 15.0)
         fromCrushing(LEAD_PLATE, duration = 12.5)
         fromCrushing(LEAD_WIRE, duration = 8.0)
-    }
+    }.withItemTagDatagen(Eln2ConventionTags.DUST_LEAD)
 
     //#endregion
 
     //#region Tin
 
     val TIN_INGOT = INGOTS.register("tin_ingot", MyColor(244, 235, 231))
+        .withItemTagDatagen(Eln2ConventionTags.INGOT_TIN)
 
     val TIN_PLATE = PLATES.build("tin_plate", TIN_INGOT.tint) {
         allRecipes(TIN_INGOT)
-    }
+    }.withItemTagDatagen(Eln2ConventionTags.PLATE_TIN)
 
     val TIN_WIRE = WIRES.build("tin_wire", TIN_INGOT.tint) {
         sourceItemForExtruding = TIN_INGOT
@@ -226,7 +228,7 @@ object Eln2Ingredients : ContentModule() {
         fromCrushing(TIN_INGOT, duration = 20.0)
         fromCrushing(TIN_PLATE, duration = 18.0)
         fromCrushing(TIN_WIRE, duration = 15.0)
-    }
+    }.withItemTagDatagen(Eln2ConventionTags.DUST_TIN)
 
     //#endregion
 
@@ -238,12 +240,12 @@ object Eln2Ingredients : ContentModule() {
 
     val IRON_PLATE = PLATES.build("iron_plate", MyColor.WHITE) {
         allRecipes(HOT_IRON_INGOT)
-    }
+    }.withItemTagDatagen(Eln2ConventionTags.PLATE_IRON)
 
     val IRON_DUST = DUSTS.build("iron_dust", MyColor(200, 200, 200)) {
         fromCrushing(Items::IRON_INGOT)
         fromCrushing(IRON_PLATE)
-    }
+    }.withItemTagDatagen(Eln2ConventionTags.DUST_IRON)
 
     //#endregion
 
@@ -255,7 +257,7 @@ object Eln2Ingredients : ContentModule() {
 
     val COPPER_PLATE = PLATES.build("copper_plate", MyColor(184, 115, 51)) {
         allRecipes(HOT_COPPER_INGOT)
-    }
+    }.withItemTagDatagen(Eln2ConventionTags.PLATE_COPPER)
 
     val HOT_COPPER_PLATE = HOT_PLATES.build("hot_copper_plate", MyColor(240, 110, 70)) {
         sourceItemForVanillaHeating = COPPER_PLATE
@@ -272,13 +274,14 @@ object Eln2Ingredients : ContentModule() {
         fromCrushing(COPPER_PLATE)
         fromCrushing(COPPER_WIRE)
         fromCrushing(ENAMELED_COPPER_WIRE)
-    }
+    }.withItemTagDatagen(Eln2ConventionTags.DUST_COPPER)
 
     //#endregion
 
     //#region Bronze
 
     val BRONZE_INGOT = INGOTS.register("bronze_ingot", MyColor(206, 137, 70))
+        .withItemTagDatagen(Eln2ConventionTags.INGOT_BRONZE)
 
     val HOT_BRONZE_INGOT = HOT_INGOTS.build("hot_bronze_ingot", BRONZE_INGOT.tint) {
         sourceItemForVanillaHeating = BRONZE_INGOT
@@ -286,7 +289,7 @@ object Eln2Ingredients : ContentModule() {
 
     val BRONZE_PLATE = PLATES.build("bronze_plate", BRONZE_INGOT.tint) {
         allRecipes(HOT_BRONZE_INGOT)
-    }
+    }.withItemTagDatagen(Eln2ConventionTags.PLATE_BRONZE)
 
     //#endregion
 

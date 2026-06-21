@@ -349,6 +349,21 @@ object ContentManager {
     }
 
     /**
+     * Used by [org.eln2.mc.Eln2ItemTagsDatagen].
+     * */
+    val ITEM_TAGS_FOR_DATAGEN = LinkedHashSet<Pair<Supplier<Item>, TagKey<Item>>>()
+
+    fun<T : Supplier<Item>> T.withItemTagDatagen(tag: TagKey<Item>) : T {
+        initScope.validate()
+
+        ITEM_TAGS_FOR_DATAGEN.addUnique(Pair(this, tag)) {
+            DEBUGGER_BREAK("Duplicate item tag for $this")
+        }
+
+        return this
+    }
+
+    /**
      * Tint registered in [ModEvents.registerItemColors], on texture index 0.
      * */
     val ITEMS_FOR_TINT_ON_LAYER0 = LinkedHashSet<ModEvents.ItemAndTint>()

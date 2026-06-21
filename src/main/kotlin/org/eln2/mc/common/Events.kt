@@ -1,3 +1,5 @@
+@file:Suppress("unused")
+
 package org.eln2.mc.common
 
 import it.unimi.dsi.fastutil.ints.Int2IntMap
@@ -61,6 +63,7 @@ import org.eln2.mc.ELN2_DEBUG
 import org.eln2.mc.Eln2BlockTagsDatagen
 import org.eln2.mc.Eln2BlockSelfDropLootDatagen
 import org.eln2.mc.Eln2ItemModelProviderDatagen
+import org.eln2.mc.Eln2ItemTagsDatagen
 import org.eln2.mc.Eln2BlockStateProviderDatagen
 import org.eln2.mc.Eln2RecipeProviderDatagen
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
@@ -124,7 +127,7 @@ object ModEvents {
              * - `0` is the bucket
              * - `1` is the fluid
              * */
-            event.register({ stack, tintIndex ->
+            event.register({ _, tintIndex ->
                 if (tintIndex == 1) {
                     return@register IClientFluidTypeExtensions.of(item.fluid).tintColor
                 }
@@ -214,6 +217,11 @@ object ModEvents {
         generator.addProvider(
             event.includeServer(),
             Eln2BlockTagsDatagen(output, lookupProvider, existingFileHelper)
+        )
+
+        generator.addProvider(
+            event.includeServer(),
+            Eln2ItemTagsDatagen(output, lookupProvider, existingFileHelper)
         )
 
         generator.addProvider(

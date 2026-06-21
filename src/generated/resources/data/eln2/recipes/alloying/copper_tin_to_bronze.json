@@ -6,7 +6,7 @@
       "options": [
         {
           "ingredient": {
-            "item": "minecraft:copper_ingot"
+            "tag": "forge:ingots/copper"
           },
           "value": 3
         }
@@ -17,7 +17,7 @@
       "options": [
         {
           "ingredient": {
-            "item": "eln2:tin_ingot"
+            "tag": "forge:ingots/tin"
           },
           "value": 1
         }

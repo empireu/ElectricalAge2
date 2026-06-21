@@ -2,9 +2,11 @@ package org.eln2.mc
 
 import net.minecraft.client.renderer.block.model.BlockModel.GuiLight
 import net.minecraft.core.HolderLookup
+import net.minecraft.core.registries.Registries
 import net.minecraft.data.PackOutput
 import net.minecraft.data.loot.BlockLootSubProvider
 import net.minecraft.data.recipes.*
+import net.minecraft.data.tags.TagsProvider
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.flag.FeatureFlags
 import net.minecraft.world.item.*
@@ -16,6 +18,7 @@ import net.minecraftforge.client.model.generators.loaders.DynamicFluidContainerM
 import net.minecraftforge.client.model.generators.loaders.ItemLayerModelBuilder
 import net.minecraftforge.common.data.BlockTagsProvider
 import net.minecraftforge.common.data.ExistingFileHelper
+import net.minecraftforge.registries.ForgeRegistries
 import org.eln2.mc.common.content.modules.*
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids.requireBottle
 import org.eln2.mc.common.content.modules.world.Eln2Ores
@@ -91,6 +94,23 @@ class Eln2BlockTagsDatagen(output: PackOutput, lookupProvider: CompletableFuture
 }
 
 /**
+ * Generates item tag JSON files from [ContentManager.ITEM_TAGS_FOR_DATAGEN].
+ * Tags our items with forge convention tags (e.g. `forge:ingots/tin`) so other mods' recipes that accept those tags can consume our items, and our recipes can accept their items.
+ * */
+class Eln2ItemTagsDatagen(output: PackOutput, lookupProvider: CompletableFuture<HolderLookup.Provider>, existingFileHelper: ExistingFileHelper) : TagsProvider<Item>(output, Registries.ITEM, lookupProvider, MODID, existingFileHelper) {
+    override fun addTags(provider: HolderLookup.Provider) {
+        ContentManager.ITEM_TAGS_FOR_DATAGEN.forEach { (itemSupplier, tagKey) ->
+            val item = itemSupplier.get()
+            val itemKey = ForgeRegistries.ITEMS.getResourceKey(item).orElseThrow()
+
+            tag(tagKey).add(itemKey)
+
+            LOG.info("Registered item tag {} for {} ({})", tagKey, item, item.itemID)
+        }
+    }
+}
+
+/**
  * Generates the block model from [Eln2Ores.ORE_FOR_MODEL_DATAGEN], which is built by [Eln2Ores.withModelDatagen] which registers tints on indices we use in the models.
  * */
 class Eln2BlockStateProviderDatagen(output: PackOutput, existingFileHelper: ExistingFileHelper) : BlockStateProvider(output, MODID, existingFileHelper) {
@@ -141,6 +161,14 @@ class Eln2BlockStateProviderDatagen(output: PackOutput, existingFileHelper: Exis
  * - Builds manual recipes.
  * */
 class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
+    /**
+     * Returns an [Ingredient] that prefers the forge convention tag for [item] if one exists, falling back to a concrete item ingredient. This lets our recipes accept items from other mods that are registered to the same forge convention tag.
+     */
+    private fun taggedIngredient(item: Item): Ingredient {
+        val tag = Eln2ConventionTags.tagForItem(item)
+        return if (tag != null) Ingredient.of(tag) else Ingredient.of(item)
+    }
+
     private fun buildManualRecipes(pWriter: Consumer<FinishedRecipe?>) {
         ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, Eln2ForgeFluids.INSULATING_VARNISH.requireBottle().bottleItem.get())
             .requires(Eln2ForgeFluids.NAPHTHA.requireBottle().bottleItem.get())
@@ -363,7 +391,7 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
              * Smelts into hot ingots:
              * */
             SimpleCookingRecipeBuilder.smelting(
-                Ingredient.of(sourceItem),
+                taggedIngredient(sourceItem),
                 RecipeCategory.MISC,
                 hotItem,
                 0.5f,
@@ -377,7 +405,7 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
              * Blasts into hot ingots:
              * */
             SimpleCookingRecipeBuilder.blasting(
-                Ingredient.of(sourceItem),
+                taggedIngredient(sourceItem),
                 RecipeCategory.MISC,
                 hotItem,
                 0.5f,
@@ -396,7 +424,7 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
 
             if(rollingItem != null) {
                 DirectSimpleProcessingRecipeBuilder(Eln2Processing.ROLLING_RECIPE)
-                    .withInput(rollingItem)
+                    .withInput(taggedIngredient(rollingItem))
                     .withOutput(plateItem)
                     .withDuration(obj.rollingDuration)
                     .unlockedBy("has_item_to_roll", has(rollingItem))
@@ -412,7 +440,7 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
 
             if(itemForExtruding != null) {
                 CatalyzedSimpleProcessingRecipeBuilder(Eln2Processing.EXTRUDING_RECIPE)
-                    .withInput(itemForExtruding)
+                    .withInput(taggedIngredient(itemForExtruding))
                     .withCatalyst(Eln2Processing.EXTRUDER_WIRE_DIE.get())
                     .withOutput(wireItem)
                     .withDuration(obj.extrudingDuration)
@@ -427,12 +455,14 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             val dustItem = obj.info.get()
 
             obj.sourceItemsForCrushing.forEach { crushingInfo ->
+                val crushingSource = crushingInfo.sourceItem.get()
+
                 DirectSimpleProcessingRecipeBuilder(Eln2Processing.CRUSHING_RECIPE)
-                    .withInput(crushingInfo.sourceItem.get())
+                    .withInput(taggedIngredient(crushingSource))
                     .withOutput(dustItem)
                     .withDuration(crushingInfo.duration)
                     .withTier(crushingInfo.tier)
-                    .unlockedBy("has_item_to_crush", has(crushingInfo.sourceItem.get()))
+                    .unlockedBy("has_item_to_crush", has(crushingSource))
                     .save(pWriter, resource("crushing/${crushingInfo.sourceItem.get().itemID.path}_to_${dustItem.itemID.path}"))
 
                 LOG.info("Added dust crushing recipe from {} to {}", crushingInfo.sourceItem.get().itemID, dustItem.itemID)
@@ -440,12 +470,12 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
         }
 
         AlloyingRecipeBuilder(Eln2Processing.ALLOYING_RECIPE)
-            .withInput(Eln2WeightedItemIngredient(Ingredient.of(Items.COPPER_INGOT), 3))
-            .withInput(Eln2WeightedItemIngredient(Ingredient.of(Eln2Ingredients.TIN_INGOT.item.get()), 1))
+            .withInput(Eln2WeightedItemIngredient(Ingredient.of(Eln2ConventionTags.INGOT_COPPER), 3))
+            .withInput(Eln2WeightedItemIngredient(Ingredient.of(Eln2ConventionTags.INGOT_TIN), 1))
             .withOutput(ItemStack(Eln2Ingredients.BRONZE_INGOT.get(), 4))
             .withDuration(600)
-            .unlockedBy("has_copper", has(Items.COPPER_INGOT))
-            .unlockedBy("has_tin", has(Eln2Ingredients.TIN_INGOT.item.get()))
+            .unlockedBy("has_copper", has(Eln2ConventionTags.INGOT_COPPER))
+            .unlockedBy("has_tin", has(Eln2ConventionTags.INGOT_TIN))
             .save(pWriter, resource("alloying/copper_tin_to_bronze"))
 
         buildManualRecipes(pWriter)
