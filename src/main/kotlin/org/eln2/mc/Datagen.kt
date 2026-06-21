@@ -396,6 +396,16 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_iron_ingot", has(Eln2ConventionTags.INGOT_IRON))
             .save(pWriter, resource("crafting/iron_gear_simple"))
 
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Processing.PRIMITIVE_KINETIC_WORK_BOX.item.get())
+            .pattern("P P")
+            .pattern("S G")
+            .pattern("   ")
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .define('S', Eln2Ingredients.IRON_SHAFT.get())
+            .define('G', Eln2Ingredients.IRON_GEAR.get())
+            .unlockedBy("has_iron_plate", has(Eln2Ingredients.IRON_PLATE.get()))
+            .save(pWriter, resource("crafting/primitive_kinetic_work_box"))
+
         //#endregion
 
         LOG.info("Generated manual recipes.")
