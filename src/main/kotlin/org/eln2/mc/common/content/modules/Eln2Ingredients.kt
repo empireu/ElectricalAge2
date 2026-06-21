@@ -307,6 +307,10 @@ object Eln2Ingredients : ContentModule() {
 
     val MACHINE_FRAME = itemDefault("machine_frame")
 
+    val EXTRUDING_PORT = itemDefault("extruding_port")
+
+    val EXTRUDING_ASSEMBLY = itemDefault("extruding_assembly")
+
     //#region Tree Extraction
 
     val RAW_LATEX = itemDefault("raw_latex")

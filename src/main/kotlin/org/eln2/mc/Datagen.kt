@@ -445,6 +445,32 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_machine_frame", has(Eln2Ingredients.MACHINE_FRAME.get()))
             .save(pWriter, resource("crafting/crusher_hull"))
 
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.EXTRUDING_PORT.get(), 2)
+            .pattern("GSG")
+            .pattern("GSG")
+            .pattern("   ")
+            .define('G', Eln2Ingredients.IRON_GEAR.get())
+            .define('S', Eln2Ingredients.IRON_SHAFT.get())
+            .unlockedBy("has_iron_gear", has(Eln2Ingredients.IRON_GEAR.get()))
+            .save(pWriter, resource("crafting/extruding_port"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.EXTRUDING_ASSEMBLY.get())
+            .pattern("EPE")
+            .define('E', Eln2Ingredients.EXTRUDING_PORT.get())
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .unlockedBy("has_extruding_port", has(Eln2Ingredients.EXTRUDING_PORT.get()))
+            .save(pWriter, resource("crafting/extruding_assembly"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Processing.EXTRUDER_HULL.hullItem.get())
+            .pattern("MAB")
+            .pattern("   ")
+            .pattern("   ")
+            .define('M', Eln2Ingredients.MACHINE_FRAME.get())
+            .define('A', Eln2Ingredients.EXTRUDING_ASSEMBLY.get())
+            .define('B', Ingredient.of(Eln2ConventionTags.GLUE))
+            .unlockedBy("has_machine_frame", has(Eln2Ingredients.MACHINE_FRAME.get()))
+            .save(pWriter, resource("crafting/extruder_hull"))
+
         LOG.info("Generated manual recipes.")
     }
 
