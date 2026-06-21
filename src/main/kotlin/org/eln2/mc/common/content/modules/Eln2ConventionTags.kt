@@ -48,6 +48,12 @@ object Eln2ConventionTags {
 
     //#endregion
 
+    //#region Misc Tags
+
+    val GLUE = forgeTag("glue")
+
+    //#endregion
+
     /**
      * Maps item registry path to [TagKey] reference.
      * Covers both our own items (for output-side tag datagen) and vanilla items (for recipe input side, so we accept any mod's version of the same material).
@@ -70,6 +76,8 @@ object Eln2ConventionTags {
 
         "iron_ingot" to INGOT_IRON,
         "copper_ingot" to INGOT_COPPER,
+
+        "raw_resin" to GLUE,
     )
 
     /**

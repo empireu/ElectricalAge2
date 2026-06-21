@@ -301,10 +301,17 @@ object Eln2Ingredients : ContentModule() {
 
     val IRON_GEAR = itemDefault("iron_gear")
 
+    val CRUSHER_DRUM = itemDefault("crusher_drum")
+
+    val CRUSHER_ASSEMBLY = itemDefault("crusher_assembly")
+
+    val MACHINE_FRAME = itemDefault("machine_frame")
+
     //#region Tree Extraction
 
     val RAW_LATEX = itemDefault("raw_latex")
     val RAW_RESIN = itemDefault("raw_resin")
+        .withItemTagDatagen(Eln2ConventionTags.GLUE)
 
     //#endregion
 
