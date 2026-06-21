@@ -369,6 +369,35 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
 
         //#endregion
 
+        //#region Simple Component Recipes
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.IRON_SHAFT.get())
+            .pattern("   ")
+            .pattern("III")
+            .pattern("   ")
+            .define('I', taggedIngredient(Items.IRON_INGOT))
+            .unlockedBy("has_iron_ingot", has(Eln2ConventionTags.INGOT_IRON))
+            .save(pWriter, resource("crafting/iron_shaft_from_ingots"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.COPPER_ROD.get())
+            .pattern("   ")
+            .pattern("II ")
+            .pattern("   ")
+            .define('I', taggedIngredient(Items.COPPER_INGOT))
+            .unlockedBy("has_copper_ingot", has(Eln2ConventionTags.INGOT_COPPER))
+            .save(pWriter, resource("crafting/copper_rod_from_ingots"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.IRON_GEAR.get())
+            .pattern(" N ")
+            .pattern("NIN")
+            .pattern(" N ")
+            .define('I', taggedIngredient(Items.IRON_INGOT))
+            .define('N', Items.IRON_NUGGET)
+            .unlockedBy("has_iron_ingot", has(Eln2ConventionTags.INGOT_IRON))
+            .save(pWriter, resource("crafting/iron_gear_simple"))
+
+        //#endregion
+
         LOG.info("Generated manual recipes.")
     }
 
