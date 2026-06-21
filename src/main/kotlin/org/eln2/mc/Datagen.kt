@@ -325,6 +325,50 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
 
         //#endregion
 
+        //#region Simple Plate Recipes
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.LEAD_PLATE.get())
+            .pattern("I  ")
+            .pattern("I  ")
+            .pattern("   ")
+            .define('I', taggedIngredient(Eln2Ingredients.LEAD_INGOT.get()))
+            .unlockedBy("has_lead_ingot", has(Eln2ConventionTags.INGOT_LEAD))
+            .save(pWriter, resource("crafting/lead_plate_from_ingots"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.TIN_PLATE.get())
+            .pattern("I  ")
+            .pattern("I  ")
+            .pattern("   ")
+            .define('I', taggedIngredient(Eln2Ingredients.TIN_INGOT.get()))
+            .unlockedBy("has_tin_ingot", has(Eln2ConventionTags.INGOT_TIN))
+            .save(pWriter, resource("crafting/tin_plate_from_ingots"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.IRON_PLATE.get())
+            .pattern("I  ")
+            .pattern("I  ")
+            .pattern("   ")
+            .define('I', taggedIngredient(Items.IRON_INGOT))
+            .unlockedBy("has_iron_ingot", has(Eln2ConventionTags.INGOT_IRON))
+            .save(pWriter, resource("crafting/iron_plate_from_ingots"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.COPPER_PLATE.get())
+            .pattern("I  ")
+            .pattern("I  ")
+            .pattern("   ")
+            .define('I', taggedIngredient(Items.COPPER_INGOT))
+            .unlockedBy("has_copper_ingot", has(Eln2ConventionTags.INGOT_COPPER))
+            .save(pWriter, resource("crafting/copper_plate_from_ingots"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.BRONZE_PLATE.get())
+            .pattern("I  ")
+            .pattern("I  ")
+            .pattern("   ")
+            .define('I', taggedIngredient(Eln2Ingredients.BRONZE_INGOT.get()))
+            .unlockedBy("has_bronze_ingot", has(Eln2ConventionTags.INGOT_BRONZE))
+            .save(pWriter, resource("crafting/bronze_plate_from_ingots"))
+
+        //#endregion
+
         LOG.info("Generated manual recipes.")
     }
 
