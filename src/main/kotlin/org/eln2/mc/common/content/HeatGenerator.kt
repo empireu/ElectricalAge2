@@ -8,75 +8,47 @@ import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
-import kotlinx.serialization.Serializable
-import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.renderer.LevelRenderer
 import net.minecraft.client.renderer.LightTexture
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
-import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.network.FriendlyByteBuf
-import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerPlayer
-import net.minecraft.sounds.SoundEvents
-import net.minecraft.sounds.SoundSource
-import net.minecraft.util.RandomSource
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
-import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
-import net.minecraft.world.inventory.AbstractContainerMenu
-import net.minecraft.world.inventory.ContainerLevelAccess
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.LightLayer
-import net.minecraft.world.level.block.AbstractFurnaceBlock
-import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
-import net.minecraft.world.level.block.entity.BlockEntity
-import net.minecraft.world.level.block.entity.BlockEntityTicker
-import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
-import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraftforge.common.ForgeHooks
-import net.minecraftforge.common.capabilities.Capability
-import net.minecraftforge.common.capabilities.ForgeCapabilities
-import net.minecraftforge.common.util.LazyOptional
-import net.minecraftforge.items.ItemStackHandler
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.ThermalMassDefinition
-import org.eln2.mc.ClientOnly
-import org.eln2.mc.LOG
-import org.eln2.mc.ServerOnly
+import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
 import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.containers.ContainerHelper
-import org.eln2.mc.common.containers.MyAbstractContainerScreen
-import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
 import org.eln2.mc.common.content.FuelBurnState.Companion.canBurn
 import org.eln2.mc.common.content.modules.Eln2HeatGenerators
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.sendBulkPacket
-import org.eln2.mc.PIDController
-import org.eln2.mc.MonopoleMap
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.resource
 import java.util.function.Consumer
 import kotlin.math.max
 import kotlin.math.min
@@ -176,7 +148,6 @@ class BurnerSimulation(val ambientTemperature: Quantity<Temperature>, val hull: 
     /**
      * One cell in the simulation's domain. Represents a small, homogenous (in temperature and composition) volume of coal.
      * @param initialMass The initial mass added to this slice.
-     * @param surfaceAreaFactor Scaling factor for the effective mass of the device.
      * @param energy The internal energy of the slice.
      * */
     class CoalSlice(val grade: CoalGrade, val initialMass: Double, var energy: Double) {
@@ -1176,301 +1147,6 @@ class FuelBurnState(var fuelAmount: Quantity<Mass>, val energyDensity: Quantity<
         return CompoundTag().also {
             it.putQuantity(AMOUNT, fuelAmount)
             it.putQuantity(ENERGY_DENSITY, energyDensity)
-        }
-    }
-}
-
-class FuelBurnerBehavior(val cell: Cell, val body: ThermalMass) : CellBehavior {
-    companion object {
-        private const val FUEL = "fuel"
-        private const val PID = "pid"
-        private val DESIRED_TEMPERATURE = Quantity(700.0, CELSIUS)
-        private val MAX_POWER = Quantity(100.0, KILO * WATT)
-    }
-
-    private var fuel: FuelBurnState? = null
-    private val updates = AtomicUpdate<FuelBurnState>()
-
-    private val pid = PIDController(25.0, 0.0, 0.0).also {
-        it.setPoint = 1.0
-        it.minControl = 0.0
-        it.maxControl = 1.0
-    }
-
-    fun updateFuel(mass: FuelBurnState) = updates.setLatest(mass)
-
-    val availableEnergy get() = fuel?.availableEnergy ?: Quantity(0.0)
-
-    private var signal = 0.0
-    private var thermalPower = 0.0
-
-    val isBurning get() = thermalPower > 10.0
-
-    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) = subscribers.addPre(this::simulationTick)
-
-    private fun simulationTick(dt: Double, phase: SimulationPhase) {
-        updates.consume {
-            fuel = it
-            pid.reset()
-            cell.setChanged()
-        }
-
-        val fuel = this.fuel ?: return
-
-        signal = pid.update(body.temperature / DESIRED_TEMPERATURE, dt)
-
-        val heat = min(!fuel.availableEnergy, signal * !MAX_POWER * dt)
-
-        thermalPower = heat / dt
-
-        if(!heat.approxEq(0.0)) {
-            fuel.removeEnergy(Quantity(heat))
-            body.energy += Quantity(heat)
-            cell.setChanged()
-        }
-    }
-
-    fun submitDisplay(builder: ComponentDisplayList) {
-        builder.debug("*Control Signal ${(signal * 1000).formatted(2)}")
-        builder.quantityOutput(Quantity(thermalPower, WATT), ComponentDisplayList.Domain.Thermal)
-        builder.translateQuantityRow("fuel_remaining", (fuel?.fuelAmount ?: Quantity(0.0)))
-        builder.translateQuantityRow("energy_remaining", availableEnergy)
-    }
-
-    fun saveNbt() = CompoundTag()
-        .withSubTagOptional(FUEL, fuel?.toNbt())
-        .withSubTag(PID, pid.stateToNbt())
-
-    fun loadNbt(tag: CompoundTag) = tag
-        .useSubTagIfPreset(FUEL) { fuel = FuelBurnState.fromNbt(it) }
-        .useSubTagIfPreset(PID) { pid.stateFromNbt(it) }
-}
-
-class HeatGeneratorCell(ci: CellCreateInfo, thermalDef: ThermalMassDefinition, leakageParameters: ConnectionParameters) : Cell(ci),
-    ThermalContactInfo, SidedThermalFLBR<HeatGeneratorCell> {
-    companion object {
-        private const val BURNER_BEHAVIOR = "burner"
-    }
-
-    override val thermalSize: ThermalSize
-        get() = ThermalSize.Any
-
-    @SimObject
-    val thermalWire = ThermalWireObject(this, thermalDef(), leakageParameters)
-
-    @Behavior
-    val burner = FuelBurnerBehavior(this, thermalWire.thermalBody)
-
-    val needsFuel get() = burner.availableEnergy.value approxEq 0.0
-
-    fun replaceFuel(mass: FuelBurnState) = burner.updateFuel(mass)
-
-    override fun loadCellData(tag: CompoundTag) {
-        tag.useSubTagIfPreset(BURNER_BEHAVIOR, burner::loadNbt)
-    }
-
-    override fun saveCellData(): CompoundTag {
-        return CompoundTag().withSubTag(BURNER_BEHAVIOR, burner.saveNbt())
-    }
-
-    override fun getContactTemperature(other: Cell) = thermalWire.thermalBody.temperature
-}
-
-class HeatGeneratorBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<HeatGeneratorCell>(pos, state, Eln2HeatGenerators.HEAT_GENERATOR_BLOCK_ENTITY.get()),
-    ComponentDisplay {
-    companion object {
-        const val FUEL_SLOT = 0
-
-        private const val INVENTORY = "inventory"
-
-        fun tick(pLevel: Level?, pPos: BlockPos?, pState: BlockState?, pBlockEntity: BlockEntity?) {
-            if (pLevel == null || pBlockEntity == null) {
-                return
-            }
-
-            if (pBlockEntity !is HeatGeneratorBlockEntity) {
-                LOG.error("Got $pBlockEntity instead of heat generator")
-                return
-            }
-
-            if (!pLevel.isClientSide) {
-                pBlockEntity.serverTick()
-            }
-        }
-    }
-
-    override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.quantity(cell.thermalWire.thermalBody.temperature)
-        cell.burner.submitDisplay(builder)
-    }
-
-    class InventoryHandler(private val blockEntity: HeatGeneratorBlockEntity) : ItemStackHandler(1) {
-        override fun insertItem(slot: Int, stack: ItemStack, simulate: Boolean): ItemStack {
-            if (!FuelBurnState.canBurn(stack)) {
-                return ItemStack.EMPTY
-            }
-
-            return super.insertItem(slot, stack, simulate)
-        }
-
-        override fun onContentsChanged(slot: Int) {
-            blockEntity.setChanged()
-        }
-    }
-
-    val inventoryHandler = InventoryHandler(this)
-
-    override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
-        if (cap == ForgeCapabilities.ITEM_HANDLER) {
-            return LazyOptional.of { inventoryHandler }.cast()
-        }
-
-        return super.getCapability(cap, side)
-    }
-
-    override fun saveAdditional(pTag: CompoundTag) {
-        super.saveAdditional(pTag)
-        pTag.put(INVENTORY, inventoryHandler.serializeNBT())
-    }
-
-    override fun load(pTag: CompoundTag) {
-        super.load(pTag)
-        pTag.useSubTagIfPreset(INVENTORY, inventoryHandler::deserializeNBT)
-    }
-
-    fun serverTick() {
-        val isHot = cell.burner.isBurning
-
-        if (isHot != blockState.getValue(AbstractFurnaceBlock.LIT)) {
-            level!!.setBlock(
-                blockPos,
-                blockState.setValue(AbstractFurnaceBlock.LIT, isHot),
-                Block.UPDATE_ALL
-            )
-        }
-
-        if (!cell.needsFuel) {
-            return
-        }
-
-        val stack = inventoryHandler.extractItem(FUEL_SLOT, 1, false)
-
-        if (stack.isEmpty) {
-            return
-        }
-
-        cell!!.replaceFuel(FuelBurnState.createFromStack(stack))
-    }
-}
-
-class HeatGeneratorMenu(pContainerId: Int, playerInventory: Inventory, handler: ItemStackHandler, private val access: ContainerLevelAccess) : AbstractContainerMenu(
-    Eln2HeatGenerators.HEAT_GENERATOR_MENU.get(), pContainerId) {
-    @ServerOnly
-    constructor(pBlockEntity: HeatGeneratorBlockEntity, pContainerId: Int, pPlayerInventory: Inventory) : this(
-        pContainerId,
-        pPlayerInventory,
-        pBlockEntity.inventoryHandler,
-        ContainerLevelAccess.create(pBlockEntity.level!!, pBlockEntity.blockPos)
-    )
-
-    @ClientOnly
-    constructor(pContainerId: Int, playerInventory: Inventory) : this(
-        pContainerId,
-        playerInventory,
-        ItemStackHandler(1),
-        ContainerLevelAccess.NULL
-    )
-
-    init {
-        addSlot(
-            SlotItemHandlerWithPlacePredicate(handler, HeatGeneratorBlockEntity.FUEL_SLOT, 56, 35) {
-                FuelBurnState.canBurn(it)
-            }
-        )
-
-        ContainerHelper.addPlayerGrid(playerInventory, this::addSlot)
-    }
-
-    override fun quickMoveStack(pPlayer: Player, pIndex: Int) = ContainerHelper.quickMove(slots, pPlayer, pIndex)
-
-    override fun stillValid(pPlayer: Player) = stillValid(access, pPlayer, Eln2HeatGenerators.HEAT_GENERATOR_BLOCK.block.get())
-}
-
-class HeatGeneratorScreen(menu: HeatGeneratorMenu, playerInventory: Inventory, title: Component) : MyAbstractContainerScreen<HeatGeneratorMenu>(menu, playerInventory, title) {
-    override fun renderBg(pGuiGraphics: GuiGraphics, pPartialTick: Float, pMouseX: Int, pMouseY: Int) {
-        blitHelper(pGuiGraphics, resource("textures/gui/container/heat_generator.png"))
-    }
-}
-
-class HeatGeneratorBlock : UprightHorizontalDirectionCellBlock<HeatGeneratorCell>() {
-    init {
-        registerDefaultState(defaultBlockState().setValue(AbstractFurnaceBlock.LIT, false))
-    }
-
-    override fun createBlockStateDefinition(pBuilder: StateDefinition.Builder<Block, BlockState>) {
-        super.createBlockStateDefinition(pBuilder)
-        pBuilder.add(AbstractFurnaceBlock.LIT)
-    }
-
-    override fun getCellProvider() = Eln2HeatGenerators.HEAT_GENERATOR_CELL.get()
-
-    override fun newBlockEntity(pPos: BlockPos, pState: BlockState): BlockEntity {
-        return HeatGeneratorBlockEntity(pPos, pState)
-    }
-
-    override fun <T : BlockEntity?> getTicker(
-        pLevel: Level,
-        pState: BlockState,
-        pBlockEntityType: BlockEntityType<T>,
-    ): BlockEntityTicker<T> {
-        return BlockEntityTicker(HeatGeneratorBlockEntity::tick)
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun use(
-        pState: BlockState,
-        pLevel: Level,
-        pPos: BlockPos,
-        pPlayer: Player,
-        pHand: InteractionHand,
-        pHit: BlockHitResult,
-    ): InteractionResult {
-        return pLevel.constructMenuHelper2<HeatGeneratorBlockEntity>(
-            pPos,
-            pPlayer,
-            Component.literal("Test"),
-            ::HeatGeneratorMenu
-        )
-    }
-
-    override fun animateTick(pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {
-        if(pState.getValue(AbstractFurnaceBlock.LIT)) {
-            val d0 = pPos.x.toDouble() + 0.5
-            val d1 = pPos.y.toDouble()
-            val d2 = pPos.z.toDouble() + 0.5
-            if (pRandom.nextDouble() < 0.5) {
-                pLevel.playLocalSound(
-                    d0,
-                    d1,
-                    d2,
-                    SoundEvents.FURNACE_FIRE_CRACKLE,
-                    SoundSource.BLOCKS,
-                    1.0f,
-                    1.0f,
-                    false
-                )
-            }
-
-            val direction = pState.getValue(AbstractFurnaceBlock.FACING)
-
-            repeat(4) {
-                val d4 = pRandom.nextDouble() * 0.6 - 0.3
-                val d5 = if (direction.axis === Direction.Axis.X) direction.stepX.toDouble() * 0.52 else d4
-                val d6 = pRandom.nextDouble() * 6.0 / 16.0
-                val d7 = if (direction.axis === Direction.Axis.Z) direction.stepZ.toDouble() * 0.52 else d4
-                pLevel.addParticle(ParticleTypes.SMOKE, d0 + d5, d1 + d6, d2 + d7, 0.0, 0.0, 0.0)
-                pLevel.addParticle(ParticleTypes.FLAME, d0 + d5, d1 + d6, d2 + d7, 0.0, 0.0, 0.0)
-            }
         }
     }
 }

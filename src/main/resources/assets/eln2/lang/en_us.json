@@ -89,7 +89,6 @@
     "block.eln2.acetylene_block": "Acetylene",
 
     // Actual blocks:
-    "block.eln2.heat_generator": "Heat Generator",
     "block.eln2.furnace": "Electrical Furnace",
     "block.eln2.lamp_pole": "Street Lamp Pole",
     "block.eln2.basic_wind_turbine": "Basic Wind Turbine",
