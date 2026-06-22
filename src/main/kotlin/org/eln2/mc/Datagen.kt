@@ -165,8 +165,14 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
      * Returns an [Ingredient] that prefers the forge convention tag for [item] if one exists, falling back to a concrete item ingredient. This lets our recipes accept items from other mods that are registered to the same forge convention tag.
      */
     private fun taggedIngredient(item: Item): Ingredient {
-        val tag = Eln2ConventionTags.tagForItem(item)
-        return if (tag != null) Ingredient.of(tag) else Ingredient.of(item)
+        val tag = ContentManager.tagForItem(item)
+
+        return if (tag != null) {
+            Ingredient.of(tag)
+        }
+        else {
+            Ingredient.of(item)
+        }
     }
 
     private fun buildManualRecipes(pWriter: Consumer<FinishedRecipe?>) {

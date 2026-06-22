@@ -172,8 +172,7 @@ dependencies {
     // Kotlin*
     implementation 'thedarkcolour:kotlinforforge:4.10.0'
 
-    compileOnly(fg.deobf("mezz.jei:jei-${minecraft_version}-forge-api:${jei_version}"))
-    runtimeOnly(fg.deobf("mezz.jei:jei-${minecraft_version}-forge:${jei_version}"))
+    implementation(fg.deobf("mezz.jei:jei-${minecraft_version}-forge:${jei_version}"))
 
     // These `transitive = false` are all necessary. It doesn't work otherwise.
     // Note one of them has `transitive = true`!

@@ -342,5 +342,15 @@
     "config.jade.plugin_eln2.component_display": "ELN2",
 
     "key.eln2.category": "ELN2",
-    "key.eln2.cycle_spec_orientation": "Cycle Spec Orientation"
+    "key.eln2.cycle_spec_orientation": "Cycle Spec Orientation",
+
+    "recipe.eln2.crushing": "Crushing",
+    "recipe.eln2.rolling": "Rolling",
+    "recipe.eln2.extruding": "Extruding",
+    "recipe.eln2.coking": "Coking",
+    "recipe.eln2.alloying": "Alloying",
+    "recipe.eln2.vulcanizing": "Vulcanizing",
+
+    "jei.eln2.vulcanizing.temperature_range": "Temperature: %s\u00B0C - %s\u00B0C",
+    "jei.eln2.vulcanizing.burnt": "Result when overheated"
 }

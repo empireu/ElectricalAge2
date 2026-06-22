@@ -353,6 +353,22 @@ object ContentManager {
      * */
     val ITEM_TAGS_FOR_DATAGEN = LinkedHashSet<Pair<Supplier<Item>, TagKey<Item>>>()
 
+    /**
+     * Reverse lookup: supplier -> tag, populated by [withItemTagDatagen].
+     * Used by [tagForItem] during recipe datagen to prefer convention tags over concrete items.
+     * */
+    val ITEM_TO_TAG_LOOKUP = HashMap<Supplier<Item>, TagKey<Item>>()
+
+    /**
+     * Returns the convention [TagKey] for [item], or `null` if none exists.
+     * Searches the lookup populated by [withItemTagDatagen] at registration time.
+     * */
+    fun tagForItem(item: Item): TagKey<Item>? {
+        return ITEM_TO_TAG_LOOKUP.entries.firstOrNull { (supplier, _) ->
+            supplier.get() === item
+        }?.value
+    }
+
     fun<T : Supplier<Item>> T.withItemTagDatagen(tag: TagKey<Item>) : T {
         initScope.validate()
 
@@ -360,7 +376,21 @@ object ContentManager {
             DEBUGGER_BREAK("Duplicate item tag for $this")
         }
 
+        ITEM_TO_TAG_LOOKUP[this] = tag
+
         return this
+    }
+
+    /**
+     * Registers a vanilla item's convention tag in [ITEM_TO_TAG_LOOKUP] without generating tag datagen output.
+     * This lets recipe generation prefer the tag over the concrete item for vanilla items.
+     * Must be called during init.
+     * */
+    fun registerVanillaItemTag(item: Item, tag: TagKey<Item>) {
+        initScope.validate()
+        val supplier = Supplier { item }
+        ITEM_TO_TAG_LOOKUP[supplier] = tag
+        ITEM_TAGS_FOR_DATAGEN.add(Pair(supplier, tag))
     }
 
     /**

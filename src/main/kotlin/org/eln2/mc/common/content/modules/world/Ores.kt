@@ -16,8 +16,10 @@ import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.content.modules.ContentManager.withBlockTint
 import org.eln2.mc.common.content.modules.ContentManager.withItemTint
-import org.eln2.mc.common.content.modules.ContentModule
+import org.eln2.mc.common.content.modules.ContentManager.withItemTagDatagen
 import org.eln2.mc.common.content.modules.ContentManager.withTagDatagen
+import org.eln2.mc.common.content.modules.ContentModule
+import org.eln2.mc.common.content.modules.Eln2ConventionTags
 import org.eln2.mc.common.content.modules.Eln2Ingredients
 import org.eln2.mc.common.items.ItemRegistry
 import java.util.function.Supplier
@@ -83,6 +85,14 @@ object Eln2Ores : ContentModule() {
         return this
     }
 
+    /**
+     * Registers an item tag datagen for the raw item of this ore.
+     * */
+    private fun<T : OreRegistryItem> T.withRawItemTagDatagen(tag: net.minecraft.tags.TagKey<Item>) : T {
+        this.rawOreItem.withItemTagDatagen(tag)
+        return this
+    }
+
     data class BasicOreRegistryItem(
         override val rawOreItem: RegistryObject<Item>,
         override val oreBlock: RegistryObject<Block>,
@@ -137,4 +147,5 @@ object Eln2Ores : ContentModule() {
         .withTagDatagen(BlockTags.NEEDS_STONE_TOOL)
         .withLootDatagen()
         .withModelDatagen(MyColor(200, 180, 50))
+        .withRawItemTagDatagen(Eln2ConventionTags.RAW_MATERIAL_SULFUR)
 }

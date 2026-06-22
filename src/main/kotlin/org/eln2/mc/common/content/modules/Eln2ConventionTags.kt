@@ -6,6 +6,7 @@ import net.minecraft.core.registries.Registries
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.tags.TagKey
 import net.minecraft.world.item.Item
+import net.minecraft.world.item.Items
 import net.minecraftforge.registries.ForgeRegistries
 
 /**
@@ -47,6 +48,7 @@ object Eln2ConventionTags {
 
     val RAW_MATERIAL_LEAD = forgeTag("raw_materials/lead")
     val RAW_MATERIAL_TIN = forgeTag("raw_materials/tin")
+    val RAW_MATERIAL_SULFUR = forgeTag("raw_materials/sulfur")
 
     //#endregion
 
@@ -57,43 +59,10 @@ object Eln2ConventionTags {
 
     //#endregion
 
-    /**
-     * Maps item registry path to [TagKey] reference.
-     * Covers both our own items (for output-side tag datagen) and vanilla items (for recipe input side, so we accept any mod's version of the same material).
-     */
-    private val ITEM_ID_TO_TAG: Map<String, TagKey<Item>> = mapOf(
-        "lead_ingot" to INGOT_LEAD,
-        "tin_ingot" to INGOT_TIN,
-        "bronze_ingot" to INGOT_BRONZE,
-
-        "lead_dust" to DUST_LEAD,
-        "tin_dust" to DUST_TIN,
-        "iron_dust" to DUST_IRON,
-        "copper_dust" to DUST_COPPER,
-
-        "lead_plate" to PLATE_LEAD,
-        "tin_plate" to PLATE_TIN,
-        "iron_plate" to PLATE_IRON,
-        "copper_plate" to PLATE_COPPER,
-        "bronze_plate" to PLATE_BRONZE,
-
-        "iron_ingot" to INGOT_IRON,
-        "copper_ingot" to INGOT_COPPER,
-
-        "raw_resin" to GLUE,
-        "raw_sulfur" to DUST_SULFUR,
-    )
-
-    /**
-     * Returns the convention [TagKey] for [item], or `null` if none exists.
-     * Used in recipe generation to prefer `Ingredient.of(tag)` over
-     * `Ingredient.of(concreteItem)` when a convention tag is available.
-     */
-    fun tagForItem(item: Item): TagKey<Item>? {
-        val id = ForgeRegistries.ITEMS.getKey(item)
-            ?: return null
-
-        return ITEM_ID_TO_TAG[id.path]
+    init {
+        // Register vanilla items' convention tags in the lookup so recipe datagen uses tags instead of concrete items (cross-mod compat).
+        ContentManager.registerVanillaItemTag(Items.IRON_INGOT, INGOT_IRON)
+        ContentManager.registerVanillaItemTag(Items.COPPER_INGOT, INGOT_COPPER)
     }
 
     private fun forgeTag(path: String): TagKey<Item> =

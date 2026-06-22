@@ -2,7 +2,7 @@
   "type": "eln2:crushing",
   "duration": 15.0,
   "ingredient": {
-    "tag": "forge:dusts/sulfur"
+    "tag": "forge:raw_materials/sulfur"
   },
   "result": {
     "count": 1,
