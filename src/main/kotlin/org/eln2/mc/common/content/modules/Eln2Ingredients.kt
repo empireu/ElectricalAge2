@@ -322,6 +322,8 @@ object Eln2Ingredients : ContentModule() {
 
     val ROLLING_ASSEMBLY = itemDefault("rolling_assembly")
 
+    val PIPE_HEAT_EXCHANGE_ASSEMBLY = itemDefault("pipe_heat_exchange_assembly")
+
     //#region Tree Extraction
 
     val RAW_LATEX = itemDefault("raw_latex")

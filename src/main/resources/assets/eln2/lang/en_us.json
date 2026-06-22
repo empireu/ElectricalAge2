@@ -217,6 +217,7 @@
     "item.eln2.extruding_port": "Extruding Port",
     "item.eln2.extruding_assembly": "Extruding Assembly",
     "item.eln2.rolling_assembly": "Rolling Assembly",
+    "item.eln2.pipe_heat_exchange_assembly": "Pipe Heat Exchange Assembly",
 
     // Work boxes:
     "item.eln2.primitive_kinetic_work_box": "Primitive Kinetic Work Box",
