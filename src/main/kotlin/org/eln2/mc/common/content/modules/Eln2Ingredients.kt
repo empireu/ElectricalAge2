@@ -311,6 +311,8 @@ object Eln2Ingredients : ContentModule() {
 
     val EXTRUDING_ASSEMBLY = itemDefault("extruding_assembly")
 
+    val ROLLING_ASSEMBLY = itemDefault("rolling_assembly")
+
     //#region Tree Extraction
 
     val RAW_LATEX = itemDefault("raw_latex")

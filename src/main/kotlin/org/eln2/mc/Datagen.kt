@@ -471,6 +471,49 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_machine_frame", has(Eln2Ingredients.MACHINE_FRAME.get()))
             .save(pWriter, resource("crafting/extruder_hull"))
 
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.ROLLING_ASSEMBLY.get())
+            .pattern("E E")
+            .define('E', Eln2Ingredients.EXTRUDING_PORT.get())
+            .unlockedBy("has_extruding_port", has(Eln2Ingredients.EXTRUDING_PORT.get()))
+            .save(pWriter, resource("crafting/rolling_assembly"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Processing.ROLLING_MACHINE_HULL.hullItem.get())
+            .pattern("MAB")
+            .pattern("   ")
+            .pattern("   ")
+            .define('M', Eln2Ingredients.MACHINE_FRAME.get())
+            .define('A', Eln2Ingredients.ROLLING_ASSEMBLY.get())
+            .define('B', Ingredient.of(Eln2ConventionTags.GLUE))
+            .unlockedBy("has_machine_frame", has(Eln2Ingredients.MACHINE_FRAME.get()))
+            .save(pWriter, resource("crafting/rolling_machine_hull"))
+
+        ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, Eln2Processing.EXTRUDER_WIRE_DIE.get())
+            .requires(Items.STONE_SLAB)
+            .requires(Items.IRON_NUGGET)
+            .unlockedBy("has_stone_slab", has(Items.STONE_SLAB))
+            .save(pWriter, resource("crafting/extruder_wire_die"))
+
+        ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, Eln2Processing.EXTRUDER_ROD_DIE.get())
+            .requires(Eln2Processing.EXTRUDER_WIRE_DIE.get())
+            .requires(Items.IRON_NUGGET)
+            .unlockedBy("has_extruder_wire_die", has(Eln2Processing.EXTRUDER_WIRE_DIE.get()))
+            .save(pWriter, resource("crafting/extruder_rod_die"))
+
+        ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, Eln2Processing.EXTRUDER_SHAFT_DIE.get())
+            .requires(Eln2Processing.EXTRUDER_ROD_DIE.get())
+            .requires(Items.IRON_NUGGET)
+            .unlockedBy("has_extruder_rod_die", has(Eln2Processing.EXTRUDER_ROD_DIE.get()))
+            .save(pWriter, resource("crafting/extruder_shaft_die"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Processing.TREE_TAP_PART.item.get())
+            .pattern("S S")
+            .pattern("SPS")
+            .pattern("SSS")
+            .define('S', Ingredient.of(Eln2ConventionTags.WOODEN_SLABS))
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .unlockedBy("has_iron_plate", has(Eln2Ingredients.IRON_PLATE.get()))
+            .save(pWriter, resource("crafting/tree_tap"))
+
         LOG.info("Generated manual recipes.")
     }
 

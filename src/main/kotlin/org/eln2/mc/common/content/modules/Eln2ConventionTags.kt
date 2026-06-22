@@ -2,6 +2,7 @@
 
 package org.eln2.mc.common.content.modules
 
+import net.minecraft.core.registries.Registries
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.tags.TagKey
 import net.minecraft.world.item.Item
@@ -51,6 +52,7 @@ object Eln2ConventionTags {
     //#region Misc Tags
 
     val GLUE = forgeTag("glue")
+    val WOODEN_SLABS: TagKey<Item> = TagKey.create(Registries.ITEM, ResourceLocation.fromNamespaceAndPath("minecraft", "wooden_slabs"))
 
     //#endregion
 
