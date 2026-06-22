@@ -10,6 +10,7 @@ import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.ModEvents
 import org.eln2.mc.common.content.modules.ContentManager.withItemTagDatagen
+import org.eln2.mc.common.content.modules.world.Eln2Ores
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.items.ItemRegistry.itemDefault
 import java.util.function.Supplier
@@ -290,6 +291,14 @@ object Eln2Ingredients : ContentModule() {
     val BRONZE_PLATE = PLATES.build("bronze_plate", BRONZE_INGOT.tint) {
         allRecipes(HOT_BRONZE_INGOT)
     }.withItemTagDatagen(Eln2ConventionTags.PLATE_BRONZE)
+
+    //#endregion
+
+    //#region Sulfur
+
+    val SULFUR_DUST = DUSTS.build("sulfur_dust", MyColor(200, 180, 50)) {
+        fromCrushing(Eln2Ores.SULFUR_ORE.rawOreItem, duration = 15.0)
+    }.withItemTagDatagen(Eln2ConventionTags.DUST_SULFUR)
 
     //#endregion
 

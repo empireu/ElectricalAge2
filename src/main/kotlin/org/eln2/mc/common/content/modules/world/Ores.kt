@@ -131,4 +131,10 @@ object Eln2Ores : ContentModule() {
         .withLootDatagen()
         .withModelDatagen(MyColor(144, 135, 131))
         .withVanillaSmeltingDatagen(Eln2Ingredients.TIN_INGOT)
+
+    val SULFUR_ORE = basicOre("sulfur")
+        .withTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
+        .withTagDatagen(BlockTags.NEEDS_STONE_TOOL)
+        .withLootDatagen()
+        .withModelDatagen(MyColor(200, 180, 50))
 }

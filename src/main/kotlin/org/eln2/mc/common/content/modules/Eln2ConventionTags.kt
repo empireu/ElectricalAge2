@@ -29,6 +29,7 @@ object Eln2ConventionTags {
     val DUST_TIN = forgeTag("dusts/tin")
     val DUST_IRON = forgeTag("dusts/iron")
     val DUST_COPPER = forgeTag("dusts/copper")
+    val DUST_SULFUR = forgeTag("dusts/sulfur")
 
     //#endregion
 
@@ -80,6 +81,7 @@ object Eln2ConventionTags {
         "copper_ingot" to INGOT_COPPER,
 
         "raw_resin" to GLUE,
+        "raw_sulfur" to DUST_SULFUR,
     )
 
     /**

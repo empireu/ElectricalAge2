@@ -514,6 +514,12 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_iron_plate", has(Eln2Ingredients.IRON_PLATE.get()))
             .save(pWriter, resource("crafting/tree_tap"))
 
+        ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, Eln2Ingredients.RUBBER_COMPOUND.get(), 4)
+            .requires(Eln2Ingredients.RAW_LATEX.get())
+            .requires(Eln2Ingredients.SULFUR_DUST.get())
+            .unlockedBy("has_sulfur_dust", has(Eln2Ingredients.SULFUR_DUST.get()))
+            .save(pWriter, resource("crafting/rubber_compound"))
+
         LOG.info("Generated manual recipes.")
     }
 
