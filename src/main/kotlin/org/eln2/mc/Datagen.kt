@@ -493,6 +493,15 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_machine_frame", has(Eln2Ingredients.MACHINE_FRAME.get()))
             .save(pWriter, resource("crafting/rolling_machine_hull"))
 
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2HeatGenerators.PRIMITIVE_BURNER_BLOCK.get())
+            .pattern("SCS")
+            .pattern("S S")
+            .pattern("SCS")
+            .define('S', Items.STONE)
+            .define('C', Eln2Ingredients.COPPER_PLATE.get())
+            .unlockedBy("has_copper_plate", has(Eln2Ingredients.COPPER_PLATE.get()))
+            .save(pWriter, resource("crafting/primitive_burner"))
+
         ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, Eln2Processing.EXTRUDER_WIRE_DIE.get())
             .requires(Items.STONE_SLAB)
             .requires(Items.IRON_NUGGET)
