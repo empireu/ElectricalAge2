@@ -206,6 +206,8 @@
     "item.eln2.raw_lead": "Raw Lead",
     "item.eln2.raw_tin": "Raw Tin",
     "item.eln2.raw_sulfur": "Raw Sulfur",
+    "item.eln2.asbestos_fiber": "Asbestos Fiber",
+    "item.eln2.raw_asbestos": "Raw Asbestos",
 
     // Components:
     "item.eln2.iron_shaft": "Iron Shaft",
@@ -250,6 +252,7 @@
     "block.eln2.lead_ore": "Lead Ore",
     "block.eln2.tin_ore": "Tin Ore",
     "block.eln2.sulfur_ore": "Sulfur Ore",
+    "block.eln2.asbestos_ore": "Asbestos Ore",
     "block.eln2.primitive_kinetic_crusher": "Primitive Kinetic Crusher",
     "block.eln2.brushed_dc_motor_crusher": "Brushed DC Motor Crusher",
     "block.eln2.primitive_kinetic_extruder": "Primitive Kinetic Extruder",

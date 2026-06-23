@@ -553,6 +553,11 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_sulfur_dust", has(Eln2Ingredients.SULFUR_DUST.get()))
             .save(pWriter, resource("crafting/rubber_compound"))
 
+        ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, Eln2Ingredients.ASBESTOS_FIBER.get(), 4)
+            .requires(Eln2Ores.ASBESTOS_ORE.rawOreItem.get())
+            .unlockedBy("has_raw_asbestos", has(Eln2Ores.ASBESTOS_ORE.rawOreItem.get()))
+            .save(pWriter, resource("crafting/asbestos_fiber_from_raw"))
+
         LOG.info("Generated manual recipes.")
     }
 

@@ -148,4 +148,10 @@ object Eln2Ores : ContentModule() {
         .withLootDatagen()
         .withModelDatagen(MyColor(200, 180, 50))
         .withRawItemTagDatagen(Eln2ConventionTags.RAW_MATERIAL_SULFUR)
+
+    val ASBESTOS_ORE = basicOre("asbestos")
+        .withTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
+        .withTagDatagen(BlockTags.NEEDS_STONE_TOOL)
+        .withLootDatagen()
+        .withModelDatagen(MyColor(180, 180, 190))
 }

@@ -339,4 +339,10 @@ object Eln2Ingredients : ContentModule() {
     val BURNT_RUBBER = itemDefault("burnt_rubber")
 
     //#endregion
+
+    //#region Asbestos
+
+    val ASBESTOS_FIBER = itemDefault("asbestos_fiber")
+
+    //#endregion
 }
