@@ -44,6 +44,15 @@ object FlwModels {
         "wire/thermal/standard/uninsulated/copper/connection_full"
     )
 
+    val INSULATED_THERMAL_WIRE_HUB = partialBlock(
+        "wire/thermal/standard/insulated/copper/hub"
+    )
+
+    val INSULATED_THERMAL_WIRE_CONNECTION = wireConnection(
+        "wire/thermal/standard/insulated/copper/connection_hub",
+        "wire/thermal/standard/insulated/copper/connection_full"
+    )
+
     //#endregion
 
     //#region Shafts

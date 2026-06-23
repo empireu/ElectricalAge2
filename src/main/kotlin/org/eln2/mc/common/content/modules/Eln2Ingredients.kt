@@ -345,4 +345,9 @@ object Eln2Ingredients : ContentModule() {
     val ASBESTOS_FIBER = itemDefault("asbestos_fiber")
 
     //#endregion
+
+    val AUTOCLAVE_TRAY = itemDefault("autoclave_tray")
+    val AUTOCLAVE_RADIATOR = itemDefault("autoclave_radiator")
+    val AUTOCLAVE_SHELL = itemDefault("autoclave_shell")
+    val AUTOCLAVE_DOOR = itemDefault("autoclave_door")
 }

@@ -220,6 +220,10 @@
     "item.eln2.extruding_assembly": "Extruding Assembly",
     "item.eln2.rolling_assembly": "Rolling Assembly",
     "item.eln2.pipe_heat_exchange_assembly": "Pipe Heat Exchange Assembly",
+    "item.eln2.autoclave_tray": "Autoclave Tray",
+    "item.eln2.autoclave_radiator": "Autoclave Radiator",
+    "item.eln2.autoclave_shell": "Autoclave Shell",
+    "item.eln2.autoclave_door": "Autoclave Door",
 
     // Work boxes:
     "item.eln2.primitive_kinetic_work_box": "Primitive Kinetic Work Box",
