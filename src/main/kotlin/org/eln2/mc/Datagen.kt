@@ -321,6 +321,15 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_asbestos_fiber", has(Eln2Ingredients.ASBESTOS_FIBER.get()))
             .save(pWriter, resource("crafting/insulated_distillation_module"))
 
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Processing.DISTILLATION_COLUMN_BLOCK.item.get())
+            .pattern("AIA")
+            .pattern("I I")
+            .pattern("AIA")
+            .define('A', Eln2Ingredients.ASBESTOS_FIBER.get())
+            .define('I', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .unlockedBy("has_asbestos_fiber", has(Eln2Ingredients.ASBESTOS_FIBER.get()))
+            .save(pWriter, resource("crafting/distillation_column"))
+
         ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2ForgeFluids.IRON_TANK.blockAndItem.item.get())
             .pattern("PPP")
             .pattern("P P")
