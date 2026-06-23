@@ -7,6 +7,7 @@ import net.minecraft.data.PackOutput
 import net.minecraft.data.loot.BlockLootSubProvider
 import net.minecraft.data.recipes.*
 import net.minecraft.data.tags.TagsProvider
+import net.minecraft.tags.ItemTags
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.flag.FeatureFlags
 import net.minecraft.world.item.*
@@ -275,6 +276,24 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_iron_plate", has(Eln2Ingredients.IRON_PLATE.get()))
             .save(pWriter, resource("crafting/fluid_pipe"))
 
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2ForgeFluids.FLUID_PIPE_INSERTION_VALVE.get())
+            .pattern("IGI")
+            .define('I', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .define('G', Items.GLASS_PANE)
+            .unlockedBy("has_iron_plate", has(Eln2Ingredients.IRON_PLATE.get()))
+            .save(pWriter, resource("crafting/fluid_pipe_insertion_valve"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2ForgeFluids.FLUID_PIPE_EXTRACTION_VALVE.get())
+            .pattern(" R ")
+            .pattern("PGP")
+            .pattern(" S ")
+            .define('R', Items.REDSTONE)
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .define('G', Eln2Ingredients.IRON_GEAR.get())
+            .define('S', Items.PISTON)
+            .unlockedBy("has_iron_gear", has(Eln2Ingredients.IRON_GEAR.get()))
+            .save(pWriter, resource("crafting/fluid_pipe_extraction_valve"))
+
         ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.PIPE_HEAT_EXCHANGE_ASSEMBLY.get())
             .pattern("CPC")
             .pattern("CPC")
@@ -388,6 +407,117 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .requires(Eln2Ingredients.AUTOCLAVE_DOOR.get())
             .unlockedBy("has_autoclave_shell", has(Eln2Ingredients.AUTOCLAVE_SHELL.get()))
             .save(pWriter, resource("crafting/vulcanizing_autoclave"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.WIND_TURBINE_BLADE.get(), 4)
+            .pattern("WS")
+            .pattern("W ")
+            .pattern("WS")
+            .define('W', Ingredient.of(Eln2ConventionTags.WOODEN_SLABS))
+            .define('S', Items.STICK)
+            .unlockedBy("has_wooden_slabs", has(Eln2ConventionTags.WOODEN_SLABS))
+            .save(pWriter, resource("crafting/wind_turbine_blade"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.WIND_TURBINE_CORE.get())
+            .pattern(" W ")
+            .pattern(" W ")
+            .pattern("PWP")
+            .define('W', Ingredient.of(ItemTags.PLANKS))
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .unlockedBy("has_iron_plate", has(Eln2Ingredients.IRON_PLATE.get()))
+            .save(pWriter, resource("crafting/wind_turbine_core"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Kinetic.BASIC_WIND_TURBINE_BLOCK_ITEM.get())
+            .pattern(" B ")
+            .pattern("BCB")
+            .pattern(" B ")
+            .define('B', Eln2Ingredients.WIND_TURBINE_BLADE.get())
+            .define('C', Eln2Ingredients.WIND_TURBINE_CORE.get())
+            .unlockedBy("has_wind_turbine_core", has(Eln2Ingredients.WIND_TURBINE_CORE.get()))
+            .save(pWriter, resource("crafting/basic_wind_turbine"))
+
+        ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, Eln2Ingredients.CRUDE_MAGNET.get())
+            .requires(Eln2Ingredients.MAGNETITE_DUST.get())
+            .requires(Ingredient.of(Eln2ConventionTags.GLUE))
+            .unlockedBy("has_magnetite_dust", has(Eln2Ingredients.MAGNETITE_DUST.get()))
+            .save(pWriter, resource("crafting/crude_magnet"))
+
+        //#region Motor
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.COPPER_COIL.get(), 4)
+            .pattern("WWW")
+            .pattern("W W")
+            .pattern("WWW")
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .unlockedBy("has_copper_wire", has(Eln2Ingredients.COPPER_WIRE.get()))
+            .save(pWriter, resource("crafting/copper_coil"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.CRUDE_MOTOR_STATOR.get())
+            .pattern("PMP")
+            .pattern("M M")
+            .pattern("PMP")
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .define('M', Eln2Ingredients.CRUDE_MAGNET.get())
+            .unlockedBy("has_crude_magnet", has(Eln2Ingredients.CRUDE_MAGNET.get()))
+            .save(pWriter, resource("crafting/crude_motor_stator"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.ROTOR_COIL_ASSEMBLY.get())
+            .pattern("PCP")
+            .pattern("CSC")
+            .pattern("PCP")
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .define('C', Eln2Ingredients.COPPER_COIL.get())
+            .define('S', Eln2Ingredients.IRON_SHAFT.get())
+            .unlockedBy("has_copper_coil", has(Eln2Ingredients.COPPER_COIL.get()))
+            .save(pWriter, resource("crafting/rotor_coil_assembly"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.ROTOR_COMMUTATOR.get())
+            .pattern("VC ")
+            .pattern(" S ")
+            .pattern("WWW")
+            .define('V', Eln2ForgeFluids.INSULATING_VARNISH.requireBottle().bottleItem.get())
+            .define('C', taggedIngredient(Eln2Ingredients.COPPER_PLATE.get()))
+            .define('S', Eln2Ingredients.IRON_SHAFT.get())
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .unlockedBy("has_iron_shaft", has(Eln2Ingredients.IRON_SHAFT.get()))
+            .save(pWriter, resource("crafting/rotor_commutator"))
+
+        ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, Eln2Ingredients.COPPER_ROTOR.get())
+            .requires(Eln2Ingredients.ROTOR_COIL_ASSEMBLY.get())
+            .requires(Eln2Ingredients.ROTOR_COMMUTATOR.get())
+            .requires(Eln2Ingredients.IRON_GEAR.get())
+            .unlockedBy("has_rotor_coil_assembly", has(Eln2Ingredients.ROTOR_COIL_ASSEMBLY.get()))
+            .save(pWriter, resource("crafting/copper_rotor"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.BRUSHED_DC_MOTOR.get())
+            .pattern("BCB")
+            .pattern(" S ")
+            .pattern(" G ")
+            .define('B', Eln2Ingredients.CARBON_BRUSH.get())
+            .define('C', Eln2Ingredients.COPPER_ROTOR.get())
+            .define('S', Eln2Ingredients.CRUDE_MOTOR_STATOR.get())
+            .define('G', Eln2Ingredients.IRON_GEAR.get())
+            .unlockedBy("has_copper_rotor", has(Eln2Ingredients.COPPER_ROTOR.get()))
+            .save(pWriter, resource("crafting/brushed_dc_motor"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Processing.BRUSHED_DC_MOTOR_WORK_BOX.item.get())
+            .pattern("P P")
+            .pattern("M  ")
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .define('M', Eln2Ingredients.BRUSHED_DC_MOTOR.get())
+            .unlockedBy("has_brushed_dc_motor", has(Eln2Ingredients.BRUSHED_DC_MOTOR.get()))
+            .save(pWriter, resource("crafting/brushed_dc_motor_work_box"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Kinetic.BASIC_DC_MOTOR_PART.item.get())
+            .pattern("MRW")
+            .pattern("G  ")
+            .define('M', Eln2Ingredients.MACHINE_FRAME.get())
+            .define('R', Eln2Ingredients.BRUSHED_DC_MOTOR.get())
+            .define('W', Eln2Wires.STANDARD_INSULATED_COPPER_ELECTRICAL_WIRE.part.item.get())
+            .define('G', Ingredient.of(Eln2ConventionTags.GLUE))
+            .unlockedBy("has_brushed_dc_motor", has(Eln2Ingredients.BRUSHED_DC_MOTOR.get()))
+            .save(pWriter, resource("crafting/basic_dc_motor_part"))
+
+        //#endregion
 
         //#region Tools
 

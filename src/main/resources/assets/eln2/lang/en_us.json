@@ -224,6 +224,16 @@
     "item.eln2.autoclave_radiator": "Autoclave Radiator",
     "item.eln2.autoclave_shell": "Autoclave Shell",
     "item.eln2.autoclave_door": "Autoclave Door",
+    "item.eln2.wind_turbine_blade": "Wind Turbine Blade",
+    "item.eln2.wind_turbine_core": "Wind Turbine Core",
+    "item.eln2.magnetite_dust": "Magnetite Dust",
+    "item.eln2.crude_magnet": "Crude Magnet",
+    "item.eln2.copper_coil": "Copper Coil",
+    "item.eln2.crude_motor_stator": "Crude Motor Stator",
+    "item.eln2.rotor_coil_assembly": "Rotor Coil Assembly",
+    "item.eln2.rotor_commutator": "Rotor Commutator",
+    "item.eln2.copper_rotor": "Copper Rotor",
+    "item.eln2.brushed_dc_motor": "Brushed DC Motor",
 
     // Work boxes:
     "item.eln2.primitive_kinetic_work_box": "Primitive Kinetic Work Box",

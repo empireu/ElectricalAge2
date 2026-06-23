@@ -302,6 +302,18 @@ object Eln2Ingredients : ContentModule() {
 
     //#endregion
 
+    val MAGNETITE_DUST = DUSTS.build("magnetite_dust", MyColor(50, 50, 55)) {
+        fromCrushing(Eln2Ores.MAGNETITE_ORE.rawOreItem, duration = 15.0)
+    }
+
+    val CRUDE_MAGNET = itemDefault("crude_magnet")
+    val COPPER_COIL = itemDefault("copper_coil")
+    val ROTOR_COIL_ASSEMBLY = itemDefault("rotor_coil_assembly")
+    val ROTOR_COMMUTATOR = itemDefault("rotor_commutator")
+    val COPPER_ROTOR = itemDefault("copper_rotor")
+    val CRUDE_MOTOR_STATOR = itemDefault("crude_motor_stator")
+    val BRUSHED_DC_MOTOR = itemDefault("brushed_dc_motor")
+
     val IRON_SHAFT = itemDefault("iron_shaft")
 
     val COPPER_ROD = itemDefault("copper_rod")
@@ -350,4 +362,6 @@ object Eln2Ingredients : ContentModule() {
     val AUTOCLAVE_RADIATOR = itemDefault("autoclave_radiator")
     val AUTOCLAVE_SHELL = itemDefault("autoclave_shell")
     val AUTOCLAVE_DOOR = itemDefault("autoclave_door")
+    val WIND_TURBINE_BLADE = itemDefault("wind_turbine_blade")
+    val WIND_TURBINE_CORE = itemDefault("wind_turbine_core")
 }
