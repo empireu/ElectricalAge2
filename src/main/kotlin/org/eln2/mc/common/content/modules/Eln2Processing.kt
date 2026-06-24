@@ -740,4 +740,17 @@ object Eln2Processing : ContentModule() {
     val ALLOYING_SMELTER_MENU = menu("alloying_smelter", ::AlloyingSmelterMenu)
 
     //#endregion
+
+    //#region Lead Chamber
+
+    val LEAD_CHAMBER_BLOCK = blockAndItem("lead_chamber", ::LeadChamberBlock)
+        .withSelfDrop()
+
+    val LEAD_CHAMBER_BLOCK_ENTITY = blockEntityOnly(
+        "lead_chamber",
+        LEAD_CHAMBER_BLOCK.block,
+        ::LeadChamberBlockEntity
+    )
+
+    //#endregion
 }

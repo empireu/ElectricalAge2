@@ -520,4 +520,38 @@ object Eln2ForgeFluids : ContentModule() {
         withRenderLayer(RenderType.translucent())
         withChemicalBottle()
     }
+
+    val SULFUR_DIOXIDE = basicForgeFluid("sulfur_dioxide") {
+        tintColor = MyColor(100, 230, 230, 170)
+        properties {
+            FluidType.Properties.create()
+                .density(-600)
+                .viscosity(50)
+        }
+
+        withRenderLayer(RenderType.translucent())
+    }
+
+    val DILUTE_SULFURIC_ACID = basicForgeFluid("dilute_sulfuric_acid") {
+        tintColor = MyColor(100, 255, 255, 200)
+        properties {
+            FluidType.Properties.create()
+                .density(2400)
+                .viscosity(600)
+        }
+
+        withRenderLayer(RenderType.translucent())
+        withChemicalBottle()
+    }
+
+    val NITROGEN_DIOXIDE = basicForgeFluid("nitrogen_dioxide") {
+        tintColor = MyColor(255, 102, 51, 34)
+        properties {
+            FluidType.Properties.create()
+                .density(-600)
+                .viscosity(60)
+        }
+
+        withRenderLayer(RenderType.translucent())
+    }
 }
