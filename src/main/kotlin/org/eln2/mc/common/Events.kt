@@ -67,6 +67,7 @@ import org.eln2.mc.Eln2ItemTagsDatagen
 import org.eln2.mc.Eln2BlockStateProviderDatagen
 import org.eln2.mc.Eln2RecipeProviderDatagen
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
+import org.eln2.mc.common.content.processing.LeadChamberExecutionManager
 import org.eln2.mc.extensions.formatted
 import java.util.function.Supplier
 
@@ -337,6 +338,8 @@ object ForgeEvents {
     fun onServerTick(event: TickEvent.ServerTickEvent) {
         if(event.phase == TickEvent.Phase.START) {
             Scheduler.onServerTick(event)
+
+            LeadChamberExecutionManager.dispatch()
 
             // Schedule the simulations after those subscribers ran, so they don't get a torn frame:
             dispatchServerSubscribers(ServerPhase.Start)

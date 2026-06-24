@@ -20,6 +20,7 @@ import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.fluids.capability.IFluidHandler
 import org.ageseries.libage.mathematics.rounded
+import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
 import org.eln2.mc.common.content.modules.Eln2Processing
@@ -32,17 +33,106 @@ import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.requireIsOnServerThread
 
+@ServerOnly
+object LeadChamberExecutionManager {
+    private class LevelData {
+        val blockEntities = HashMap<LeadChamberBlockEntity, LeadChamberBlockEntity.LeadChamberSimulation>()
+        val simulationList = ArrayList<LeadChamberBlockEntity.LeadChamberSimulation>()
+    }
+
+    private val levels = HashMap<ServerLevel, LevelData>()
+
+    private fun getDataForLevel(level: Level) : LevelData {
+        requireIsOnServerThread()
+
+        val serverLevel = level as? ServerLevel
+            ?: error("The lead chamber's level isn't a ServerLevel")
+
+        return levels.computeIfAbsent(serverLevel) {
+            LevelData()
+        }
+    }
+
+    /**
+     * Registers a lead chamber for execution.
+     * Must be called only once for the lifecycle of the given block entity.
+     * */
+    fun registerBlockEntity(blockEntity: LeadChamberBlockEntity) {
+        requireIsOnServerThread()
+
+        val data = getDataForLevel(blockEntity.level!!)
+
+        data.blockEntities.putUnique(blockEntity, blockEntity.simulation) {
+            "Duplicate add lead chamber ${blockEntity.blockPos}"
+        }
+
+        data.simulationList.add(blockEntity.simulation)
+    }
+
+    /**
+     * Unregisters a lead chamber. Called when its chunk is unloaded, or when it gets destroyed.
+     * Allows multiple calls.
+     * */
+    fun unregisterBlockEntity(blockEntity: LeadChamberBlockEntity) {
+        requireIsOnServerThread()
+
+        val data = getDataForLevel(blockEntity.level!!)
+
+        if(data.blockEntities.remove(blockEntity) != null) {
+            data.simulationList.remove(blockEntity.simulation)
+        }
+    }
+
+    /**
+     * Called on the server thread by [org.eln2.mc.common.ForgeEvents.onServerTick].
+     * */
+    fun dispatch() {
+        levels.values.forEach {
+            dispatch(it)
+        }
+    }
+
+    /**
+     * Executes the three passes of the simulation. Also removes stale neighbor references from [LeadChamberBlockEntity.linkedCells].
+     * */
+    private fun dispatch(data: LevelData) {
+        val simulationList = data.simulationList
+        val count = simulationList.size
+
+        for (i in 0 until count) {
+            val simulation = simulationList[i]
+            val blockEntity = simulation.blockEntity
+
+            blockEntity.rebuildLinksIfRequired()
+
+            val level = blockEntity.level!!
+            for (i in 0 until 6) {
+                val neighbor = blockEntity.linkedCells[i]
+                    ?: continue
+
+                // TODO Optimization: bake unique chunk positions
+                if (!level.isLoaded(neighbor.blockPos)) {
+                    blockEntity.linkedCells[i] = null
+                }
+            }
+
+            simulation.transformationReaction()
+            simulation.initialPass()
+        }
+
+        for (i in 0 until count) {
+            simulationList[i].transferPass()
+        }
+
+        for (i in 0 until count) {
+            simulationList[i].finalizePass()
+        }
+    }
+}
+
 class LeadChamberBlock : Block(eln2StandardBlockProperties().noOcclusion().pushReaction(PushReaction.BLOCK)), EntityBlock {
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState): BlockEntity {
         return LeadChamberBlockEntity(pPos, pState)
-    }
-
-    override fun <T : BlockEntity?> getTicker(pLevel: Level, pState: BlockState, pBlockEntityType: BlockEntityType<T>, ): BlockEntityTicker<T>? {
-        if (pLevel.isClientSide) {
-            return null
-        }
-
-        return BlockEntityTicker(LeadChamberBlockEntity::tickServer)
     }
 
     private fun getBlockEntity(level: Level, pos: BlockPos): LeadChamberBlockEntity? {
@@ -80,20 +170,10 @@ class LeadChamberBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(E
         private const val SULFUR_DIOXIDE = "sulfur_dioxide"
         private const val STEAM = "steam"
         private const val NITROGEN_DIOXIDE = "nitrogen_dioxide"
-
-        @ServerOnly
-        fun tickServer(pLevel: Level?, pPos: BlockPos?, pState: BlockState?, pBlockEntity: BlockEntity?) {
-            if (pBlockEntity !is LeadChamberBlockEntity) {
-                return
-            }
-
-            pBlockEntity.serverTick()
-        }
     }
 
     /**
      * Set to true when a neighbor change is detected (via [LeadChamberBlock.neighborChanged] or [LeadChamberBlock.onNeighborChange]).
-     * Consumed in [serverTick] to trigger a rebuild of the links.
      */
     @ServerOnly
     var markedForRebuildLinks = false
@@ -301,8 +381,28 @@ class LeadChamberBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(E
 
     @ServerOnly
     class LeadChamberSimulation(val blockEntity: LeadChamberBlockEntity) {
+        /**
+         *
+         * */
+        fun transformationReaction() {
 
+        }
+
+        fun initialPass() {
+
+        }
+
+        fun transferPass() {
+
+        }
+
+        fun finalizePass() {
+
+        }
     }
+
+    @ServerOnly
+    val simulation = LeadChamberSimulation(this)
 
     override fun saveAdditional(pTag: CompoundTag) {
         super.saveAdditional(pTag)
@@ -326,20 +426,45 @@ class LeadChamberBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(E
         super.setLevel(pLevel)
 
         if (!pLevel.isClientSide) {
+            ensureRegistered()
             markForRebuild()
         }
     }
 
     @ServerOnly
-    private fun serverTick() {
-        rebuildLinksIfRequired()
+    private var registeredWithManager = false
+
+    @ServerOnly
+    private fun ensureRegistered() {
+        if (!registeredWithManager && level != null && !level!!.isClientSide) {
+            LeadChamberExecutionManager.registerBlockEntity(this)
+            registeredWithManager = true
+        }
+    }
+
+    @ServerOnly
+    private fun ensureUnregistered() {
+        if (registeredWithManager) {
+            LeadChamberExecutionManager.unregisterBlockEntity(this)
+            registeredWithManager = false
+        }
+    }
+
+    override fun onChunkUnloaded() {
+        ensureUnregistered()
+        super.onChunkUnloaded()
+    }
+
+    override fun setRemoved() {
+        ensureUnregistered()
+        super.setRemoved()
     }
 
     /**
      * Called during the tick, when a neighbor change is detected, after [markedForRebuildLinks] was set.
      */
     @ServerOnly
-    private fun rebuildLinksIfRequired() {
+    fun rebuildLinksIfRequired() {
         requireIsOnServerThread()
 
         if (!markedForRebuildLinks) {
@@ -354,9 +479,13 @@ class LeadChamberBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(E
         for (i in 0 until 6) {
             val face = Direction.from3DDataValue(i)
             val remotePos = pos + face
-            val remoteBlockEntity = level.getBlockEntity(remotePos) as? LeadChamberBlockEntity
 
-            linkedCells[i] = remoteBlockEntity
+            if (!level.isLoaded(remotePos)) {
+                linkedCells[i] = null
+                continue
+            }
+
+            linkedCells[i] = level.getBlockEntity(remotePos) as? LeadChamberBlockEntity
         }
     }
 
