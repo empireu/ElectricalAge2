@@ -9,8 +9,6 @@ import net.minecraft.world.level.LevelReader
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.EntityBlock
 import net.minecraft.world.level.block.entity.BlockEntity
-import net.minecraft.world.level.block.entity.BlockEntityTicker
-import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.material.Fluid
 import net.minecraft.world.level.material.PushReaction
@@ -32,6 +30,7 @@ import org.eln2.mc.extensions.plus
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.requireIsOnServerThread
+import kotlin.math.min
 
 @ServerOnly
 object LeadChamberExecutionManager {
@@ -117,7 +116,7 @@ object LeadChamberExecutionManager {
             }
 
             simulation.transformationReaction()
-            simulation.initialPass()
+            simulation.proposalPass()
         }
 
         for (i in 0 until count) {
@@ -125,7 +124,7 @@ object LeadChamberExecutionManager {
         }
 
         for (i in 0 until count) {
-            simulationList[i].finalizePass()
+            simulationList[i].setChangedIfRequired()
         }
     }
 }
@@ -148,6 +147,7 @@ class LeadChamberBlock : Block(eln2StandardBlockProperties().noOcclusion().pushR
         pFromPos: BlockPos,
         pIsMoving: Boolean,
     ) {
+        @Suppress("DEPRECATION")
         super.neighborChanged(pState, pLevel, pPos, pBlock, pFromPos, pIsMoving)
 
         if (!pLevel.isClientSide) {
@@ -196,24 +196,45 @@ class LeadChamberBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(E
      * */
     class FluidHandler(val capacity: Double) : IFractionalFluidHandler {
         companion object {
-            const val SULFURIC_ACID_INDEX = 0
-            const val SULFUR_DIOXIDE_INDEX = 1
-            const val STEAM_INDEX = 2
-            const val NITROGEN_DIOXIDE_INDEX = 3
+            private const val SULFURIC_ACID_INDEX = 0
+            private const val SULFUR_DIOXIDE_INDEX = 1
+            private const val STEAM_INDEX = 2
+            private const val NITROGEN_DIOXIDE_INDEX = 3
 
-            val sulfuricAcidFluid: Fluid get() = Eln2ForgeFluids.DILUTE_SULFURIC_ACID.get()
-            val sulfurDioxideFluid: Fluid get() = Eln2ForgeFluids.SULFUR_DIOXIDE.get()
-            val steamFluid: Fluid get() = Eln2ForgeFluids.STEAM.get()
-            val nitrogenDioxideFluid: Fluid get() = Eln2ForgeFluids.NITROGEN_DIOXIDE.get()
+            private val sulfuricAcidFluid: Fluid get() = Eln2ForgeFluids.DILUTE_SULFURIC_ACID.get()
+            private val sulfurDioxideFluid: Fluid get() = Eln2ForgeFluids.SULFUR_DIOXIDE.get()
+            private val steamFluid: Fluid get() = Eln2ForgeFluids.STEAM.get()
+            private val nitrogenDioxideFluid: Fluid get() = Eln2ForgeFluids.NITROGEN_DIOXIDE.get()
         }
 
+        /**
+         * mB of dilute sulfuric acid in the tank.
+         * */
         var sulfuricAcid = 0.0
+
+        /**
+         * mB of sulfur dioxide in the tank.
+         * */
         var sulfurDioxide = 0.0
+
+        /**
+         * mB of steam in the tank.
+         * */
         var steam = 0.0
+
+        /**
+         * mB of nitrogen dioxide in the tank.
+         * */
         var nitrogenDioxide = 0.0
 
+        /**
+         * Total mB in the tank (less than or equal to [capacity]).
+         * */
         val totalAmount: Double get() = sulfuricAcid + sulfurDioxide + steam + nitrogenDioxide
 
+        /**
+         * Remaining free mB in the tank.
+         * */
         val remainingCapacity: Double get() = (capacity - totalAmount).coerceAtLeast(0.0)
 
         override fun getFractionalFluidInTank(tank: Int) = when (tank) {
@@ -237,12 +258,12 @@ class LeadChamberBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(E
             else -> false
         }
 
-        //#region Filling
-
         /**
-         * Only accepts gases and catalyst: sulfur dioxide, steam, and NOx.
+         * Only accepts sulfur dioxide, steam, and NO2.
          * Rejects sulfuric acid; it is only produced internally by the simulation.
          */
+        //#region Filling
+
         override fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): Double {
             if (resource.isEmpty) {
                 return 0.0
@@ -282,11 +303,12 @@ class LeadChamberBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(E
 
         //#endregion
 
+        /**
+         * Only allows draining sulfuric acid.
+         * Gases and catalyst stay in the chamber.
+         */
         //#region Draining
 
-        /**
-         * Only allows draining sulfuric acid. Gases and catalyst stay in the chamber.
-         */
         override fun drainFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction): FractionalFluidStack {
             if (resource.isEmpty) {
                 return FractionalFluidStack.EMPTY
@@ -342,7 +364,7 @@ class LeadChamberBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(E
         //#endregion
     }
 
-    val tank = FluidHandler(128000.0)
+    val tank = FluidHandler(4096.0)
     val tankLazy: LazyOptional<FluidHandler> = LazyOptional.of { tank }
 
     /**
@@ -358,7 +380,7 @@ class LeadChamberBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(E
     val insertOnlyTank = InsertOnlyHandler(tank)
     val insertOnlyTankLazy: LazyOptional<InsertOnlyHandler> = LazyOptional.of { insertOnlyTank }
 
-    override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T?> {
+    override fun <T> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T?> {
         if(cap == ForgeCapabilities.FLUID_HANDLER) {
             if(side != null) {
                 return when(side) {
@@ -381,23 +403,361 @@ class LeadChamberBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(E
 
     @ServerOnly
     class LeadChamberSimulation(val blockEntity: LeadChamberBlockEntity) {
+        companion object {
+            /**
+             * Base reaction rate (mB/tick). Zero means no reaction will occur without nitrogen dioxide.
+             * */
+            private const val BASE_REACTION_RATE_MB_PER_TICK = 0.0
+
+            /**
+             * Max reaction rate at full catalyst saturation (mB/tick).
+             * Calculated as: 1000 mB acid / 15-min cycle / 27-block chamber ≈ 0.00206 mB/tick/block.
+             */
+            private const val MAX_REACTION_RATE_MB_PER_TICK = 1000.0 / (15.0 * 60.0 * 20.0 * 27.0)
+
+            /**
+             * Stoichiometric ratios: mB consumed per mB acid produced.
+             * */
+            private const val STEAM_PER_ACID = 1.0
+            private const val SULFUR_DIOXIDE_PER_ACID = 1.0
+
+            /**
+             * Nitrogen dioxide beyond this fraction of the capacity will not increase the reaction rate.
+             * This is done to prevent the player spamming catalyst.
+             * */
+            private const val MAX_CATALYST_FRACTION = 0.05
+            
+            /**
+             * Dampening for diffusion equalization. Based on the 6 neighbors for stability.
+             */
+            private const val DAMPENING = 1.0 / 6.0
+
+            /**
+             * Max total liquid outflow (mB/tick).
+             * */
+            private const val MAX_LIQUID_FLOW_RATE = 10.0
+
+            /**
+             * Max total gas outflow per fluid species (mB/tick).
+             * */
+            private const val MAX_GAS_FLOW_RATE = 15.0
+
+            private val HORIZONTAL_DIRECTIONS = intArrayOf(
+                Direction.NORTH.get3DDataValue(),
+                Direction.SOUTH.get3DDataValue(),
+                Direction.EAST.get3DDataValue(),
+                Direction.WEST.get3DDataValue()
+            )
+
+            /**
+             * Opposite direction lookup.
+             * Used by [transferPass] to read neighbor buffers aimed at the cell.
+             * */
+            private val OPPOSITE_DIRS = intArrayOf(
+                Direction.DOWN.opposite.get3DDataValue(),
+                Direction.UP.opposite.get3DDataValue(),
+                Direction.NORTH.opposite.get3DDataValue(),
+                Direction.SOUTH.opposite.get3DDataValue(),
+                Direction.WEST.opposite.get3DDataValue(),
+                Direction.EAST.opposite.get3DDataValue(),
+            )
+        }
+
         /**
-         *
-         * */
+         * Converts sulfur dioxide and water to dilute sulfuric acid, with the rate dictated by the concentration of the nitrogen dioxide catalyst.
+         */
         fun transformationReaction() {
+            val tank = blockEntity.tank
 
+            val epsilon = FractionalFluidStack.EPSILON
+
+            if (tank.steam < epsilon || tank.sulfurDioxide < epsilon) {
+                return
+            }
+
+            val catalystFraction = tank.nitrogenDioxide / tank.capacity
+            val effectiveFraction = min(catalystFraction, MAX_CATALYST_FRACTION)
+            val catalystRatio = effectiveFraction / MAX_CATALYST_FRACTION
+            
+            val reactionRate = BASE_REACTION_RATE_MB_PER_TICK + (MAX_REACTION_RATE_MB_PER_TICK - BASE_REACTION_RATE_MB_PER_TICK) * catalystRatio
+
+            var possibleAcid = min(
+                reactionRate,
+                min(tank.steam / STEAM_PER_ACID, tank.sulfurDioxide / SULFUR_DIOXIDE_PER_ACID)
+            )
+
+            if (possibleAcid < epsilon) {
+                return
+            }
+
+            val volumeIncreasePerAcid = 1.0 - STEAM_PER_ACID - SULFUR_DIOXIDE_PER_ACID
+
+            @Suppress("KotlinConstantConditions")
+            if (volumeIncreasePerAcid > 0.0) {
+                possibleAcid = minOf(possibleAcid, tank.remainingCapacity / volumeIncreasePerAcid)
+            }
+
+            if (possibleAcid >= epsilon) {
+                tank.steam -= possibleAcid * STEAM_PER_ACID
+                tank.sulfurDioxide -= possibleAcid * SULFUR_DIOXIDE_PER_ACID
+                tank.sulfuricAcid += possibleAcid
+            }
         }
 
-        fun initialPass() {
+        /**
+         * Compact variant of [PhaseChangeModuleCell.PhaseChangeSimulation.TransferBuffer].
+         * Written by [proposalPass] (proposals), read by neighbor [transferPass].
+         */
+        @Suppress("NOTHING_TO_INLINE")
+        @JvmInline
+        private value class TransferBuffers(val data: DoubleArray) {
+            inline fun getSulfuricAcid(index: Int) = data[index * 4 + 0]
+            inline fun setSulfuricAcid(index: Int, value: Double) { data[index * 4 + 0] = value }
 
+            inline fun getSulfurDioxide(index: Int) = data[index * 4 + 1]
+            inline fun setSulfurDioxide(index: Int, value: Double) { data[index * 4 + 1] = value }
+
+            inline fun getSteam(index: Int) = data[index * 4 + 2]
+            inline fun setSteam(index: Int, value: Double) { data[index * 4 + 2] = value }
+
+            inline fun getNitrogenDioxide(index: Int) = data[index * 4 + 3]
+            inline fun setNitrogenDioxide(index: Int, value: Double) { data[index * 4 + 3] = value }
+
+            inline fun clear() = data.fill(0.0)
         }
 
+        private val outboundBuffers = TransferBuffers(DoubleArray(24))
+        private var hasTransferred = false
+
+        private val tempSulfurDioxide = DoubleArray(6)
+        private val tempSteam = DoubleArray(6)
+        private val tempNitrogenDioxide = DoubleArray(6)
+        private val tempSulfuricAcid = DoubleArray(6)
+
+        /**
+         * Pass 1: Computes proposed outbound transfers into [outboundBuffers].
+         *
+         * Gas diffusion is isotropic via equalization: `transfer = DAMPENING * (local - neighbor)`
+         * Unlike the [PhaseChangeModuleCell.PhaseChangeSimulation], gases circulate freely to fill the chamber uniformly.
+         *
+         * Liquid acid prefers falling as much as the down-neighbor's remaining capacity allows.
+         * Any acid that cannot fall spreads horizontally via equalization.
+         *
+         * After computing proposals, each fluid's total is clamped to the per-species flow-rate cap and the available amount (source-side scaling).
+         * This is required because [transferPass] is receiver-centric and reads our buffers without further source checks.
+         */
+        @Suppress("JoinDeclarationAndAssignment")
+        fun proposalPass() {
+            val tank = blockEntity.tank
+            val linkedCells = blockEntity.linkedCells
+            val outboundBuffers = outboundBuffers
+
+            outboundBuffers.clear()
+
+            val epsilon = FractionalFluidStack.EPSILON
+
+            if (tank.totalAmount < epsilon) {
+                return
+            }
+
+            val tempSulfurDioxide = tempSulfurDioxide
+            val tempSteam = tempSteam
+            val tempNitrogenDioxide = tempNitrogenDioxide
+            val tempSulfuricAcid = tempSulfuricAcid
+
+            tempSulfurDioxide.fill(0.0)
+            tempSteam.fill(0.0)
+            tempNitrogenDioxide.fill(0.0)
+            tempSulfuricAcid.fill(0.0)
+
+            var sumSulfurDioxide = 0.0
+            var sumSteam = 0.0
+            var sumNitrogenDioxide = 0.0
+
+            val dampening = DAMPENING
+
+            // Gas diffusion:
+            for (i in 0 until 6) {
+                val neighbor = linkedCells[i]
+                    ?: continue
+
+                val neighborTank = neighbor.tank
+                var delta: Double
+
+                delta = tank.sulfurDioxide - neighborTank.sulfurDioxide
+                if (delta >= epsilon) {
+                    tempSulfurDioxide[i] = delta * dampening
+                    sumSulfurDioxide += delta * dampening
+                }
+
+                delta = tank.steam - neighborTank.steam
+                if (delta >= epsilon) {
+                    tempSteam[i] = delta * dampening
+                    sumSteam += delta * dampening
+                }
+
+                delta = tank.nitrogenDioxide - neighborTank.nitrogenDioxide
+                if (delta >= epsilon) {
+                    tempNitrogenDioxide[i] = delta * dampening
+                    sumNitrogenDioxide += delta * dampening
+                }
+            }
+
+            // Clamp each gas by max flow-rate and available source amount:
+            val scaleSO2 = if (sumSulfurDioxide > 0.0) {
+                min(1.0, min(MAX_GAS_FLOW_RATE / sumSulfurDioxide, tank.sulfurDioxide / sumSulfurDioxide))
+            } else 1.0
+
+            val scaleSteam = if (sumSteam > 0.0) {
+                min(1.0, min(MAX_GAS_FLOW_RATE / sumSteam, tank.steam / sumSteam))
+            } else 1.0
+
+            val scaleNO2 = if (sumNitrogenDioxide > 0.0) {
+                min(1.0, min(MAX_GAS_FLOW_RATE / sumNitrogenDioxide, tank.nitrogenDioxide / sumNitrogenDioxide))
+            } else 1.0
+
+            for (i in 0 until 6) {
+                outboundBuffers.setSulfurDioxide(i, tempSulfurDioxide[i] * scaleSO2)
+                outboundBuffers.setSteam(i, tempSteam[i] * scaleSteam)
+                outboundBuffers.setNitrogenDioxide(i, tempNitrogenDioxide[i] * scaleNO2)
+            }
+
+            //  Acid falls as fast as the down-neighbor can accept. Any remainder equalizes horizontally.
+            var sumSulfuricAcid = 0.0
+
+            val downIdx = Direction.DOWN.get3DDataValue()
+            val neighborDown = linkedCells[downIdx]
+
+            if (neighborDown != null) {
+                val downCapacity = neighborDown.tank.remainingCapacity
+                val acidToDown = min(tank.sulfuricAcid, downCapacity)
+
+                if (acidToDown >= epsilon) {
+                    tempSulfuricAcid[downIdx] = acidToDown
+                    sumSulfuricAcid += acidToDown
+                }
+            }
+
+            // Spread remaining acid horizontally:
+            val remainingAcid = tank.sulfuricAcid - sumSulfuricAcid
+            if (remainingAcid >= epsilon) {
+                for (dirIdx in HORIZONTAL_DIRECTIONS) {
+                    val neighbor = linkedCells[dirIdx]
+                        ?: continue
+
+                    val delta = remainingAcid - neighbor.tank.sulfuricAcid
+
+                    if (delta >= epsilon) {
+                        tempSulfuricAcid[dirIdx] = delta * dampening
+                        sumSulfuricAcid += delta * dampening
+                    }
+                }
+            }
+
+            // Clamp acid by max flow-rate and available source amount:
+            val scaleAcid = if (sumSulfuricAcid > 0.0) {
+                min(1.0, min(MAX_LIQUID_FLOW_RATE / sumSulfuricAcid, tank.sulfuricAcid / sumSulfuricAcid))
+            }
+            else 1.0
+
+            for (i in 0 until 6) {
+                outboundBuffers.setSulfuricAcid(i, tempSulfuricAcid[i] * scaleAcid)
+            }
+        }
+
+        /**
+         * Pass 2: each cell pulls what its neighbors want to send here.
+         *
+         * For each neighbor at direction `i`, we read `neighbor.outboundBuffers[opposite(i)]`, which is the amount the neighbor proposed to send toward us.
+         * All incoming contributions from all neighbors are summed, then scaled by our own [FluidHandler.remainingCapacity] if the combined total exceeds what we can accept.
+         *
+         * A single combined capacity factor (not per-fluid) is correct because all 4 fluids share one pool in [FluidHandler].
+         *
+         * Source-side scaling was already applied in [proposalPass], so total drained from any source is bounded by its stock.
+         */
         fun transferPass() {
+            val tank = blockEntity.tank
+            val linkedCells = blockEntity.linkedCells
+            val oppositeDirs = OPPOSITE_DIRS
 
+            // Sum all incoming from every neighbor's outbound buffers aimed at us:
+            var totalIncoming = 0.0
+            for (i in 0 until 6) {
+                val neighbor = linkedCells[i]
+                    ?: continue
+
+                val neighborBuffer = neighbor.simulation.outboundBuffers
+                val opposite = oppositeDirs[i]
+
+                totalIncoming += neighborBuffer.getSulfuricAcid(opposite)
+                totalIncoming += neighborBuffer.getSulfurDioxide(opposite)
+                totalIncoming += neighborBuffer.getSteam(opposite)
+                totalIncoming += neighborBuffer.getNitrogenDioxide(opposite)
+            }
+
+            if (totalIncoming < FractionalFluidStack.EPSILON) {
+                return
+            }
+
+            // Capacity scale:
+            val remainingCapacity = tank.remainingCapacity
+            val capacityScale = if (totalIncoming > remainingCapacity) {
+                remainingCapacity / totalIncoming
+            } else 1.0
+
+            // Execute transfers by pulling from each neighbor:
+            for (i in 0 until 6) {
+                val neighbor = linkedCells[i]
+                    ?: continue
+
+                val neighborTank = neighbor.tank
+                val neighborSimulation = neighbor.simulation
+                val neighborBuffer = neighborSimulation.outboundBuffers
+                val opposite = oppositeDirs[i]
+
+                val sulfuricAcid = neighborBuffer.getSulfuricAcid(opposite) * capacityScale
+                val sulfurDioxide = neighborBuffer.getSulfurDioxide(opposite) * capacityScale
+                val steam = neighborBuffer.getSteam(opposite) * capacityScale
+                val nitrogenDioxide = neighborBuffer.getNitrogenDioxide(opposite) * capacityScale
+
+                var dirty = false
+
+                if (sulfuricAcid >= FractionalFluidStack.EPSILON) {
+                    neighborTank.sulfuricAcid -= sulfuricAcid
+                    tank.sulfuricAcid += sulfuricAcid
+                    dirty = true
+                }
+
+                if (sulfurDioxide >= FractionalFluidStack.EPSILON) {
+                    neighborTank.sulfurDioxide -= sulfurDioxide
+                    tank.sulfurDioxide += sulfurDioxide
+                    dirty = true
+                }
+
+                if (steam >= FractionalFluidStack.EPSILON) {
+                    neighborTank.steam -= steam
+                    tank.steam += steam
+                    dirty = true
+                }
+
+                if (nitrogenDioxide >= FractionalFluidStack.EPSILON) {
+                    neighborTank.nitrogenDioxide -= nitrogenDioxide
+                    tank.nitrogenDioxide += nitrogenDioxide
+                    dirty = true
+                }
+
+                if (dirty) {
+                    hasTransferred = true
+                    neighborSimulation.hasTransferred = true
+                }
+            }
         }
 
-        fun finalizePass() {
-
+        fun setChangedIfRequired() {
+            if (hasTransferred) {
+                blockEntity.setChanged()
+                hasTransferred = false
+            }
         }
     }
 
