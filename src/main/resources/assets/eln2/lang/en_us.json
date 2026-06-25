@@ -274,6 +274,7 @@
     "block.eln2.primitive_kinetic_rolling_machine": "Primitive Kinetic Rolling Machine",
     "block.eln2.brushed_dc_motor_rolling_machine": "Brushed DC Motor Rolling Machine",
     "block.eln2.alloying_smelter": "Alloying Smelter",
+    "block.eln2.burner_reactor": "Burner Reactor",
 
     // Parts:
     "item.eln2.tree_tap": "Tree Tap",

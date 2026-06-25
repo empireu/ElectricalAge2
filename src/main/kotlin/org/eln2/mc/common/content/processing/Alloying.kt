@@ -77,6 +77,98 @@ class AlloyingRecipe(
         return items.applyRecipeWeighted(inputItems, true)
     }
 
+    class Builder(val recipe: RecipeType<AlloyingRecipe>) {
+        var inputItems: Eln2WeightedItemRecipeRequirements = Eln2WeightedItemRecipeRequirements(emptyList())
+        var output: ItemStack = ItemStack.EMPTY
+        var duration: Int = 200
+        var tier: Int = 0
+        val advancement: Advancement.Builder = Advancement.Builder.advancement()
+
+        fun withInput(ingredient: Eln2WeightedItemIngredient): Builder {
+            inputItems = Eln2WeightedItemRecipeRequirements(
+                inputItems.requirements + Eln2WeightedItemRecipeRequirement(
+                    listOf(ingredient), ingredient.value
+                )
+            )
+            return this
+        }
+
+        fun withInput(ingredient: Eln2WeightedItemIngredient, requiredValue: Int): Builder {
+            inputItems = Eln2WeightedItemRecipeRequirements(
+                inputItems.requirements + Eln2WeightedItemRecipeRequirement(
+                    listOf(ingredient), requiredValue
+                )
+            )
+            return this
+        }
+
+        fun withOutput(output: ItemStack): Builder {
+            this.output = output
+            return this
+        }
+
+        fun withDuration(duration: Int): Builder {
+            this.duration = duration
+            return this
+        }
+
+        fun withTier(tier: Int): Builder {
+            this.tier = tier
+            return this
+        }
+
+        fun unlockedBy(pCriterionName: String, pCriterionTrigger: CriterionTriggerInstance): Builder {
+            advancement.addCriterion(pCriterionName, pCriterionTrigger)
+            return this
+        }
+
+        fun save(consumer: Consumer<FinishedRecipe?>, id: ResourceLocation) {
+            check(inputItems.requirements.isNotEmpty()) { "Input items for alloying recipe cannot be empty" }
+            check(!output.isEmpty) { "Output for alloying recipe cannot be empty" }
+            if (advancement.criteria.isEmpty()) {
+                LOG.error("No criterion for alloying recipe $id")
+            } else {
+                advancement.eln2Unlock(id)
+            }
+            consumer.accept(Result(this, id))
+        }
+
+        class Result(val parent: Builder, val recipeId: ResourceLocation) : Eln2FinishedRecipe {
+            override fun serializeRecipeData(json: JsonObject) {
+                json.add("inputItems", JsonArray().also { arr ->
+                    parent.inputItems.requirements.forEach { req ->
+                        arr.add(JsonObject().also { reqObj ->
+                            reqObj.addProperty("requiredValue", req.requiredValue)
+                            reqObj.add("options", JsonArray().also { opts ->
+                                req.options.forEach { opt ->
+                                    opts.add(JsonObject().also { optObj ->
+                                        optObj.add("ingredient", opt.ingredient.toJson())
+                                        optObj.addProperty("value", opt.value)
+                                    })
+                                }
+                            })
+                        })
+                    }
+                })
+
+                json.add("result", JsonObject().also { resultJson ->
+                    resultJson.addProperty("item", ForgeRegistries.ITEMS.getKey(parent.output.item)!!.toString())
+                    resultJson.addProperty("count", parent.output.count)
+                })
+
+                json.addProperty("duration", parent.duration)
+
+                if (parent.tier != 0) {
+                    json.addProperty("tier", parent.tier)
+                }
+            }
+
+            override fun getId(): ResourceLocation = recipeId
+            override fun getType(): RecipeSerializer<*> = RecipeRegistry.getRecipeSerializer(parent.recipe)!!.get()
+            override fun serializeAdvancement(): JsonObject = parent.advancement.serializeToJson()
+        }
+    }
+
     class Serializer(override val recipeType: RecipeType<AlloyingRecipe>) : Eln2RecipeSerializer<AlloyingRecipe> {
         override fun fromJson(pRecipeId: ResourceLocation, pSerializedRecipe: JsonObject): AlloyingRecipe {
             val inputItems = Eln2WeightedItemRecipeRequirements.fromJson(pSerializedRecipe.get("inputItems"))
@@ -100,98 +192,6 @@ class AlloyingRecipe(
             pBuffer.writeInt(pRecipe.duration)
             pBuffer.writeInt(pRecipe.tier)
         }
-    }
-}
-
-class AlloyingRecipeBuilder(val recipe: RecipeType<AlloyingRecipe>) {
-    var inputItems: Eln2WeightedItemRecipeRequirements = Eln2WeightedItemRecipeRequirements(emptyList())
-    var output: ItemStack = ItemStack.EMPTY
-    var duration: Int = 200
-    var tier: Int = 0
-    val advancement: Advancement.Builder = Advancement.Builder.advancement()
-
-    fun withInput(ingredient: Eln2WeightedItemIngredient): AlloyingRecipeBuilder {
-        inputItems = Eln2WeightedItemRecipeRequirements(
-            inputItems.requirements + Eln2WeightedItemRecipeRequirement(
-                listOf(ingredient), ingredient.value
-            )
-        )
-        return this
-    }
-
-    fun withInput(ingredient: Eln2WeightedItemIngredient, requiredValue: Int): AlloyingRecipeBuilder {
-        inputItems = Eln2WeightedItemRecipeRequirements(
-            inputItems.requirements + Eln2WeightedItemRecipeRequirement(
-                listOf(ingredient), requiredValue
-            )
-        )
-        return this
-    }
-
-    fun withOutput(output: ItemStack): AlloyingRecipeBuilder {
-        this.output = output
-        return this
-    }
-
-    fun withDuration(duration: Int): AlloyingRecipeBuilder {
-        this.duration = duration
-        return this
-    }
-
-    fun withTier(tier: Int): AlloyingRecipeBuilder {
-        this.tier = tier
-        return this
-    }
-
-    fun unlockedBy(pCriterionName: String, pCriterionTrigger: CriterionTriggerInstance): AlloyingRecipeBuilder {
-        advancement.addCriterion(pCriterionName, pCriterionTrigger)
-        return this
-    }
-
-    fun save(consumer: Consumer<FinishedRecipe?>, id: ResourceLocation) {
-        check(inputItems.requirements.isNotEmpty()) { "Input items for alloying recipe cannot be empty" }
-        check(!output.isEmpty) { "Output for alloying recipe cannot be empty" }
-        if (advancement.criteria.isEmpty()) {
-            LOG.error("No criterion for alloying recipe $id")
-        } else {
-            advancement.eln2Unlock(id)
-        }
-        consumer.accept(Result(this, id))
-    }
-
-    class Result(val parent: AlloyingRecipeBuilder, val recipeId: ResourceLocation) : Eln2FinishedRecipe {
-        override fun serializeRecipeData(json: JsonObject) {
-            json.add("inputItems", JsonArray().also { arr ->
-                parent.inputItems.requirements.forEach { req ->
-                    arr.add(JsonObject().also { reqObj ->
-                        reqObj.addProperty("requiredValue", req.requiredValue)
-                        reqObj.add("options", JsonArray().also { opts ->
-                            req.options.forEach { opt ->
-                                opts.add(JsonObject().also { optObj ->
-                                    optObj.add("ingredient", opt.ingredient.toJson())
-                                    optObj.addProperty("value", opt.value)
-                                })
-                            }
-                        })
-                    })
-                }
-            })
-
-            json.add("result", JsonObject().also { resultJson ->
-                resultJson.addProperty("item", ForgeRegistries.ITEMS.getKey(parent.output.item)!!.toString())
-                resultJson.addProperty("count", parent.output.count)
-            })
-
-            json.addProperty("duration", parent.duration)
-
-            if (parent.tier != 0) {
-                json.addProperty("tier", parent.tier)
-            }
-        }
-
-        override fun getId(): ResourceLocation = recipeId
-        override fun getType(): RecipeSerializer<*> = RecipeRegistry.getRecipeSerializer(parent.recipe)!!.get()
-        override fun serializeAdvancement(): JsonObject = parent.advancement.serializeToJson()
     }
 }
 
@@ -330,7 +330,7 @@ class AlloyingSmelterBlockEntity(pPos: BlockPos, pState: BlockState) :
 
     val data = SimpleContainerData(4)
 
-    override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
+    override fun <T> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
         if (cap == ForgeCapabilities.ITEM_HANDLER) return LazyOptional.of { inventoryHandler }.cast()
         return super.getCapability(cap, side)
     }

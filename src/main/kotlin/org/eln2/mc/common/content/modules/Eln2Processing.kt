@@ -299,6 +299,16 @@ object Eln2Processing : ContentModule() {
                 103.0f
             )
         }
+
+        MenuScreens.register(BURNING_MENU.get()) { menu, inventory, title ->
+            BasicProgressScreen(
+                menu, inventory, title,
+                resource("textures/gui/container/crusher_base.png"),
+                resource("textures/gui/container/crusher_progress.png"),
+                79.0f,
+                103.0f
+            )
+        }
     }
 
     //#region Coking
@@ -738,6 +748,25 @@ object Eln2Processing : ContentModule() {
     )
 
     val ALLOYING_SMELTER_MENU = menu("alloying_smelter", ::AlloyingSmelterMenu)
+
+    //#endregion
+
+    //#region Burner Reactor
+
+    val BURNING_RECIPE = RecipeRegistry.register<BurningRecipe>("burning") {
+        BurningRecipe.Serializer(it)
+    }
+
+    val BURNING_BLOCK = blockAndItem("burner_reactor", ::BurningBlock)
+        .withSelfDrop()
+
+    val BURNING_BLOCK_ENTITY = blockEntityOnly(
+        "burner_reactor",
+        BURNING_BLOCK.block,
+        ::BurningBlockEntity
+    )
+
+    val BURNING_MENU = menu("burner_reactor", ::BurningMenu)
 
     //#endregion
 

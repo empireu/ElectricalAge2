@@ -7,8 +7,8 @@ import net.minecraft.data.PackOutput
 import net.minecraft.data.loot.BlockLootSubProvider
 import net.minecraft.data.recipes.*
 import net.minecraft.data.tags.TagsProvider
-import net.minecraft.tags.ItemTags
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.tags.ItemTags
 import net.minecraft.world.flag.FeatureFlags
 import net.minecraft.world.item.*
 import net.minecraft.world.item.crafting.Ingredient
@@ -19,11 +19,13 @@ import net.minecraftforge.client.model.generators.loaders.DynamicFluidContainerM
 import net.minecraftforge.client.model.generators.loaders.ItemLayerModelBuilder
 import net.minecraftforge.common.data.BlockTagsProvider
 import net.minecraftforge.common.data.ExistingFileHelper
+import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.registries.ForgeRegistries
 import org.eln2.mc.common.content.modules.*
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids.requireBottle
 import org.eln2.mc.common.content.modules.world.Eln2Ores
-import org.eln2.mc.common.content.processing.AlloyingRecipeBuilder
+import org.eln2.mc.common.content.processing.AlloyingRecipe
+import org.eln2.mc.common.content.processing.BurningRecipe
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.recipes.foundation.CatalyzedSimpleProcessingRecipeBuilder
 import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipeBuilder
@@ -935,7 +937,7 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             }
         }
 
-        AlloyingRecipeBuilder(Eln2Processing.ALLOYING_RECIPE)
+        AlloyingRecipe.Builder(Eln2Processing.ALLOYING_RECIPE)
             .withInput(Eln2WeightedItemIngredient(Ingredient.of(Eln2ConventionTags.INGOT_COPPER), 3))
             .withInput(Eln2WeightedItemIngredient(Ingredient.of(Eln2ConventionTags.INGOT_TIN), 1))
             .withOutput(ItemStack(Eln2Ingredients.BRONZE_INGOT.get(), 4))
@@ -943,6 +945,14 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_copper", has(Eln2ConventionTags.INGOT_COPPER))
             .unlockedBy("has_tin", has(Eln2ConventionTags.INGOT_TIN))
             .save(pWriter, resource("alloying/copper_tin_to_bronze"))
+
+        BurningRecipe.Builder(Eln2Processing.BURNING_RECIPE)
+            .withInput(Eln2WeightedItemIngredient(Ingredient.of(Eln2ConventionTags.DUST_SULFUR), 1))
+            .withOutputFluid(FluidStack(Eln2ForgeFluids.SULFUR_DIOXIDE.get(), 250))
+            .withTemperatureRange(648.0, 698.0)
+            .withDuration(1800)
+            .unlockedBy("has_sulfur_dust", has(Eln2Ingredients.SULFUR_DUST.get()))
+            .save(pWriter, resource("burning/sulfur_dust_to_sulfur_dioxide"))
 
         buildManualRecipes(pWriter)
     }
