@@ -293,14 +293,13 @@ object Eln2Ingredients : ContentModule() {
     }.withItemTagDatagen(Eln2ConventionTags.PLATE_BRONZE)
 
     //#endregion
-
-    //#region Sulfur
-
     val SULFUR_DUST = DUSTS.build("sulfur_dust", MyColor(200, 180, 50)) {
         fromCrushing(Eln2Ores.SULFUR_ORE.rawOreItem, duration = 15.0)
     }.withItemTagDatagen(Eln2ConventionTags.DUST_SULFUR)
 
-    //#endregion
+    val POTASSIUM_NITRATE_DUST = DUSTS.build("potassium_nitrate_dust", MyColor(255, 230, 200)) {
+        fromCrushing(Eln2Ores.SALTPETER_ORE.rawOreItem, duration = 15.0)
+    }
 
     val MAGNETITE_DUST = DUSTS.build("magnetite_dust", MyColor(50, 50, 55)) {
         fromCrushing(Eln2Ores.MAGNETITE_ORE.rawOreItem, duration = 15.0)

@@ -183,6 +183,7 @@
     "item.eln2.carbon_brush": "Carbon Brush",
     "item.eln2.raw_resin": "Raw Resin",
     "item.eln2.sulfur_dust": "Sulfur Dust",
+    "item.eln2.potassium_nitrate_dust": "Potassium Nitrate Dust",
 
     "item.eln2.lead_ingot": "Lead Ingot",
     "item.eln2.lead_plate": "Lead Plate",
@@ -206,6 +207,7 @@
     "item.eln2.raw_lead": "Raw Lead",
     "item.eln2.raw_tin": "Raw Tin",
     "item.eln2.raw_sulfur": "Raw Sulfur",
+    "item.eln2.raw_saltpeter": "Raw Saltpeter",
     "item.eln2.asbestos_fiber": "Asbestos Fiber",
     "item.eln2.raw_asbestos": "Raw Asbestos",
 
@@ -266,6 +268,7 @@
     "block.eln2.lead_ore": "Lead Ore",
     "block.eln2.tin_ore": "Tin Ore",
     "block.eln2.sulfur_ore": "Sulfur Ore",
+    "block.eln2.saltpeter_ore": "Saltpeter Ore",
     "block.eln2.asbestos_ore": "Asbestos Ore",
     "block.eln2.primitive_kinetic_crusher": "Primitive Kinetic Crusher",
     "block.eln2.brushed_dc_motor_crusher": "Brushed DC Motor Crusher",

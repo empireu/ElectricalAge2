@@ -154,4 +154,10 @@ object Eln2Ores : ContentModule() {
         .withTagDatagen(BlockTags.NEEDS_STONE_TOOL)
         .withLootDatagen()
         .withModelDatagen(MyColor(180, 180, 190))
+
+    val SALTPETER_ORE = basicOre("saltpeter")
+        .withTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
+        .withTagDatagen(BlockTags.NEEDS_STONE_TOOL)
+        .withLootDatagen()
+        .withModelDatagen(MyColor(255, 230, 200))
 }
