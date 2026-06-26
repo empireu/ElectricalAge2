@@ -54,8 +54,10 @@ object Eln2ConventionTags {
 
     //#region Misc Tags
 
+    val SAND = forgeTag("sand")
     val GLUE = forgeTag("glue")
     val WOODEN_SLABS: TagKey<Item> = TagKey.create(Registries.ITEM, ResourceLocation.fromNamespaceAndPath("minecraft", "wooden_slabs"))
+    val COAL_EQUIVALENT: TagKey<Item> = TagKey.create(Registries.ITEM, ResourceLocation.fromNamespaceAndPath("eln2", "coal_equivalent"))
 
     //#endregion
 
@@ -63,6 +65,10 @@ object Eln2ConventionTags {
         // Register vanilla items' convention tags in the lookup so recipe datagen uses tags instead of concrete items (cross-mod compat).
         ContentManager.registerVanillaItemTag(Items.IRON_INGOT, INGOT_IRON)
         ContentManager.registerVanillaItemTag(Items.COPPER_INGOT, INGOT_COPPER)
+        ContentManager.registerVanillaItemTag(Items.COAL, COAL_EQUIVALENT)
+        ContentManager.registerVanillaItemTag(Items.CHARCOAL, COAL_EQUIVALENT)
+        ContentManager.registerVanillaItemTag(Items.SAND, SAND)
+        ContentManager.registerVanillaItemTag(Items.RED_SAND, SAND)
     }
 
     private fun forgeTag(path: String): TagKey<Item> =

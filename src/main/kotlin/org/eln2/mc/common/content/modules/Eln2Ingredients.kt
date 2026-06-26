@@ -174,10 +174,11 @@ object Eln2Ingredients : ContentModule() {
     //#endregion
 
     val COKE = itemDefault("coke")
+        .withItemTagDatagen(Eln2ConventionTags.COAL_EQUIVALENT)
 
     val COKE_DUST = DUSTS.build("coke_dust", MyColor(127, 127, 127)) {
         fromCrushing(COKE)
-    }
+    }.withItemTagDatagen(Eln2ConventionTags.COAL_EQUIVALENT)
 
     val CARBON_PUTTY = itemDefault("carbon_putty")
     val RAW_CARBON_BRUSH = itemDefault("raw_carbon_brush")

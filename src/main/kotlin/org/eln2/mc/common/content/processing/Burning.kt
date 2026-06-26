@@ -26,6 +26,7 @@ import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.inventory.ContainerLevelAccess
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.crafting.Ingredient
 import net.minecraft.world.item.crafting.RecipeSerializer
 import net.minecraft.world.item.crafting.RecipeType
 import net.minecraft.world.item.crafting.ShapedRecipe
@@ -131,21 +132,33 @@ class BurningRecipe(
         var duration: Int = 200
         val advancement: Advancement.Builder = Advancement.Builder.advancement()
 
+        fun withInput(options: List<Pair<Ingredient, Int>>, value: Int = 1): Builder {
+            val input = Eln2WeightedItemRecipeRequirement(options.map { Eln2WeightedItemIngredient(it.first, it.second) }, value)
+
+            inputItems = Eln2WeightedItemRecipeRequirements(
+                inputItems.requirements + input
+            )
+
+            return this
+        }
+
         fun withInput(ingredient: Eln2WeightedItemIngredient): Builder {
             inputItems = Eln2WeightedItemRecipeRequirements(
                 inputItems.requirements + Eln2WeightedItemRecipeRequirement(
                     listOf(ingredient), ingredient.value
                 )
             )
+
             return this
         }
 
-        fun withInput(ingredient: Eln2WeightedItemIngredient, requiredValue: Int): Builder {
+        fun withInput(ingredient: Eln2WeightedItemIngredient, requiredValue: Int = 1): Builder {
             inputItems = Eln2WeightedItemRecipeRequirements(
                 inputItems.requirements + Eln2WeightedItemRecipeRequirement(
                     listOf(ingredient), requiredValue
                 )
             )
+
             return this
         }
 

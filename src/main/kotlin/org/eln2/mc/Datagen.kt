@@ -30,6 +30,8 @@ import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.recipes.foundation.CatalyzedSimpleProcessingRecipeBuilder
 import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipeBuilder
 import org.eln2.mc.common.recipes.foundation.Eln2WeightedItemIngredient
+import org.eln2.mc.common.recipes.foundation.Eln2WeightedItemRecipeRequirement
+import org.eln2.mc.common.recipes.foundation.Eln2WeightedItemRecipeRequirements
 import org.eln2.mc.extensions.blockID
 import org.eln2.mc.extensions.itemID
 import java.util.concurrent.CompletableFuture
@@ -953,6 +955,16 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .withDuration(1800)
             .unlockedBy("has_sulfur_dust", has(Eln2Ingredients.SULFUR_DUST.get()))
             .save(pWriter, resource("burning/sulfur_dust_to_sulfur_dioxide"))
+
+        BurningRecipe.Builder(Eln2Processing.BURNING_RECIPE)
+            .withInput(Eln2WeightedItemIngredient(Ingredient.of(Eln2ConventionTags.COAL_EQUIVALENT)))
+            .withInput(Eln2WeightedItemIngredient(Ingredient.of(Eln2Ingredients.POTASSIUM_NITRATE_DUST.get())))
+            .withInput(Eln2WeightedItemIngredient(taggedIngredient(Items.SAND)))
+            .withOutputFluid(FluidStack(Eln2ForgeFluids.NITROGEN_DIOXIDE.get(), 125))
+            .withTemperatureRange(710.01, 723.51)
+            .withDuration(1800)
+            .unlockedBy("has_potassium_nitrate_dust", has(Eln2Ingredients.POTASSIUM_NITRATE_DUST.get()))
+            .save(pWriter, resource("burning/potassium_nitrate_to_nitrogen_dioxide"))
 
         buildManualRecipes(pWriter)
     }
