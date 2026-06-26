@@ -364,4 +364,18 @@ object Eln2Ingredients : ContentModule() {
     val AUTOCLAVE_DOOR = itemDefault("autoclave_door")
     val WIND_TURBINE_BLADE = itemDefault("wind_turbine_blade")
     val WIND_TURBINE_CORE = itemDefault("wind_turbine_core")
+
+    //#region Lead-Acid Battery
+
+    val LEAD_ACID_BATTERY_CELL = itemDefault("lead_acid_battery_cell")
+    val LEAD_ACID_BATTERY_CHASSIS = itemDefault("lead_acid_battery_chassis")
+    val LEAD_ACID_BATTERY_BASE_12V = itemDefault("lead_acid_battery_base_12v")
+
+    //#endregion
+
+    //#region Rubber-Wood Panel
+
+    val RUBBER_WOOD_PANEL = itemDefault("rubber_wood_panel")
+
+    //#endregion
 }

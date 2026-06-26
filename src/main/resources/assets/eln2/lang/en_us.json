@@ -202,6 +202,10 @@
     "item.eln2.bronze_ingot": "Bronze Ingot",
     "item.eln2.hot_bronze_ingot": "Hot Bronze Ingot",
     "item.eln2.bronze_plate": "Bronze Plate",
+    "item.eln2.lead_acid_battery_cell": "Lead-Acid Battery Cell",
+    "item.eln2.rubber_wood_panel": "Rubber-Wood Panel",
+    "item.eln2.lead_acid_battery_chassis": "Lead-Acid Battery Chassis",
+    "item.eln2.lead_acid_battery_base_12v": "12V Lead-Acid Battery Base",
 
     "item.eln2.raw_magnetite": "Raw Magnetite",
     "item.eln2.raw_lead": "Raw Lead",
