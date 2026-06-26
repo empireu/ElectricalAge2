@@ -27,6 +27,7 @@ import net.minecraft.world.level.ItemLike
 import net.minecraftforge.fluids.FluidType
 import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.content.processing.AlloyingRecipe
+import org.eln2.mc.common.content.processing.BurningRecipe
 import org.eln2.mc.common.content.processing.CokingRecipe
 import org.eln2.mc.common.content.processing.VulcanizingRecipe
 import org.eln2.mc.common.recipes.foundation.CatalyzedSimpleProcessingRecipe
@@ -46,6 +47,7 @@ class Eln2Jei : IModPlugin {
     private lateinit var cokingCategory: CokingCategory
     private lateinit var alloyingCategory: AlloyingCategory
     private lateinit var vulcanizingCategory: VulcanizingCategory
+    private lateinit var burningCategory: BurningCategory
 
     override fun getPluginUid(): ResourceLocation = resource("jei_plugin")
 
@@ -59,6 +61,7 @@ class Eln2Jei : IModPlugin {
         cokingCategory = CokingCategory(registration.jeiHelpers.guiHelper)
         alloyingCategory = AlloyingCategory(registration.jeiHelpers.guiHelper)
         vulcanizingCategory = VulcanizingCategory(registration.jeiHelpers.guiHelper)
+        burningCategory = BurningCategory(registration.jeiHelpers.guiHelper)
 
         registration.addRecipeCategories(
             crushingCategory,
@@ -66,7 +69,8 @@ class Eln2Jei : IModPlugin {
             extrudingCategory,
             cokingCategory,
             alloyingCategory,
-            vulcanizingCategory
+            vulcanizingCategory,
+            burningCategory
         )
     }
 
@@ -85,6 +89,7 @@ class Eln2Jei : IModPlugin {
         registerCategory(registration, cokingCategory, recipeManager, Eln2Processing.COKING_RECIPE)
         registerCategory(registration, alloyingCategory, recipeManager, Eln2Processing.ALLOYING_RECIPE)
         registerCategory(registration, vulcanizingCategory, recipeManager, Eln2Processing.VULCANIZING_RECIPE)
+        registerCategory(registration, burningCategory, recipeManager, Eln2Processing.BURNING_RECIPE)
     }
 
     /**
@@ -99,7 +104,8 @@ class Eln2Jei : IModPlugin {
             extrudingCategory,
             cokingCategory,
             alloyingCategory,
-            vulcanizingCategory
+            vulcanizingCategory,
+            burningCategory
         ).forEach { category ->
             category.collectCatalysts().forEach { catalyst ->
                 registration.addRecipeCatalyst(catalyst.get(), category.jeiRecipeType)
@@ -470,6 +476,71 @@ class RollingCategory(guiHelper: IGuiHelper) : Eln2RecipeCategory<DirectSimplePr
         mouseY: Double
     ) {
         noteArrow(graphics, 62, 32)
+    }
+}
+
+/**
+ * JEI category for the Burner Reactor.
+ * Uses [BurningRecipe] with up to 4 weighted item inputs, an optional output item, and an optional fluid output.
+ * Follows the same layout pattern as [CokingCategory].
+ * */
+class BurningCategory(guiHelper: IGuiHelper) : Eln2RecipeCategory<BurningRecipe>(
+    jeiRecipeType = RecipeType(resource("burning"), BurningRecipe::class.java),
+    categoryTitle = Component.translatable("recipe.eln2.burning"),
+    categoryWidth = 177,
+    categoryHeight = 110,
+    categoryIcon = ItemIcon(ItemStack(Eln2Processing.BURNING_BLOCK.item.get())),
+    categoryCatalysts = listOf(
+        Supplier { ItemStack(Eln2Processing.BURNING_BLOCK.item.get()) }
+    ),
+    guiHelper
+) {
+    private val slot = SlotBackground()
+
+    private val inputPositions = listOf(
+        21 to 24,
+        48 to 24,
+        75 to 24,
+        102 to 24
+    )
+
+    override fun setRecipe(builder: IRecipeLayoutBuilder, recipe: BurningRecipe, focuses: IFocusGroup) {
+        for ((index, requirement) in recipe.inputItems.requirements.withIndex()) {
+            if (index >= inputPositions.size) {
+                break
+            }
+
+            val (x, y) = inputPositions[index]
+            val firstOption = requirement.options.firstOrNull()
+                ?: continue
+
+            builder.addSlot(RecipeIngredientRole.INPUT, x, y)
+                .setBackground(slot, -1, -1)
+                .addIngredients(firstOption.ingredient)
+        }
+
+        if (recipe.outputItem != null && !recipe.outputItem.isEmpty) {
+            builder.addSlot(RecipeIngredientRole.OUTPUT, 25, 49)
+                .setBackground(slot, -1, -1)
+                .addItemStack(recipe.outputItem)
+        }
+
+        if (recipe.outputFluid != null && !recipe.outputFluid.isEmpty) {
+            builder.addSlot(RecipeIngredientRole.OUTPUT, 132, 24)
+                .setBackground(slot, -1, -1)
+                .addFluidStack(recipe.outputFluid.fluid, recipe.outputFluid.amount.toLong())
+                .setFluidRenderer(FluidType.BUCKET_VOLUME.toLong(), false, 16, 16)
+        }
+    }
+
+    override fun draw(
+        recipe: BurningRecipe,
+        recipeSlotsView: IRecipeSlotsView,
+        graphics: GuiGraphics,
+        mouseX: Double,
+        mouseY: Double
+    ) {
+        noteArrow(graphics, 62, 40)
     }
 }
 
