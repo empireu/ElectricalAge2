@@ -45,7 +45,7 @@ object Eln2HeatGenerators : ContentModule() {
                 Quantity(15.0, WATT_PER_METER_KELVIN),
                 Quantity(171.6, WATT_PER_METER_KELVIN),
                 Quantity(0.05, WATT_PER_KELVIN),
-                Quantity(4.617, WATT_PER_METER_KELVIN)
+                Quantity(1.21, WATT_PER_METER_KELVIN)
             ),
             ThermalMassDefinition(
                 ChemicalElement.Iron.asMaterial,
@@ -57,7 +57,7 @@ object Eln2HeatGenerators : ContentModule() {
         )
 
         val map = monopolarMapPlanar(Base6Direction3d.Back)
-        val maxDraft = 0.025
+        val maxDraft = 0.05
 
         CellFactory {
             PrimitiveBurnerCell(it, options, map, maxDraft)

@@ -424,8 +424,8 @@ object Eln2Processing : ContentModule() {
     )
 
     val INSULATED_DISTILLATION_MODULE_CELL = cellMemoize("insulated_distillation_module") {
-        val leakage = ConnectionParameters(conductance = Quantity(0.1, WATT_PER_KELVIN))
-        val maxTemperature = Quantity(500.0, CELSIUS)
+        val leakage = ConnectionParameters(conductance = Quantity(0.015, WATT_PER_KELVIN))
+        val maxTemperature = Quantity(600.0, CELSIUS)
 
         CellFactory {
             PhaseChangeModuleCell(it, leakage, maxTemperature, replicatesTemperature = false, allowExternalConnections = true)
@@ -441,8 +441,7 @@ object Eln2Processing : ContentModule() {
                 FlwModels.INSULATED_DISTILLATION_MODULE
             }
         )
-    }
-        .withSelfDrop()
+    }.withSelfDrop()
 
     val INSULATED_DISTILLATION_MODULE_BLOCK_ENTITY: RegistryObject<BlockEntityType<PhaseChangeModuleBlockEntity>> = blockEntityOnly(
         "insulated_distillation_module",
@@ -452,7 +451,7 @@ object Eln2Processing : ContentModule() {
 
     val CONDENSER_DISTILLATION_MODULE_CELL = cellMemoize("condenser_distillation_module") {
         val leakage = ConnectionParameters(conductance = Quantity(5.0, WATT_PER_KELVIN))
-        val maxTemperature = Quantity(500.0, CELSIUS)
+        val maxTemperature = Quantity(700.0, CELSIUS)
 
         CellFactory {
             PhaseChangeModuleCell(it, leakage, maxTemperature, replicatesTemperature = true, allowExternalConnections = true)
