@@ -309,6 +309,8 @@ object Eln2Processing : ContentModule() {
                 103.0f
             )
         }
+
+        MenuScreens.register(HYDROGEN_REDUCTION_FURNACE_MENU.get(), ::HydrogenReductionFurnaceScreen)
     }
 
     //#region Coking
@@ -779,6 +781,48 @@ object Eln2Processing : ContentModule() {
         LEAD_CHAMBER_BLOCK.block,
         ::LeadChamberBlockEntity
     )
+
+    //#endregion
+
+    //#region Hydrogen Reduction Furnace
+
+    val HYDROGEN_REDUCTION_RECIPE = RecipeRegistry.register<HydrogenReductionRecipe>("hydrogen_reduction") {
+        HydrogenReductionRecipe.Serializer(it)
+    }
+
+    val HYDROGEN_REDUCTION_FURNACE_CELL = cellMemoize("hydrogen_reduction_furnace_cell") {
+        val map = directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)
+
+        val thermalDef = ThermalMassDefinition(
+            ChemicalElement.Iron.asMaterial,
+            mass = Quantity(1.1, KILOGRAM)
+        )
+
+        val leakage = ConnectionParameters(
+            conductance = Quantity(0.71, WATT_PER_KELVIN)
+        )
+
+        CellFactory {
+            ElectricalFurnaceCell(
+                it,
+                map,
+                thermalDef,
+                leakage,
+                Quantity(2000.0, CELSIUS),
+            )
+        }
+    }
+
+    val HYDROGEN_REDUCTION_FURNACE_BLOCK = blockAndItem("hydrogen_reduction_furnace") { HydrogenReductionFurnaceBlock() }
+        .withSelfDrop()
+
+    val HYDROGEN_REDUCTION_FURNACE_BLOCK_ENTITY = blockEntityOnly(
+        "hydrogen_reduction_furnace",
+        HYDROGEN_REDUCTION_FURNACE_BLOCK.block,
+        ::HydrogenReductionFurnaceBlockEntity
+    )
+
+    val HYDROGEN_REDUCTION_FURNACE_MENU = menu("hydrogen_reduction_furnace", ::HydrogenReductionFurnaceMenu)
 
     //#endregion
 }

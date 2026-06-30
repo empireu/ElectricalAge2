@@ -25,10 +25,18 @@ import net.minecraft.world.item.crafting.Recipe
 import net.minecraft.world.item.crafting.RecipeManager
 import net.minecraft.world.level.ItemLike
 import net.minecraftforge.fluids.FluidType
+import org.ageseries.libage.data.KELVIN
+import org.ageseries.libage.data.QuantityScale
+import org.ageseries.libage.data.Temperature
+import org.ageseries.libage.data.Volume
+import org.ageseries.libage.data.classify
+import org.ageseries.libage.data.classifyAuxiliary
+import org.eln2.mc.Eln2Config
 import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.content.processing.AlloyingRecipe
 import org.eln2.mc.common.content.processing.BurningRecipe
 import org.eln2.mc.common.content.processing.CokingRecipe
+import org.eln2.mc.common.content.processing.HydrogenReductionRecipe
 import org.eln2.mc.common.content.processing.VulcanizingRecipe
 import org.eln2.mc.common.recipes.foundation.CatalyzedSimpleProcessingRecipe
 import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipe
@@ -48,6 +56,7 @@ class Eln2Jei : IModPlugin {
     private lateinit var alloyingCategory: AlloyingCategory
     private lateinit var vulcanizingCategory: VulcanizingCategory
     private lateinit var burningCategory: BurningCategory
+    private lateinit var hydrogenReductionCategory: HydrogenReductionCategory
 
     override fun getPluginUid(): ResourceLocation = resource("jei_plugin")
 
@@ -62,6 +71,7 @@ class Eln2Jei : IModPlugin {
         alloyingCategory = AlloyingCategory(registration.jeiHelpers.guiHelper)
         vulcanizingCategory = VulcanizingCategory(registration.jeiHelpers.guiHelper)
         burningCategory = BurningCategory(registration.jeiHelpers.guiHelper)
+        hydrogenReductionCategory = HydrogenReductionCategory(registration.jeiHelpers.guiHelper)
 
         registration.addRecipeCategories(
             crushingCategory,
@@ -70,7 +80,8 @@ class Eln2Jei : IModPlugin {
             cokingCategory,
             alloyingCategory,
             vulcanizingCategory,
-            burningCategory
+            burningCategory,
+            hydrogenReductionCategory
         )
     }
 
@@ -90,6 +101,7 @@ class Eln2Jei : IModPlugin {
         registerCategory(registration, alloyingCategory, recipeManager, Eln2Processing.ALLOYING_RECIPE)
         registerCategory(registration, vulcanizingCategory, recipeManager, Eln2Processing.VULCANIZING_RECIPE)
         registerCategory(registration, burningCategory, recipeManager, Eln2Processing.BURNING_RECIPE)
+        registerCategory(registration, hydrogenReductionCategory, recipeManager, Eln2Processing.HYDROGEN_REDUCTION_RECIPE)
     }
 
     /**
@@ -105,7 +117,8 @@ class Eln2Jei : IModPlugin {
             cokingCategory,
             alloyingCategory,
             vulcanizingCategory,
-            burningCategory
+            burningCategory,
+            hydrogenReductionCategory
         ).forEach { category ->
             category.collectCatalysts().forEach { catalyst ->
                 registration.addRecipeCatalyst(catalyst.get(), category.jeiRecipeType)
@@ -593,5 +606,87 @@ class VulcanizingCategory(guiHelper: IGuiHelper) : Eln2RecipeCategory<Vulcanizin
         mouseY: Double
     ) {
         noteArrow(graphics, 60, 38)
+    }
+}
+
+/**
+ * JEI category for the Hydrogen Reduction Furnace.
+ * Shows the 4 input items, the progress arrow with a temperature label above,
+ * the hydrogen amount below the arrow, and the output item.
+ * */
+class HydrogenReductionCategory(guiHelper: IGuiHelper) : Eln2RecipeCategory<HydrogenReductionRecipe>(
+    jeiRecipeType = RecipeType(resource("hydrogen_reduction"), HydrogenReductionRecipe::class.java),
+    categoryTitle = Component.translatable("recipe.eln2.hydrogen_reduction"),
+    categoryWidth = 177,
+    categoryHeight = 85,
+    categoryIcon = ItemIcon(ItemStack(Eln2Processing.HYDROGEN_REDUCTION_FURNACE_BLOCK.item.get())),
+    categoryCatalysts = listOf(
+        Supplier { ItemStack(Eln2Processing.HYDROGEN_REDUCTION_FURNACE_BLOCK.item.get()) }
+    ),
+    guiHelper
+) {
+    private val slot = SlotBackground()
+
+    private val inputPositions = listOf(
+        21 to 24,
+        48 to 24,
+        75 to 24,
+        102 to 24,
+    )
+
+    override fun setRecipe(builder: IRecipeLayoutBuilder, recipe: HydrogenReductionRecipe, focuses: IFocusGroup) {
+        for ((index, requirement) in recipe.inputItems.requirements.withIndex()) {
+            if (index >= inputPositions.size) break
+
+            val (x, y) = inputPositions[index]
+            val firstOption = requirement.options.firstOrNull() ?: continue
+
+            builder.addSlot(RecipeIngredientRole.INPUT, x, y)
+                .setBackground(slot, -1, -1)
+                .addIngredients(firstOption.ingredient)
+        }
+
+        builder.addSlot(RecipeIngredientRole.OUTPUT, 129, 35)
+            .setBackground(slot, -1, -1)
+            .addItemStack(recipe.output)
+    }
+
+    override fun draw(
+        recipe: HydrogenReductionRecipe,
+        recipeSlotsView: IRecipeSlotsView,
+        graphics: GuiGraphics,
+        mouseX: Double,
+        mouseY: Double
+    ) {
+        noteArrow(graphics, 62, 38)
+
+        val scale = Eln2Config.clientConfig.getScaleOverride(Temperature::class.java)
+
+        // Temperature label above the arrow:
+        val tempText = if(scale != null) {
+            classifyAuxiliary(scale, !recipe.minimumTemperature)
+        }
+        else {
+            recipe.minimumTemperature.classify()
+        }
+        graphics.drawString(
+            Minecraft.getInstance().font,
+            tempText,
+            62 + 11 - Minecraft.getInstance().font.width(tempText) / 2,
+            24,
+            0xFF5555,
+            false
+        )
+
+        // Hydrogen amount below the arrow:
+        val h2Text = "${recipe.hydrogenAmount} mB H₂"
+        graphics.drawString(
+            Minecraft.getInstance().font,
+            h2Text,
+            62 + 11 - Minecraft.getInstance().font.width(h2Text) / 2,
+            58,
+            0x5555FF,
+            false
+        )
     }
 }

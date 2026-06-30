@@ -233,6 +233,12 @@
     "item.eln2.wind_turbine_blade": "Wind Turbine Blade",
     "item.eln2.wind_turbine_core": "Wind Turbine Core",
     "item.eln2.magnetite_dust": "Magnetite Dust",
+    "item.eln2.tungsten_trioxide_dust": "Tungsten Trioxide Dust",
+    "item.eln2.tungsten_trioxide_paste": "Tungsten Trioxide Paste",
+    "item.eln2.filament_shaped_tungsten_trioxide_paste": "Filament-Shaped Tungsten Trioxide Paste",
+    "item.eln2.tungsten_filament": "Tungsten Filament",
+    "item.eln2.low_voltage_iron_heating_element": "Low-Voltage Iron Heating Element",
+    "item.eln2.burnt_heating_element": "Burnt Heating Element",
     "item.eln2.crude_magnet": "Crude Magnet",
     "item.eln2.copper_coil": "Copper Coil",
     "item.eln2.crude_motor_stator": "Crude Motor Stator",
@@ -281,6 +287,7 @@
     "block.eln2.primitive_kinetic_rolling_machine": "Primitive Kinetic Rolling Machine",
     "block.eln2.brushed_dc_motor_rolling_machine": "Brushed DC Motor Rolling Machine",
     "block.eln2.alloying_smelter": "Alloying Smelter",
+    "block.eln2.hydrogen_reduction_furnace": "Hydrogen Reduction Furnace",
     "block.eln2.burner_reactor": "Burner Reactor",
 
     // Parts:
@@ -376,6 +383,7 @@
     "recipe.eln2.alloying": "Alloying",
     "recipe.eln2.vulcanizing": "Vulcanizing",
     "recipe.eln2.burning": "Burning",
+    "recipe.eln2.hydrogen_reduction": "Hydrogen Reduction",
 
     "jei.eln2.vulcanizing.temperature_range": "Temperature: %s\u00B0C - %s\u00B0C",
     "jei.eln2.vulcanizing.burnt": "Result when overheated"

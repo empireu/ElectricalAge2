@@ -21,11 +21,14 @@ import net.minecraftforge.common.data.BlockTagsProvider
 import net.minecraftforge.common.data.ExistingFileHelper
 import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.registries.ForgeRegistries
+import org.ageseries.libage.data.CELSIUS
+import org.ageseries.libage.data.Quantity
 import org.eln2.mc.common.content.modules.*
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids.requireBottle
 import org.eln2.mc.common.content.modules.world.Eln2Ores
 import org.eln2.mc.common.content.processing.AlloyingRecipe
 import org.eln2.mc.common.content.processing.BurningRecipe
+import org.eln2.mc.common.content.processing.HydrogenReductionRecipe
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.recipes.foundation.CatalyzedSimpleProcessingRecipeBuilder
 import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipeBuilder
@@ -205,6 +208,15 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .define('B', Eln2ForgeFluids.PITCH.requireBottle().bottleItem.get())
             .unlockedBy("has_coke_dust", has(Eln2Ingredients.COKE_DUST.get()))
             .save(pWriter, resource("crafting/carbon_putty"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.TUNGSTEN_TRIOXIDE_PASTE.get(), 8)
+            .pattern("TTT")
+            .pattern("TBT")
+            .pattern("TTT")
+            .define('T', Eln2Ingredients.TUNGSTEN_TRIOXIDE_DUST.get())
+            .define('B', Eln2ForgeFluids.PITCH.requireBottle().bottleItem.get())
+            .unlockedBy("has_tungsten_trioxide_dust", has(Eln2Ingredients.TUNGSTEN_TRIOXIDE_DUST.get()))
+            .save(pWriter, resource("crafting/tungsten_trioxide_paste"))
 
         ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.RAW_CARBON_BRUSH.get())
             .pattern("CCW")
@@ -1010,6 +1022,26 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .withDuration(1800)
             .unlockedBy("has_potassium_nitrate_dust", has(Eln2Ingredients.POTASSIUM_NITRATE_DUST.get()))
             .save(pWriter, resource("burning/potassium_nitrate_to_nitrogen_dioxide"))
+
+        //#region Tungsten
+
+        CatalyzedSimpleProcessingRecipeBuilder(Eln2Processing.EXTRUDING_RECIPE)
+            .withInput(Eln2Ingredients.TUNGSTEN_TRIOXIDE_PASTE.get())
+            .withCatalyst(Eln2Processing.EXTRUDER_WIRE_DIE.get())
+            .withOutput(Eln2Ingredients.FILAMENT_SHAPED_TUNGSTEN_TRIOXIDE_PASTE.get())
+            .withDuration(15.0)
+            .unlockedBy("has_tungsten_trioxide_paste", has(Eln2Ingredients.TUNGSTEN_TRIOXIDE_PASTE.get()))
+            .save(pWriter, resource("extruding/tungsten_trioxide_paste_to_filament"))
+
+        HydrogenReductionRecipe.Builder(Eln2Processing.HYDROGEN_REDUCTION_RECIPE)
+            .withInput(Eln2WeightedItemIngredient(Ingredient.of(Eln2Ingredients.FILAMENT_SHAPED_TUNGSTEN_TRIOXIDE_PASTE.get())))
+            .withOutput(ItemStack(Eln2Ingredients.TUNGSTEN_FILAMENT.get()))
+            .withHydrogenAmount(50)
+            .withMinimumTemperature(Quantity(800.0, CELSIUS))
+            .unlockedBy("has_filament_shaped_paste", has(Eln2Ingredients.FILAMENT_SHAPED_TUNGSTEN_TRIOXIDE_PASTE.get()))
+            .save(pWriter, resource("hydrogen_reduction/filament_paste_to_tungsten_filament"))
+
+        //#endregion
 
         buildManualRecipes(pWriter)
     }

@@ -226,6 +226,7 @@ object ContentManager {
         Eln2Grid.initialize()
         Eln2ForgeFluids.initialize()
         Eln2Ores.initialize()
+        Eln2HeatingElements.initialize()
 
         LOG.info("Content init completed.")
     }

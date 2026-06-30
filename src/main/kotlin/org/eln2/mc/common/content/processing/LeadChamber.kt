@@ -293,12 +293,25 @@ class LeadChamberBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(E
             return accepted
         }
 
-        override fun fill(resource: FluidStack?, action: IFluidHandler.FluidAction?): Int {
-            if (resource == null || action == null) {
+        override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction): Int {
+            if (resource.isEmpty) {
                 return 0
             }
 
-            return fillFractional(resource.fractional(), action).toInt()
+            val fractional = resource.fractional()
+            val simulated = fillFractional(fractional, IFluidHandler.FluidAction.SIMULATE)
+            val quantized = fractional.copyWithAmount(simulated).quantized()
+
+            if (quantized.isEmpty) {
+                return 0
+            }
+
+            if (action == IFluidHandler.FluidAction.SIMULATE) {
+                return quantized.amount
+            }
+
+            fillFractional(quantized.fractional(), IFluidHandler.FluidAction.EXECUTE)
+            return quantized.amount
         }
 
         //#endregion

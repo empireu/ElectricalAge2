@@ -306,6 +306,12 @@ object Eln2Ingredients : ContentModule() {
         fromCrushing(Eln2Ores.MAGNETITE_ORE.rawOreItem, duration = 15.0)
     }
 
+    val TUNGSTEN_TRIOXIDE_DUST = DUSTS.build("tungsten_trioxide_dust", MyColor(220, 200, 50))
+
+    val TUNGSTEN_TRIOXIDE_PASTE = itemDefault("tungsten_trioxide_paste")
+    val FILAMENT_SHAPED_TUNGSTEN_TRIOXIDE_PASTE = itemDefault("filament_shaped_tungsten_trioxide_paste")
+    val TUNGSTEN_FILAMENT = itemDefault("tungsten_filament")
+
     val CRUDE_MAGNET = itemDefault("crude_magnet")
     val COPPER_COIL = itemDefault("copper_coil")
     val ROTOR_COIL_ASSEMBLY = itemDefault("rotor_coil_assembly")
