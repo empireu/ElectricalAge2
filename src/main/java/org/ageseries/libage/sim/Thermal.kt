@@ -75,7 +75,13 @@ val STANDARD_TEMPERATURE = Quantity(273.15, KELVIN)
  * @param energy The initial energy. Leave `null` to set it such that [temperature] is [STANDARD_TEMPERATURE].
  * @param mass The mass of the body.
  * */
-class ThermalMass(var material: Material, energy: Quantity<Energy>? = null, var mass: Quantity<Mass> = Quantity(1.0, KILOGRAM)) {
+class ThermalMass(
+    var material: Material,
+    energy: Quantity<Energy>? = null,
+    var mass: Quantity<Mass> = Quantity(1.0, KILOGRAM),
+    var emissiveSurfaceArea: Quantity<Area> = Quantity(1.0, METER2),
+    var emissivity: Double = 0.0
+) {
     var energy: Quantity<Energy> = energy ?: Quantity(!STANDARD_TEMPERATURE * !mass * !material.specificHeat)
 
     /**
@@ -100,11 +106,17 @@ class ThermalMass(var material: Material, energy: Quantity<Energy>? = null, var 
 /**
  * Factory for [ThermalMass] instances. Includes all information necessary to create a new instance.
  * */
-data class ThermalMassDefinition(val material: Material, val energy: Quantity<Energy>? = null, val mass: Quantity<Mass> = Quantity(1.0, KILOGRAM)) : Supplier<ThermalMass> {
+data class ThermalMassDefinition(
+    val material: Material,
+    val energy: Quantity<Energy>? = null,
+    val mass: Quantity<Mass> = Quantity(1.0, KILOGRAM),
+    var emissiveSurfaceArea: Quantity<Area> = Quantity(1.0, METER2),
+    var emissivity: Double = 0.0
+) : Supplier<ThermalMass> {
     /**
      * Creates a new instance of [ThermalMass] with the properties specified in this definition.
      * */
-    override fun get() = ThermalMass(material, energy, mass)
+    override fun get() = ThermalMass(material, energy, mass, emissiveSurfaceArea, emissivity)
 
     override fun toString() = "Def ${this()}"
 
@@ -302,7 +314,15 @@ class EnvironmentConnection(
             return ZERO_TRANSFER
         }
 
-        val power = deltaT * overallCond
+        val radiativePower = if (a.emissiveSurfaceArea > 0.0 && a.emissivity > 0.0) {
+            val tEnv = !temperature
+            val tMass = !a.temperature
+            a.emissivity * STEFAN_BOLTZMANN_CONSTANT * !a.emissiveSurfaceArea * ((tEnv * tEnv) * (tEnv * tEnv) - (tMass * tMass) * (tMass * tMass))
+        } else {
+            0.0
+        }
+
+        val power = deltaT * overallCond + radiativePower
         val unrestrictedEnergy = power * dt
 
         val capacityA = heatCapacity(a)

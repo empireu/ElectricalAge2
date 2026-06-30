@@ -33,8 +33,6 @@ import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.recipes.foundation.CatalyzedSimpleProcessingRecipeBuilder
 import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipeBuilder
 import org.eln2.mc.common.recipes.foundation.Eln2WeightedItemIngredient
-import org.eln2.mc.common.recipes.foundation.Eln2WeightedItemRecipeRequirement
-import org.eln2.mc.common.recipes.foundation.Eln2WeightedItemRecipeRequirements
 import org.eln2.mc.extensions.blockID
 import org.eln2.mc.extensions.itemID
 import java.util.concurrent.CompletableFuture
@@ -1037,7 +1035,9 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .withInput(Eln2WeightedItemIngredient(Ingredient.of(Eln2Ingredients.FILAMENT_SHAPED_TUNGSTEN_TRIOXIDE_PASTE.get())))
             .withOutput(ItemStack(Eln2Ingredients.TUNGSTEN_FILAMENT.get()))
             .withHydrogenAmount(50)
-            .withMinimumTemperature(Quantity(800.0, CELSIUS))
+            .withMinimumTemperature(Quantity(750.0, CELSIUS))
+            .withOptimalTemperature(Quantity(900.0, CELSIUS))
+            .withEnergyCost(1000.0)
             .unlockedBy("has_filament_shaped_paste", has(Eln2Ingredients.FILAMENT_SHAPED_TUNGSTEN_TRIOXIDE_PASTE.get()))
             .save(pWriter, resource("hydrogen_reduction/filament_paste_to_tungsten_filament"))
 

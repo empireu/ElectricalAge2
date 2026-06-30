@@ -14,7 +14,7 @@ object Eln2HeatingElements : ContentModule() {
 
     val LOW_VOLTAGE_IRON_HEATING_ELEMENT = HeatingElementBuilder("low_voltage_iron_heating_element")
         .setMaxTemperature(Quantity(1100.0, CELSIUS))
-        .setGeometry(Quantity(5.0, METER), Quantity(1.0, MILLI * METER))
+        .setGeometry(Quantity(5.0, METER), Quantity(1.25, MILLI * METER))
         .setResistivityCurve {
             withPoint(273.15, 8.5e-8)
             withPoint(293.15, 9.7e-8)

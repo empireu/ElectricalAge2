@@ -1,5 +1,6 @@
 {
   "type": "eln2:hydrogen_reduction",
+  "energyCost": 1000.0,
   "hydrogenAmount": 50,
   "inputItems": [
     {
@@ -14,7 +15,8 @@
       "requiredValue": 1
     }
   ],
-  "minimumTemperature": 800.0000000000001,
+  "minimumTemperature": 750.0,
+  "optimalTemperature": 900.0000000000001,
   "result": {
     "count": 1,
     "item": "eln2:tungsten_filament"

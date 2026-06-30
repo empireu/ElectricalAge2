@@ -25,19 +25,12 @@ import net.minecraft.world.item.crafting.Recipe
 import net.minecraft.world.item.crafting.RecipeManager
 import net.minecraft.world.level.ItemLike
 import net.minecraftforge.fluids.FluidType
-import org.ageseries.libage.data.KELVIN
-import org.ageseries.libage.data.QuantityScale
 import org.ageseries.libage.data.Temperature
-import org.ageseries.libage.data.Volume
 import org.ageseries.libage.data.classify
 import org.ageseries.libage.data.classifyAuxiliary
 import org.eln2.mc.Eln2Config
 import org.eln2.mc.common.content.modules.Eln2Processing
-import org.eln2.mc.common.content.processing.AlloyingRecipe
-import org.eln2.mc.common.content.processing.BurningRecipe
-import org.eln2.mc.common.content.processing.CokingRecipe
-import org.eln2.mc.common.content.processing.HydrogenReductionRecipe
-import org.eln2.mc.common.content.processing.VulcanizingRecipe
+import org.eln2.mc.common.content.processing.*
 import org.eln2.mc.common.recipes.foundation.CatalyzedSimpleProcessingRecipe
 import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipe
 import org.eln2.mc.resource
@@ -664,7 +657,7 @@ class HydrogenReductionCategory(guiHelper: IGuiHelper) : Eln2RecipeCategory<Hydr
 
         // Temperature label above the arrow:
         val tempText = if(scale != null) {
-            classifyAuxiliary(scale, !recipe.minimumTemperature)
+            "${classifyAuxiliary(scale, !recipe.minimumTemperature)} - ${classifyAuxiliary(scale, !recipe.optimalTemperature)}"
         }
         else {
             recipe.minimumTemperature.classify()

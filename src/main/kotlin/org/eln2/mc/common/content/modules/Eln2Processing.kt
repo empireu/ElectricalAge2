@@ -795,11 +795,13 @@ object Eln2Processing : ContentModule() {
 
         val thermalDef = ThermalMassDefinition(
             ChemicalElement.Iron.asMaterial,
-            mass = Quantity(1.1, KILOGRAM)
+            mass = Quantity(1.1, KILOGRAM),
+            emissiveSurfaceArea = Quantity(0.0016, METER2),
+            emissivity = 0.85
         )
 
         val leakage = ConnectionParameters(
-            conductance = Quantity(0.71, WATT_PER_KELVIN)
+            conductance = Quantity(0.25, WATT_PER_KELVIN)
         )
 
         CellFactory {

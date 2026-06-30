@@ -6,98 +6,70 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import net.minecraft.advancements.Advancement
 import net.minecraft.advancements.CriterionTriggerInstance
+import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
 import net.minecraft.data.recipes.FinishedRecipe
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
-import net.minecraft.resources.ResourceLocation
-import net.minecraft.world.SimpleContainer
-import net.minecraft.world.item.ItemStack
-import net.minecraft.world.item.crafting.RecipeSerializer
-import net.minecraft.world.item.crafting.RecipeType
-import net.minecraft.world.item.crafting.ShapedRecipe
-import net.minecraft.core.Direction
-import net.minecraftforge.common.capabilities.Capability
-import net.minecraftforge.common.capabilities.ForgeCapabilities
-import net.minecraftforge.common.util.LazyOptional
-import net.minecraftforge.items.ItemStackHandler
-import net.minecraft.world.level.material.Fluid
-import net.minecraftforge.fluids.FluidStack
-import net.minecraftforge.fluids.capability.IFluidHandler
-import net.minecraftforge.registries.ForgeRegistries
-import org.eln2.mc.common.content.modules.Eln2ForgeFluids
-import org.eln2.mc.common.content.modules.Eln2HeatingElements
-import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
-import org.eln2.mc.common.fluids.foundation.IFractionalFluidHandler
-import org.eln2.mc.common.fluids.foundation.fractional
-
-import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.Temperature
-import org.ageseries.libage.mathematics.geometry.Vector2di
-import org.ageseries.libage.mathematics.map
-import org.eln2.mc.client.render.foundation.MyColor
-import org.eln2.mc.resource
-import org.ageseries.libage.data.CELSIUS
-import org.ageseries.libage.data.plus
-import org.ageseries.libage.sim.Simulator
-import org.ageseries.libage.sim.electrical.ElectricalSimulation
-import org.eln2.mc.CrossThreadAccess
-import org.eln2.mc.LOG
-import org.eln2.mc.OnServerThread
-import org.eln2.mc.PoleMap
-import org.eln2.mc.common.cells.foundation.Cell
-import org.eln2.mc.common.cells.foundation.CellCreateInfo
-import org.eln2.mc.common.cells.foundation.ElectricalSize
-import org.eln2.mc.common.cells.foundation.PolarResistorObject
-import org.eln2.mc.common.cells.foundation.SidedElectricalMapped
-import org.eln2.mc.common.cells.foundation.SimObject
-import org.eln2.mc.common.cells.foundation.SimulationPhase
-import org.eln2.mc.common.cells.foundation.SubscriberCollection
-import org.eln2.mc.common.cells.foundation.addPre
-import org.eln2.mc.common.cells.foundation.connect
-import org.eln2.mc.common.cells.foundation.loadTemperature
-import org.eln2.mc.common.content.HeatingElementItem
-import org.eln2.mc.common.recipes.RecipeRegistry
-import org.eln2.mc.common.recipes.foundation.*
-import org.eln2.mc.extensions.bindToList
-import org.eln2.mc.extensions.eln2Unlock
-import org.eln2.mc.extensions.getQuantity
-import org.eln2.mc.extensions.putQuantity
-import java.util.function.Consumer
-import kotlin.math.abs
-import net.minecraft.core.BlockPos
 import net.minecraft.network.chat.Component
-import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
+import net.minecraft.world.SimpleContainer
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.inventory.ContainerLevelAccess
 import net.minecraft.world.inventory.SimpleContainerData
+import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.crafting.RecipeSerializer
+import net.minecraft.world.item.crafting.RecipeType
+import net.minecraft.world.item.crafting.ShapedRecipe
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.material.Fluid
 import net.minecraft.world.phys.BlockHitResult
+import net.minecraftforge.common.capabilities.Capability
+import net.minecraftforge.common.capabilities.ForgeCapabilities
+import net.minecraftforge.common.util.LazyOptional
+import net.minecraftforge.fluids.FluidStack
+import net.minecraftforge.fluids.capability.IFluidHandler
+import net.minecraftforge.items.ItemStackHandler
+import net.minecraftforge.registries.ForgeRegistries
+import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.geometry.Vector2di
+import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.ConnectionParameters
+import org.ageseries.libage.sim.Simulator
 import org.ageseries.libage.sim.ThermalMassDefinition
-import org.eln2.mc.DEBUGGER_BREAK
-import org.eln2.mc.ServerOnly
+import org.ageseries.libage.sim.electrical.ElectricalSimulation
+import org.eln2.mc.*
+import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
 import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
-import org.eln2.mc.common.cells.foundation.Behavior
-import org.eln2.mc.common.cells.foundation.CellProvider
-import org.eln2.mc.common.cells.foundation.ThermalBreakdownBehavior
-import org.eln2.mc.common.cells.foundation.self
+import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.containers.ContainerHelper
 import org.eln2.mc.common.containers.MyAbstractContainerScreen
 import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
+import org.eln2.mc.common.content.HeatingElementItem
+import org.eln2.mc.common.content.modules.Eln2ForgeFluids
+import org.eln2.mc.common.content.modules.Eln2HeatingElements
 import org.eln2.mc.common.content.modules.Eln2Processing
-import org.eln2.mc.extensions.constructMenuHelper2
+import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
+import org.eln2.mc.common.fluids.foundation.IFractionalFluidHandler
+import org.eln2.mc.common.fluids.foundation.fractional
+import org.eln2.mc.common.recipes.RecipeRegistry
+import org.eln2.mc.common.recipes.foundation.*
+import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import java.util.function.Consumer
+import kotlin.math.abs
 
 private const val HYDROGEN_REDUCTION_INPUT_SLOT_COUNT = 4
 
@@ -108,6 +80,8 @@ class HydrogenReductionRecipe(
     val output: ItemStack,
     val hydrogenAmount: Int,
     val minimumTemperature: Quantity<Temperature>,
+    val energyCost: Double,
+    val optimalTemperature: Quantity<Temperature>,
 ) : Eln2CustomRecipe<HydrogenReductionRecipe>, Eln2NonStandardRecipe {
     override fun matches(pContainer: SimpleContainer, pLevel: Level): Boolean {
         val items = pContainer.bindToList()
@@ -119,6 +93,8 @@ class HydrogenReductionRecipe(
         var output: ItemStack = ItemStack.EMPTY
         var hydrogenAmount: Int = 0
         var minimumTemperature: Quantity<Temperature> = Quantity(800.0, CELSIUS)
+        var energyCost: Double = 10.0
+        var optimalTemperature: Quantity<Temperature> = Quantity(1000.0, CELSIUS)
         val advancement: Advancement.Builder = Advancement.Builder.advancement()
 
         fun withInput(ingredient: Eln2WeightedItemIngredient): Builder {
@@ -151,6 +127,19 @@ class HydrogenReductionRecipe(
 
         fun withMinimumTemperature(temperature: Quantity<Temperature>): Builder {
             minimumTemperature = temperature
+            return this
+        }
+
+        /**
+         * The process cost, in J/mB of Hydrogen.
+         * */
+        fun withEnergyCost(cost: Double): Builder {
+            energyCost = cost
+            return this
+        }
+
+        fun withOptimalTemperature(temperature: Quantity<Temperature>): Builder {
+            optimalTemperature = temperature
             return this
         }
 
@@ -196,6 +185,8 @@ class HydrogenReductionRecipe(
 
                 json.addProperty("hydrogenAmount", parent.hydrogenAmount)
                 json.addProperty("minimumTemperature", parent.minimumTemperature..CELSIUS)
+                json.addProperty("energyCost", parent.energyCost)
+                json.addProperty("optimalTemperature", parent.optimalTemperature..CELSIUS)
             }
 
             override fun getId(): ResourceLocation = recipeId
@@ -210,7 +201,17 @@ class HydrogenReductionRecipe(
             val output = ShapedRecipe.itemStackFromJson(pSerializedRecipe.getAsJsonObject("result"))
             val hydrogenAmount = pSerializedRecipe.get("hydrogenAmount").asInt
             val minimumTemperature = Quantity(pSerializedRecipe.get("minimumTemperature").asDouble, CELSIUS)
-            return HydrogenReductionRecipe(this, pRecipeId, inputItems, output, hydrogenAmount, minimumTemperature)
+            val energyCost = pSerializedRecipe.get("energyCost").asDouble
+            val optimalTemperature = Quantity(pSerializedRecipe.get("optimalTemperature").asDouble, CELSIUS)
+
+            return HydrogenReductionRecipe(
+                this, pRecipeId,
+                inputItems, output,
+                hydrogenAmount,
+                minimumTemperature,
+                energyCost,
+                optimalTemperature
+            )
         }
 
         override fun fromNetwork(pRecipeId: ResourceLocation, pBuffer: FriendlyByteBuf): HydrogenReductionRecipe {
@@ -218,7 +219,9 @@ class HydrogenReductionRecipe(
             val output = pBuffer.readItem()
             val hydrogenAmount = pBuffer.readInt()
             val minimumTemperature = Quantity(pBuffer.readDouble(), CELSIUS)
-            return HydrogenReductionRecipe(this, pRecipeId, inputItems, output, hydrogenAmount, minimumTemperature)
+            val energyCost = pBuffer.readDouble()
+            val optimalTemperature = Quantity(pBuffer.readDouble(), CELSIUS)
+            return HydrogenReductionRecipe(this, pRecipeId, inputItems, output, hydrogenAmount, minimumTemperature, energyCost, optimalTemperature)
         }
 
         override fun toNetwork(pBuffer: FriendlyByteBuf, pRecipe: HydrogenReductionRecipe) {
@@ -226,6 +229,8 @@ class HydrogenReductionRecipe(
             pBuffer.writeItem(pRecipe.output)
             pBuffer.writeInt(pRecipe.hydrogenAmount)
             pBuffer.writeDouble(!pRecipe.minimumTemperature)
+            pBuffer.writeDouble(pRecipe.energyCost)
+            pBuffer.writeDouble(!pRecipe.optimalTemperature)
         }
     }
 }
@@ -310,6 +315,27 @@ class ElectricalFurnaceCell(
     var isActive: Boolean = false
 
     /**
+     * Maximum process thermal power drain at optimal temperature.
+     */
+    @CrossThreadAccess
+    @OnServerThread
+    var processMaxPower: Double = 0.0
+
+    /**
+     * Minimum temperature for processing, in K.
+     */
+    @CrossThreadAccess
+    @OnServerThread
+    var processMinTemperature: Double = 0.0
+
+    /**
+     * Optimal temperature for full processing speed, in K.
+     */
+    @CrossThreadAccess
+    @OnServerThread
+    var processOptimalTemperature: Double = 0.0
+
+    /**
      * The currently installed heating element.
      * Null when empty or burnt out. Set by the block entity.
      */
@@ -334,6 +360,16 @@ class ElectricalFurnaceCell(
     private fun simulationTick(dt: Double, phase: SimulationPhase) {
         environmentSimulator.step(dt)
 
+        if (processMaxPower > 0.0 && processOptimalTemperature > processMinTemperature) {
+            val t = !thermalBody.temperature
+            val factor = map(t, processMinTemperature, processOptimalTemperature, 0.0, 1.0).coerceIn(0.0, 1.0)
+            val drain = processMaxPower * factor * dt
+
+            if (drain > 0.0) {
+                thermalBody.energy -= Quantity(drain, JOULE)
+            }
+        }
+
         if (!isBound) {
             resistor.component.updateResistance(ElectricalSimulation.MAX_RESISTANCE)
             return
@@ -351,7 +387,7 @@ class ElectricalFurnaceCell(
 
         val delta = abs(resistor.component.power) * dt
 
-        if(delta > 1e-3) {
+        if (delta > 1e-3) {
             thermalBody.energy += delta
             setChanged()
         }
@@ -397,7 +433,7 @@ class HydrogenReductionFurnaceBlockEntity(pos: BlockPos, state: BlockState) :
          * The maximum hydrogen input rate, in mB/tick.
          * This defines the maximum processing speed of the machine.
          * */
-        private const val HYDROGEN_FLOW_RATE = 1.0
+        private const val HYDROGEN_FLOW_RATE = 0.025
 
         fun tick(pLevel: Level?, pPos: BlockPos?, pState: BlockState?, pBlockEntity: BlockEntity?) {
             if (pLevel == null || pBlockEntity == null) {
@@ -728,9 +764,20 @@ class HydrogenReductionFurnaceBlockEntity(pos: BlockPos, state: BlockState) :
             val op = operation!!
             val recipe = op.recipe
 
-            if (!temperature >= !recipe.minimumTemperature) {
+            cell.processMaxPower = HYDROGEN_FLOW_RATE * 20.0 * recipe.energyCost
+            cell.processMinTemperature = !recipe.minimumTemperature
+            cell.processOptimalTemperature = !recipe.optimalTemperature
+
+            val factor = if (!recipe.optimalTemperature > !recipe.minimumTemperature) {
+                map(!temperature, !recipe.minimumTemperature, !recipe.optimalTemperature, 0.0, 1.0).coerceIn(0.0, 1.0)
+            }
+            else {
+                if (!temperature >= !recipe.minimumTemperature) 1.0 else 0.0
+            }
+
+            if (factor > 0.0) {
                 val hydrogenToDrain = minOf(
-                    HYDROGEN_FLOW_RATE,
+                    HYDROGEN_FLOW_RATE * factor,
                     recipe.hydrogenAmount.toDouble() - op.investedHydrogen,
                     tank.hydrogen,
                 )
@@ -755,6 +802,7 @@ class HydrogenReductionFurnaceBlockEntity(pos: BlockPos, state: BlockState) :
         else {
             data.progress = 0.0
             cell.isActive = false
+            cell.processMaxPower = 0.0
         }
     }
 
