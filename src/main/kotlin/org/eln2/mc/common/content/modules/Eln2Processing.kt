@@ -47,6 +47,7 @@ import org.eln2.mc.common.content.modules.Eln2Processing.registerMachine
 import org.eln2.mc.common.content.modules.Eln2Processing.registerMachineHull
 import org.eln2.mc.common.content.processing.*
 import org.eln2.mc.common.items.ItemRegistry
+import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.items.ItemRegistry.itemNoStack
 import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
 import org.eln2.mc.common.recipes.RecipeRegistry
@@ -830,6 +831,18 @@ object Eln2Processing : ContentModule() {
     //#endregion
 
     //#region Electrolysis
+
+    val GRAPHITE_ELECTRODE = item("graphite_electrode") {
+        ElectrodeItem()
+    }
+
+    val ASBESTOS_SEPARATOR = item("asbestos_separator") {
+        SeparatorItem()
+    }
+
+    val ELECTROLYSIS_RECIPE = RecipeRegistry.register<AqueousElectrolysisRecipe>("electrolysis") {
+        AqueousElectrolysisRecipe.Serializer(it)
+    }
 
     val ELECTROLYSIS_MAP = directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)
 
