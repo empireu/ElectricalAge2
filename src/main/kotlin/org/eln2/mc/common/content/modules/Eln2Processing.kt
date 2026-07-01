@@ -35,6 +35,7 @@ import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.cells.foundation.CellProvider
+import org.eln2.mc.common.cells.foundation.ElectricalSize
 import org.eln2.mc.common.cells.foundation.ThermalSize
 import org.eln2.mc.common.containers.ContainerRegistry.menu
 import org.eln2.mc.common.content.*
@@ -825,6 +826,48 @@ object Eln2Processing : ContentModule() {
     )
 
     val HYDROGEN_REDUCTION_FURNACE_MENU = menu("hydrogen_reduction_furnace", ::HydrogenReductionFurnaceMenu)
+
+    //#endregion
+
+    //#region Electrolysis
+
+    val ELECTROLYSIS_MAP = directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)
+
+    val ELECTROLYSIS_PROXY_CELL = cellImmediate("electrolysis_proxy") {
+        ElectrolysisProxyCell(it, ELECTROLYSIS_MAP, ElectricalSize.Any)
+    }
+
+    val ELECTROLYSIS_MAIN_CELL = cellImmediate("electrolysis") {
+        ElectrolysisCell(it, ELECTROLYSIS_MAP, ElectricalSize.Any)
+    }
+
+    val ELECTROLYSIS_PROXY_BLOCK = blockOnly("electrolysis_proxy", ::ElectrolysisProxyBlock)
+
+    val ELECTROLYSIS_PROXY_BLOCK_ENTITY = blockEntityOnly(
+        "electrolysis_proxy",
+        ELECTROLYSIS_PROXY_BLOCK,
+        ::ElectrolysisProxyBlockEntity,
+    )
+
+    val ELECTROLYSIS_MAIN_BLOCK = blockOnly("electrolysis_main", ::ElectrolysisMainBlock)
+
+    val ELECTROLYSIS_MAIN_BLOCK_ENTITY = blockEntityOnly(
+        "electrolysis_main",
+        ELECTROLYSIS_MAIN_BLOCK,
+        ::ElectrolysisMainBlockEntity,
+    )
+
+    val ELECTROLYSIS_DELEGATE_MAP = defineDelegateMap("electrolysis") {
+        principal(-1, 0, 0, ELECTROLYSIS_PROXY_BLOCK)
+        principal(+1, 0, 0, ELECTROLYSIS_PROXY_BLOCK)
+    }
+
+    val ELECTROLYSIS_BLOCK_ITEM = blockItemOnly("electrolysis") {
+        BigBlockItem(
+            ELECTROLYSIS_DELEGATE_MAP.value,
+            ELECTROLYSIS_MAIN_BLOCK.get(),
+        )
+    }
 
     //#endregion
 }
