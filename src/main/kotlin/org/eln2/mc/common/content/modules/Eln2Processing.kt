@@ -892,6 +892,7 @@ object Eln2Processing : ContentModule() {
     )
 
     val ELECTROLYSIS_MAIN_BLOCK = blockOnly("electrolysis_main", ::ElectrolysisMainBlock)
+        .withSelfDrop()
 
     val ELECTROLYSIS_MAIN_BLOCK_ENTITY = blockEntityOnly(
         "electrolysis_main",

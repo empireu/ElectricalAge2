@@ -1281,23 +1281,6 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
                 }
             }
 
-            private fun distributePool(pool: Map<Fluid, Double>, vararg tanks: MultipleFractionalFluidTank) {
-                for ((fluid, amount) in pool) {
-                    if (amount < FractionalFluidStack.EPSILON) {
-                        continue
-                    }
-
-                    val perTank = amount / tanks.size
-
-                    for (tank in tanks) {
-                        if (perTank >= FractionalFluidStack.EPSILON) {
-                            tank.mergeStack(FractionalFluidStack(fluid, perTank), false)
-                            tank.incrementVersion()
-                        }
-                    }
-                }
-            }
-
             private fun moveAll(source: ElectrolysisFluidSide, destination: ElectrolysisFluidSide) {
                 moveAll(source.inputLiquidTank, destination.inputLiquidTank, source.outputLiquidTank, destination.outputLiquidTank, source.outputGasTank, destination.outputGasTank)
             }
@@ -1901,7 +1884,7 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
             return
         }
 
-        builder.debugInIDE { "Main resistor: ${cell.resistor.component.power.rounded()}" }
+        builder.debugInIDE { "Power: ${cell.lastPower.rounded()}" }
     }
 }
 
