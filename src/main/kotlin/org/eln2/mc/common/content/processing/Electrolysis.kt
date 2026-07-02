@@ -1,4 +1,4 @@
-@file:Suppress("unused")
+@file:Suppress("unused", "UNUSED_PARAMETER")
 
 package org.eln2.mc.common.content.processing
 
@@ -10,9 +10,16 @@ import net.minecraft.core.Direction
 import net.minecraft.data.recipes.FinishedRecipe
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.util.GsonHelper
+import net.minecraft.world.InteractionHand
+import net.minecraft.world.InteractionResult
 import net.minecraft.world.SimpleContainer
+import net.minecraft.world.entity.player.Inventory
+import net.minecraft.world.entity.player.Player
+import net.minecraft.world.inventory.AbstractContainerMenu
+import net.minecraft.world.inventory.ContainerLevelAccess
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.crafting.Ingredient
@@ -22,8 +29,12 @@ import net.minecraft.world.item.crafting.ShapedRecipe
 import net.minecraft.world.level.ItemLike
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
+import net.minecraft.world.level.block.entity.BlockEntity
+import net.minecraft.world.level.block.entity.BlockEntityTicker
+import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
-import net.minecraft.world.level.material.Fluids
+import net.minecraft.world.level.material.Fluid
+import net.minecraft.world.phys.BlockHitResult
 import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
@@ -31,14 +42,28 @@ import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.fluids.capability.IFluidHandler
 import net.minecraftforge.items.IItemHandler
 import net.minecraftforge.items.ItemStackHandler
+import org.ageseries.libage.data.JOULE
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.data.requireLocator
+import org.ageseries.libage.mathematics.geometry.Vector2di
 import org.ageseries.libage.mathematics.rounded
+import org.ageseries.libage.sim.ConnectionParameters
+import org.ageseries.libage.sim.Simulator
+import org.ageseries.libage.sim.ThermalMassDefinition
+import org.ageseries.libage.sim.electrical.ElectricalSimulation
+import org.eln2.mc.CrossThreadAccess
 import org.eln2.mc.LOG
 import org.eln2.mc.Locators
+import org.eln2.mc.OnServerThread
 import org.eln2.mc.PoleMap
 import org.eln2.mc.ServerOnly
+import org.eln2.mc.client.screens.ProgressSupplierMenu
 import org.eln2.mc.common.blocks.foundation.*
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.containers.ContainerHelper
+import org.eln2.mc.common.containers.ProgressContainerData
+import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
 import org.eln2.mc.common.content.modules.Eln2Processing
 import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
 import org.eln2.mc.common.fluids.foundation.FractionalFluidTankCapacityConstraint
@@ -53,6 +78,7 @@ import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.itemStackToJson
 import java.util.function.Consumer
+import kotlin.math.abs
 import kotlin.math.min
 
 //#region Recipe Containers
@@ -746,18 +772,136 @@ class ElectrolysisProxyCell(
 }
 
 /**
- * Main electrolysis cell. Contains the load resistor that represents the actual electrolysis process.
+ * Main electrolysis cell. Contains the load resistor that represents the electrolysis process.
+ *
+ * The resistance is driven by the active recipe's resistance multiplied by [cellCount] (cells in series).
+ * Electrical power is converted to thermal energy in the [thermalBody] as waste heat.
+ *
+ * Lifecycle:
+ *  - [bind] is called by the block entity when the cell is acquired.
+ *  - [unbind] is called when the chunk unloads or the block is removed.
+ *  - While unbound, the resistor is set to [ElectricalSimulation.MAX_RESISTANCE].
+ *  - The block entity sets [isActive] and [processResistance] from the server thread.
+ *
+ * @param cellCount Number of electrolysis cells in series. Total resistance = recipe.resistance * cellCount.
+ * @param thermalMassDef Thermal mass definition for the electrolyte vessel.
+ * @param leakageParameters Thermal leakage to the environment.
+ * @param maxBreakdownTemperature Temperature at which the vessel is destroyed.
  * */
 class ElectrolysisCell(
     ci: CellCreateInfo,
     override val electricalMap: PoleMap,
     override val electricalSize: ElectricalSize,
+    val cellCount: Int,
+    thermalMassDef: ThermalMassDefinition,
+    val leakageParameters: ConnectionParameters,
+    maxBreakdownTemperature: Quantity<Temperature>,
 ) : Cell(ci), SidedElectricalMapped<ElectrolysisCell> {
+    companion object {
+        private const val TEMPERATURE_TAG = "temperature"
+    }
+
     @SimObject
-    val resistor = PolarResistorObject(this, electricalMap).also {
-        it.component.resistance = 100.0
+    val resistor = PolarResistorObject(this, electricalMap)
+
+    val thermalBody = thermalMassDef.get().also {
+        environmentData.loadTemperature(it)
+    }
+
+    private val environmentSimulator = Simulator().also {
+        it.add(thermalBody)
+        environmentData.connect(it, leakageParameters, thermalBody)
+    }
+
+    @Behavior
+    val explosion = ThermalBreakdownBehavior.create(
+        maxBreakdownTemperature,
+        self(),
+        thermalBody::temperature,
+    )
+
+    //#region Game-thread state
+
+    @CrossThreadAccess
+    var isBound: Boolean = false
+        private set
+
+    @OnServerThread
+    fun bind() {
+        isBound = true
+    }
+
+    @OnServerThread
+    fun unbind() {
+        isBound = false
+    }
+
+    /**
+     * Whether the cell should draw power for electrolysis.
+     * Set by the block entity on the server thread.
+     * */
+    @CrossThreadAccess
+    @OnServerThread
+    var isActive: Boolean = false
+
+    /**
+     * The resistance per cell, set from the recipe. Total resistance = this * [cellCount].
+     * Zero means no recipe is active.
+     * */
+    var processResistance: Double = 0.0
+
+    /**
+     * Last measured electrical power, copied from the resistor during the simulation tick.
+     * Safe to read from the server thread.
+     * */
+    @CrossThreadAccess
+    var lastPower: Double = 0.0
+        private set
+
+    //#endregion
+
+    override fun saveCellData() = CompoundTag().also {
+        it.putQuantity(TEMPERATURE_TAG, thermalBody.temperature)
+    }
+
+    override fun loadCellData(tag: CompoundTag) {
+        thermalBody.temperature = tag.getQuantity(TEMPERATURE_TAG)
+    }
+
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
+        subscribers.addPre(this::simulationTick)
+    }
+
+    private fun simulationTick(dt: Double, phase: SimulationPhase) {
+        environmentSimulator.step(dt)
+
+        if (!isBound) {
+            lastPower = 0.0
+            resistor.component.updateResistance(ElectricalSimulation.MAX_RESISTANCE)
+            return
+        }
+
+        if (!isActive || processResistance <= 0.0) {
+            lastPower = 0.0
+            resistor.component.updateResistance(ElectricalSimulation.MAX_RESISTANCE)
+            return
+        }
+
+        val targetResistance = processResistance * cellCount
+        resistor.component.updateResistance(targetResistance, 1e-4)
+
+        val power = abs(resistor.component.power)
+        lastPower = power
+
+        val delta = power * dt
+
+        if (delta > 1e-3) {
+            thermalBody.energy += Quantity(delta, JOULE)
+            setChanged()
+        }
     }
 }
+
 
 class ElectrolysisProxyBlock : MultiblockDelegateUprightHorizontalDirectionCellBlock<ElectrolysisProxyCell>() {
     @Deprecated("Deprecated in Java")
@@ -817,7 +961,7 @@ class ElectrolysisProxyBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
     }
 
     /**
-     * Determines if this delegate is the left (-1, 0, 0 in multiblock-local coords) or right (+1, 0, 0) delegate.
+     * Determines if this delegate is the left (+1, 0, 0 in multiblock-local coords) or right (-1, 0, 0) delegate, from the player's perspective when facing the block.
      * */
     @ServerOnly
     fun isLeftDelegate(): Boolean {
@@ -830,7 +974,7 @@ class ElectrolysisProxyBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
             facing, repPos, blockPos
         )
 
-        return localPos.x < 0
+        return localPos.x > 0
     }
 }
 
@@ -838,6 +982,14 @@ class ElectrolysisMainBlock : UprightHorizontalDirectionCellBlock<ElectrolysisCe
     override fun getCellProvider() = Eln2Processing.ELECTROLYSIS_MAIN_CELL.get()
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = ElectrolysisMainBlockEntity(pPos, pState)
+
+    override fun <T : BlockEntity?> getTicker(
+        pLevel: Level,
+        pState: BlockState,
+        pBlockEntityType: BlockEntityType<T>,
+    ): BlockEntityTicker<T> {
+        return BlockEntityTicker(ElectrolysisMainBlockEntity::tick)
+    }
 
     override fun spatialNeighborScan(level: Level, results: HashSet<CellAndContainerHandle>, cell: Cell) {
         val pos = cell.locator.requireLocator(Locators.BLOCK)
@@ -854,6 +1006,18 @@ class ElectrolysisMainBlock : UprightHorizontalDirectionCellBlock<ElectrolysisCe
             results.add(CellAndContainerHandle.captureInScope(delegate.cell))
         }
     }
+
+    @Deprecated("Deprecated in Java")
+    override fun use(
+        pState: BlockState,
+        pLevel: Level,
+        pPos: BlockPos,
+        pPlayer: Player,
+        pHand: InteractionHand,
+        pHit: BlockHitResult,
+    ): InteractionResult {
+        return pLevel.constructMenuHelper2(pPos, pPlayer, Component.literal("Electrolysis"), ::ElectrolysisMenu)
+    }
 }
 
 class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
@@ -863,8 +1027,29 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
     BigBlockRepresentativeBlockEntity<ElectrolysisMainBlockEntity>,
     ComponentDisplay
 {
+    companion object {
+        const val TANK_CAPACITY = 4000.0
+
+        fun tick(pLevel: Level?, pPos: BlockPos?, pState: BlockState?, pBlockEntity: BlockEntity?) {
+            if (pLevel == null || pBlockEntity == null) {
+                return
+            }
+
+            if (pBlockEntity !is ElectrolysisMainBlockEntity) {
+                LOG.error("Got $pBlockEntity instead of electrolysis main block entity")
+                return
+            }
+
+            if (!pLevel.isClientSide) {
+                pBlockEntity.serverTick()
+            }
+        }
+    }
+
     override val delegateMap: MultiblockDelegateMap
         get() = Eln2Processing.ELECTROLYSIS_DELEGATE_MAP.value
+
+    val data = ProgressContainerData()
 
     //#region Capability
 
@@ -886,6 +1071,21 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
 
         private var separatorPresent = false
 
+        private var dirty = false
+
+        fun wasChanged(): Boolean {
+            if (dirty) {
+                dirty = false
+                return true
+            }
+
+            return false
+        }
+
+        fun markChanged() {
+            dirty = true
+        }
+
         override fun insertItem(slot: Int, stack: ItemStack, simulate: Boolean): ItemStack {
             if (outputRange.contains(slot)) {
                 return stack
@@ -904,6 +1104,7 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
 
         override fun onContentsChanged(slot: Int) {
             blockEntity.setChanged()
+            dirty = true
 
             if (slot == SEPARATOR_SLOT) {
                 val nowPresent = !getStackInSlot(SEPARATOR_SLOT).isEmpty
@@ -1058,30 +1259,77 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
         }
 
         companion object {
-            private fun moveAll(source: ElectrolysisFluidSide, destination: ElectrolysisFluidSide) {
-                moveAll(source.inputLiquidTank, destination.inputLiquidTank)
-                moveAll(source.outputLiquidTank, destination.outputLiquidTank)
-                moveAll(source.outputGasTank, destination.outputGasTank)
-            }
+            private fun poolFluids(vararg tanks: MultipleFractionalFluidTank): Map<Fluid, Double> {
+                val pool = LinkedHashMap<Fluid, Double>()
 
-            private fun moveAll(source: MultipleFractionalFluidTank, destination: MultipleFractionalFluidTank) {
-                val sourceFluids = source.fluids.toList()
+                for (tank in tanks) {
+                    for (stack in tank.fluids) {
+                        if (stack.isEmpty) {
+                            continue
+                        }
 
-                for (stack in sourceFluids) {
-                    if (stack.isEmpty) {
-                        continue
-                    }
-
-                    val toMove = min(stack.amount, destination.remainingCapacity)
-
-                    if (toMove >= FractionalFluidStack.EPSILON) {
-                        destination.mergeStack(FractionalFluidStack(stack.fluid, toMove), false)
-                        destination.incrementVersion()
+                        pool.merge(stack.fluid, stack.amount) { a, b -> a + b }
                     }
                 }
 
-                source.fluids.clear()
-                source.incrementVersion()
+                return pool
+            }
+
+            private fun clearTanks(vararg tanks: MultipleFractionalFluidTank) {
+                for (tank in tanks) {
+                    tank.fluids.clear()
+                    tank.incrementVersion()
+                }
+            }
+
+            private fun distributePool(pool: Map<Fluid, Double>, vararg tanks: MultipleFractionalFluidTank) {
+                for ((fluid, amount) in pool) {
+                    if (amount < FractionalFluidStack.EPSILON) {
+                        continue
+                    }
+
+                    val perTank = amount / tanks.size
+
+                    for (tank in tanks) {
+                        if (perTank >= FractionalFluidStack.EPSILON) {
+                            tank.mergeStack(FractionalFluidStack(fluid, perTank), false)
+                            tank.incrementVersion()
+                        }
+                    }
+                }
+            }
+
+            private fun moveAll(source: ElectrolysisFluidSide, destination: ElectrolysisFluidSide) {
+                moveAll(source.inputLiquidTank, destination.inputLiquidTank, source.outputLiquidTank, destination.outputLiquidTank, source.outputGasTank, destination.outputGasTank)
+            }
+
+            private fun moveAll(
+                sourceLiquid: MultipleFractionalFluidTank, destLiquid: MultipleFractionalFluidTank,
+                sourceOutputLiquid: MultipleFractionalFluidTank, destOutputLiquid: MultipleFractionalFluidTank,
+                sourceGas: MultipleFractionalFluidTank, destGas: MultipleFractionalFluidTank,
+            ) {
+                moveAll(sourceLiquid, destLiquid)
+                moveAll(sourceOutputLiquid, destOutputLiquid)
+                moveAll(sourceGas, destGas)
+            }
+
+            private fun moveAll(source: MultipleFractionalFluidTank, destination: MultipleFractionalFluidTank) {
+                val pool = poolFluids(source)
+
+                clearTanks(source)
+
+                for ((fluid, amount) in pool) {
+                    if (amount < FractionalFluidStack.EPSILON) {
+                        continue
+                    }
+
+                    val toMove = min(amount, destination.remainingCapacity)
+
+                    if (toMove >= FractionalFluidStack.EPSILON) {
+                        destination.mergeStack(FractionalFluidStack(fluid, toMove), false)
+                        destination.incrementVersion()
+                    }
+                }
             }
 
             private fun splitHalf(source: ElectrolysisFluidSide, destination: ElectrolysisFluidSide) {
@@ -1091,31 +1339,35 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
             }
 
             private fun splitHalf(source: MultipleFractionalFluidTank, destination: MultipleFractionalFluidTank) {
-                val sourceFluids = source.fluids.toList()
+                val pool = poolFluids(source, destination)
 
-                for (stack in sourceFluids) {
-                    if (stack.isEmpty) {
-                        continue
-                    }
+                clearTanks(source, destination)
 
-                    val half = stack.amount * 0.5
+                val half = LinkedHashMap<Fluid, Double>()
 
-                    if (half < FractionalFluidStack.EPSILON) {
-                        continue
-                    }
-
-                    val toMove = min(half, destination.remainingCapacity)
-
-                    if (toMove >= FractionalFluidStack.EPSILON) {
-                        destination.mergeStack(FractionalFluidStack(stack.fluid, toMove), false)
-                        destination.incrementVersion()
-
-                        stack.amount -= toMove
-                        source.incrementVersion()
-                    }
+                for ((fluid, amount) in pool) {
+                    half[fluid] = amount * 0.5
                 }
 
-                source.trim()
+                for ((fluid, amount) in half) {
+                    if (amount < FractionalFluidStack.EPSILON) {
+                        continue
+                    }
+
+                    val toSource = min(amount, source.remainingCapacity)
+
+                    if (toSource >= FractionalFluidStack.EPSILON) {
+                        source.mergeStack(FractionalFluidStack(fluid, toSource), false)
+                        source.incrementVersion()
+                    }
+
+                    val toDest = min(amount, destination.remainingCapacity)
+
+                    if (toDest >= FractionalFluidStack.EPSILON) {
+                        destination.mergeStack(FractionalFluidStack(fluid, toDest), false)
+                        destination.incrementVersion()
+                    }
+                }
             }
         }
     }
@@ -1146,9 +1398,9 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
 
         override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction) = currentInputLiquid().fill(resource, action)
 
-        override fun drain(resource: FluidStack, action: IFluidHandler.FluidAction) = FluidStack.EMPTY
+        override fun drain(resource: FluidStack, action: IFluidHandler.FluidAction): FluidStack = FluidStack.EMPTY
 
-        override fun drain(maxDrain: Int, action: IFluidHandler.FluidAction) = FluidStack.EMPTY
+        override fun drain(maxDrain: Int, action: IFluidHandler.FluidAction): FluidStack = FluidStack.EMPTY
 
         override fun getFractionalFluidInTank(tank: Int) = currentInputLiquid().getFractionalFluidInTank(tank)
 
@@ -1235,6 +1487,7 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
         override fun drainFractional(maxDrain: Double, action: IFluidHandler.FluidAction) = currentGas().drainFractional(maxDrain, action)
     }
 
+    // Convention: left is anode, right is cathode
     internal val inventoryHandler = ElectrolysisInventoryHandler(this)
     val inventoryHandlerLazy: LazyOptional<IItemHandler> = LazyOptional.of { inventoryHandler }
     val leftItemLazy: LazyOptional<SingleSlotExtractHandler> = LazyOptional.of { SingleSlotExtractHandler(inventoryHandler, ElectrolysisInventoryHandler.ANODE_OUTPUT_SLOT) }
@@ -1473,10 +1726,97 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
         super.setDestroyed()
     }
 
+    //#region Recipe State
+
+    private class Operation(val recipe: AqueousElectrolysisRecipe, var investedEnergy: Double)
+
+    @ServerOnly
+    private var operation: Operation? = null
+
+    private data class OperationLoadingData(val operationId: ResourceLocation, val investedEnergy: Double)
+
+    @ServerOnly
+    private var savedOperationData: OperationLoadingData? = null
+
+    //#endregion
+
+    @ServerOnly
+    @OnServerThread
+    override fun onCellAcquired() {
+        super.onCellAcquired()
+        cell.bind()
+    }
+
+    override fun onChunkUnloaded() {
+        super.onChunkUnloaded()
+
+        if (hasCell) {
+            cell.unbind()
+        }
+    }
+
+    @ServerOnly
+    fun serverTick() {
+        if (inventoryHandler.wasChanged()) {
+            val actualRecipe = searchForRecipe()
+
+            if (actualRecipe == null) {
+                operation = null
+            } else {
+                if (actualRecipe.recipeId != operation?.recipe?.recipeId) {
+                    operation = if (canExportOutputs(actualRecipe)) {
+                        Operation(actualRecipe, 0.0)
+                    } else {
+                        null
+                    }
+                }
+            }
+
+            setChanged()
+        }
+
+        if (operation != null) {
+            cell.isActive = true
+            cell.processResistance = operation!!.recipe.resistance
+
+            val op = operation!!
+            val recipe = op.recipe
+
+            val power = cell.lastPower
+
+            if (power > 1e-3) {
+                val energyThisTick = power / 20.0
+
+                op.investedEnergy += energyThisTick
+
+                setChanged()
+            }
+
+            data.progress = (op.investedEnergy / recipe.energyCost).toFloat().coerceIn(0.0f, 1.0f)
+
+            if (op.investedEnergy >= recipe.energyCost) {
+                consumeInputs(recipe)
+                placeOutputs(recipe)
+                operation = null
+                inventoryHandler.markChanged()
+                setChanged()
+            }
+        } else {
+            cell.isActive = false
+            cell.processResistance = 0.0
+            data.progress = 0.0f
+        }
+    }
+
     override fun saveAdditional(pTag: CompoundTag) {
         super.saveAdditional(pTag)
         pTag.put("inventory", inventoryHandler.serializeNBT())
         pTag.put("fluids", fluidHandler.serializeNBT())
+
+        if (operation != null) {
+            pTag.putDouble("investedEnergy", operation!!.investedEnergy)
+            pTag.putString("recipe", operation!!.recipe.recipeId.toString())
+        }
     }
 
     override fun load(pTag: CompoundTag) {
@@ -1484,6 +1824,27 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
         inventoryHandler.deserializeNBT(pTag.getCompound("inventory"))
         fluidHandler.deserializeNBT(pTag.getCompound("fluids"))
         inventoryHandler.syncSeparatorState()
+
+        if (pTag.contains("investedEnergy")) {
+            savedOperationData = OperationLoadingData(
+                ResourceLocation.parse(pTag.getString("recipe")),
+                pTag.getDouble("investedEnergy"),
+            )
+        }
+    }
+
+    override fun setLevel(pLevel: Level) {
+        super.setLevel(pLevel)
+
+        if (!pLevel.isClientSide && savedOperationData != null) {
+            val optional = pLevel.recipeManager.byKey(savedOperationData!!.operationId)
+
+            if (optional.isPresent && optional.get() is AqueousElectrolysisRecipe) {
+                operation = Operation(optional.get() as AqueousElectrolysisRecipe, savedOperationData!!.investedEnergy)
+            }
+
+            savedOperationData = null
+        }
     }
 
     override fun invalidateCaps() {
@@ -1506,8 +1867,66 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
 
         builder.debugInIDE { "Main resistor: ${cell.resistor.component.power.rounded()}" }
     }
+}
 
+class ElectrolysisMenu(
+    pContainerId: Int,
+    playerInventory: Inventory,
+    handler: ItemStackHandler,
+    val containerData: ProgressContainerData,
+    val access: ContainerLevelAccess,
+    val level: Level,
+) : AbstractContainerMenu(Eln2Processing.ELECTROLYSIS_MENU.get(), pContainerId), ProgressSupplierMenu {
     companion object {
-        const val TANK_CAPACITY = 4000.0
+        private val ANODE_ELECTRODE_POS = Vector2di(30, 17)
+        private val CATHODE_ELECTRODE_POS = Vector2di(52, 17)
+        private val SEPARATOR_POS = Vector2di(41, 53)
+        private val ANODE_OUTPUT_POS = Vector2di(30, 53)
+        private val CATHODE_OUTPUT_POS = Vector2di(52, 53)
     }
+
+    @ServerOnly
+    constructor(entity: ElectrolysisMainBlockEntity, id: Int, inventory: Inventory) : this(
+        id, inventory,
+        entity.inventoryHandler,
+        entity.data,
+        ContainerLevelAccess.create(entity.level!!, entity.blockPos),
+        entity.level!!,
+    )
+
+    constructor(pContainerId: Int, playerInventory: Inventory) : this(
+        pContainerId, playerInventory,
+        ItemStackHandler(ElectrolysisMainBlockEntity.ElectrolysisInventoryHandler.SLOT_COUNT),
+        ProgressContainerData(),
+        ContainerLevelAccess.NULL,
+        playerInventory.player.level(),
+    )
+
+    init {
+        addSlot(SlotItemHandlerWithPlacePredicate(handler, ElectrolysisMainBlockEntity.ElectrolysisInventoryHandler.ANODE_ELECTRODE_SLOT, ANODE_ELECTRODE_POS.x, ANODE_ELECTRODE_POS.y) {
+            it.item is ElectrodeItem
+        })
+
+        addSlot(SlotItemHandlerWithPlacePredicate(handler, ElectrolysisMainBlockEntity.ElectrolysisInventoryHandler.CATHODE_ELECTRODE_SLOT, CATHODE_ELECTRODE_POS.x, CATHODE_ELECTRODE_POS.y) {
+            it.item is ElectrodeItem
+        })
+
+        addSlot(SlotItemHandlerWithPlacePredicate(handler, ElectrolysisMainBlockEntity.ElectrolysisInventoryHandler.SEPARATOR_SLOT, SEPARATOR_POS.x, SEPARATOR_POS.y) {
+            it.item is SeparatorItem
+        })
+
+        addSlot(SlotItemHandlerWithPlacePredicate(handler, ElectrolysisMainBlockEntity.ElectrolysisInventoryHandler.ANODE_OUTPUT_SLOT, ANODE_OUTPUT_POS.x, ANODE_OUTPUT_POS.y) { false })
+
+        addSlot(SlotItemHandlerWithPlacePredicate(handler, ElectrolysisMainBlockEntity.ElectrolysisInventoryHandler.CATHODE_OUTPUT_SLOT, CATHODE_OUTPUT_POS.x, CATHODE_OUTPUT_POS.y) { false })
+
+        addDataSlots(containerData)
+
+        ContainerHelper.addPlayerGrid(playerInventory, this::addSlot)
+    }
+
+    override fun stillValid(pPlayer: Player) = stillValid(access, pPlayer, Eln2Processing.ELECTROLYSIS_MAIN_BLOCK.get())
+
+    override fun quickMoveStack(pPlayer: Player, pIndex: Int) = ContainerHelper.quickMove(slots, pPlayer, pIndex)
+
+    override fun getProgressForRender() = containerData.progress
 }

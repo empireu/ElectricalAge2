@@ -371,6 +371,7 @@
     "waila.eln2.Irradiance": "Irradiance",
 
     "config.jade.plugin_eln2.distillation_fluids": "ELN2",
+    "config.jade.plugin_eln2.electrolysis": "ELN2",
     "config.jade.plugin_eln2.component_display": "ELN2",
 
     "key.eln2.category": "ELN2",

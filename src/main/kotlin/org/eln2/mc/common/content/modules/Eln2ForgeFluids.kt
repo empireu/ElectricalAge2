@@ -554,4 +554,62 @@ object Eln2ForgeFluids : ContentModule() {
 
         withRenderLayer(RenderType.translucent())
     }
+
+    val LIQUID_OXYGEN = basicForgeFluid("liquid_oxygen") {
+        tintColor = MyColor(180, 100, 200, 255)
+        properties {
+            FluidType.Properties.create()
+                .density(1140)
+                .viscosity(300)
+        }
+
+        withRenderLayer(RenderType.translucent())
+        withChemicalBottle()
+    }
+
+    val OXYGEN = basicForgeFluid("oxygen") {
+        tintColor = MyColor(100, 200, 200, 255)
+        properties {
+            FluidType.Properties.create()
+                .density(-1000)
+                .viscosity(50)
+        }
+
+        withRenderLayer(RenderType.translucent())
+    }
+
+    val SODIUM_TUNGSTATE_SOLUTION = basicForgeFluid("sodium_tungstate_solution") {
+        tintColor = MyColor(200, 255, 255, 100)
+        properties {
+            FluidType.Properties.create()
+                .density(1500)
+                .viscosity(1200)
+        }
+
+        withRenderLayer(RenderType.translucent())
+        withChemicalBottle()
+    }
+
+    val SODIUM_HYDROXIDE_SOLUTION = basicForgeFluid("sodium_hydroxide_solution") {
+        tintColor = MyColor(200, 255, 200, 200)
+        properties {
+            FluidType.Properties.create()
+                .density(1200)
+                .viscosity(800)
+        }
+
+        withRenderLayer(RenderType.translucent())
+        withChemicalBottle()
+    }
+
+    val HHO_GAS = basicForgeFluid("hho_gas") {
+        tintColor = MyColor(100, 220, 220, 255)
+        properties {
+            FluidType.Properties.create()
+                .density(-500)
+                .viscosity(80)
+        }
+
+        withRenderLayer(RenderType.translucent())
+    }
 }

@@ -313,6 +313,16 @@ object Eln2Processing : ContentModule() {
         }
 
         MenuScreens.register(HYDROGEN_REDUCTION_FURNACE_MENU.get(), ::HydrogenReductionFurnaceScreen)
+
+        MenuScreens.register(ELECTROLYSIS_MENU.get()) { menu, inventory, title ->
+            BasicProgressScreen(
+                menu, inventory, title,
+                resource("textures/gui/container/crusher_base.png"),
+                resource("textures/gui/container/crusher_progress.png"),
+                79.0f,
+                103.0f
+            )
+        }
     }
 
     //#region Coking
@@ -850,8 +860,27 @@ object Eln2Processing : ContentModule() {
         ElectrolysisProxyCell(it, ELECTROLYSIS_MAP, ElectricalSize.Any)
     }
 
-    val ELECTROLYSIS_MAIN_CELL = cellImmediate("electrolysis") {
-        ElectrolysisCell(it, ELECTROLYSIS_MAP, ElectricalSize.Any)
+    val ELECTROLYSIS_MAIN_CELL = cellMemoize("electrolysis") {
+        val thermalDef = ThermalMassDefinition(
+            ChemicalElement.Iron.asMaterial,
+            mass = Quantity(10.0, KILOGRAM),
+        )
+
+        val leakage = ConnectionParameters(
+            conductance = Quantity(0.5, WATT_PER_KELVIN),
+        )
+
+        CellFactory {
+            ElectrolysisCell(
+                it,
+                ELECTROLYSIS_MAP,
+                ElectricalSize.Any,
+                cellCount = 36,
+                thermalMassDef = thermalDef,
+                leakageParameters = leakage,
+                maxBreakdownTemperature = Quantity(2000.0, CELSIUS),
+            )
+        }
     }
 
     val ELECTROLYSIS_PROXY_BLOCK = blockOnly("electrolysis_proxy", ::ElectrolysisProxyBlock)
@@ -881,6 +910,8 @@ object Eln2Processing : ContentModule() {
             ELECTROLYSIS_MAIN_BLOCK.get(),
         )
     }
+
+    val ELECTROLYSIS_MENU = menu("electrolysis", ::ElectrolysisMenu)
 
     //#endregion
 }

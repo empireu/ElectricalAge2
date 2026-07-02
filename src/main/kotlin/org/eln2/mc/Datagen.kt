@@ -12,6 +12,7 @@ import net.minecraft.tags.ItemTags
 import net.minecraft.world.flag.FeatureFlags
 import net.minecraft.world.item.*
 import net.minecraft.world.item.crafting.Ingredient
+import net.minecraft.world.level.material.Fluids
 import net.minecraftforge.client.model.generators.BlockStateProvider
 import net.minecraftforge.client.model.generators.ItemModelBuilder
 import net.minecraftforge.client.model.generators.ItemModelProvider
@@ -29,6 +30,8 @@ import org.eln2.mc.common.content.modules.world.Eln2Ores
 import org.eln2.mc.common.content.processing.AlloyingRecipe
 import org.eln2.mc.common.content.processing.BurningRecipe
 import org.eln2.mc.common.content.processing.HydrogenReductionRecipe
+import org.eln2.mc.common.content.processing.NonSeparatedAqueousElectrolysisRecipe
+import org.eln2.mc.common.content.processing.SeparatedAqueousElectrolysisRecipe
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.recipes.foundation.CatalyzedSimpleProcessingRecipeBuilder
 import org.eln2.mc.common.recipes.foundation.DirectSimpleProcessingRecipeBuilder
@@ -1040,6 +1043,36 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .withEnergyCost(1000.0)
             .unlockedBy("has_filament_shaped_paste", has(Eln2Ingredients.FILAMENT_SHAPED_TUNGSTEN_TRIOXIDE_PASTE.get()))
             .save(pWriter, resource("hydrogen_reduction/filament_paste_to_tungsten_filament"))
+
+        //#endregion
+
+        //#region Electrolysis
+
+        NonSeparatedAqueousElectrolysisRecipe.Builder(Eln2Processing.ELECTROLYSIS_RECIPE).apply {
+            withAnodeElectrode(Eln2Processing.GRAPHITE_ELECTRODE.get())
+            withCathodeElectrode(Eln2Processing.GRAPHITE_ELECTRODE.get())
+            withInputFluid(FluidStack(Fluids.WATER, 1))
+            withOutputGas(FluidStack(Eln2ForgeFluids.HHO_GAS.get(), 1))
+            withEnergyCost(10000.0)
+            withResistance(0.3)
+            unlockedBy("has_graphite_electrode", has(Eln2Processing.GRAPHITE_ELECTRODE.get()))
+            save(pWriter, resource("electrolysis/hho_from_water"))
+        }
+
+        SeparatedAqueousElectrolysisRecipe.Builder(Eln2Processing.ELECTROLYSIS_RECIPE).apply {
+            withAnodeElectrode(Eln2Processing.GRAPHITE_ELECTRODE.get())
+            withCathodeElectrode(Eln2Processing.GRAPHITE_ELECTRODE.get())
+            withAnodeInputFluid(FluidStack(Fluids.WATER, 1))
+            withCathodeInputFluid(FluidStack(Fluids.WATER, 1))
+            withAnodeOutputGas(FluidStack(Eln2ForgeFluids.OXYGEN.get(), 1))
+            withCathodeOutputGas(FluidStack(Eln2ForgeFluids.HYDROGEN.get(), 2))
+            withSeparator(Eln2Processing.ASBESTOS_SEPARATOR.get())
+            withEnergyCost(10000.0)
+            withResistance(0.3)
+            unlockedBy("has_graphite_electrode", has(Eln2Processing.GRAPHITE_ELECTRODE.get()))
+            unlockedBy("has_asbestos_separator", has(Eln2Processing.ASBESTOS_SEPARATOR.get()))
+            save(pWriter, resource("electrolysis/separated_water"))
+        }
 
         //#endregion
 
