@@ -160,4 +160,16 @@ object Eln2Ores : ContentModule() {
         .withTagDatagen(BlockTags.NEEDS_STONE_TOOL)
         .withLootDatagen()
         .withModelDatagen(MyColor(255, 230, 200))
+
+    val SCHEELITE_ORE = basicOre("scheelite")
+        .withTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
+        .withTagDatagen(BlockTags.NEEDS_IRON_TOOL)
+        .withLootDatagen()
+        .withModelDatagen(MyColor(255, 245, 200))
+
+    val TRONA_ORE = basicOre("trona")
+        .withTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
+        .withTagDatagen(BlockTags.NEEDS_STONE_TOOL)
+        .withLootDatagen()
+        .withModelDatagen(MyColor(200, 195, 185))
 }

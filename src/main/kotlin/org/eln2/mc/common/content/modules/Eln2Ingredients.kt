@@ -306,6 +306,14 @@ object Eln2Ingredients : ContentModule() {
         fromCrushing(Eln2Ores.MAGNETITE_ORE.rawOreItem, duration = 15.0)
     }
 
+    val SCHEELITE_DUST = DUSTS.build("scheelite_dust", MyColor(255, 240, 180)) {
+        fromCrushing(Eln2Ores.SCHEELITE_ORE.rawOreItem, duration = 15.0)
+    }
+
+    val SODIUM_CARBONATE_DUST = DUSTS.build("sodium_carbonate_dust", MyColor(240, 235, 230)) {
+        fromCrushing(Eln2Ores.TRONA_ORE.rawOreItem, duration = 15.0)
+    }
+
     val TUNGSTEN_TRIOXIDE_DUST = DUSTS.build("tungsten_trioxide_dust", MyColor(220, 200, 50))
 
     val TUNGSTEN_TRIOXIDE_PASTE = itemDefault("tungsten_trioxide_paste")

@@ -214,6 +214,8 @@
     "item.eln2.raw_saltpeter": "Raw Saltpeter",
     "item.eln2.asbestos_fiber": "Asbestos Fiber",
     "item.eln2.raw_asbestos": "Raw Asbestos",
+    "item.eln2.raw_scheelite": "Raw Scheelite",
+    "item.eln2.raw_trona": "Raw Trona",
 
     // Components:
     "item.eln2.iron_shaft": "Iron Shaft",
@@ -233,6 +235,8 @@
     "item.eln2.wind_turbine_blade": "Wind Turbine Blade",
     "item.eln2.wind_turbine_core": "Wind Turbine Core",
     "item.eln2.magnetite_dust": "Magnetite Dust",
+    "item.eln2.scheelite_dust": "Scheelite Dust",
+    "item.eln2.sodium_carbonate_dust": "Sodium Carbonate Dust",
     "item.eln2.tungsten_trioxide_dust": "Tungsten Trioxide Dust",
     "item.eln2.tungsten_trioxide_paste": "Tungsten Trioxide Paste",
     "item.eln2.filament_shaped_tungsten_trioxide_paste": "Filament-Shaped Tungsten Trioxide Paste",
@@ -280,6 +284,8 @@
     "block.eln2.sulfur_ore": "Sulfur Ore",
     "block.eln2.saltpeter_ore": "Saltpeter Ore",
     "block.eln2.asbestos_ore": "Asbestos Ore",
+    "block.eln2.scheelite_ore": "Scheelite Ore",
+    "block.eln2.trona_ore": "Trona Ore",
     "block.eln2.primitive_kinetic_crusher": "Primitive Kinetic Crusher",
     "block.eln2.brushed_dc_motor_crusher": "Brushed DC Motor Crusher",
     "block.eln2.primitive_kinetic_extruder": "Primitive Kinetic Extruder",
