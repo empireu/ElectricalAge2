@@ -23,6 +23,7 @@ import net.minecraft.world.level.ItemLike
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.material.Fluids
 import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
@@ -30,7 +31,6 @@ import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.fluids.capability.IFluidHandler
 import net.minecraftforge.items.IItemHandler
 import net.minecraftforge.items.ItemStackHandler
-import net.minecraftforge.registries.ForgeRegistries
 import org.ageseries.libage.data.requireLocator
 import org.ageseries.libage.mathematics.rounded
 import org.eln2.mc.LOG
@@ -48,24 +48,76 @@ import org.eln2.mc.common.fluids.foundation.PurityBasedMultipleFractionalFluidTa
 import org.eln2.mc.common.recipes.RecipeRegistry
 import org.eln2.mc.common.recipes.foundation.*
 import org.eln2.mc.extensions.*
+import org.eln2.mc.fluidStackToJson
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.itemStackToJson
 import java.util.function.Consumer
 import kotlin.math.min
 
-private fun fluidStackToJson(fluid: FluidStack): JsonObject {
-    return JsonObject().also { obj ->
-        obj.addProperty("fluid", ForgeRegistries.FLUIDS.getKey(fluid.fluid)!!.toString())
-        obj.addProperty("amount", fluid.amount)
+//#region Recipe Containers
+
+/**
+ * Container for non-separated electrolysis recipe matching. Carries item slots and a snapshot of the anode input liquid tank fluids.
+ * When no separator is installed, the cathode side is merged into the anode, so only the anode input liquid tank is relevant.
+ * */
+private class NonSeparatedElectrolysisContainer(
+    anodeElectrode: ItemStack,
+    cathodeElectrode: ItemStack,
+    val anodeInputLiquidFluids: List<FractionalFluidStack>,
+) : SimpleContainer(SLOT_COUNT) {
+    companion object {
+        const val ANODE_ELECTRODE_SLOT = 0
+        const val CATHODE_ELECTRODE_SLOT = 1
+        const val SEPARATOR_SLOT = 2
+        const val SLOT_COUNT = 3
+    }
+
+    init {
+        setItem(ANODE_ELECTRODE_SLOT, anodeElectrode)
+        setItem(CATHODE_ELECTRODE_SLOT, cathodeElectrode)
     }
 }
 
-private fun itemStackToJson(stack: ItemStack): JsonObject {
-    return JsonObject().also { obj ->
-        obj.addProperty("item", ForgeRegistries.ITEMS.getKey(stack.item)!!.toString())
-        obj.addProperty("count", stack.count)
+/**
+ * Container for separated electrolysis recipe matching. Carries item slots (including separator) and snapshots of both anode and cathode input liquid tank fluids.
+ * */
+private class SeparatedElectrolysisContainer(
+    anodeElectrode: ItemStack,
+    cathodeElectrode: ItemStack,
+    separator: ItemStack,
+    val anodeInputLiquidFluids: List<FractionalFluidStack>,
+    val cathodeInputLiquidFluids: List<FractionalFluidStack>,
+) : SimpleContainer(SLOT_COUNT) {
+    companion object {
+        const val ANODE_ELECTRODE_SLOT = 0
+        const val CATHODE_ELECTRODE_SLOT = 1
+        const val SEPARATOR_SLOT = 2
+        const val SLOT_COUNT = 3
+    }
+
+    init {
+        setItem(ANODE_ELECTRODE_SLOT, anodeElectrode)
+        setItem(CATHODE_ELECTRODE_SLOT, cathodeElectrode)
+        setItem(SEPARATOR_SLOT, separator)
     }
 }
+
+/**
+ * Exact-match check: returns true if [tankFluids] contains a stack of the same fluid as [required] with at least the required amount.
+ * Allows dilution by water.
+ * */
+private fun fluidMatches(tankFluids: List<FractionalFluidStack>, required: FluidStack): Boolean {
+    if (required.isEmpty) {
+        return true
+    }
+
+    return tankFluids.size == 1 && tankFluids[0].let { stack ->
+        stack.fluid == required.fluid && stack.amount >= required.amount
+    }
+}
+
+//#endregion
 
 //#region Recipe
 
@@ -102,6 +154,10 @@ sealed class AqueousElectrolysisRecipe(
     }
 
     override fun matches(pContainer: SimpleContainer, pLevel: Level): Boolean {
+        if (pContainer !is NonSeparatedElectrolysisContainer && pContainer !is SeparatedElectrolysisContainer) {
+            return false
+        }
+
         return anodeElectrode.test(pContainer.getItem(ANODE_ELECTRODE_SLOT)) &&
             cathodeElectrode.test(pContainer.getItem(CATHODE_ELECTRODE_SLOT))
     }
@@ -418,6 +474,14 @@ class NonSeparatedAqueousElectrolysisRecipe(
 ) {
     override val isSeparated = false
 
+    override fun matches(pContainer: SimpleContainer, pLevel: Level): Boolean {
+        val container = pContainer as? NonSeparatedElectrolysisContainer
+            ?: return false
+
+        return super.matches(pContainer, pLevel) &&
+            fluidMatches(container.anodeInputLiquidFluids, inputFluid)
+    }
+
     class Builder(val recipe: RecipeType<AqueousElectrolysisRecipe>) : AqueousElectrolysisRecipe.Builder() {
         override val isSeparated = false
 
@@ -524,8 +588,13 @@ class SeparatedAqueousElectrolysisRecipe(
     override val isSeparated = true
 
     override fun matches(pContainer: SimpleContainer, pLevel: Level): Boolean {
+        val container = pContainer as? SeparatedElectrolysisContainer
+            ?: return false
+
         return super.matches(pContainer, pLevel) &&
-            separator.test(pContainer.getItem(SEPARATOR_SLOT))
+            separator.test(pContainer.getItem(SEPARATOR_SLOT)) &&
+            fluidMatches(container.anodeInputLiquidFluids, anodeInputFluid) &&
+            fluidMatches(container.cathodeInputLiquidFluids, cathodeInputFluid)
     }
 
     class Builder(val recipe: RecipeType<AqueousElectrolysisRecipe>) : AqueousElectrolysisRecipe.Builder() {
@@ -724,6 +793,8 @@ class ElectrolysisProxyBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
 
         val isLeft = isLeftDelegate()
 
+        val facing = blockState.getValue(HorizontalDirectionalBlock.FACING)
+
         return when {
             cap == ForgeCapabilities.ITEM_HANDLER && side == Direction.DOWN -> {
                 (if (isLeft) representative.leftItemLazy else representative.rightItemLazy).cast()
@@ -733,8 +804,12 @@ class ElectrolysisProxyBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
                 (if (isLeft) representative.leftGasLazy else representative.rightGasLazy).cast()
             }
 
-            cap == ForgeCapabilities.FLUID_HANDLER && side.axis.isHorizontal -> {
-                (if (isLeft) representative.leftLiquidLazy else representative.rightLiquidLazy).cast()
+            cap == ForgeCapabilities.FLUID_HANDLER && side == facing -> {
+                (if (isLeft) representative.leftInputLiquidLazy else representative.rightInputLiquidLazy).cast()
+            }
+
+            cap == ForgeCapabilities.FLUID_HANDLER && side == facing.opposite -> {
+                (if (isLeft) representative.leftOutputLiquidLazy else representative.rightOutputLiquidLazy).cast()
             }
 
             else -> super.getCapability(cap, side)
@@ -897,37 +972,47 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
     }
 
     /**
-     * One half of the electrolysis fluid system. Holds a liquid tank and a gas tank.
-     * @param liquidTank The raw liquid tank for this side.
-     * @param gasTank The raw gas tank for this side.
+     * One half of the electrolysis fluid system. Holds an input liquid tank, an output liquid tank, and an output gas tank.
+     * @param inputLiquidTank The raw input liquid tank for this side.
+     * @param outputLiquidTank The raw output liquid tank for this side.
+     * @param outputGasTank The raw output gas tank for this side.
      * */
-    class ElectrolysisFluidSide(val liquidTank: MultipleFractionalFluidTank, val gasTank: MultipleFractionalFluidTank) {
-        val liquidPurity = PurityBasedMultipleFractionalFluidTank(liquidTank)
+    class ElectrolysisFluidSide(
+        val inputLiquidTank: MultipleFractionalFluidTank,
+        val outputLiquidTank: MultipleFractionalFluidTank,
+        val outputGasTank: MultipleFractionalFluidTank,
+    ) {
+        val inputLiquidPurity = PurityBasedMultipleFractionalFluidTank(inputLiquidTank)
 
-        val gasPurity = PurityBasedMultipleFractionalFluidTank(gasTank)
+        val outputLiquidPurity = PurityBasedMultipleFractionalFluidTank(outputLiquidTank)
+
+        val outputGasPurity = PurityBasedMultipleFractionalFluidTank(outputGasTank)
 
         fun serializeNBT(): CompoundTag {
             val tag = CompoundTag()
-            tag.put("liquid", liquidTank.serializeNBT())
-            tag.put("gas", gasTank.serializeNBT())
+            tag.put("inputLiquid", inputLiquidTank.serializeNBT())
+            tag.put("outputLiquid", outputLiquidTank.serializeNBT())
+            tag.put("outputGas", outputGasTank.serializeNBT())
             return tag
         }
 
         fun deserializeNBT(tag: CompoundTag) {
-            liquidTank.deserializeNBT(tag.getCompound("liquid"))
-            gasTank.deserializeNBT(tag.getCompound("gas"))
+            inputLiquidTank.deserializeNBT(tag.getCompound("inputLiquid"))
+            outputLiquidTank.deserializeNBT(tag.getCompound("outputLiquid"))
+            outputGasTank.deserializeNBT(tag.getCompound("outputGas"))
         }
     }
 
     /**
-     * Manages the four-tank electrolysis fluid system: anolyte liquid, anolyte gas, catholyte liquid, catholyte gas.
-     * The [FractionalFluidTankCapacityConstraint] constrains the total capacity across all four tanks.
+     * Manages the six-tank electrolysis fluid system: anode input liquid, anode output liquid, anode output gas, cathode input liquid, cathode output liquid, cathode output gas.
+     * The [FractionalFluidTankCapacityConstraint] constrains the total capacity across all six tanks.
      * The [anode] side is the representative when no separator is installed.
      * Call [onSeparatorAdded] / [onSeparatorRemoved] when the separator item changes.
-     * @param capacity Total shared capacity across all four tanks.
+     * @param capacity Total shared capacity across all six tanks.
      * */
     class ElectrolysisFluidHandler(val capacity: Double) {
         val anode = ElectrolysisFluidSide(
+            MultipleFractionalFluidTank(capacity, false),
             MultipleFractionalFluidTank(capacity, false),
             MultipleFractionalFluidTank(capacity, false),
         )
@@ -935,13 +1020,14 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
         val cathode = ElectrolysisFluidSide(
             MultipleFractionalFluidTank(capacity, false),
             MultipleFractionalFluidTank(capacity, false),
+            MultipleFractionalFluidTank(capacity, false),
         )
 
         val constraint = FractionalFluidTankCapacityConstraint(
             capacity,
             arrayOf(
-                anode.liquidTank, anode.gasTank,
-                cathode.liquidTank, cathode.gasTank,
+                anode.inputLiquidTank, anode.outputLiquidTank, anode.outputGasTank,
+                cathode.inputLiquidTank, cathode.outputLiquidTank, cathode.outputGasTank,
             )
         )
 
@@ -973,8 +1059,9 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
 
         companion object {
             private fun moveAll(source: ElectrolysisFluidSide, destination: ElectrolysisFluidSide) {
-                moveAll(source.liquidTank, destination.liquidTank)
-                moveAll(source.gasTank, destination.gasTank)
+                moveAll(source.inputLiquidTank, destination.inputLiquidTank)
+                moveAll(source.outputLiquidTank, destination.outputLiquidTank)
+                moveAll(source.outputGasTank, destination.outputGasTank)
             }
 
             private fun moveAll(source: MultipleFractionalFluidTank, destination: MultipleFractionalFluidTank) {
@@ -998,8 +1085,9 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
             }
 
             private fun splitHalf(source: ElectrolysisFluidSide, destination: ElectrolysisFluidSide) {
-                splitHalf(source.liquidTank, destination.liquidTank)
-                splitHalf(source.gasTank, destination.gasTank)
+                splitHalf(source.inputLiquidTank, destination.inputLiquidTank)
+                splitHalf(source.outputLiquidTank, destination.outputLiquidTank)
+                splitHalf(source.outputGasTank, destination.outputGasTank)
             }
 
             private fun splitHalf(source: MultipleFractionalFluidTank, destination: MultipleFractionalFluidTank) {
@@ -1033,54 +1121,92 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
     }
 
     /**
-     * Routes liquid operations to the correct side based on separator state. When no separator is present, both sides route to anode.
+     * Routes input liquid fill operations to the correct side based on separator state. Drain is rejected.
+     * When no separator is present, both sides route to anode.
      * @param fluidHandler The owning fluid handler.
      * @param inventoryHandler The inventory handler, used to check separator state.
      * @param isLeft True if this handler is for the left (anode) delegate.
      * */
-    class SidedFluidHandler(val fluidHandler: ElectrolysisFluidHandler, val inventoryHandler: ElectrolysisInventoryHandler, val isLeft: Boolean) : IFractionalFluidHandler {
-        private fun currentSide(): ElectrolysisFluidSide {
+    class SidedInputLiquidHandler(val fluidHandler: ElectrolysisFluidHandler, val inventoryHandler: ElectrolysisInventoryHandler, val isLeft: Boolean) : IFractionalFluidHandler {
+        private fun currentInputLiquid(): PurityBasedMultipleFractionalFluidTank {
             return if (inventoryHandler.hasSeparator()) {
-                if (isLeft) fluidHandler.anode else fluidHandler.cathode
+                if (isLeft) fluidHandler.anode.inputLiquidPurity else fluidHandler.cathode.inputLiquidPurity
             } else {
-                fluidHandler.anode
+                fluidHandler.anode.inputLiquidPurity
             }
         }
 
-        override fun getTanks() = currentSide().liquidPurity.tanks
+        override fun getTanks() = currentInputLiquid().tanks
 
-        override fun getFluidInTank(tank: Int) = currentSide().liquidPurity.getFluidInTank(tank)
+        override fun getFluidInTank(tank: Int) = currentInputLiquid().getFluidInTank(tank)
 
-        override fun getTankCapacity(tank: Int) = currentSide().liquidPurity.getTankCapacity(tank)
+        override fun getTankCapacity(tank: Int) = currentInputLiquid().getTankCapacity(tank)
 
-        override fun isFluidValid(tank: Int, stack: FluidStack) = currentSide().liquidPurity.isFluidValid(tank, stack)
+        override fun isFluidValid(tank: Int, stack: FluidStack) = currentInputLiquid().isFluidValid(tank, stack)
 
-        override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction) = currentSide().liquidPurity.fill(resource, action)
+        override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction) = currentInputLiquid().fill(resource, action)
 
-        override fun drain(resource: FluidStack, action: IFluidHandler.FluidAction) = currentSide().liquidPurity.drain(resource, action)
+        override fun drain(resource: FluidStack, action: IFluidHandler.FluidAction) = FluidStack.EMPTY
 
-        override fun drain(maxDrain: Int, action: IFluidHandler.FluidAction) = currentSide().liquidPurity.drain(maxDrain, action)
+        override fun drain(maxDrain: Int, action: IFluidHandler.FluidAction) = FluidStack.EMPTY
 
-        override fun getFractionalFluidInTank(tank: Int) = currentSide().liquidPurity.getFractionalFluidInTank(tank)
+        override fun getFractionalFluidInTank(tank: Int) = currentInputLiquid().getFractionalFluidInTank(tank)
 
-        override fun getFractionalTankCapacity(tank: Int) = currentSide().liquidPurity.getFractionalTankCapacity(tank)
+        override fun getFractionalTankCapacity(tank: Int) = currentInputLiquid().getFractionalTankCapacity(tank)
 
-        override fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction) = currentSide().liquidPurity.fillFractional(resource, action)
+        override fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction) = currentInputLiquid().fillFractional(resource, action)
 
-        override fun drainFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction) = currentSide().liquidPurity.drainFractional(resource, action)
+        override fun drainFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction) = FractionalFluidStack.EMPTY
 
-        override fun drainFractional(maxDrain: Double, action: IFluidHandler.FluidAction) = currentSide().liquidPurity.drainFractional(maxDrain, action)
+        override fun drainFractional(maxDrain: Double, action: IFluidHandler.FluidAction) = FractionalFluidStack.EMPTY
     }
 
     /**
-     * Routes gas drain operations to the correct side's gas tank. Fill is rejected.
+     * Routes output liquid drain operations to the correct side. Fill is rejected.
+     * */
+    class SidedOutputLiquidHandler(val fluidHandler: ElectrolysisFluidHandler, val inventoryHandler: ElectrolysisInventoryHandler, val isLeft: Boolean) : IFractionalFluidHandler {
+        private fun currentOutputLiquid(): PurityBasedMultipleFractionalFluidTank {
+            return if (inventoryHandler.hasSeparator()) {
+                if (isLeft) fluidHandler.anode.outputLiquidPurity else fluidHandler.cathode.outputLiquidPurity
+            } else {
+                fluidHandler.anode.outputLiquidPurity
+            }
+        }
+
+        override fun getTanks() = currentOutputLiquid().tanks
+
+        override fun getFluidInTank(tank: Int) = currentOutputLiquid().getFluidInTank(tank)
+
+        override fun getTankCapacity(tank: Int) = currentOutputLiquid().getTankCapacity(tank)
+
+        override fun isFluidValid(tank: Int, stack: FluidStack) = false
+
+        override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction) = 0
+
+        override fun drain(resource: FluidStack, action: IFluidHandler.FluidAction) = currentOutputLiquid().drain(resource, action)
+
+        override fun drain(maxDrain: Int, action: IFluidHandler.FluidAction) = currentOutputLiquid().drain(maxDrain, action)
+
+        override fun getFractionalFluidInTank(tank: Int) = currentOutputLiquid().getFractionalFluidInTank(tank)
+
+        override fun getFractionalTankCapacity(tank: Int) = currentOutputLiquid().getFractionalTankCapacity(tank)
+
+        override fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction) = 0.0
+
+        override fun drainFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction) = currentOutputLiquid().drainFractional(resource, action)
+
+        override fun drainFractional(maxDrain: Double, action: IFluidHandler.FluidAction) = currentOutputLiquid().drainFractional(maxDrain, action)
+    }
+
+    /**
+     * Routes gas drain operations to the correct side's output gas tank. Fill is rejected.
      * */
     class SidedGasHandler(val fluidHandler: ElectrolysisFluidHandler, val inventoryHandler: ElectrolysisInventoryHandler, val isLeft: Boolean) : IFractionalFluidHandler {
         private fun currentGas(): PurityBasedMultipleFractionalFluidTank {
             return if (inventoryHandler.hasSeparator()) {
-                if (isLeft) fluidHandler.anode.gasPurity else fluidHandler.cathode.gasPurity
+                if (isLeft) fluidHandler.anode.outputGasPurity else fluidHandler.cathode.outputGasPurity
             } else {
-                fluidHandler.anode.gasPurity
+                fluidHandler.anode.outputGasPurity
             }
         }
 
@@ -1115,12 +1241,231 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
     val rightItemLazy: LazyOptional<SingleSlotExtractHandler> = LazyOptional.of { SingleSlotExtractHandler(inventoryHandler, ElectrolysisInventoryHandler.CATHODE_OUTPUT_SLOT) }
 
     val fluidHandler = ElectrolysisFluidHandler(TANK_CAPACITY)
-    val leftLiquidLazy: LazyOptional<IFractionalFluidHandler> = LazyOptional.of { SidedFluidHandler(fluidHandler, inventoryHandler, isLeft = true) }
-    val rightLiquidLazy: LazyOptional<IFractionalFluidHandler> = LazyOptional.of { SidedFluidHandler(fluidHandler, inventoryHandler, isLeft = false) }
+    val leftInputLiquidLazy: LazyOptional<IFractionalFluidHandler> = LazyOptional.of { SidedInputLiquidHandler(fluidHandler, inventoryHandler, isLeft = true) }
+    val rightInputLiquidLazy: LazyOptional<IFractionalFluidHandler> = LazyOptional.of { SidedInputLiquidHandler(fluidHandler, inventoryHandler, isLeft = false) }
+    val leftOutputLiquidLazy: LazyOptional<IFractionalFluidHandler> = LazyOptional.of { SidedOutputLiquidHandler(fluidHandler, inventoryHandler, isLeft = true) }
+    val rightOutputLiquidLazy: LazyOptional<IFractionalFluidHandler> = LazyOptional.of { SidedOutputLiquidHandler(fluidHandler, inventoryHandler, isLeft = false) }
     val leftGasLazy: LazyOptional<IFractionalFluidHandler> = LazyOptional.of { SidedGasHandler(fluidHandler, inventoryHandler, isLeft = true) }
     val rightGasLazy: LazyOptional<IFractionalFluidHandler> = LazyOptional.of { SidedGasHandler(fluidHandler, inventoryHandler, isLeft = false) }
 
     //#endregion
+
+    /**
+     * Builds a recipe-matching container from the current inventory and fluid state. The container type reflects the separator state:
+     * [SeparatedElectrolysisContainer] when a separator is installed, [NonSeparatedElectrolysisContainer] otherwise.
+     * Fluid lists are snapshots copied from the tanks at call time.
+     * */
+    fun buildRecipeContainer(): SimpleContainer {
+        val anodeElectrode = inventoryHandler.getStackInSlot(ElectrolysisInventoryHandler.ANODE_ELECTRODE_SLOT)
+        val cathodeElectrode = inventoryHandler.getStackInSlot(ElectrolysisInventoryHandler.CATHODE_ELECTRODE_SLOT)
+
+        return if (inventoryHandler.hasSeparator()) {
+            val separator = inventoryHandler.getStackInSlot(ElectrolysisInventoryHandler.SEPARATOR_SLOT)
+
+            SeparatedElectrolysisContainer(
+                anodeElectrode,
+                cathodeElectrode,
+                separator,
+                fluidHandler.anode.inputLiquidTank.fluids.toList(),
+                fluidHandler.cathode.inputLiquidTank.fluids.toList(),
+            )
+        } else {
+            NonSeparatedElectrolysisContainer(
+                anodeElectrode,
+                cathodeElectrode,
+                fluidHandler.anode.inputLiquidTank.fluids.toList(),
+            )
+        }
+    }
+
+    /**
+     * Searches for a matching electrolysis recipe based on the current inventory and fluid state.
+     * Returns null if no recipe matches or the level is unavailable.
+     * */
+    fun searchForRecipe(): AqueousElectrolysisRecipe? {
+        val level = this.level ?: return null
+
+        val container = buildRecipeContainer()
+
+        return level.recipeManager.getRecipeFor(
+            Eln2Processing.ELECTROLYSIS_RECIPE,
+            container,
+            level,
+        ).orElse(null)
+    }
+
+    /**
+     * Checks if there is space in the output tanks and item slots for the given recipe's outputs.
+     * Gases are ignored (vented). Fluid space is checked via simulated fill; item space via simulated insertion.
+     * */
+    fun canExportOutputs(recipe: AqueousElectrolysisRecipe): Boolean {
+        if (recipe.anodeOutputItem != null) {
+            val remaining = inventoryHandler.insertItem(
+                ElectrolysisInventoryHandler.ANODE_OUTPUT_SLOT,
+                recipe.anodeOutputItem.copy(),
+                true,
+            )
+
+            if (!remaining.isEmpty) {
+                return false
+            }
+        }
+
+        if (recipe.cathodeOutputItem != null) {
+            val remaining = inventoryHandler.insertItem(
+                ElectrolysisInventoryHandler.CATHODE_OUTPUT_SLOT,
+                recipe.cathodeOutputItem.copy(),
+                true,
+            )
+
+            if (!remaining.isEmpty) {
+                return false
+            }
+        }
+
+        val anodeSide = fluidHandler.anode
+        val cathodeSide = if (inventoryHandler.hasSeparator()) fluidHandler.cathode else anodeSide
+
+        when (recipe) {
+            is NonSeparatedAqueousElectrolysisRecipe -> {
+                recipe.outputFluid?.let { outputFluid ->
+                    val accepted = anodeSide.outputLiquidTank.fillFractional(
+                        FractionalFluidStack(outputFluid.fluid, outputFluid.amount.toDouble()),
+                        IFluidHandler.FluidAction.SIMULATE,
+                    )
+
+                    if (accepted < outputFluid.amount.toDouble() - FractionalFluidStack.EPSILON) {
+                        return false
+                    }
+                }
+            }
+
+            is SeparatedAqueousElectrolysisRecipe -> {
+                recipe.anodeOutputFluid?.let { outputFluid ->
+                    val accepted = anodeSide.outputLiquidTank.fillFractional(
+                        FractionalFluidStack(outputFluid.fluid, outputFluid.amount.toDouble()),
+                        IFluidHandler.FluidAction.SIMULATE,
+                    )
+
+                    if (accepted < outputFluid.amount.toDouble() - FractionalFluidStack.EPSILON) {
+                        return false
+                    }
+                }
+
+                recipe.cathodeOutputFluid?.let { outputFluid ->
+                    val accepted = cathodeSide.outputLiquidTank.fillFractional(
+                        FractionalFluidStack(outputFluid.fluid, outputFluid.amount.toDouble()),
+                        IFluidHandler.FluidAction.SIMULATE,
+                    )
+
+                    if (accepted < outputFluid.amount.toDouble() - FractionalFluidStack.EPSILON) {
+                        return false
+                    }
+                }
+            }
+        }
+
+        return true
+    }
+
+    /**
+     * Consumes the input fluids from the input liquid tanks. Electrodes and separator are catalysts and are not consumed.
+     * Must only be called after [canExportOutputs] has verified space.
+     * */
+    fun consumeInputs(recipe: AqueousElectrolysisRecipe) {
+        val anodeSide = fluidHandler.anode
+        val cathodeSide = if (inventoryHandler.hasSeparator()) fluidHandler.cathode else anodeSide
+
+        when (recipe) {
+            is NonSeparatedAqueousElectrolysisRecipe -> {
+                anodeSide.inputLiquidTank.drainFractional(
+                    FractionalFluidStack(recipe.inputFluid.fluid, recipe.inputFluid.amount.toDouble()),
+                    IFluidHandler.FluidAction.EXECUTE,
+                )
+            }
+
+            is SeparatedAqueousElectrolysisRecipe -> {
+                anodeSide.inputLiquidTank.drainFractional(
+                    FractionalFluidStack(recipe.anodeInputFluid.fluid, recipe.anodeInputFluid.amount.toDouble()),
+                    IFluidHandler.FluidAction.EXECUTE,
+                )
+
+                cathodeSide.inputLiquidTank.drainFractional(
+                    FractionalFluidStack(recipe.cathodeInputFluid.fluid, recipe.cathodeInputFluid.amount.toDouble()),
+                    IFluidHandler.FluidAction.EXECUTE,
+                )
+            }
+        }
+
+        setChanged()
+    }
+
+    /**
+     * Places all outputs into the output item slots, output liquid tanks, and output gas tanks.
+     * Gases that don't fit are silently vented. Must only be called after [canExportOutputs] has verified space for liquids and items.
+     * */
+    fun placeOutputs(recipe: AqueousElectrolysisRecipe) {
+        recipe.anodeOutputItem?.let { output ->
+            inventoryHandler.insertItem(ElectrolysisInventoryHandler.ANODE_OUTPUT_SLOT, output.copy(), false)
+        }
+
+        recipe.cathodeOutputItem?.let { output ->
+            inventoryHandler.insertItem(ElectrolysisInventoryHandler.CATHODE_OUTPUT_SLOT, output.copy(), false)
+        }
+
+        val anodeSide = fluidHandler.anode
+        val cathodeSide = if (inventoryHandler.hasSeparator()) fluidHandler.cathode else anodeSide
+
+        when (recipe) {
+            is NonSeparatedAqueousElectrolysisRecipe -> {
+                recipe.outputFluid?.let { outputFluid ->
+                    anodeSide.outputLiquidTank.fillFractional(
+                        FractionalFluidStack(outputFluid.fluid, outputFluid.amount.toDouble()),
+                        IFluidHandler.FluidAction.EXECUTE,
+                    )
+                }
+
+                recipe.outputGas?.let { outputGas ->
+                    anodeSide.outputGasTank.fillFractional(
+                        FractionalFluidStack(outputGas.fluid, outputGas.amount.toDouble()),
+                        IFluidHandler.FluidAction.EXECUTE,
+                    )
+                }
+            }
+
+            is SeparatedAqueousElectrolysisRecipe -> {
+                recipe.anodeOutputFluid?.let { outputFluid ->
+                    anodeSide.outputLiquidTank.fillFractional(
+                        FractionalFluidStack(outputFluid.fluid, outputFluid.amount.toDouble()),
+                        IFluidHandler.FluidAction.EXECUTE,
+                    )
+                }
+
+                recipe.cathodeOutputFluid?.let { outputFluid ->
+                    cathodeSide.outputLiquidTank.fillFractional(
+                        FractionalFluidStack(outputFluid.fluid, outputFluid.amount.toDouble()),
+                        IFluidHandler.FluidAction.EXECUTE,
+                    )
+                }
+
+                recipe.anodeOutputGas?.let { outputGas ->
+                    anodeSide.outputGasTank.fillFractional(
+                        FractionalFluidStack(outputGas.fluid, outputGas.amount.toDouble()),
+                        IFluidHandler.FluidAction.EXECUTE,
+                    )
+                }
+
+                recipe.cathodeOutputGas?.let { outputGas ->
+                    cathodeSide.outputGasTank.fillFractional(
+                        FractionalFluidStack(outputGas.fluid, outputGas.amount.toDouble()),
+                        IFluidHandler.FluidAction.EXECUTE,
+                    )
+                }
+            }
+        }
+
+        setChanged()
+    }
 
     @ServerOnly
     override fun setDestroyed() {
@@ -1146,8 +1491,10 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
         inventoryHandlerLazy.invalidate()
         leftItemLazy.invalidate()
         rightItemLazy.invalidate()
-        leftLiquidLazy.invalidate()
-        rightLiquidLazy.invalidate()
+        leftInputLiquidLazy.invalidate()
+        rightInputLiquidLazy.invalidate()
+        leftOutputLiquidLazy.invalidate()
+        rightOutputLiquidLazy.invalidate()
         leftGasLazy.invalidate()
         rightGasLazy.invalidate()
     }

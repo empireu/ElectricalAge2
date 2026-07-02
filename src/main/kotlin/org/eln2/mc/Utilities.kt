@@ -1,5 +1,6 @@
 package org.eln2.mc
 
+import com.google.gson.JsonObject
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.server.IntegratedServer
 import net.minecraft.core.BlockPos
@@ -8,6 +9,7 @@ import net.minecraft.core.Vec3i
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
+import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntity
@@ -17,6 +19,8 @@ import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.Vec3
 import net.minecraftforge.api.distmarker.Dist
+import net.minecraftforge.fluids.FluidStack
+import net.minecraftforge.registries.ForgeRegistries
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.*
@@ -280,5 +284,19 @@ class PIDController(var kP: Double, var kI: Double, var kD: Double) {
     fun reset() {
         errorSum = 0.0
         lastError = 0.0
+    }
+}
+
+fun fluidStackToJson(fluid: FluidStack): JsonObject {
+    return JsonObject().also { obj ->
+        obj.addProperty("fluid", ForgeRegistries.FLUIDS.getKey(fluid.fluid)!!.toString())
+        obj.addProperty("amount", fluid.amount)
+    }
+}
+
+fun itemStackToJson(stack: ItemStack): JsonObject {
+    return JsonObject().also { obj ->
+        obj.addProperty("item", ForgeRegistries.ITEMS.getKey(stack.item)!!.toString())
+        obj.addProperty("count", stack.count)
     }
 }
