@@ -826,6 +826,66 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_battery_base", has(Eln2Ingredients.LEAD_ACID_BATTERY_BASE_12V.get()))
             .save(pWriter, resource("crafting/lead_acid_battery_12v"))
 
+        //#region Tungsten Filament
+
+        ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, Eln2Ingredients.SCHEELITE_FUSION_MIX.get())
+            .requires(Eln2Ingredients.SCHEELITE_DUST.get())
+            .requires(Eln2Ingredients.SODIUM_CARBONATE_DUST.get())
+            .unlockedBy("has_scheelite_dust", has(Eln2Ingredients.SCHEELITE_DUST.get()))
+            .save(pWriter, resource("crafting/scheelite_fusion_mix"))
+
+        SimpleCookingRecipeBuilder.smelting(
+            Ingredient.of(Eln2Ingredients.SCHEELITE_FUSION_MIX.get()),
+            RecipeCategory.MISC,
+            Eln2Ingredients.SODIUM_TUNGSTENATE_MELT.get(),
+            0.7f,
+            200
+        ).apply {
+            unlockedBy("has_scheelite_fusion_mix", has(Eln2Ingredients.SCHEELITE_FUSION_MIX.get()))
+            save(pWriter, resource("smelting/scheelite_fusion_mix_to_sodium_tungstenate_melt"))
+        }
+
+        SimpleCookingRecipeBuilder.blasting(
+            Ingredient.of(Eln2Ingredients.SCHEELITE_FUSION_MIX.get()),
+            RecipeCategory.MISC,
+            Eln2Ingredients.SODIUM_TUNGSTENATE_MELT.get(),
+            0.7f,
+            100
+        ).apply {
+            unlockedBy("has_scheelite_fusion_mix", has(Eln2Ingredients.SCHEELITE_FUSION_MIX.get()))
+            save(pWriter, resource("blasting/scheelite_fusion_mix_to_sodium_tungstenate_melt"))
+        }
+
+        ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, Eln2ForgeFluids.SODIUM_TUNGSTATE_SOLUTION.bucket.get())
+            .requires(Eln2Ingredients.SODIUM_TUNGSTENATE_MELT.get())
+            .requires(Items.WATER_BUCKET)
+            .unlockedBy("has_sodium_tungstenate_melt", has(Eln2Ingredients.SODIUM_TUNGSTENATE_MELT.get()))
+            .save(pWriter, resource("crafting/sodium_tungstate_solution_bucket"))
+
+        SimpleCookingRecipeBuilder.smelting(
+            Ingredient.of(Eln2Ingredients.TUNGSTIC_ACID.get()),
+            RecipeCategory.MISC,
+            Eln2Ingredients.TUNGSTEN_TRIOXIDE_DUST.get(),
+            0.7f,
+            200
+        ).apply {
+            unlockedBy("has_tungstic_acid", has(Eln2Ingredients.TUNGSTIC_ACID.get()))
+            save(pWriter, resource("smelting/tungstic_acid_to_tungsten_trioxide_dust"))
+        }
+
+        SimpleCookingRecipeBuilder.blasting(
+            Ingredient.of(Eln2Ingredients.TUNGSTIC_ACID.get()),
+            RecipeCategory.MISC,
+            Eln2Ingredients.TUNGSTEN_TRIOXIDE_DUST.get(),
+            0.7f,
+            100
+        ).apply {
+            unlockedBy("has_tungstic_acid", has(Eln2Ingredients.TUNGSTIC_ACID.get()))
+            save(pWriter, resource("blasting/tungstic_acid_to_tungsten_trioxide_dust"))
+        }
+
+        //#endregion
+
         LOG.info("Generated manual recipes.")
     }
 
@@ -1072,6 +1132,23 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             unlockedBy("has_graphite_electrode", has(Eln2Processing.GRAPHITE_ELECTRODE.get()))
             unlockedBy("has_asbestos_separator", has(Eln2Processing.ASBESTOS_SEPARATOR.get()))
             save(pWriter, resource("electrolysis/separated_water"))
+        }
+
+        SeparatedAqueousElectrolysisRecipe.Builder(Eln2Processing.ELECTROLYSIS_RECIPE).apply {
+            withAnodeElectrode(Eln2Processing.GRAPHITE_ELECTRODE.get())
+            withCathodeElectrode(Eln2Processing.GRAPHITE_ELECTRODE.get())
+            withAnodeInputFluid(FluidStack(Eln2ForgeFluids.SODIUM_TUNGSTATE_SOLUTION.get(), 1))
+            withCathodeInputFluid(FluidStack(Fluids.WATER, 1))
+            withAnodeOutputItem(Eln2Ingredients.TUNGSTIC_ACID.get())
+            withCathodeOutputFluid(FluidStack(Eln2ForgeFluids.SODIUM_HYDROXIDE_SOLUTION.get(), 1))
+            withCathodeOutputGas(FluidStack(Eln2ForgeFluids.HYDROGEN.get(), 2))
+            withSeparator(Eln2Processing.ASBESTOS_SEPARATOR.get())
+            withEnergyCost(12000.0)
+            withResistance(0.4)
+            unlockedBy("has_sodium_tungstate_solution", has(Eln2ForgeFluids.SODIUM_TUNGSTATE_SOLUTION.bucket.get()))
+            unlockedBy("has_graphite_electrode", has(Eln2Processing.GRAPHITE_ELECTRODE.get()))
+            unlockedBy("has_asbestos_separator", has(Eln2Processing.ASBESTOS_SEPARATOR.get()))
+            save(pWriter, resource("electrolysis/sodium_tungstate_to_tungstic_acid"))
         }
 
         //#endregion

@@ -50,6 +50,7 @@ class Eln2Jei : IModPlugin {
     private lateinit var vulcanizingCategory: VulcanizingCategory
     private lateinit var burningCategory: BurningCategory
     private lateinit var hydrogenReductionCategory: HydrogenReductionCategory
+    private lateinit var electrolysisCategory: ElectrolysisCategory
 
     override fun getPluginUid(): ResourceLocation = resource("jei_plugin")
 
@@ -66,6 +67,7 @@ class Eln2Jei : IModPlugin {
         burningCategory = BurningCategory(registration.jeiHelpers.guiHelper)
         hydrogenReductionCategory = HydrogenReductionCategory(registration.jeiHelpers.guiHelper)
 
+        electrolysisCategory = ElectrolysisCategory(registration.jeiHelpers.guiHelper)
         registration.addRecipeCategories(
             crushingCategory,
             rollingCategory,
@@ -74,7 +76,8 @@ class Eln2Jei : IModPlugin {
             alloyingCategory,
             vulcanizingCategory,
             burningCategory,
-            hydrogenReductionCategory
+            hydrogenReductionCategory,
+            electrolysisCategory
         )
     }
 
@@ -94,6 +97,7 @@ class Eln2Jei : IModPlugin {
         registerCategory(registration, alloyingCategory, recipeManager, Eln2Processing.ALLOYING_RECIPE)
         registerCategory(registration, vulcanizingCategory, recipeManager, Eln2Processing.VULCANIZING_RECIPE)
         registerCategory(registration, burningCategory, recipeManager, Eln2Processing.BURNING_RECIPE)
+        registerCategory(registration, electrolysisCategory, recipeManager, Eln2Processing.ELECTROLYSIS_RECIPE)
         registerCategory(registration, hydrogenReductionCategory, recipeManager, Eln2Processing.HYDROGEN_REDUCTION_RECIPE)
     }
 
@@ -111,7 +115,8 @@ class Eln2Jei : IModPlugin {
             alloyingCategory,
             vulcanizingCategory,
             burningCategory,
-            hydrogenReductionCategory
+            hydrogenReductionCategory,
+            electrolysisCategory
         ).forEach { category ->
             category.collectCatalysts().forEach { catalyst ->
                 registration.addRecipeCatalyst(catalyst.get(), category.jeiRecipeType)
@@ -681,5 +686,149 @@ class HydrogenReductionCategory(guiHelper: IGuiHelper) : Eln2RecipeCategory<Hydr
             0x5555FF,
             false
         )
+    }
+}
+
+class ElectrolysisCategory(guiHelper: IGuiHelper) : Eln2RecipeCategory<AqueousElectrolysisRecipe>(
+    jeiRecipeType = RecipeType(resource("electrolysis"), AqueousElectrolysisRecipe::class.java),
+    categoryTitle = Component.translatable("recipe.eln2.electrolysis"),
+    categoryWidth = 177,
+    categoryHeight = 95,
+    categoryIcon = ItemIcon(ItemStack(Eln2Processing.ELECTROLYSIS_BLOCK_ITEM.get())),
+    categoryCatalysts = listOf(
+        Supplier { ItemStack(Eln2Processing.ELECTROLYSIS_BLOCK_ITEM.get()) }
+    ),
+    guiHelper
+) {
+    private val slot = SlotBackground()
+
+    override fun setRecipe(builder: IRecipeLayoutBuilder, recipe: AqueousElectrolysisRecipe, focuses: IFocusGroup) {
+        if (!recipe.isSeparated) {
+            recipe as NonSeparatedAqueousElectrolysisRecipe
+
+            builder.addSlot(RecipeIngredientRole.INPUT, 21, 28)
+                .setBackground(slot, -1, -1)
+                .addFluidStack(recipe.inputFluid.fluid, recipe.inputFluid.amount.toLong())
+                .setFluidRenderer(FluidType.BUCKET_VOLUME.toLong(), false, 16, 16)
+
+            if (recipe.outputGas != null && !recipe.outputGas.isEmpty) {
+                builder.addSlot(RecipeIngredientRole.OUTPUT, 115, 5)
+                    .setBackground(slot, -1, -1)
+                    .addFluidStack(recipe.outputGas.fluid, recipe.outputGas.amount.toLong())
+                    .setFluidRenderer(FluidType.BUCKET_VOLUME.toLong(), false, 16, 16)
+            }
+
+            if (recipe.outputFluid != null && !recipe.outputFluid.isEmpty) {
+                builder.addSlot(RecipeIngredientRole.OUTPUT, 115, 28)
+                    .setBackground(slot, -1, -1)
+                    .addFluidStack(recipe.outputFluid.fluid, recipe.outputFluid.amount.toLong())
+                    .setFluidRenderer(FluidType.BUCKET_VOLUME.toLong(), false, 16, 16)
+            }
+
+            if (recipe.anodeOutputItem != null && !recipe.anodeOutputItem.isEmpty) {
+                builder.addSlot(RecipeIngredientRole.OUTPUT, 115, 51)
+                    .setBackground(slot, -1, -1)
+                    .addItemStack(recipe.anodeOutputItem)
+            }
+
+            // Electrode info slots:
+            builder.addSlot(RecipeIngredientRole.CATALYST, 40, 75)
+                .setBackground(slot, -1, -1)
+                .addIngredients(recipe.anodeElectrode)
+
+            builder.addSlot(RecipeIngredientRole.CATALYST, 80, 75)
+                .setBackground(slot, -1, -1)
+                .addIngredients(recipe.cathodeElectrode)
+
+            if (recipe.cathodeOutputItem != null && !recipe.cathodeOutputItem.isEmpty) {
+                builder.addSlot(RecipeIngredientRole.OUTPUT, 140, 51)
+                    .setBackground(slot, -1, -1)
+                    .addItemStack(recipe.cathodeOutputItem)
+            }
+        }
+        else {
+            recipe as SeparatedAqueousElectrolysisRecipe
+
+            builder.addSlot(RecipeIngredientRole.INPUT, 15, 10)
+                .setBackground(slot, -1, -1)
+                .addFluidStack(recipe.anodeInputFluid.fluid, recipe.anodeInputFluid.amount.toLong())
+                .setFluidRenderer(FluidType.BUCKET_VOLUME.toLong(), false, 16, 16)
+
+            builder.addSlot(RecipeIngredientRole.INPUT, 57, 10)
+                .setBackground(slot, -1, -1)
+                .addFluidStack(recipe.cathodeInputFluid.fluid, recipe.cathodeInputFluid.amount.toLong())
+                .setFluidRenderer(FluidType.BUCKET_VOLUME.toLong(), false, 16, 16)
+
+            // Separator:
+            builder.addSlot(RecipeIngredientRole.CATALYST, 36, 36)
+                .setBackground(slot, -1, -1)
+                .addIngredients(recipe.separator)
+
+            // Anode outputs:
+            if (recipe.anodeOutputGas != null && !recipe.anodeOutputGas.isEmpty) {
+                builder.addSlot(RecipeIngredientRole.OUTPUT, 105, 5)
+                    .setBackground(slot, -1, -1)
+                    .addFluidStack(recipe.anodeOutputGas.fluid, recipe.anodeOutputGas.amount.toLong())
+                    .setFluidRenderer(FluidType.BUCKET_VOLUME.toLong(), false, 16, 16)
+            }
+
+            if (recipe.anodeOutputFluid != null && !recipe.anodeOutputFluid.isEmpty) {
+                builder.addSlot(RecipeIngredientRole.OUTPUT, 105, 28)
+                    .setBackground(slot, -1, -1)
+                    .addFluidStack(recipe.anodeOutputFluid.fluid, recipe.anodeOutputFluid.amount.toLong())
+                    .setFluidRenderer(FluidType.BUCKET_VOLUME.toLong(), false, 16, 16)
+            }
+
+            if (recipe.anodeOutputItem != null && !recipe.anodeOutputItem.isEmpty) {
+                builder.addSlot(RecipeIngredientRole.OUTPUT, 105, 51)
+                    .setBackground(slot, -1, -1)
+                    .addItemStack(recipe.anodeOutputItem)
+            }
+
+            // Cathode outputs:
+            if (recipe.cathodeOutputGas != null && !recipe.cathodeOutputGas.isEmpty) {
+                builder.addSlot(RecipeIngredientRole.OUTPUT, 137, 5)
+                    .setBackground(slot, -1, -1)
+                    .addFluidStack(recipe.cathodeOutputGas.fluid, recipe.cathodeOutputGas.amount.toLong())
+                    .setFluidRenderer(FluidType.BUCKET_VOLUME.toLong(), false, 16, 16)
+            }
+
+            if (recipe.cathodeOutputFluid != null && !recipe.cathodeOutputFluid.isEmpty) {
+                builder.addSlot(RecipeIngredientRole.OUTPUT, 137, 28)
+                    .setBackground(slot, -1, -1)
+                    .addFluidStack(recipe.cathodeOutputFluid.fluid, recipe.cathodeOutputFluid.amount.toLong())
+                    .setFluidRenderer(FluidType.BUCKET_VOLUME.toLong(), false, 16, 16)
+            }
+
+            if (recipe.cathodeOutputItem != null && !recipe.cathodeOutputItem.isEmpty) {
+                builder.addSlot(RecipeIngredientRole.OUTPUT, 137, 51)
+                    .setBackground(slot, -1, -1)
+                    .addItemStack(recipe.cathodeOutputItem)
+            }
+
+            // Electrode info slots:
+            builder.addSlot(RecipeIngredientRole.CATALYST, 21, 75)
+                .setBackground(slot, -1, -1)
+                .addIngredients(recipe.anodeElectrode)
+
+            builder.addSlot(RecipeIngredientRole.CATALYST, 80, 75)
+                .setBackground(slot, -1, -1)
+                .addIngredients(recipe.cathodeElectrode)
+        }
+    }
+
+    override fun draw(
+        recipe: AqueousElectrolysisRecipe,
+        recipeSlotsView: IRecipeSlotsView,
+        graphics: GuiGraphics,
+        mouseX: Double,
+        mouseY: Double
+    ) {
+        if (!recipe.isSeparated) {
+            noteArrow(graphics, 62, 32)
+        }
+        else {
+            noteArrow(graphics, 62, 15)
+        }
     }
 }
