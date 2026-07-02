@@ -902,7 +902,6 @@ class ElectrolysisCell(
     }
 }
 
-
 class ElectrolysisProxyBlock : MultiblockDelegateUprightHorizontalDirectionCellBlock<ElectrolysisProxyCell>() {
     @Deprecated("Deprecated in Java")
     override fun skipRendering(pState: BlockState, pAdjacentState: BlockState, pDirection: Direction) = true
@@ -1738,6 +1737,12 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
     @ServerOnly
     private var savedOperationData: OperationLoadingData? = null
 
+    @ServerOnly
+    private var lastAnodeInputLiquidVersion = -1
+
+    @ServerOnly
+    private var lastCathodeInputLiquidVersion = -1
+
     //#endregion
 
     @ServerOnly
@@ -1757,22 +1762,53 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
 
     @ServerOnly
     fun serverTick() {
-        if (inventoryHandler.wasChanged()) {
-            val actualRecipe = searchForRecipe()
+        val anodeVersion = fluidHandler.anode.inputLiquidTank.version
+        val cathodeVersion = fluidHandler.cathode.inputLiquidTank.version
 
-            if (actualRecipe == null) {
-                operation = null
-            } else {
-                if (actualRecipe.recipeId != operation?.recipe?.recipeId) {
-                    operation = if (canExportOutputs(actualRecipe)) {
-                        Operation(actualRecipe, 0.0)
+        val inventoryChanged = inventoryHandler.wasChanged()
+        val inputLiquidChanged = anodeVersion != lastAnodeInputLiquidVersion ||
+            cathodeVersion != lastCathodeInputLiquidVersion
+
+        lastAnodeInputLiquidVersion = anodeVersion
+        lastCathodeInputLiquidVersion = cathodeVersion
+
+        val inputsChanged = inventoryChanged || inputLiquidChanged
+
+        if (operation != null) {
+            val op = operation!!
+            val recipe = op.recipe
+
+            if (inputsChanged) {
+                val container = buildRecipeContainer()
+                val stillMatches = recipe.matches(container, level!!)
+
+                if (!stillMatches) {
+                    val actualRecipe = searchForRecipe()
+
+                    if (actualRecipe == null) {
+                        operation = null
                     } else {
-                        null
+                        if (actualRecipe.recipeId != recipe.recipeId) {
+                            operation = if (canExportOutputs(actualRecipe)) {
+                                Operation(actualRecipe, 0.0)
+                            } else {
+                                null
+                            }
+                        }
                     }
+
+                    setChanged()
                 }
             }
+        } else {
+            if (inputsChanged) {
+                val actualRecipe = searchForRecipe()
 
-            setChanged()
+                if (actualRecipe != null && canExportOutputs(actualRecipe)) {
+                    operation = Operation(actualRecipe, 0.0)
+                    setChanged()
+                }
+            }
         }
 
         if (operation != null) {
