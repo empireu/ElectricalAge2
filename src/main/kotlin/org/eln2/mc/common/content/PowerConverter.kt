@@ -1,7 +1,14 @@
 package org.eln2.mc.common.content
 
+import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.world.level.BlockGetter
+import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.phys.shapes.CollisionContext
+import net.minecraft.world.phys.shapes.Shapes
+import net.minecraft.world.phys.shapes.VoxelShape
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.sim.ConnectionParameters
@@ -14,9 +21,12 @@ import org.ageseries.libage.sim.electrical.PowerSource
 import org.ageseries.libage.sim.electrical.Resistor
 import org.eln2.mc.*
 import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.common.blocks.foundation.GridCellBlockEntity
+import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.content.modules.Eln2PowerDevices
 import org.eln2.mc.common.grids.GridConnectionCell
+import org.eln2.mc.common.grids.GridMaterialCategory
 import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.specs.foundation.CellSpec
 import org.eln2.mc.common.specs.foundation.SpecCreateInfo
@@ -345,6 +355,122 @@ class DcToDcConverterSpec(ci: SpecCreateInfo) :
         }
 
         // Clean up the numerical error for player readout:
+        inputPower = max(inputPower, Quantity(0.0, WATT))
+
+        builder.quantity(cell.thermalWire.thermalBody.temperature)
+        builder.quantityInput(inputPower)
+        builder.quantityOutput(cell.converter.outputSource.readouts.potential)
+        builder.quantityOutput(cell.converter.outputSource.readouts.current)
+        builder.quantityOutput(cell.converter.outputSource.readouts.power)
+        builder.quantitySetpoint(cell.converter.setpointPotential)
+    }
+}
+
+class PrimitivePowerConverterBlock : UprightHorizontalDirectionCellBlock<TerminalDcToDcConverterCell>() {
+    override fun getCellProvider() = Eln2PowerDevices.PRIMITIVE_DC_TO_DC_CONVERTER_CELL_5KW.get()
+
+    override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = PrimitivePowerConverterBlockEntity(pPos, pState)
+
+    @Deprecated("Deprecated in Java", ReplaceWith("true"))
+    override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction) = true
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun getCollisionShape(
+        pState: BlockState,
+        pLevel: BlockGetter,
+        pPos: BlockPos,
+        pContext: CollisionContext,
+    ): VoxelShape = COLLIDER
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun getShape(
+        pState: BlockState,
+        pLevel: BlockGetter,
+        pPos: BlockPos,
+        pContext: CollisionContext,
+    ): VoxelShape = COLLIDER
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun getVisualShape(
+        pState: BlockState,
+        pLevel: BlockGetter,
+        pPos: BlockPos,
+        pContext: CollisionContext,
+    ): VoxelShape = COLLIDER
+
+    companion object {
+        private val COLLIDER = Shapes.box(
+            0.2, 0.0, 0.2,
+            0.8, 0.7, 0.8
+        )
+    }
+}
+
+class PrimitivePowerConverterBlockEntity(pos: BlockPos, state: BlockState) :
+    GridCellBlockEntity<TerminalDcToDcConverterCell>(pos, state, Eln2PowerDevices.PRIMITIVE_DC_TO_DC_CONVERTER_BLOCK_ENTITY.get()),
+    ScrewdriverScrollable,
+    ComponentDisplay
+{
+    override fun createTerminals() {
+        val categories = listOf(GridMaterialCategory.PowerGrid)
+
+        defineCellBoxTerminal(
+            -0.3, 0.85, -0.3,
+            0.12, 0.12, 0.12,
+            highlightColor = MyColor.BLUE,
+            categories = categories
+        )
+
+        defineCellBoxTerminal(
+            -0.3, 0.85, 0.3,
+            0.12, 0.12, 0.12,
+            highlightColor = MyColor.RED,
+            categories = categories
+        )
+
+        defineCellBoxTerminal(
+            0.3, 0.85, -0.3,
+            0.12, 0.12, 0.12,
+            highlightColor = MyColor.BLUE,
+            categories = categories
+        )
+
+        defineCellBoxTerminal(
+            0.3, 0.85, 0.3,
+            0.12, 0.12, 0.12,
+            highlightColor = MyColor.RED,
+            categories = categories
+        )
+    }
+
+    override fun scrollScrewdriver(player: ServerPlayer, delta: Double) : Boolean {
+        if(!hasCell) {
+            return false
+        }
+
+        val increment = delta / 10.0
+        val newPotential = (!cell.converter.setpointPotential + increment).coerceIn(0.0, !cell.converter.model.potentialRating)
+
+        cell.converter.setpointPotential = Quantity(newPotential)
+        cell.setChanged()
+
+        return true
+    }
+
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        var inputPower = cell.converter.inputConsumer.readouts.power
+
+        builder.debugInIDE { "Buffer: ${cell.converter.energyBuffer.classifyAs(JOULE)}" }
+        builder.debugInIDE { "Charge: ${cell.converter.inputParallelCapacitor.readouts.charge.classify()}" }
+        builder.debugInIDE { "Input power: ${inputPower.classify()}" }
+
+        if(cell.converter.outputSource.isInSimulation) {
+            builder.debugInIDE {
+                "SRC Iter: ${cell.converter.outputSource.simulation.lastPowerSourceIterationCount}, " +
+                "SRC Res: ${cell.converter.outputSource.simulation.lastPowerSourceMaxResidual}"
+            }
+        }
+
         inputPower = max(inputPower, Quantity(0.0, WATT))
 
         builder.quantity(cell.thermalWire.thermalBody.temperature)
