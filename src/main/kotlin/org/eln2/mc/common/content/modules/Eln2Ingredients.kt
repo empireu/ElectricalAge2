@@ -187,6 +187,12 @@ object Eln2Ingredients : ContentModule() {
     val UNFIRED_RESISTOR = itemDefault("unfired_resistor")
     val RESISTOR = itemDefault("resistor")
 
+    val CAPACITOR_SEPARATOR = itemDefault("capacitor_separator")
+    val CAPACITOR = itemDefault("capacitor")
+
+    val RAW_CIRCUIT_BOARD = itemDefault("raw_circuit_board")
+    val PRIMITIVE_CIRCUIT = itemDefault("primitive_circuit")
+
     //#region Crushed Ores
 
     val CRUSHED_IRON_ORE = itemDefault("crushed_iron_ore")

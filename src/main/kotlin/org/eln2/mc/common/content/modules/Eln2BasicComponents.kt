@@ -26,8 +26,6 @@ import org.eln2.mc.common.content.DiodePart
 import org.eln2.mc.common.content.GroundCell
 import org.eln2.mc.common.content.GroundPart
 import org.eln2.mc.common.content.GroundSpec
-import org.eln2.mc.common.content.ResistorCell
-import org.eln2.mc.common.content.ResistorPart
 import org.eln2.mc.common.content.VoltageSourceCell
 import org.eln2.mc.common.content.VoltageSourcePart
 import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
@@ -77,10 +75,6 @@ object Eln2BasicComponents : ContentModule() {
         2.0, 2.0, 2.0,
         ::GroundSpec
     )
-
-    val RESISTOR_CELL = cellImmediate("resistor", ::ResistorCell)
-
-    val RESISTOR_PART = partImmediateBB("resistor", 3.5, 2.25, 5.0, ::ResistorPart)
 
     val DIODE_CELL = cellMemoize("diode") {
         val poleMap = directionPoleMapPlanar(

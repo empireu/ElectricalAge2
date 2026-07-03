@@ -616,8 +616,6 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
 
         //#endregion
 
-        //#region Simple Component Recipes
-
         ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.IRON_SHAFT.get())
             .pattern("   ")
             .pattern("III")
@@ -912,8 +910,9 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_unsealed_tube", has(Eln2Ingredients.UNSEALED_VACUUM_TUBE.get()))
             .save(pWriter, resource("vacuum_sealing/vacuum_tube"))
 
+        //#endregion
 
-        //#region Circuit Components
+        //#region Inductor
 
         ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.INDUCTOR.get(), 4)
             .pattern(" W ")
@@ -923,6 +922,10 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .define('I', Items::IRON_NUGGET)
             .unlockedBy("has_copper_wire", has(Eln2Ingredients.COPPER_WIRE.get()))
             .save(pWriter, resource("crafting/inductor"))
+
+        //#endregion
+
+        //#region Resistor
 
         ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.UNFIRED_RESISTOR.get(), 4)
             .pattern(" C ")
@@ -946,6 +949,53 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
         }
 
         //#endregion
+
+        //#region Capacitor
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.CAPACITOR_SEPARATOR.get(), 8)
+            .pattern("PPP")
+            .pattern("PBP")
+            .pattern("PPP")
+            .define('P', Items::PAPER)
+            .define('B', Eln2ForgeFluids.PITCH.requireBottle().bottleItem.get())
+            .unlockedBy("has_pitch_bottle", has(Eln2ForgeFluids.PITCH.requireBottle().bottleItem.get()))
+            .save(pWriter, resource("crafting/capacitor_separator"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.CAPACITOR.get(), 4)
+            .pattern("PP")
+            .pattern("WS")
+            .define('P', Eln2Ingredients.COPPER_PLATE.get())
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .define('S', Eln2Ingredients.CAPACITOR_SEPARATOR.get())
+            .unlockedBy("has_capacitor_separator", has(Eln2Ingredients.CAPACITOR_SEPARATOR.get()))
+            .save(pWriter, resource("crafting/capacitor"))
+
+        //#endregion
+
+        //#region Circuit Board
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.RAW_CIRCUIT_BOARD.get(), 4)
+            .pattern("R")
+            .pattern("G")
+            .pattern("P")
+            .define('R', Eln2Ingredients.RUBBER_WOOD_PANEL.get())
+            .define('G', Ingredient.of(Eln2ConventionTags.GLUE))
+            .define('P', Eln2Ingredients.COPPER_PLATE.get())
+            .unlockedBy("has_rubber_wood_panel", has(Eln2Ingredients.RUBBER_WOOD_PANEL.get()))
+            .save(pWriter, resource("crafting/raw_circuit_board"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.PRIMITIVE_CIRCUIT.get(), 1)
+            .pattern("TRC")
+            .pattern("WIB")
+            .define('T', Eln2Ingredients.VACUUM_TUBE.get())
+            .define('R', Eln2Ingredients.RESISTOR.get())
+            .define('C', Eln2Ingredients.CAPACITOR.get())
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .define('I', Eln2Ingredients.INDUCTOR.get())
+            .define('B', Eln2Ingredients.RAW_CIRCUIT_BOARD.get())
+            .unlockedBy("has_vacuum_tube", has(Eln2Ingredients.VACUUM_TUBE.get()))
+            .save(pWriter, resource("crafting/primitive_circuit"))
+
         //#endregion
 
         LOG.info("Generated manual recipes.")
