@@ -78,5 +78,13 @@
                 "stream": false
             }
         ]
+    },
+    "vacuum_sealing": {
+        "sounds": [
+            {
+                "name": "eln2:autoclave/autoclave_hum",
+                "stream": false
+            }
+        ]
     }
 }

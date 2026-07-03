@@ -886,6 +886,34 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
 
         //#endregion
 
+        //#region Vacuum Tubes
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.GLASS_ENVELOPE.get(), 1)
+            .pattern("G G")
+            .pattern(" G ")
+            .define('G', Items::GLASS_PANE)
+            .unlockedBy("has_glass_pane", has(Items.GLASS_PANE))
+            .save(pWriter, resource("crafting/glass_envelope"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.UNSEALED_VACUUM_TUBE.get(), 1)
+            .pattern("FWW")
+            .pattern("PG ")
+            .define('F', Eln2Ingredients.TUNGSTEN_FILAMENT.get())
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .define('P', Eln2Ingredients.IRON_PLATE.get())
+            .define('G', Eln2Ingredients.GLASS_ENVELOPE.get())
+            .unlockedBy("has_tungsten_filament", has(Eln2Ingredients.TUNGSTEN_FILAMENT.get()))
+            .save(pWriter, resource("crafting/unsealed_vacuum_tube"))
+
+        DirectSimpleProcessingRecipeBuilder(Eln2Processing.VACUUM_SEALING_RECIPE)
+            .withInput(Eln2Ingredients.UNSEALED_VACUUM_TUBE.get())
+            .withOutput(Eln2Ingredients.VACUUM_TUBE.get())
+            .withDuration(60.0)
+            .unlockedBy("has_unsealed_tube", has(Eln2Ingredients.UNSEALED_VACUUM_TUBE.get()))
+            .save(pWriter, resource("vacuum_sealing/vacuum_tube"))
+
+        //#endregion
+
         LOG.info("Generated manual recipes.")
     }
 

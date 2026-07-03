@@ -323,6 +323,16 @@ object Eln2Processing : ContentModule() {
                 103.0f
             )
         }
+
+        MenuScreens.register(VACUUM_SEALING_MENU.get()) { menu, inventory, title ->
+            BasicProgressScreen(
+                menu, inventory, title,
+                resource("textures/gui/container/crusher_base.png"),
+                resource("textures/gui/container/crusher_progress.png"),
+                53.0f,
+                121.0f
+            )
+        }
     }
 
     //#region Coking
@@ -913,6 +923,38 @@ object Eln2Processing : ContentModule() {
     }
 
     val ELECTROLYSIS_MENU = menu("electrolysis", ::ElectrolysisMenu)
+
+    //#endregion
+
+    //#region Vacuum Sealing
+
+    val VACUUM_SEALING_RECIPE = registerDirectRecipe("vacuum_sealing")
+
+    val VACUUM_SEALING_SOUND = soundEventVariableRange("vacuum_sealing")
+
+    val VACUUM_SEALING_MODEL = lazy {
+        ProcessingMachineCompositeModel(FlwModels.CRUSHER_BODY) {
+        }
+    }
+
+    val VACUUM_SEALING_HULL = registerMachineHull("vacuum_sealing")
+
+    val VACUUM_SEALING_BRUSHED_DC_MOTOR = registerMachine(
+        VACUUM_SEALING_HULL, BRUSHED_DC_MOTOR_WORK_BOX,
+        {
+            VacuumSealingBlock(
+                it,
+                Quantity(200.0, WATT),
+                1.0,
+                0
+            )
+        },
+        ::VacuumSealingBlockEntity,
+        VACUUM_SEALING_MODEL,
+        ::ProcessingMachineBlockEntityVisual
+    )
+
+    val VACUUM_SEALING_MENU = menu("vacuum_sealing", ::VacuumSealingMenu)
 
     //#endregion
 }

@@ -247,6 +247,9 @@
     "item.eln2.tungsten_trioxide_paste": "Tungsten Trioxide Paste",
     "item.eln2.filament_shaped_tungsten_trioxide_paste": "Filament-Shaped Tungsten Trioxide Paste",
     "item.eln2.tungsten_filament": "Tungsten Filament",
+    "item.eln2.glass_envelope": "Glass Envelope",
+    "item.eln2.unsealed_vacuum_tube": "Unsealed Vacuum Tube",
+    "item.eln2.vacuum_tube": "Vacuum Tube",
     "item.eln2.scheelite_fusion_mix": "Scheelite Fusion Mix",
     "item.eln2.sodium_tungstenate_melt": "Sodium Tungstenate Melt",
     "item.eln2.tungstic_acid": "Tungstic Acid",
@@ -268,6 +271,7 @@
     "item.eln2.crusher": "Crusher Hull",
     "item.eln2.extruder": "Extruder Hull",
     "item.eln2.rolling_machine": "Rolling Machine Hull",
+    "item.eln2.vacuum_sealing": "Vacuum Sealing Hull",
     "item.eln2.extruder_wire_die": "Extruder Wire Die",
     "item.eln2.extruder_shaft_die": "Extruder Shaft Die",
 
@@ -303,6 +307,8 @@
     "block.eln2.brushed_dc_motor_extruder": "Brushed DC Motor Extruder",
     "block.eln2.primitive_kinetic_rolling_machine": "Primitive Kinetic Rolling Machine",
     "block.eln2.brushed_dc_motor_rolling_machine": "Brushed DC Motor Rolling Machine",
+    "block.eln2.brushed_dc_motor_vacuum_sealing": "Brushed DC Motor Vacuum Sealing Station",
+    "menu.eln2.vacuum_sealing": "Vacuum Sealing Station",
     "block.eln2.alloying_smelter": "Alloying Smelter",
     "block.eln2.hydrogen_reduction_furnace": "Hydrogen Reduction Furnace",
     "block.eln2.burner_reactor": "Burner Reactor",
@@ -403,6 +409,7 @@
     "recipe.eln2.burning": "Burning",
     "recipe.eln2.hydrogen_reduction": "Hydrogen Reduction",
     "recipe.eln2.electrolysis": "Electrolysis",
+    "recipe.eln2.vacuum_sealing": "Vacuum Sealing",
 
     "jei.eln2.vulcanizing.temperature_range": "Temperature: %s\u00B0C - %s\u00B0C",
     "jei.eln2.vulcanizing.burnt": "Result when overheated"

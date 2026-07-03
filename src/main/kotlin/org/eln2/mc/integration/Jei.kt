@@ -51,6 +51,7 @@ class Eln2Jei : IModPlugin {
     private lateinit var burningCategory: BurningCategory
     private lateinit var hydrogenReductionCategory: HydrogenReductionCategory
     private lateinit var electrolysisCategory: ElectrolysisCategory
+    private lateinit var vacuumSealingCategory: VacuumSealingCategory
 
     override fun getPluginUid(): ResourceLocation = resource("jei_plugin")
 
@@ -67,6 +68,7 @@ class Eln2Jei : IModPlugin {
         burningCategory = BurningCategory(registration.jeiHelpers.guiHelper)
         hydrogenReductionCategory = HydrogenReductionCategory(registration.jeiHelpers.guiHelper)
 
+        vacuumSealingCategory = VacuumSealingCategory(registration.jeiHelpers.guiHelper)
         electrolysisCategory = ElectrolysisCategory(registration.jeiHelpers.guiHelper)
         registration.addRecipeCategories(
             crushingCategory,
@@ -77,7 +79,8 @@ class Eln2Jei : IModPlugin {
             vulcanizingCategory,
             burningCategory,
             hydrogenReductionCategory,
-            electrolysisCategory
+            electrolysisCategory,
+            vacuumSealingCategory
         )
     }
 
@@ -98,6 +101,7 @@ class Eln2Jei : IModPlugin {
         registerCategory(registration, vulcanizingCategory, recipeManager, Eln2Processing.VULCANIZING_RECIPE)
         registerCategory(registration, burningCategory, recipeManager, Eln2Processing.BURNING_RECIPE)
         registerCategory(registration, electrolysisCategory, recipeManager, Eln2Processing.ELECTROLYSIS_RECIPE)
+        registerCategory(registration, vacuumSealingCategory, recipeManager, Eln2Processing.VACUUM_SEALING_RECIPE)
         registerCategory(registration, hydrogenReductionCategory, recipeManager, Eln2Processing.HYDROGEN_REDUCTION_RECIPE)
     }
 
@@ -116,7 +120,8 @@ class Eln2Jei : IModPlugin {
             vulcanizingCategory,
             burningCategory,
             hydrogenReductionCategory,
-            electrolysisCategory
+            electrolysisCategory,
+            vacuumSealingCategory
         ).forEach { category ->
             category.collectCatalysts().forEach { catalyst ->
                 registration.addRecipeCatalyst(catalyst.get(), category.jeiRecipeType)
@@ -383,6 +388,40 @@ class CrushingCategory(guiHelper: IGuiHelper) : Eln2RecipeCategory<DirectSimpleP
     categoryCatalysts = listOf(
         Supplier { ItemStack(Eln2Processing.CRUSHER_PRIMITIVE_KINETIC.blockAndItem.item.get()) },
         Supplier { ItemStack(Eln2Processing.CRUSHER_BRUSHED_DC_MOTOR.blockAndItem.item.get()) }
+    ),
+    guiHelper
+) {
+    private val slot = SlotBackground()
+
+    override fun setRecipe(builder: IRecipeLayoutBuilder, recipe: DirectSimpleProcessingRecipe, focuses: IFocusGroup) {
+        builder.addSlot(RecipeIngredientRole.INPUT, 27, 29)
+            .setBackground(slot, -1, -1)
+            .addIngredients(recipe.input)
+
+        builder.addSlot(RecipeIngredientRole.OUTPUT, 132, 29)
+            .setBackground(slot, -1, -1)
+            .addItemStack(recipe.output)
+    }
+
+    override fun draw(
+        recipe: DirectSimpleProcessingRecipe,
+        recipeSlotsView: IRecipeSlotsView,
+        graphics: GuiGraphics,
+        mouseX: Double,
+        mouseY: Double
+    ) {
+        noteArrow(graphics, 62, 32)
+    }
+}
+
+class VacuumSealingCategory(guiHelper: IGuiHelper) : Eln2RecipeCategory<DirectSimpleProcessingRecipe>(
+    jeiRecipeType = RecipeType(resource("vacuum_sealing"), DirectSimpleProcessingRecipe::class.java),
+    categoryTitle = Component.translatable("recipe.eln2.vacuum_sealing"),
+    categoryWidth = 177,
+    categoryHeight = 70,
+    categoryIcon = ItemIcon(ItemStack(Eln2Processing.VACUUM_SEALING_BRUSHED_DC_MOTOR.blockAndItem.item.get())),
+    categoryCatalysts = listOf(
+        Supplier { ItemStack(Eln2Processing.VACUUM_SEALING_BRUSHED_DC_MOTOR.blockAndItem.item.get()) }
     ),
     guiHelper
 ) {

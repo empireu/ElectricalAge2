@@ -320,6 +320,10 @@ object Eln2Ingredients : ContentModule() {
     val FILAMENT_SHAPED_TUNGSTEN_TRIOXIDE_PASTE = itemDefault("filament_shaped_tungsten_trioxide_paste")
     val TUNGSTEN_FILAMENT = itemDefault("tungsten_filament")
 
+    val GLASS_ENVELOPE = itemDefault("glass_envelope")
+    val UNSEALED_VACUUM_TUBE = itemDefault("unsealed_vacuum_tube")
+    val VACUUM_TUBE = itemDefault("vacuum_tube")
+
     val SCHEELITE_FUSION_MIX = itemDefault("scheelite_fusion_mix")
     val SODIUM_TUNGSTENATE_MELT = itemDefault("sodium_tungstenate_melt")
     val TUNGSTIC_ACID = itemDefault("tungstic_acid")
