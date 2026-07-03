@@ -572,6 +572,44 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
 
         //#endregion
 
+        //#region Grid Cables
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Grid.POWER_GRID_CONNECT_COPPER.item.get(), 4)
+            .pattern("W W")
+            .pattern(" W ")
+            .define('W', Eln2Ingredients.ENAMELED_COPPER_WIRE.get())
+            .unlockedBy("has_enameled_copper_wire", has(Eln2Ingredients.ENAMELED_COPPER_WIRE.get()))
+            .save(pWriter, resource("crafting/power_grid_copper_cable"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Grid.MICRO_GRID_CONNECT_COPPER.item.get(), 4)
+            .pattern(" R ")
+            .pattern(" R ")
+            .define('R', Eln2Ingredients.COPPER_ROD.get())
+            .unlockedBy("has_copper_rod", has(Eln2Ingredients.COPPER_ROD.get()))
+            .save(pWriter, resource("crafting/micro_grid_copper_cable"))
+
+        //#endregion
+
+        //#region Grid Interfaces
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Grid.POWER_GRID_INTERFACE_PART.item.get(), 4)
+            .pattern(" I ")
+            .pattern("CCC")
+            .define('I', Items.COPPER_INGOT)
+            .define('C', Eln2Grid.POWER_GRID_CONNECT_COPPER.item.get())
+            .unlockedBy("has_power_grid_cable", has(Eln2Grid.POWER_GRID_CONNECT_COPPER.item.get()))
+            .save(pWriter, resource("crafting/power_grid_interface"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Grid.MICRO_GRID_INTERFACE_PART.item.get(), 4)
+            .pattern(" R ")
+            .pattern(" C ")
+            .define('R', Eln2Ingredients.COPPER_ROD.get())
+            .define('C', Eln2Grid.MICRO_GRID_CONNECT_COPPER.item.get())
+            .unlockedBy("has_micro_grid_cable", has(Eln2Grid.MICRO_GRID_CONNECT_COPPER.item.get()))
+            .save(pWriter, resource("crafting/micro_grid_interface"))
+
+        //#endregion
+
         //#region Simple Plate Recipes
 
         ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.LEAD_PLATE.get())
@@ -996,6 +1034,16 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_vacuum_tube", has(Eln2Ingredients.VACUUM_TUBE.get()))
             .save(pWriter, resource("crafting/primitive_circuit"))
 
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2PowerDevices.PRIMITIVE_DC_TO_DC_CONVERTER_BLOCK.get())
+            .pattern("ICI")
+            .pattern("PMP")
+            .pattern("ICI")
+            .define('I', Eln2Ingredients.INDUCTOR.get())
+            .define('C', Eln2Ingredients.PRIMITIVE_CIRCUIT.get())
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .define('M', Eln2Ingredients.MACHINE_FRAME.get())
+            .unlockedBy("has_primitive_circuit", has(Eln2Ingredients.PRIMITIVE_CIRCUIT.get()))
+            .save(pWriter, resource("crafting/primitive_dc_to_dc_converter"))
         //#endregion
 
         LOG.info("Generated manual recipes.")
