@@ -184,6 +184,9 @@ object Eln2Ingredients : ContentModule() {
     val RAW_CARBON_BRUSH = itemDefault("raw_carbon_brush")
     val CARBON_BRUSH = itemDefault("carbon_brush")
 
+    val UNFIRED_RESISTOR = itemDefault("unfired_resistor")
+    val RESISTOR = itemDefault("resistor")
+
     //#region Crushed Ores
 
     val CRUSHED_IRON_ORE = itemDefault("crushed_iron_ore")
@@ -330,6 +333,7 @@ object Eln2Ingredients : ContentModule() {
 
     val CRUDE_MAGNET = itemDefault("crude_magnet")
     val COPPER_COIL = itemDefault("copper_coil")
+    val INDUCTOR = itemDefault("inductor")
     val ROTOR_COIL_ASSEMBLY = itemDefault("rotor_coil_assembly")
     val ROTOR_COMMUTATOR = itemDefault("rotor_commutator")
     val COPPER_ROTOR = itemDefault("copper_rotor")

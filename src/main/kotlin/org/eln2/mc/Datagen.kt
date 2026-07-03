@@ -912,6 +912,40 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_unsealed_tube", has(Eln2Ingredients.UNSEALED_VACUUM_TUBE.get()))
             .save(pWriter, resource("vacuum_sealing/vacuum_tube"))
 
+
+        //#region Circuit Components
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.INDUCTOR.get(), 4)
+            .pattern(" W ")
+            .pattern(" I ")
+            .pattern(" W ")
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .define('I', Items::IRON_NUGGET)
+            .unlockedBy("has_copper_wire", has(Eln2Ingredients.COPPER_WIRE.get()))
+            .save(pWriter, resource("crafting/inductor"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.UNFIRED_RESISTOR.get(), 4)
+            .pattern(" C ")
+            .pattern("WPW")
+            .pattern(" C ")
+            .define('C', Items::CLAY_BALL)
+            .define('P', Eln2Ingredients.CARBON_PUTTY.get())
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .unlockedBy("has_carbon_putty", has(Eln2Ingredients.CARBON_PUTTY.get()))
+            .save(pWriter, resource("crafting/unfired_resistor"))
+
+        SimpleCookingRecipeBuilder.smelting(
+            Ingredient.of(Eln2Ingredients.UNFIRED_RESISTOR.get()),
+            RecipeCategory.MISC,
+            Eln2Ingredients.RESISTOR.get(),
+            0.3f,
+            200
+        ).apply {
+            unlockedBy("has_unfired_resistor", has(Eln2Ingredients.UNFIRED_RESISTOR.get()))
+            save(pWriter, resource("smelting/unfired_resistor_to_resistor"))
+        }
+
+        //#endregion
         //#endregion
 
         LOG.info("Generated manual recipes.")
