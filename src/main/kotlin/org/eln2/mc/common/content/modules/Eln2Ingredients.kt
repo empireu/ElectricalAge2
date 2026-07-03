@@ -332,6 +332,7 @@ object Eln2Ingredients : ContentModule() {
     val GLASS_ENVELOPE = itemDefault("glass_envelope")
     val UNSEALED_VACUUM_TUBE = itemDefault("unsealed_vacuum_tube")
     val VACUUM_TUBE = itemDefault("vacuum_tube")
+    val UNSEALED_240V_100W_LIGHT_BULB = itemDefault("unsealed_240v_100w_light_bulb")
 
     val SCHEELITE_FUSION_MIX = itemDefault("scheelite_fusion_mix")
     val SODIUM_TUNGSTENATE_MELT = itemDefault("sodium_tungstenate_melt")

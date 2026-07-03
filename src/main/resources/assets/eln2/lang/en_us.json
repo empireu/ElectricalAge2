@@ -139,9 +139,8 @@
     "item.eln2.fluid_pipe_insertion_valve": "Fluid Pipe Insertion Valve",
 
     // Lightbulbs:
-    "item.eln2.light_bulb_12v_100w": "12V 100W Light Bulb",
-    "item.eln2.light_bulb_800v_100w": "800V 100W Light Bulb",
-
+    "item.eln2.light_bulb_240v_100w": "240V 100W Light Bulb",
+    "item.eln2.unsealed_240v_100w_light_bulb": "Unsealed 240V 100W Light Bulb",
     // Batteries:
     "item.eln2.lead_acid_battery_12v": "12V Lead-Acid Battery",
     "item.eln2.micro_grid_lead_acid_battery_12v": "12V Lead-Acid Battery",

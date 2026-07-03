@@ -950,6 +950,62 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
 
         //#endregion
 
+        //#region Light Bulb
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.UNSEALED_240V_100W_LIGHT_BULB.get(), 1)
+            .pattern(" E ")
+            .pattern(" F ")
+            .pattern("NIN")
+            .define('E', Eln2Ingredients.GLASS_ENVELOPE.get())
+            .define('F', Eln2Ingredients.TUNGSTEN_FILAMENT.get())
+            .define('N', Items.IRON_NUGGET)
+            .define('I', Eln2Ingredients.COPPER_WIRE.get())
+            .unlockedBy("has_tungsten_filament", has(Eln2Ingredients.TUNGSTEN_FILAMENT.get()))
+            .save(pWriter, resource("crafting/unsealed_240v_100w_light_bulb"))
+
+        DirectSimpleProcessingRecipeBuilder(Eln2Processing.VACUUM_SEALING_RECIPE)
+            .withInput(Eln2Ingredients.UNSEALED_240V_100W_LIGHT_BULB.get())
+            .withOutput(Eln2Lights.LIGHT_BULB_240V_100W.get())
+            .withDuration(60.0)
+            .unlockedBy("has_unsealed_bulb", has(Eln2Ingredients.UNSEALED_240V_100W_LIGHT_BULB.get()))
+            .save(pWriter, resource("vacuum_sealing/light_bulb_240v_100w"))
+
+        //#endregion
+
+        //#region Light Fixtures
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Lights.LIGHT_PART.item.get(), 4)
+            .pattern(" G ")
+            .pattern("W W")
+            .pattern(" P ")
+            .define('G', Items.GLASS_PANE)
+            .define('W', Eln2Wires.STANDARD_INSULATED_COPPER_ELECTRICAL_WIRE.part.item.get())
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .unlockedBy("has_insulated_wire", has(Eln2Wires.STANDARD_INSULATED_COPPER_ELECTRICAL_WIRE.part.item.get()))
+            .save(pWriter, resource("crafting/small_wall_lamp"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Lights.LIGHT_PART_MICRO_GRID.item.get(), 4)
+            .pattern(" G ")
+            .pattern("W W")
+            .pattern(" P ")
+            .define('G', Items.GLASS_PANE)
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .unlockedBy("has_copper_wire", has(Eln2Ingredients.COPPER_WIRE.get()))
+            .save(pWriter, resource("crafting/small_wall_lamp_micro_grid"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Lights.LAMP_POLE_BLOCK_ITEM.get())
+            .pattern(" G ")
+            .pattern(" W ")
+            .pattern("CWC")
+            .define('G', Items.GLASS)
+            .define('W', Ingredient.of(ItemTags.PLANKS))
+            .define('C', Eln2Grid.POWER_GRID_CONNECT_COPPER.item.get())
+            .unlockedBy("has_grid_cable", has(Eln2Grid.POWER_GRID_CONNECT_COPPER.item.get()))
+            .save(pWriter, resource("crafting/lamp_pole"))
+
+        //#endregion
+
         //#region Inductor
 
         ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.INDUCTOR.get(), 4)
