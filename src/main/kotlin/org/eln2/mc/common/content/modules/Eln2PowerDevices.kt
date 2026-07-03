@@ -29,6 +29,7 @@ import org.eln2.mc.common.content.PrimitivePowerConverterBlock
 import org.eln2.mc.common.content.PrimitivePowerConverterBlockEntity
 import org.eln2.mc.common.content.TerminalDcToDcConverterCell
 import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
+import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
 import org.eln2.mc.common.specs.SpecRegistry.specImmediateBB
 
 object Eln2PowerDevices : ContentModule() {
@@ -126,4 +127,6 @@ object Eln2PowerDevices : ContentModule() {
         PRIMITIVE_DC_TO_DC_CONVERTER_BLOCK.block,
         ::PrimitivePowerConverterBlockEntity
     )
+
+    val POWER_ELECTROMAGNETIC_SOUND = soundEventVariableRange("power.electromagnetic")
 }

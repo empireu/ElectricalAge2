@@ -39,6 +39,14 @@
             }
         ]
     },
+    "power.electromagnetic": {
+        "sounds": [
+            {
+                "name": "eln2:electromagnetic_hum",
+                "stream": false
+            }
+        ]
+    },
     "steam.release0": {
         "sounds": [
             {

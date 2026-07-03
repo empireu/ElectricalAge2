@@ -63,13 +63,7 @@ data class SoundInfo(val pitch: Double, val volume: Double) {
             val saturation = p / (1.0 + p)
             val pitch = (basePitch + pitchRange * saturation.pow(powExponent)).coerceIn(0.4, 4.0)
 
-            val quietDb = -48.0
-            val loudDb  = -6.0
-            val db = quietDb * (1.0 - saturation) + loudDb * saturation
-            val amplitude = (10.0).pow(db / 20.0)
-
-            val masterScale = 1.0
-            val volume = (amplitude * masterScale).coerceIn(0.0, 3.0)
+            val volume = p.pow(0.7).coerceIn(0.0, 3.0)
 
             return SoundInfo(
                 pitch = pitch,

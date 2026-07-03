@@ -3,13 +3,19 @@ package org.eln2.mc.common.content
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.level.BlockGetter
+import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.entity.BlockEntity
+import net.minecraft.world.level.block.entity.BlockEntityTicker
+import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.shapes.CollisionContext
 import net.minecraft.world.phys.shapes.Shapes
 import net.minecraft.world.phys.shapes.VoxelShape
 import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
@@ -28,6 +34,12 @@ import org.eln2.mc.common.content.modules.Eln2PowerDevices
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridMaterialCategory
 import org.eln2.mc.common.grids.GridNode
+import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
+import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
+import org.eln2.mc.common.network.serverToClient.sendBulkPacket
+import org.eln2.mc.common.sounds.foundation.SimpleLoopingBlockEntitySoundInstance
+import org.eln2.mc.common.sounds.foundation.SoundInfo
+import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
 import org.eln2.mc.common.specs.foundation.CellSpec
 import org.eln2.mc.common.specs.foundation.SpecCreateInfo
 import org.eln2.mc.extensions.loadNbt
@@ -64,6 +76,9 @@ data class DcToDcConverterModel(
 
 fun interface RejectedEnergyAcceptor {
     fun accept(energy: Quantity<Energy>)
+}
+fun interface PowerLoadConsumer {
+    fun onPowerLoadChange(power: Double)
 }
 
 /**
@@ -293,8 +308,35 @@ class TerminalDcToDcConverterCell(
         thermalWire.thermalBody.energy += rejectedEnergy
     }.also { it.setpointPotential = Quantity(24.0, VOLT) }
 
+    @Replicator
+    fun powerLoadReplicator(consumer: PowerLoadConsumer) = PowerLoadReplicatorBehavior(this, consumer)
+
     @Node
     val grid = GridNode(this)
+}
+
+class PowerLoadReplicatorBehavior(
+    val cell: TerminalDcToDcConverterCell,
+    val consumer: PowerLoadConsumer
+) : ReplicatorBehavior {
+    var powerEps = 1.0
+    private var replicatedPower = -1.0
+
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
+        subscribers.addSubscriber(
+            SubscriberOptions(5, SimulationPhase.Post),
+            this::scan
+        )
+    }
+
+    private fun scan(dt: Double, subscriberPhase: SimulationPhase) {
+        val targetPower = cell.converter.inputConsumer.power.coerceAtLeast(0.0)
+
+        if(!targetPower.approxEq(replicatedPower, powerEps)) {
+            replicatedPower = targetPower
+            consumer.onPowerLoadChange(targetPower)
+        }
+    }
 }
 
 class DcToDcConverterSpec(ci: SpecCreateInfo) :
@@ -371,6 +413,20 @@ class PrimitivePowerConverterBlock : UprightHorizontalDirectionCellBlock<Termina
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = PrimitivePowerConverterBlockEntity(pPos, pState)
 
+    override fun <T : BlockEntity?> getTicker(
+        pLevel: Level,
+        pState: BlockState,
+        pBlockEntityType: BlockEntityType<T?>
+    ): BlockEntityTicker<T> {
+        return BlockEntityTicker { _, _, _, pBlockEntity ->
+            if(pBlockEntity is PrimitivePowerConverterBlockEntity) {
+                if(pLevel.isClientSide) {
+                    pBlockEntity.clientTick()
+                }
+            }
+        }
+    }
+
     @Deprecated("Deprecated in Java", ReplaceWith("true"))
     override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction) = true
 
@@ -409,7 +465,9 @@ class PrimitivePowerConverterBlock : UprightHorizontalDirectionCellBlock<Termina
 class PrimitivePowerConverterBlockEntity(pos: BlockPos, state: BlockState) :
     GridCellBlockEntity<TerminalDcToDcConverterCell>(pos, state, Eln2PowerDevices.PRIMITIVE_DC_TO_DC_CONVERTER_BLOCK_ENTITY.get()),
     ScrewdriverScrollable,
-    ComponentDisplay
+    ComponentDisplay,
+    BulkPacketHandlerBlockEntity,
+    PowerLoadConsumer
 {
     override fun createTerminals() {
         val categories = listOf(GridMaterialCategory.PowerGrid)
@@ -479,5 +537,95 @@ class PrimitivePowerConverterBlockEntity(pos: BlockPos, state: BlockState) :
         builder.quantityOutput(cell.converter.outputSource.readouts.current)
         builder.quantityOutput(cell.converter.outputSource.readouts.power)
         builder.quantitySetpoint(cell.converter.setpointPotential)
+    }
+
+    @ClientOnly
+    private var renderState: RenderState? = null
+
+    @ClientOnly
+    private class RenderState {
+        var nominalPower = 1.0
+        var targetPower = 0.0
+        val powerInterpolator = FramerateIndependentSmoother1d(0.25)
+        var soundInstance: SimpleLoopingBlockEntitySoundInstance<PrimitivePowerConverterBlockEntity>? = null
+    }
+
+    override fun setLevel(pLevel: Level) {
+        super.setLevel(pLevel)
+
+        if(pLevel.isClientSide) {
+            renderState = RenderState()
+        }
+    }
+
+    @ClientOnly
+    override val clientSidePacketHandlerLazy = createClientSideHandler()
+
+    @ClientOnly
+    override fun setupPacketsOnClient(handler: ClientSidePacketHandlerBuilder) {
+        handler.withHandler<PowerLoadPacket>(PowerLoadPacket::deserialize) {
+            renderState!!.targetPower = it.power
+        }
+    }
+
+    @ServerOnly
+    override fun onPowerLoadChange(power: Double) {
+        sendBulkPacket(PowerLoadPacket::serialize, PowerLoadPacket(power))
+    }
+
+    @ClientOnly
+    fun clientTick() {
+        val state = renderState ?: return
+
+        if(state.soundInstance == null) {
+            state.soundInstance = SimpleLoopingBlockEntitySoundInstance(this, Eln2PowerDevices.POWER_ELECTROMAGNETIC_SOUND.get()).also {
+                it.events.registerHandler<SoundInstanceTickEvent> { _ ->
+                    state.powerInterpolator.update(state.targetPower)
+                    it.soundInfo = SoundInfo.electromagnetic(
+                        state.powerInterpolator.value,
+                        state.nominalPower
+                    )
+                }
+
+                it.registerOnAudioManager()
+            }
+        }
+    }
+
+    @ServerOnly
+    override fun getUpdateTag(): CompoundTag {
+        val tag = super.getUpdateTag()
+
+        if(hasCell) {
+            tag.putDouble(NOMINAL_POWER, !cell.converter.model.powerRating)
+            sendBulkPacket(PowerLoadPacket::serialize, PowerLoadPacket(cell.converter.inputConsumer.power.coerceAtLeast(0.0)))
+        }
+
+        return tag
+    }
+
+    @ClientOnly
+    override fun handleUpdateTag(tag: CompoundTag?) {
+        super.handleUpdateTag(tag)
+
+        if(tag != null && tag.contains(NOMINAL_POWER)) {
+            renderState?.nominalPower = tag.getDouble(NOMINAL_POWER)
+        }
+    }
+
+    private data class PowerLoadPacket(val power: Double) {
+        companion object {
+            fun serialize(packet: PowerLoadPacket, buffer: FriendlyByteBuf) {
+                buffer.writeDouble(packet.power)
+            }
+
+            fun deserialize(buffer: FriendlyByteBuf) = PowerLoadPacket(
+                buffer.readDouble()
+            )
+        }
+    }
+
+    companion object {
+        private const val NOMINAL_POWER = "nominalPower"
     }
 }
