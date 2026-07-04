@@ -107,10 +107,10 @@ object Eln2SteamTurbine : ContentModule() {
     )
 
     val STEAM_TURBINE_FLUID_DELEGATE_BLOCK_INPUT =
-        blockOnly("steam_turbine_fluid_port_input") { SteamTurbineFluidDelegateBlock("Steam Input") }
+        blockOnly("steam_turbine_fluid_port_input") { SteamTurbineFluidDelegateBlock() }
 
     val STEAM_TURBINE_FLUID_DELEGATE_BLOCK_OUTPUT =
-        blockOnly("steam_turbine_fluid_port_output") { SteamTurbineFluidDelegateBlock("Water/Steam Output") }
+        blockOnly("steam_turbine_fluid_port_output") { SteamTurbineFluidDelegateBlock() }
 
     val STEAM_TURBINE_FLUID_DELEGATE_BLOCK_ENTITY = blockEntityOnly(
         "steam_turbine_fluid_port",
