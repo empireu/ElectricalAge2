@@ -5,14 +5,17 @@ package org.eln2.mc.common.content.modules
 import org.ageseries.libage.data.*
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
+import org.ageseries.libage.sim.Pole
 import org.ageseries.libage.sim.ThermalMassDefinition
+import org.eln2.mc.FrictionNodeDescription
 import org.eln2.mc.MonopoleMap
+import org.eln2.mc.NodeFrictionDescription
+import org.eln2.mc.PoleMap
 import org.eln2.mc.common.blocks.BlockRegistry.blockEntityOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockItemOnly
 import org.eln2.mc.common.blocks.BlockRegistry.blockOnly
 import org.eln2.mc.common.blocks.BlockRegistry.defineDelegateMap
 import org.eln2.mc.common.blocks.foundation.BigBlockItem
-import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.cells.foundation.KineticSize
@@ -35,7 +38,18 @@ object Eln2SteamTurbine : ContentModule() {
         overcapacityThreshold = 1.5,
     )
 
-    val STEAM_TURBINE_CELL = cellImmediate("steam_turbine", ::SteamTurbineCell)
+    val SHAFT_FRICTION = FrictionNodeDescription(
+        Quantity(10.0, KILOGRAM_METER2),
+        NodeFrictionDescription(
+            0.5,
+            Quantity(0.5, NEWTON_METER),
+            Quantity(1.0, NEWTON_METER)
+        )
+    )
+
+    val STEAM_TURBINE_CELL = cellMemoize("steam_turbine") {
+        CellFactory { SteamTurbineCell(it, STEAM_TURBINE_MODEL, SHAFT_FRICTION) }
+    }
 
     val STEAM_TURBINE_BLOCK = blockOnly("steam_turbine", ::SteamTurbineBlock).withSelfDrop()
 
@@ -46,8 +60,11 @@ object Eln2SteamTurbine : ContentModule() {
     )
 
     val STEAM_TURBINE_KINETIC_DELEGATE_CELL = cellMemoize("steam_turbine_kinetic_port") {
-        val map = MonopoleMap { _, _ -> true }
-        CellFactory { SteamTurbineKineticPortCell(it, map, KineticSize.Standard) }
+        val map = PoleMap { _, _ -> Pole.Positive }
+
+        CellFactory {
+            SteamTurbineKineticPortCell(it, map, KineticSize.Standard)
+        }
     }
 
     val STEAM_TURBINE_KINETIC_DELEGATE_BLOCK_LEFT =
@@ -68,8 +85,12 @@ object Eln2SteamTurbine : ContentModule() {
             ChemicalElement.Copper.asMaterial,
             mass = Quantity(5.0, KILOGRAM)
         )
+
         val map = MonopoleMap { _, _ -> true }
-        CellFactory { SteamTurbineThermalPortCell(it, thermalDef, map, ThermalSize.Standard) }
+
+        CellFactory {
+            SteamTurbineThermalPortCell(it, thermalDef, map, ThermalSize.Standard)
+        }
     }
 
     val STEAM_TURBINE_THERMAL_DELEGATE_BLOCK_A =

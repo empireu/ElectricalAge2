@@ -8,36 +8,16 @@ import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.state.BlockState
 import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.ThermalMassDefinition
+import org.ageseries.libage.sim.kinetic.KineticDouble
 import org.ageseries.libage.sim.kinetic.KineticExtension
-import org.ageseries.libage.sim.kinetic.KineticMono
 import org.ageseries.libage.sim.kinetic.KineticNodeSet
-import org.eln2.mc.FrictionNodeDescription
-import org.eln2.mc.Locators
-import org.eln2.mc.MonopoleMap
-import org.eln2.mc.NodeFrictionDescription
-import org.eln2.mc.common.blocks.foundation.BigBlockRepresentativeBlockEntity
-import org.eln2.mc.common.blocks.foundation.CellBlockEntity
-import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlock
-import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockEntity
-import org.eln2.mc.common.blocks.foundation.MultiblockDelegateCellBlockEntity
-import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
-import org.eln2.mc.common.blocks.foundation.MultiblockDelegateUprightHorizontalDirectionCellBlock
-import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
-import org.eln2.mc.common.blocks.foundation.getRepresentativeFromDelegateBlockEntity
-import org.eln2.mc.common.cells.foundation.CellAndContainerHandle
-import org.eln2.mc.common.cells.foundation.Cell
-import org.eln2.mc.common.cells.foundation.CellCreateInfo
-import org.eln2.mc.common.cells.foundation.KineticObject
-import org.eln2.mc.common.cells.foundation.KineticSize
-import org.eln2.mc.common.cells.foundation.PersistentObject
-import org.eln2.mc.common.cells.foundation.SimObject
-import org.eln2.mc.common.cells.foundation.SidedKineticMonoMapped
-import org.eln2.mc.common.cells.foundation.SidedThermalMonoMapped
-import org.eln2.mc.common.cells.foundation.ThermalSize
-import org.eln2.mc.common.cells.foundation.planarCellScan
+import org.eln2.mc.*
+import org.eln2.mc.common.blocks.foundation.*
+import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.content.modules.Eln2SteamTurbine
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
@@ -56,7 +36,114 @@ data class SteamTurbineGeneratorModel(
     val overcapacityThreshold: Double,
 )
 
-class SteamTurbineCell(ci: CellCreateInfo) : Cell(ci)
+class SteamTurbineKineticObject(cell: SteamTurbineCell) : KineticObject<SteamTurbineCell>(cell), PersistentObject {
+    val node = KineticDouble()
+
+    init {
+        cell.shaftFriction.applyTo(node)
+    }
+
+    override fun addNodes(builder: KineticNodeSet) {
+        builder.add(node)
+    }
+
+    override fun offerExtension(remote: KineticObject<*>): KineticExtension? {
+        if (remote !is SteamTurbineKineticPortKineticObject) {
+            return null
+        }
+
+        val localPos = cell.locator.requireLocator(Locators.BLOCK)
+        val remotePos = remote.cell.locator.requireLocator(Locators.BLOCK)
+        val facing = cell.locator.requireLocator(Locators.CONVENTIONAL_FACING)
+
+        val localRemote = MultiblockTransformations.transformWorldMultiblock(
+            facing.direction, localPos, remotePos
+        )
+
+        return if (localRemote.x < 0) {
+            node.e1
+        } else {
+            node.e2
+        }
+    }
+
+    override fun saveObjectNbt() = CompoundTag().also {
+        it.putDouble(ANGLE, node.angle)
+        it.putDouble(OMEGA, node.angularVelocity)
+    }
+
+    override fun loadObjectNbt(tag: CompoundTag) {
+        node.setExternalAngle(tag.getDouble(ANGLE))
+        node.angularVelocity = tag.getDouble(OMEGA)
+    }
+
+    companion object {
+        private const val ANGLE = "angle"
+        private const val OMEGA = "omega"
+    }
+}
+
+class SteamTurbineCell(ci: CellCreateInfo, val model: SteamTurbineGeneratorModel, val shaftFriction: FrictionNodeDescription) : Cell(ci) {
+    @SimObject
+    val kinetic = SteamTurbineKineticObject(this)
+
+    @SimObject
+    val thermal = ThermalWireObject(
+        this,
+        ThermalMassDefinition(model.coldSideMaterial, mass = model.coldSideMass)(),
+        model.coldSideLeakage
+    )
+
+    @Behavior
+    val kineticBreakdown = KineticBreakdownBehavior.create(
+        model.breakdownAngularVelocity,
+        this,
+        kinetic.node::angularVelocity
+    )
+
+    @Behavior
+    val thermalBreakdown = ThermalBreakdownBehavior.create(
+        model.breakdownTemperature,
+        this,
+        thermal.thermalBody::temperature
+    )
+
+    override fun kineticObjectPredicate(remote: KineticObject<*>): Boolean {
+        if (remote.cell is SteamTurbineKineticPortCell) {
+            return true
+        }
+        return super.kineticObjectPredicate(remote)
+    }
+
+    override fun thermalObjectPredicate(remote: ThermalObject<*>): Boolean {
+        if (remote.cell is SteamTurbineThermalPortCell) {
+            return true
+        }
+        return super.thermalObjectPredicate(remote)
+    }
+
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
+        subscribers.addPre(this::simulationPre)
+        subscribers.addPost(this::simulationPost)
+    }
+
+    override fun subscribeServerThread(subscribers: SubscriberCollection<ServerPhase>) {
+        subscribers.addStart(this::serverStart)
+        subscribers.addEnd(this::serverEnd)
+    }
+
+    private fun simulationPre(dt: Double, phase: SimulationPhase) {
+    }
+
+    private fun simulationPost(dt: Double, phase: SimulationPhase) {
+    }
+
+    private fun serverStart(dt: Double, phase: ServerPhase) {
+    }
+
+    private fun serverEnd(dt: Double, phase: ServerPhase) {
+    }
+}
 
 class SteamTurbineBlock : UprightHorizontalDirectionCellBlock<SteamTurbineCell>() {
     override fun getCellProvider() = Eln2SteamTurbine.STEAM_TURBINE_CELL.get()
@@ -88,10 +175,9 @@ class SteamTurbineBlockEntity(pos: BlockPos, state: BlockState) :
     }
 }
 
-class SteamTurbineKineticPortKineticObject(cell: SteamTurbineKineticPortCell) :
-    KineticObject<SteamTurbineKineticPortCell>(cell), PersistentObject
+class SteamTurbineKineticPortKineticObject(cell: SteamTurbineKineticPortCell) : KineticObject<SteamTurbineKineticPortCell>(cell), PersistentObject
 {
-    val node = KineticMono()
+    val node = KineticDouble()
 
     init {
         KINETIC_PORT_FRICTION_DESCRIPTION.applyTo(node)
@@ -101,7 +187,13 @@ class SteamTurbineKineticPortKineticObject(cell: SteamTurbineKineticPortCell) :
         builder.add(node)
     }
 
-    override fun offerExtension(remote: KineticObject<*>): KineticExtension = node.extension
+    override fun offerExtension(remote: KineticObject<*>): KineticExtension? {
+        return if (remote is SteamTurbineKineticObject) {
+            node.e2
+        } else {
+            node.e1
+        }
+    }
 
     override fun saveObjectNbt() = CompoundTag().also {
         it.putDouble(ANGLE, node.angle)
@@ -121,17 +213,22 @@ class SteamTurbineKineticPortKineticObject(cell: SteamTurbineKineticPortCell) :
 
 class SteamTurbineKineticPortCell(
     ci: CellCreateInfo,
-    override val kineticMap: MonopoleMap,
+    override val kineticMap: PoleMap,
     override val kineticSize: KineticSize,
-) : Cell(ci), SidedKineticMonoMapped<SteamTurbineKineticPortCell>
+) : Cell(ci), SidedKineticMapped<SteamTurbineKineticPortCell>
 {
+    override fun kineticObjectPredicate(remote: KineticObject<*>): Boolean {
+        if (remote.cell is SteamTurbineCell) {
+            return true
+        }
+        return super.kineticObjectPredicate(remote)
+    }
+
     @SimObject
     val kinetic = SteamTurbineKineticPortKineticObject(this)
 }
 
-class SteamTurbineKineticDelegateBlock(val portLabel: String) :
-    MultiblockDelegateUprightHorizontalDirectionCellBlock<SteamTurbineKineticPortCell>()
-{
+class SteamTurbineKineticDelegateBlock(val portLabel: String) : MultiblockDelegateUprightHorizontalDirectionCellBlock<SteamTurbineKineticPortCell>() {
     @Deprecated("Deprecated in Java")
     override fun skipRendering(pState: BlockState, pAdjacentState: BlockState, pDirection: Direction) = true
 
@@ -169,6 +266,7 @@ class SteamTurbineKineticDelegateBlockEntity(pos: BlockPos, state: BlockState) :
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         builder.debugInIDE { "Kinetic Port [$portLabel] @ $blockPos (rep: $representativePos)" }
+        builder.debugInIDE { "Vel: ${cell.kinetic.node.angularVelocity.rounded()}" }
     }
 }
 
@@ -179,6 +277,13 @@ class SteamTurbineThermalPortCell(
     override val thermalSize: ThermalSize,
 ) : Cell(ci), SidedThermalMonoMapped<SteamTurbineThermalPortCell>
 {
+    override fun thermalObjectPredicate(remote: ThermalObject<*>): Boolean {
+        if (remote.cell is SteamTurbineCell) {
+            return true
+        }
+        return super.thermalObjectPredicate(remote)
+    }
+
     @SimObject
     val thermalWire = ThermalWireObject(this, thermalDef())
 }
