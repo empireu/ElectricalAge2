@@ -15,6 +15,7 @@ import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.InteractionHand
@@ -27,9 +28,19 @@ import net.minecraft.world.level.LightLayer
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.BlockHitResult
-import net.minecraftforge.common.ForgeHooks
+import net.minecraftforge.common.capabilities.Capability
+import net.minecraftforge.common.capabilities.ForgeCapabilities
+import net.minecraftforge.common.util.LazyOptional
+import net.minecraftforge.items.ItemStackHandler
+import net.minecraft.world.entity.player.Inventory
+import net.minecraft.world.inventory.AbstractContainerMenu
+import net.minecraft.world.inventory.ContainerLevelAccess
+import net.minecraft.world.level.block.entity.BlockEntity
+import net.minecraft.world.level.block.entity.BlockEntityTicker
+import net.minecraft.world.level.block.entity.BlockEntityType
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.geometry.Vector2di
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMass
@@ -37,11 +48,18 @@ import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.*
+import org.eln2.mc.client.screens.ProgressSupplierMenu
+import org.eln2.mc.common.blocks.foundation.BigBlockRepresentativeBlockEntity
 import org.eln2.mc.common.blocks.foundation.CellBlockEntity
+import org.eln2.mc.common.blocks.foundation.MultiblockDelegateBlockEntity
+import org.eln2.mc.common.blocks.foundation.MultiblockDelegateMap
 import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
 import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.content.FuelBurnState.Companion.canBurn
+import org.eln2.mc.common.content.modules.Eln2ConventionTags
 import org.eln2.mc.common.content.modules.Eln2HeatGenerators
+import org.eln2.mc.common.containers.ContainerHelper
+import org.eln2.mc.common.containers.ProgressContainerData
+import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
 import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
@@ -54,6 +72,8 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sqrt
+
+//#region Simulation
 
 /**
  * @param conductivityGasCoal The conductivity between the input gas and the coal. This, most importantly, determines how much heat the coal can absorb from the chemical reaction.
@@ -379,6 +399,13 @@ abstract class BurnerCell(ci: CellCreateInfo, val burnerCellOptions: BurnerCellO
         burnerCellOptions.leakageParameters
     )
 
+    @Behavior
+    val explosion = ThermalBreakdownBehavior.create(
+        Quantity(1800.0, CELSIUS),
+        this,
+        hull.thermalBody::temperature
+    )
+
     val simulation = BurnerSimulation(
         ci.environment.ambientTemperature,
         hull.thermalBody,
@@ -607,6 +634,15 @@ abstract class BurnerCell(ci: CellCreateInfo, val burnerCellOptions: BurnerCellO
     }
 }
 
+//#endregion
+
+/**
+ * The mass of coal loaded per item.
+ * */
+private val COAL_ITEM_MASS = Quantity(10.0, KILOGRAM)
+
+//#region Primitive Burner
+
 /**
  * Burner fed by the chimney effect.
  * Has only one output side.
@@ -728,7 +764,7 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
 
                 cell.replaceCoal(
                     CoalGradeRegistry.DEFAULT,
-                    Quantity(10.0, KILOGRAM)
+                    COAL_ITEM_MASS
                 )
 
                 stack.eln2Consume(player)
@@ -1093,60 +1129,511 @@ class PrimitiveBurnerBlockEntityVisual(ctx: VisualizationContext, blockEntity: P
     }
 }
 
+//#endregion
+
+//#region Advanced Coal Burner
+
+private const val ADVANCED_BURNER_FUEL_SLOT_COUNT = 1
+
 /**
- * Represents a mass of fuel which is mutable (the amount of fuel can be changed).
- * @param fuelAmount The initial amount of fuel.
- * @param energyDensity The energy density (quantity of energy per unit mass).
+ * Advanced burner cell with PID temperature setpoint control.
+ * Uses a [PIDController] to modulate the draft strength to maintain a target hull temperature.
+ * @param maxDraftStrength The maximum draft strength.
+ * @param pidGains The PID gains for the temperature controller.
  * */
-class FuelBurnState(var fuelAmount: Quantity<Mass>, val energyDensity: Quantity<MassEnergyDensity>) {
+class AdvancedBurnerCell(
+    ci: CellCreateInfo,
+    burnerCellOptions: BurnerCellOptions,
+    override val thermalMap: MonopoleMap,
+    val maxDraftStrength: Double,
+    val pidGains: PIDGains,
+) : BurnerCell(ci, burnerCellOptions), SidedThermalMonoMapped<AdvancedBurnerCell> {
+
+    override val thermalSize: ThermalSize
+        get() = ThermalSize.Standard
+
+    /**
+     * The target hull temperature, in Kelvin.
+     * Set via screwdriver scroll on the block entity.
+     * */
+    var targetTemperature: Quantity<Temperature> = Quantity(800.0, KELVIN)
+        private set
+
+    /**
+     * Updates the target temperature. Called from the block entity when the screwdriver is scrolled.
+     * */
+    fun setTargetTemperature(value: Quantity<Temperature>) {
+        targetTemperature = value
+        controller.setPoint = !value
+        setChanged()
+    }
+
+    /**
+     * The PID controller that drives the draft strength.
+     * Its output is clamped to [0, maxDraftStrength] via [PIDController.minControl] and [PIDController.maxControl].
+     * */
+    private val controller = PIDController(pidGains.kP, pidGains.kI, pidGains.kD).also {
+        it.setPoint = !targetTemperature
+        it.minControl = 0.0
+        it.maxControl = maxDraftStrength
+    }
+
+    /**
+     * The progress of the current coal load, from 0 to 1.
+     * Based on the remaining mass of the coal slices relative to the initial mass.
+     * */
+    val burnProgress: Float
+        get() {
+            if (simulation.isDepleted) {
+                return 0.0f
+            }
+
+            val totalInitial = simulation.slices.sumOf { it.initialMass }
+
+            if (totalInitial.approxEq(0.0)) {
+                return 0.0f
+            }
+
+            val remaining = simulation.slices.sumOf { it.mass }
+
+            return (1.0f - (remaining / totalInitial).toFloat()).coerceIn(0.0f, 1.0f)
+        }
+
+    /**
+     * The total remaining mass of all coal slices.
+     * */
+    val totalMass: Double
+        get() = simulation.slices.sumOf { it.mass }
+
+    override fun calculateFlow(dt: Double) {
+        if (simulation.isDepleted) {
+            injectionRate = 0.0
+            controller.reset()
+            return
+        }
+
+        val hullTemp = !hull.thermalBody.temperature
+
+        val controlledDraft = controller.update(hullTemp, dt)
+
+        val draftTemp = max(
+            max(
+                simulation.lastChimneyTemperature,
+                hullTemp
+            ),
+            if (simulation.isDepleted) 0.0 else simulation.slices.maxOf { it.temperature }
+        )
+
+        injectionRate = simulation.calculateNaturalDraftFlowRate(
+            draftTemp,
+            controlledDraft
+        )
+    }
+
+    override fun saveCellData(): CompoundTag {
+        val tag = super.saveCellData()
+        tag.putQuantity(TARGET_TEMPERATURE, targetTemperature)
+        tag.putDouble(CONTROLLER_ERROR_SUM, controller.errorSum)
+        tag.putDouble(CONTROLLER_LAST_ERROR, controller.lastError)
+        return tag
+    }
+
+    override fun loadCellData(tag: CompoundTag) {
+        super.loadCellData(tag)
+        targetTemperature = tag.getQuantity<Temperature>(TARGET_TEMPERATURE)
+        controller.setPoint = !targetTemperature
+        controller.errorSum = tag.getDouble(CONTROLLER_ERROR_SUM)
+        controller.lastError = tag.getDouble(CONTROLLER_LAST_ERROR)
+    }
+
     companion object {
-        private const val AMOUNT = "amount"
-        private const val ENERGY_DENSITY = "energyDensity"
-
-        fun fromNbt(tag: CompoundTag): FuelBurnState {
-            return FuelBurnState(
-                tag.getQuantity(AMOUNT),
-                tag.getQuantity(ENERGY_DENSITY)
-            )
-        }
-
-        fun canBurn(itemStack: ItemStack) = ForgeHooks.getBurnTime(itemStack, null) > 0
-
-        /**
-         * Creates a [FuelBurnState] from the item. Precondition: [canBurn]
-         * Assumes that the item is mostly carbon, similar to the allotrope Coal.
-         * Based on the [ForgeHooks.getBurnTime] of the item, the mass of "coal" is adjusted.
-         * Example: If the burn time is equal to coal, the fuel will be 1kg of Coal. If the burn time is half, the result will be 0.5kg of Coal.
-         * */
-        fun createFromStack(itemStack: ItemStack) : FuelBurnState {
-            val burnTime = ForgeHooks.getBurnTime(itemStack, null)
-
-            val coalBurnTime = 1600.0
-            val amount = burnTime / coalBurnTime
-
-            return FuelBurnState(
-                Quantity(amount, KILOGRAM),
-                Quantity(24.0, MEGA * JOULE_PER_KILOGRAM)
-            )
-        }
-    }
-
-    /**
-     * Gets the amount of available energy, based on the remaining [fuelAmount].
-     * */
-    val availableEnergy get() = Quantity<Energy>(!fuelAmount * !energyDensity)
-
-    /**
-     * Removes a mass of fuel corresponding to [energy] amount of energy.
-     * */
-    fun removeEnergy(energy: Quantity<Energy>) {
-        fuelAmount - !energy / !energyDensity
-    }
-
-    fun toNbt(): CompoundTag {
-        return CompoundTag().also {
-            it.putQuantity(AMOUNT, fuelAmount)
-            it.putQuantity(ENERGY_DENSITY, energyDensity)
-        }
+        private const val TARGET_TEMPERATURE = "targetTemperature"
+        private const val CONTROLLER_ERROR_SUM = "controllerErrorSum"
+        private const val CONTROLLER_LAST_ERROR = "controllerLastError"
     }
 }
+
+/**
+ * Representative block for the Advanced Coal Burner.
+ * This is the bottom block (combustion chamber). The top block is a delegate (fuel hopper / chimney).
+ * */
+class AdvancedCoalBurnerBlock : UprightHorizontalDirectionCellBlock<AdvancedBurnerCell>() {
+    companion object {
+        fun constructMenu(pLevel: Level, pPos: BlockPos, pPlayer: Player) =
+            pLevel.constructMenuHelper2<AdvancedCoalBurnerBlockEntity>(
+                pPos,
+                pPlayer,
+                Component.translatable("menu.$MODID.advanced_coal_burner"),
+                ::AdvancedCoalBurnerMenu
+            )
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction): Boolean = true
+
+    override fun getCellProvider() = Eln2HeatGenerators.ADVANCED_COAL_BURNER_CELL.get()
+
+    override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = AdvancedCoalBurnerBlockEntity(pPos, pState)
+
+    override fun <T : BlockEntity?> getTicker(
+        pLevel: Level,
+        pState: BlockState,
+        pBlockEntityType: BlockEntityType<T?>
+    ): BlockEntityTicker<T>? {
+        if (pLevel.isClientSide) {
+            return null
+        }
+
+        return BlockEntityTicker { _, _, _, pBlockEntity ->
+            if (pBlockEntity is AdvancedCoalBurnerBlockEntity) {
+                pBlockEntity.serverTick()
+            }
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun use(
+        pState: BlockState,
+        pLevel: Level,
+        pPos: BlockPos,
+        pPlayer: Player,
+        pHand: InteractionHand,
+        pHit: BlockHitResult,
+    ): InteractionResult {
+        val blockEntity = pLevel.getBlockEntity(pPos) as? AdvancedCoalBurnerBlockEntity
+            ?: return InteractionResult.FAIL
+
+        if (pHand != InteractionHand.MAIN_HAND) {
+            return InteractionResult.FAIL
+        }
+
+        val result = blockEntity.interact(pPlayer)
+
+        if (result == InteractionResult.FAIL) {
+            return constructMenu(pLevel, pPos, pPlayer)
+        }
+
+        return result
+    }
+}
+
+/**
+ * Delegate block for the Advanced Coal Burner (top block, fuel hopper / chimney).
+ * Forwards item handler capabilities and interaction to the representative.
+ * */
+class AdvancedCoalBurnerDelegateBlockEntity(pos: BlockPos, state: BlockState) : MultiblockDelegateBlockEntity(pos, state, Eln2HeatGenerators.ADVANCED_COAL_BURNER_DELEGATE_BLOCK_ENTITY.get()) {
+    override fun <T> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
+        val representativePos = this.representativePos
+            ?: return super.getCapability(cap, side)
+
+        val level = this.level
+            ?: return super.getCapability(cap, side)
+
+        if (!level.isLoaded(representativePos)) {
+            return LazyOptional.empty()
+        }
+
+        val representative = level.getBlockEntity(representativePos) as? AdvancedCoalBurnerBlockEntity
+            ?: return super.getCapability(cap, side)
+
+        return representative.getCapability(cap, null)
+    }
+}
+
+/**
+ * Representative block entity for the Advanced Coal Burner.
+ * Lives at the bottom block. Owns the [AdvancedBurnerCell], fuel inventory, and menu.
+ * The device is insulated: it only exchanges heat through its thermal port, not radiantly to neighbors.
+ * */
+class AdvancedCoalBurnerBlockEntity(pos: BlockPos, state: BlockState) :
+    CellBlockEntity<AdvancedBurnerCell>(pos, state, Eln2HeatGenerators.ADVANCED_COAL_BURNER_BLOCK_ENTITY.get()),
+    BigBlockRepresentativeBlockEntity<AdvancedCoalBurnerBlockEntity>,
+    BulkPacketHandlerBlockEntity,
+    InternalMultiThermalBodyTemperatureConsumer,
+    ScrewdriverScrollable,
+    ComponentDisplay
+{
+    companion object {
+        private const val FUEL_INVENTORY = "fuelInventory"
+    }
+
+    override val delegateMap: MultiblockDelegateMap
+        get() = Eln2HeatGenerators.ADVANCED_COAL_BURNER_DELEGATE_MAP.value
+
+    override fun setDestroyed() {
+        destroyDelegates()
+        super.setDestroyed()
+    }
+
+    override fun onDelegateUse(
+        delegate: BlockEntity,
+        pPlayer: Player,
+        pHand: InteractionHand,
+        pHit: BlockHitResult
+    ) = AdvancedCoalBurnerBlock.constructMenu(level!!, blockPos, pPlayer)
+
+    val cellProgressData = ProgressContainerData()
+
+    //#region Inventory
+
+    class FuelInventoryHandler(val blockEntity: AdvancedCoalBurnerBlockEntity) :
+        ItemStackHandler(ADVANCED_BURNER_FUEL_SLOT_COUNT) {
+
+        override fun isItemValid(slot: Int, stack: ItemStack): Boolean {
+            return stack.`is`(Eln2ConventionTags.COAL_EQUIVALENT)
+        }
+
+        override fun insertItem(slot: Int, stack: ItemStack, simulate: Boolean): ItemStack {
+            if (!stack.`is`(Eln2ConventionTags.COAL_EQUIVALENT)) {
+                return stack
+            }
+
+            return super.insertItem(slot, stack, simulate)
+        }
+
+        override fun onContentsChanged(slot: Int) {
+            blockEntity.setChanged()
+        }
+    }
+
+    val fuelHandler = FuelInventoryHandler(this)
+    val fuelHandlerLazy: LazyOptional<FuelInventoryHandler> = LazyOptional.of { fuelHandler }
+
+    override fun <T> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
+        if (cap == ForgeCapabilities.ITEM_HANDLER) {
+            return fuelHandlerLazy.cast()
+        }
+
+        return super.getCapability(cap, side)
+    }
+
+    override fun invalidateCaps() {
+        super.invalidateCaps()
+        fuelHandlerLazy.invalidate()
+    }
+
+    //#endregion
+
+    @ServerOnly
+    fun interact(player: Player): InteractionResult {
+        val stack = player.mainHandItem
+
+        if (stack.item == Items.FLINT_AND_STEEL) {
+            if (player.level().isClientSide) {
+                return InteractionResult.SUCCESS
+            }
+
+            cell.ignite()
+            stack.takeDurability(player)
+
+            return InteractionResult.CONSUME_PARTIAL
+        }
+
+        return InteractionResult.FAIL
+    }
+
+    @ServerOnly
+    override fun scrollScrewdriver(player: ServerPlayer, delta: Double): Boolean {
+        val current = !cell.targetTemperature
+        val step = 5.0
+        val newTemp = (current + delta * step).coerceIn(300.0, 1500.0)
+
+        if (newTemp != current) {
+            cell.setTargetTemperature(Quantity(newTemp, KELVIN))
+            setChanged()
+            sendBulkPacket(SetpointPacket::serialize, SetpointPacket(newTemp))
+            return true
+        }
+
+        return false
+    }
+
+    @ServerOnly
+    fun serverTick() {
+        cellProgressData.progress = cell.burnProgress
+
+        if (cell.simulation.isDepleted) {
+            val fuelStack = fuelHandler.getStackInSlot(0)
+
+            if (!fuelStack.isEmpty) {
+                fuelHandler.extractItem(0, 1, false)
+
+                cell.replaceCoal(
+                    CoalGradeRegistry.DEFAULT,
+                    COAL_ITEM_MASS
+                )
+
+                setChanged()
+            }
+        }
+    }
+
+    override fun saveAdditional(pTag: CompoundTag) {
+        super.saveAdditional(pTag)
+        pTag.put(FUEL_INVENTORY, fuelHandler.serializeNBT())
+    }
+
+    override fun load(pTag: CompoundTag) {
+        super.load(pTag)
+        fuelHandler.deserializeNBT(pTag.getCompound(FUEL_INVENTORY))
+    }
+
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        builder.debugInIDE { "Input rate: ${(cell.injectionRate * 1000.0).rounded()} g/s" }
+        builder.debugInIDE { "Output gas temperature: ${cell.lastOutputGasTemperature.classify()}" }
+        builder.debugInIDE { "Output flow rate O2: ${(cell.lastOutputOxygenMassFlowRate * 1000.0).rounded()} g/s" }
+        builder.quantity(cell.hull.thermalBody.temperature)
+        builder.quantity(cell.targetTemperature)
+        builder.quantity(Quantity(cell.totalMass, KILOGRAM))
+    }
+
+    //#region Client-Side Rendering State
+
+    override val clientSidePacketHandlerLazy = createClientSideHandler()
+
+    class RenderState {
+        var hullTemperature = 0.0
+        var setpointTemperature = 800.0
+    }
+
+    var renderState: RenderState? = null
+        private set
+
+    override fun setLevel(pLevel: Level) {
+        super.setLevel(pLevel)
+
+        if (pLevel.isClientSide) {
+            renderState = RenderState()
+        }
+    }
+
+    @ClientOnly
+    override fun setupPacketsOnClient(handler: ClientSidePacketHandlerBuilder) {
+        fun modifyState(action: RenderState.() -> Unit) {
+            val renderState = renderState ?: return
+            action(renderState)
+        }
+
+        handler.withHandler<HullTemperaturePacket>(HullTemperaturePacket::deserialize) {
+            modifyState {
+                hullTemperature = it.hullTemperature
+            }
+        }
+
+        handler.withHandler<SetpointPacket>(SetpointPacket::deserialize) {
+            modifyState {
+                setpointTemperature = it.setpointTemperature
+            }
+        }
+    }
+
+    //#endregion
+
+    //#region Sync
+
+    @ServerOnly
+    override fun onInternalTemperatureChanges(dirty: List<ThermalMass>) {
+        sendBulkPacket(HullTemperaturePacket::serialize, HullTemperaturePacket(!dirty[0].temperature))
+    }
+
+    @ServerOnly
+    override fun getUpdateTag(): CompoundTag {
+        sendBulkPacket(
+            HullTemperaturePacket::serialize,
+            HullTemperaturePacket(!cell.hull.thermalBody.temperature)
+        )
+
+        sendBulkPacket(
+            SetpointPacket::serialize,
+            SetpointPacket(!cell.targetTemperature)
+        )
+
+        return super.getUpdateTag()
+    }
+
+    data class HullTemperaturePacket(val hullTemperature: Double) {
+        companion object {
+            fun serialize(packet: HullTemperaturePacket, buffer: FriendlyByteBuf) {
+                buffer.writeDouble(packet.hullTemperature)
+            }
+
+            fun deserialize(buffer: FriendlyByteBuf) = HullTemperaturePacket(
+                buffer.readDouble()
+            )
+        }
+    }
+
+    data class SetpointPacket(val setpointTemperature: Double) {
+        companion object {
+            fun serialize(packet: SetpointPacket, buffer: FriendlyByteBuf) {
+                buffer.writeDouble(packet.setpointTemperature)
+            }
+
+            fun deserialize(buffer: FriendlyByteBuf) = SetpointPacket(
+                buffer.readDouble()
+            )
+        }
+    }
+
+    //#endregion
+}
+
+/**
+ * Menu for the Advanced Coal Burner.
+ * Shows a fuel slot and a progress bar representing how burnt the current coal load is.
+ * */
+class AdvancedCoalBurnerMenu(
+    pContainerId: Int,
+    playerInventory: Inventory,
+    handler: ItemStackHandler,
+    val containerData: ProgressContainerData,
+    val access: ContainerLevelAccess,
+    val level: Level,
+) : AbstractContainerMenu(Eln2HeatGenerators.ADVANCED_COAL_BURNER_MENU.get(), pContainerId), ProgressSupplierMenu {
+
+    companion object {
+        private val FUEL_SLOT_POS = Vector2di(80, 24)
+    }
+
+    @ServerOnly
+    constructor(entity: AdvancedCoalBurnerBlockEntity, id: Int, inventory: Inventory) : this(
+        id,
+        inventory,
+        entity.fuelHandler,
+        entity.cellProgressData,
+        ContainerLevelAccess.create(entity.level!!, entity.blockPos),
+        entity.level!!
+    )
+
+    @ClientOnly
+    constructor(pContainerId: Int, playerInventory: Inventory) : this(
+        pContainerId,
+        playerInventory,
+        ItemStackHandler(ADVANCED_BURNER_FUEL_SLOT_COUNT),
+        ProgressContainerData(),
+        ContainerLevelAccess.NULL,
+        playerInventory.player.level()
+    )
+
+    init {
+        addSlot(
+            SlotItemHandlerWithPlacePredicate(handler, 0, FUEL_SLOT_POS.x, FUEL_SLOT_POS.y) {
+                it.`is`(Eln2ConventionTags.COAL_EQUIVALENT)
+            }
+        )
+
+        addDataSlots(containerData)
+
+        ContainerHelper.addPlayerGrid(playerInventory, this::addSlot)
+    }
+
+    override fun stillValid(pPlayer: Player) =
+        stillValid(access, pPlayer, Eln2HeatGenerators.ADVANCED_COAL_BURNER_BLOCK.get())
+
+    override fun quickMoveStack(pPlayer: Player, pIndex: Int) =
+        ContainerHelper.quickMove(slots, pPlayer, pIndex)
+
+    override fun getProgressForRender() = containerData.progress
+}
+
+//#endregion

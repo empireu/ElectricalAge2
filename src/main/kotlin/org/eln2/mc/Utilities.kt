@@ -287,6 +287,8 @@ class PIDController(var kP: Double, var kI: Double, var kD: Double) {
     }
 }
 
+data class PIDGains(val kP: Double, val kI: Double, val kD: Double)
+
 fun fluidStackToJson(fluid: FluidStack): JsonObject {
     return JsonObject().also { obj ->
         obj.addProperty("fluid", ForgeRegistries.FLUIDS.getKey(fluid.fluid)!!.toString())
