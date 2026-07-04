@@ -222,6 +222,7 @@ object ContentManager {
         Eln2Thermal.initialize()
         Eln2PowerDevices.initialize()
         Eln2Processing.initialize()
+        Eln2SteamTurbine.initialize()
         Eln2Signal.initialize()
         Eln2Grid.initialize()
         Eln2ForgeFluids.initialize()
