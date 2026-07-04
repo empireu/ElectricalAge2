@@ -779,6 +779,50 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_copper_plate", has(Eln2Ingredients.COPPER_PLATE.get()))
             .save(pWriter, resource("crafting/primitive_burner"))
 
+        //#region Advanced Coal Burner
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.INSULATED_COMBUSTION_CHAMBER.get())
+            .pattern("AIA")
+            .pattern("I I")
+            .pattern("AIA")
+            .define('A', Eln2Ingredients.ASBESTOS_FIBER.get())
+            .define('I', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .unlockedBy("has_asbestos_fiber", has(Eln2Ingredients.ASBESTOS_FIBER.get()))
+            .save(pWriter, resource("crafting/insulated_combustion_chamber"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.BURNER_CONTROLLER_UNIT.get())
+            .pattern(" C ")
+            .pattern("RWR")
+            .pattern(" W ")
+            .define('C', Eln2Ingredients.PRIMITIVE_CIRCUIT.get())
+            .define('R', Eln2Ingredients.RESISTOR.get())
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .unlockedBy("has_primitive_circuit", has(Eln2Ingredients.PRIMITIVE_CIRCUIT.get()))
+            .save(pWriter, resource("crafting/burner_controller_unit"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.BURNER_FUEL_HOPPER.get())
+            .pattern("P P")
+            .pattern("PGP")
+            .pattern(" P ")
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .define('G', Eln2Ingredients.IRON_GEAR.get())
+            .unlockedBy("has_iron_gear", has(Eln2Ingredients.IRON_GEAR.get()))
+            .save(pWriter, resource("crafting/burner_fuel_hopper"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2HeatGenerators.ADVANCED_COAL_BURNER_BLOCK_ITEM.get())
+            .pattern("WCW")
+            .pattern("HMU")
+            .pattern("WCW")
+            .define('C', Eln2Ingredients.INSULATED_COMBUSTION_CHAMBER.get())
+            .define('H', Eln2Ingredients.BURNER_FUEL_HOPPER.get())
+            .define('M', Eln2Ingredients.MACHINE_FRAME.get())
+            .define('U', Eln2Ingredients.BURNER_CONTROLLER_UNIT.get())
+            .define('W', Eln2Wires.STANDARD_UNINSULATED_COPPER_THERMAL_WIRE.part.item.get())
+            .unlockedBy("has_insulated_combustion_chamber", has(Eln2Ingredients.INSULATED_COMBUSTION_CHAMBER.get()))
+            .save(pWriter, resource("crafting/advanced_coal_burner"))
+
+        //#endregion
+
         ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, Eln2Processing.EXTRUDER_WIRE_DIE.get())
             .requires(Items.STONE_SLAB)
             .requires(Items.IRON_NUGGET)
