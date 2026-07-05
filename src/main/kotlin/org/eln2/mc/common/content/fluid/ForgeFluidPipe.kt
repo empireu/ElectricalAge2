@@ -1446,7 +1446,6 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
             modules[picked.pipe.get3DDataValue()] = ModuleType.None
             registerIntoNetwork()
 
-            setChanged()
             onModuleChanged()
 
             return true
@@ -1496,6 +1495,7 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
      * */
     @OnServerThread
     fun onModuleChanged() {
+        setChanged()
         this.setSyncDirty()
     }
 
