@@ -1581,9 +1581,16 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
     /**
      * Called when a neighbor has changed, and the connections may need to be updated.
      * Called by the scheduler, after the block receives the event (see the call site).
+     *
+     * This can fire before [onLoad] has run: a neighbor's [BlockEntity.setChanged] fans out via [Level.updateNeighbourForOutputSignal] to any neighbor in a FULL-loaded chunk, including pipes whose [registerIntoNetwork] hasn't executed yet.
+     * In that case, the pipe isn't in any network, so there is nothing to invalidate; [registerIntoNetwork] will run [org.eln2.mc.common.content.fluid.FluidPipeNetwork.computeEndpoints] over the current neighbor state when [onLoad] fires.
      * */
     @OnServerThread
     fun neighborChanged() {
+        if(networkInternal == null) {
+            return
+        }
+
         network.onNeighborsChanged(this)
     }
 
