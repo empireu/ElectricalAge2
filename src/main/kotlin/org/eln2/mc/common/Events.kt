@@ -7,6 +7,7 @@ import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
 import net.minecraft.core.BlockPos
 import net.minecraft.data.loot.LootTableProvider
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.item.BucketItem
 import net.minecraft.world.item.Item
 import net.minecraft.world.level.Level
@@ -17,6 +18,7 @@ import net.minecraftforge.client.extensions.common.IClientFluidTypeExtensions
 import net.minecraftforge.data.event.GatherDataEvent
 import net.minecraftforge.event.AddReloadListenerEvent
 import net.minecraftforge.event.TickEvent
+import net.minecraftforge.event.entity.player.PlayerEvent
 import net.minecraftforge.event.level.BlockEvent
 import net.minecraftforge.event.level.ChunkWatchEvent
 import net.minecraftforge.event.level.LevelEvent
@@ -44,6 +46,7 @@ import org.eln2.mc.common.cells.foundation.SimulationExecutionSubgraph
 import org.eln2.mc.common.fluids.foundation.FluidTransformationManager
 import org.eln2.mc.common.fluids.foundation.PhysicalFluidManager
 import org.eln2.mc.common.content.ScrewdriverItem
+import org.eln2.mc.common.content.PlayerPowerManager
 import org.eln2.mc.common.content.WindSystem
 import org.eln2.mc.common.content.fluid.FluidPipeNetworkManager
 import org.eln2.mc.common.content.modules.ContentManager
@@ -432,5 +435,34 @@ object ForgeEvents {
             GridConnectionManagerClient.clear()
             DebugVisualizer.clear()
         }
+    }
+
+    @SubscribeEvent @JvmStatic
+    fun onPlayerTick(event: TickEvent.PlayerTickEvent) {
+        if(event.phase != TickEvent.Phase.END) {
+            return
+        }
+
+        val player = event.player as? ServerPlayer ?: return
+
+        PlayerPowerManager.tick(player)
+    }
+
+    @SubscribeEvent @JvmStatic
+    fun onPlayerLoggedIn(event: PlayerEvent.PlayerLoggedInEvent) {
+        val player = event.entity as? ServerPlayer ?: return
+        PlayerPowerManager.clear(player)
+    }
+
+    @SubscribeEvent @JvmStatic
+    fun onPlayerLoggedOut(event: PlayerEvent.PlayerLoggedOutEvent) {
+        val player = event.entity as? ServerPlayer ?: return
+        PlayerPowerManager.clear(player)
+    }
+
+    @SubscribeEvent @JvmStatic
+    fun onPlayerRespawn(event: PlayerEvent.PlayerRespawnEvent) {
+        val player = event.entity as? ServerPlayer ?: return
+        PlayerPowerManager.clear(player)
     }
 }

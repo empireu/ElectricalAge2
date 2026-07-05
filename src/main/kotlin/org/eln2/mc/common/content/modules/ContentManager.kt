@@ -217,6 +217,7 @@ object ContentManager {
         Eln2BasicComponents.initialize()
         Eln2Batteries.initialize()
         Eln2Solar.initialize()
+        Eln2InventoryPower.initialize()
         Eln2Lights.initialize()
         Eln2HeatGenerators.initialize()
         Eln2Thermal.initialize()

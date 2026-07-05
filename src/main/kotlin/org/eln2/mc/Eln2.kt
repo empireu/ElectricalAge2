@@ -55,6 +55,13 @@ val LOG: Logger = LogManager.getLogger()
 
 const val MODID = "eln2"
 
+/**
+ * Conversion factor between Forge Energy (FE/RF) and ELN2 joules.
+ * FE is integer-valued, so this factor is chosen large enough to keep quantization error small for typical per-tick transfers while staying within [Int.MAX_VALUE] for reasonable cell capacities.
+ * A 840 Wh lead-acid cell stores ~30M FE.
+ * */
+const val RF_PER_JOULE = 10
+
 @Mod(MODID)
 class Eln2 {
     init {

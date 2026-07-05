@@ -906,6 +906,16 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_battery_base", has(Eln2Ingredients.LEAD_ACID_BATTERY_BASE_12V.get()))
             .save(pWriter, resource("crafting/lead_acid_battery_12v"))
 
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2InventoryPower.LEAD_ACID_POWER_CELL.get())
+            .pattern("PBP")
+            .pattern("BAB")
+            .pattern("PBP")
+            .define('P', taggedIngredient(Eln2Ingredients.LEAD_PLATE.get()))
+            .define('B', Eln2Ingredients.LEAD_ACID_BATTERY_CELL.get())
+            .define('A', Eln2ForgeFluids.DILUTE_SULFURIC_ACID.bucket.get())
+            .unlockedBy("has_lead_acid_battery_cell", has(Eln2Ingredients.LEAD_ACID_BATTERY_CELL.get()))
+            .save(pWriter, resource("crafting/lead_acid_power_cell"))
+
         //#region Tungsten Filament
 
         ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, Eln2Ingredients.SCHEELITE_FUSION_MIX.get())
