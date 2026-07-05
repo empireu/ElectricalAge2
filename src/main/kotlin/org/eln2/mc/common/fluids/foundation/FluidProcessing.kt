@@ -11,7 +11,7 @@ import net.minecraft.util.profiling.ProfilerFiller
 import net.minecraft.world.level.material.Fluid
 import net.minecraft.world.level.material.Fluids
 import net.minecraftforge.registries.ForgeRegistries
-import org.ageseries.libage.data.CELSIUS
+import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.utils.putUnique
@@ -228,7 +228,7 @@ object FluidTransformationManager : SimpleJsonResourceReloadListener(GsonBuilder
             val fluid = resolveForgeFluid(fluidId)
 
             val boilingTransformation = json.mapNullable("boiling") {
-                val temperature = Quantity(it.getDouble("temperature"), CELSIUS)
+                val temperature = Quantity(it.getDouble("temperature"), KELVIN)
                 val enthalpy = Quantity(it.getDouble("enthalpy"), JOULE_PER_MILLIBUCKET)
                 val resultGas = resolveForgeFluid(it.getResourceLocation("resultGas"))
                 val resultGasProportion = it.getInt("resultGasProportion", 1000)
@@ -240,7 +240,7 @@ object FluidTransformationManager : SimpleJsonResourceReloadListener(GsonBuilder
             }
 
             val condensationTransformation = json.mapNullable("condensation") {
-                val temperature = Quantity(it.getDouble("temperature"), CELSIUS)
+                val temperature = Quantity(it.getDouble("temperature"), KELVIN)
                 val enthalpy = Quantity(it.getDouble("enthalpy"), JOULE_PER_MILLIBUCKET)
                 val resultLiquid = resolveForgeFluid(it.getResourceLocation("resultLiquid"))
                 val resultLiquidProportion = it.getInt("resultLiquidProportion", 1000)

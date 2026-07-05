@@ -26,8 +26,8 @@ import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
 object Eln2SteamTurbine : ContentModule() {
     val STEAM_TURBINE_MODEL = SteamTurbineGeneratorModel(
         etaFactor = 0.5,
-        maxFlowRate = 100.0,
-        maxTorque = Quantity(100.0, NEWTON_METER),
+        maxFlowRate = 0.0431,
+        maxTorque = Quantity(2400.0, NEWTON_METER),
         maxPower = Quantity(50000.0, WATT),
         coldSideMass = Quantity(50.0, KILOGRAM),
         coldSideMaterial = ChemicalElement.Copper.asMaterial,
@@ -48,7 +48,9 @@ object Eln2SteamTurbine : ContentModule() {
     )
 
     val STEAM_TURBINE_CELL = cellMemoize("steam_turbine") {
-        CellFactory { SteamTurbineCell(it, STEAM_TURBINE_MODEL, SHAFT_FRICTION) }
+        CellFactory {
+            SteamTurbineCell(it, STEAM_TURBINE_MODEL, SHAFT_FRICTION)
+        }
     }
 
     val STEAM_TURBINE_BLOCK = blockOnly("steam_turbine", ::SteamTurbineBlock).withSelfDrop()
