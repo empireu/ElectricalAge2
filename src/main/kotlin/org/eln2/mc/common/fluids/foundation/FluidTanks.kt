@@ -1162,8 +1162,11 @@ open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalF
 /**
  * Limits the capacity of multiple fluid tanks, so their total capacity is constrained by [capacity].
  * Useful for e.g. separating the gas phase and liquid phase fluids in separate tanks, but limiting the total capacity of the machine.
+ * @param maxima If non-null, each entry caps the corresponding tank's capacity (in addition to the shared [capacity]).
+ *  A tank with a maximum cannot consume the remaining shared capacity beyond its own maximum, leaving that headroom for the other tanks.
+ *  If null, all tanks share the full [capacity] freely.
  * */
-class FractionalFluidTankCapacityConstraint(val capacity: Double, val tanks: Array<MultipleFractionalFluidTank>) {
+class FractionalFluidTankCapacityConstraint(val capacity: Double, val tanks: Array<MultipleFractionalFluidTank>, val maxima: DoubleArray? = null) {
     init {
         tanks.forEach { tank ->
             tank.onVersionChanged += this::update
@@ -1205,7 +1208,8 @@ class FractionalFluidTankCapacityConstraint(val capacity: Double, val tanks: Arr
 
             for(i in 0 until tanks.size) {
                 val tank = tanks[i]
-                tank.capacity = tank.amount + remainingCapacity
+                val maximum = maxima?.getOrNull(i) ?: Double.POSITIVE_INFINITY
+                tank.capacity = min(tank.amount + remainingCapacity, maximum)
             }
         }
     }

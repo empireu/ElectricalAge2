@@ -1188,7 +1188,8 @@ class PhaseChangeModuleBlockEntity(pos: BlockPos, state: BlockState) :
     @Suppress("unused")
     val capacityConstraint = FractionalFluidTankCapacityConstraint(
         (state.block as PhaseChangeModuleBlock).capacity.toDouble(),
-        arrayOf(liquidTank, gasTank)
+        arrayOf(liquidTank, gasTank),
+        doubleArrayOf((state.block as PhaseChangeModuleBlock).capacity.toDouble() * 0.9, (state.block as PhaseChangeModuleBlock).capacity.toDouble() * 0.9)
     )
 
     init {
