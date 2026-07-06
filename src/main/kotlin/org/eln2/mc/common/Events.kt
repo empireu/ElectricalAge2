@@ -19,6 +19,7 @@ import net.minecraftforge.data.event.GatherDataEvent
 import net.minecraftforge.event.AddReloadListenerEvent
 import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.entity.player.PlayerEvent
+import net.minecraftforge.event.entity.player.PlayerInteractEvent
 import net.minecraftforge.event.level.BlockEvent
 import net.minecraftforge.event.level.ChunkWatchEvent
 import net.minecraftforge.event.level.LevelEvent
@@ -33,44 +34,33 @@ import org.ageseries.libage.data.SECOND
 import org.ageseries.libage.data.classify
 import org.ageseries.libage.utils.Stopwatch
 import org.ageseries.libage.utils.putUnique
-import org.eln2.mc.ELN2_LOG_STATS
-import org.eln2.mc.Eln2BlockOreDropLootDatagen
-import org.eln2.mc.LOG
+import org.eln2.mc.*
 import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.render.foundation.MyColor
+import org.eln2.mc.common.ModEvents.registerItemColors
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityLevelRendererProvider
 import org.eln2.mc.common.cells.foundation.CellGraphManager
 import org.eln2.mc.common.cells.foundation.ServerPhase
 import org.eln2.mc.common.cells.foundation.SimulationExecutionSubgraph
-import org.eln2.mc.common.fluids.foundation.FluidTransformationManager
-import org.eln2.mc.common.fluids.foundation.PhysicalFluidManager
-import org.eln2.mc.common.content.ScrewdriverItem
-import org.eln2.mc.common.content.PlayerPowerManager
-import org.eln2.mc.common.content.WindSystem
+import org.eln2.mc.common.content.*
 import org.eln2.mc.common.content.fluid.FluidPipeNetworkManager
 import org.eln2.mc.common.content.modules.ContentManager
+import org.eln2.mc.common.content.modules.Eln2ForgeFluids
+import org.eln2.mc.common.content.processing.LeadChamberExecutionManager
 import org.eln2.mc.common.content.processing.TreeExtractionManager
 import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.events.schedulePost
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
+import org.eln2.mc.common.fluids.foundation.FluidTransformationManager
+import org.eln2.mc.common.fluids.foundation.PhysicalFluidManager
 import org.eln2.mc.common.grids.GridCollisions
 import org.eln2.mc.common.grids.GridConnectionManagerClient
 import org.eln2.mc.common.grids.GridConnectionManagerServer
 import org.eln2.mc.common.network.serverToClient.BulkMessages
+import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.specs.foundation.SpecPlacementOverlayServer
-import org.eln2.mc.AveragingList
-import org.eln2.mc.DEBUGGER_BREAK
-import org.eln2.mc.ELN2_DEBUG
-import org.eln2.mc.Eln2BlockTagsDatagen
-import org.eln2.mc.Eln2BlockSelfDropLootDatagen
-import org.eln2.mc.Eln2ItemModelProviderDatagen
-import org.eln2.mc.Eln2ItemTagsDatagen
-import org.eln2.mc.Eln2BlockStateProviderDatagen
-import org.eln2.mc.Eln2RecipeProviderDatagen
-import org.eln2.mc.common.content.modules.Eln2ForgeFluids
-import org.eln2.mc.common.content.processing.LeadChamberExecutionManager
 import org.eln2.mc.extensions.formatted
 import java.util.function.Supplier
 
@@ -398,6 +388,8 @@ object ForgeEvents {
         SpecPlacementOverlayServer.clear()
 
         FluidPipeNetworkManager.clear()
+
+        DrillItem.clearAll()
     }
 
     private fun scheduleWorldTrackingEventServer(event: BlockEvent, handler: (ServerLevel, BlockPos) -> Unit) {
@@ -434,6 +426,7 @@ object ForgeEvents {
             GhostLightHackClient.clear()
             GridConnectionManagerClient.clear()
             DebugVisualizer.clear()
+            DrillPowerMessage.reset()
         }
     }
 
@@ -445,24 +438,59 @@ object ForgeEvents {
 
         val player = event.player as? ServerPlayer ?: return
 
-        PlayerPowerManager.tick(player)
+        DrillItem.onPlayerTickEnd(player)
+    }
+
+    @SubscribeEvent @JvmStatic
+    fun onBreakSpeed(event: PlayerEvent.BreakSpeed) {
+        DrillItem.onBreakSpeed(event)
+    }
+
+    @SubscribeEvent @JvmStatic
+    fun onLeftClickBlock(event: PlayerInteractEvent.LeftClickBlock) {
+        DrillItem.onLeftClickBlock(event)
+    }
+
+    @SubscribeEvent @JvmStatic
+    fun onBlockBreak(event: BlockEvent.BreakEvent) {
+        DrillItem.onBlockBreak(event)
     }
 
     @SubscribeEvent @JvmStatic
     fun onPlayerLoggedIn(event: PlayerEvent.PlayerLoggedInEvent) {
         val player = event.entity as? ServerPlayer ?: return
         PlayerPowerManager.clear(player)
+        DrillItem.clearPlayer(player.uuid)
     }
 
     @SubscribeEvent @JvmStatic
     fun onPlayerLoggedOut(event: PlayerEvent.PlayerLoggedOutEvent) {
         val player = event.entity as? ServerPlayer ?: return
         PlayerPowerManager.clear(player)
+        DrillItem.clearPlayer(player.uuid)
     }
 
     @SubscribeEvent @JvmStatic
     fun onPlayerRespawn(event: PlayerEvent.PlayerRespawnEvent) {
         val player = event.entity as? ServerPlayer ?: return
         PlayerPowerManager.clear(player)
+        DrillItem.clearPlayer(player.uuid)
+        Networking.send(DrillPowerMessage(0.0f), player)
+    }
+
+    @SubscribeEvent @JvmStatic
+    fun onPlayerClone(event: PlayerEvent.Clone) {
+        val player = event.entity as? ServerPlayer ?: return
+        PlayerPowerManager.clear(player)
+        DrillItem.clearPlayer(player.uuid)
+        Networking.send(DrillPowerMessage(0.0f), player)
+    }
+
+    @SubscribeEvent @JvmStatic
+    fun onPlayerChangedDimension(event: PlayerEvent.PlayerChangedDimensionEvent) {
+        val player = event.entity as? ServerPlayer ?: return
+        PlayerPowerManager.clear(player)
+        DrillItem.clearPlayer(player.uuid)
+        Networking.send(DrillPowerMessage(0.0f), player)
     }
 }

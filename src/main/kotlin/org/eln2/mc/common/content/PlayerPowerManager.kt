@@ -54,9 +54,14 @@ object PlayerPowerManager {
     fun tick(player: ServerPlayer) {
         val state = states[player.uuid] ?: return
 
-        rebuildProducersIfEmpty(player, state)
+        if (state.consumers.isEmpty()) {
+            return
+        }
 
-        if (state.consumers.isEmpty() || state.producers.isEmpty()) {
+        state.producers.clear()
+        scanInventoryForProducers(player.inventory, state)
+
+        if (state.producers.isEmpty()) {
             return
         }
 

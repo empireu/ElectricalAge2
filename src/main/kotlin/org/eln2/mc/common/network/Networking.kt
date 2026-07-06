@@ -9,6 +9,7 @@ import net.minecraftforge.network.NetworkRegistry
 import org.eln2.mc.LOG
 import org.eln2.mc.MODID
 import org.eln2.mc.common.*
+import org.eln2.mc.common.content.DrillPowerMessage
 import org.eln2.mc.common.content.ScrewdriverItem
 import org.eln2.mc.common.grids.GridConnectionCreateMessage
 import org.eln2.mc.common.grids.GridConnectionDeleteMessage
@@ -120,6 +121,15 @@ object Networking {
             ScrewdriverItem.Scroll::decode,
             ScrewdriverItem.Scroll::handle,
             Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        )
+
+        channel.registerMessage(
+            id(),
+            DrillPowerMessage::class.java,
+            DrillPowerMessage::encode,
+            DrillPowerMessage::decode,
+            DrillPowerMessage::handle,
+            Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         )
 
         LOG.info("Network packets registered")
