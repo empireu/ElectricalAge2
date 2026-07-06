@@ -2,29 +2,73 @@
 
 package org.eln2.mc.common.content
 
+import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.chat.Component
+import net.minecraft.world.InteractionHand
+import net.minecraft.world.InteractionResult
+import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
+import net.minecraft.world.inventory.AbstractContainerMenu
+import net.minecraft.world.inventory.ContainerLevelAccess
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.TooltipFlag
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.entity.BlockEntity
+import net.minecraft.world.level.block.entity.BlockEntityTicker
+import net.minecraft.world.level.block.entity.BlockEntityType
+import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.phys.BlockHitResult
 import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.capabilities.ICapabilityProvider
 import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.energy.IEnergyStorage
-import org.ageseries.libage.data.Energy
-import org.ageseries.libage.data.JOULE
-import org.ageseries.libage.data.Power
-import org.ageseries.libage.data.Quantity
+import net.minecraftforge.items.ItemStackHandler
+import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.geometry.Vector2di
 import org.ageseries.libage.mathematics.rounded
+import org.ageseries.libage.sim.Pole
+import org.ageseries.libage.sim.electrical.ElectricalComponentSet
+import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
+import org.ageseries.libage.sim.electrical.ElectricalPin
+import org.ageseries.libage.sim.electrical.Capacitor
+import org.ageseries.libage.sim.electrical.PowerConsumer
+import org.ageseries.libage.sim.electrical.Resistor
+import org.eln2.mc.ClientOnly
+import org.eln2.mc.MODID
 import org.eln2.mc.RF_PER_JOULE
+import org.eln2.mc.ServerOnly
+import org.eln2.mc.PoleMap
+import org.eln2.mc.client.screens.ProgressSupplierMenu
+import org.eln2.mc.common.blocks.foundation.CellBlockEntity
+import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
+import org.eln2.mc.common.cells.foundation.Cell
+import org.eln2.mc.common.cells.foundation.CellCreateInfo
+import org.eln2.mc.common.cells.foundation.CellProvider
+import org.eln2.mc.common.cells.foundation.ElectricalObject
+import org.eln2.mc.common.cells.foundation.ElectricalSize
+import org.eln2.mc.common.cells.foundation.PersistentObject
+import org.eln2.mc.common.cells.foundation.ServerPhase
+import org.eln2.mc.common.cells.foundation.SidedElectricalMapped
+import org.eln2.mc.common.cells.foundation.SimulationPhase
+import org.eln2.mc.common.cells.foundation.SubscriberCollection
+import org.eln2.mc.common.cells.foundation.SimObject
+import org.eln2.mc.common.cells.foundation.addPost
+import org.eln2.mc.common.cells.foundation.addPre
+import org.eln2.mc.common.cells.foundation.addStart
+import org.eln2.mc.common.containers.ContainerHelper
+import org.eln2.mc.common.containers.ProgressContainerData
+import org.eln2.mc.common.containers.SlotItemHandlerWithPlacePredicate
 import org.eln2.mc.common.events.Scheduler
+import org.eln2.mc.common.content.modules.Eln2InventoryPower
+import org.eln2.mc.extensions.constructMenuHelper2
+import org.eln2.mc.extensions.loadNbt
+import org.eln2.mc.extensions.saveNbt
 import kotlin.math.min
-
 // P.S. Some of these methods have explicit unit names and are methods instead of properties to make potential mod integration easier (if they use java).
 
 /**
@@ -183,7 +227,7 @@ class PowerCellItem(val powerCellModel: InventoryPowerCellModel, val initialChar
         return stack
     }
 
-    override fun initCapabilities(stack: ItemStack, nbt: CompoundTag?, ): ICapabilityProvider {
+    override fun initCapabilities(stack: ItemStack, nbt: CompoundTag?): ICapabilityProvider {
         return PowerCellCapabilityProvider(stack, this)
     }
 
@@ -389,4 +433,324 @@ private class PowerCellCapabilityProvider(private val stack: ItemStack, private 
         }
         return LazyOptional.empty()
     }
+}
+
+class PowerCellChargerObject<C : Cell>(cell: C, val map: PoleMap) : ElectricalObject<C>(cell), PersistentObject {
+    val inputSeriesResistor = Resistor()
+    val inputParallelCapacitor = Capacitor()
+    val inputConsumer = PowerConsumer()
+
+    init {
+        inputSeriesResistor.resistance = INPUT_SERIES_RESISTANCE
+        inputParallelCapacitor.capacitance = INPUT_PARALLEL_CAPACITANCE
+        inputConsumer.minEquivalentResistance = INPUT_MIN_EQUIVALENT_RESISTANCE
+    }
+
+    override fun addComponents(circuit: ElectricalComponentSet) {
+        circuit.add(inputSeriesResistor, inputParallelCapacitor, inputConsumer)
+    }
+
+    override fun offerPolar(remote: ElectricalObject<*>): ElectricalPin? =
+        when (map.evaluateOrNull(cell, remote.cell)) {
+            Pole.Positive -> inputSeriesResistor.positive
+            Pole.Negative -> inputParallelCapacitor.negative
+            null -> null
+        }
+
+    override fun build(map: ElectricalConnectivityMap) {
+        super.build(map)
+
+        map.join(
+            inputSeriesResistor.negative,
+            inputParallelCapacitor.positive
+        )
+
+        map.join(
+            inputParallelCapacitor.positive,
+            inputConsumer.positive
+        )
+
+        map.join(
+            inputParallelCapacitor.negative,
+            inputConsumer.negative
+        )
+    }
+
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
+        subscribers.addPre(this::tickPre)
+        subscribers.addPost(this::tickPost)
+    }
+
+    private fun tickPre(dt: Double, phase: SimulationPhase) {
+        val chargerCell = cell as? PowerCellChargerCell ?: run {
+            inputConsumer.targetPower = 0.0
+            return
+        }
+
+        inputConsumer.targetPower = chargerCell.powerDemand
+    }
+
+    private fun tickPost(dt: Double, phase: SimulationPhase) {
+        val inputPower = inputConsumer.power.coerceAtLeast(0.0)
+        val energy = inputPower * dt
+
+        val chargerCell = cell as? PowerCellChargerCell ?: return
+        chargerCell.pendingChargeEnergy += energy
+    }
+
+    override fun saveObjectNbt(): CompoundTag {
+        val tag = CompoundTag()
+        tag.put(CAPACITOR, inputParallelCapacitor.saveNbt())
+        return tag
+    }
+
+    override fun loadObjectNbt(tag: CompoundTag) {
+        inputParallelCapacitor.loadNbt(tag.getCompound(CAPACITOR))
+    }
+
+    companion object {
+        private const val CAPACITOR = "capacitor"
+
+        const val INPUT_SERIES_RESISTANCE = 0.05
+        const val INPUT_PARALLEL_CAPACITANCE = 0.05
+        const val INPUT_MIN_EQUIVALENT_RESISTANCE = 0.5
+    }
+}
+
+class PowerCellChargerCell(ci: CellCreateInfo, override val electricalMap: PoleMap) : Cell(ci), SidedElectricalMapped<PowerCellChargerCell> {
+    override val electricalSize: ElectricalSize
+        get() = ElectricalSize.Any
+
+    @SimObject
+    val charger = PowerCellChargerObject(this, electricalMap)
+
+    var powerDemand: Double = 0.0
+
+    var pendingChargeEnergy: Double = 0.0
+
+    var chargeFraction: Double = 0.0
+        private set
+
+    override fun subscribeServerThread(subscribers: SubscriberCollection<ServerPhase>) {
+        subscribers.addStart(this::serverTickStart)
+    }
+
+    @ServerOnly
+    private fun serverTickStart(dt: Double, phase: ServerPhase) {
+        val blockEntity = container as? PowerCellChargerBlockEntity ?: run {
+            powerDemand = 0.0
+            return
+        }
+
+        val stack = blockEntity.inventoryHandler.getStackInSlot(0)
+
+        if (stack.isEmpty) {
+            powerDemand = 0.0
+            chargeFraction = 0.0
+            return
+        }
+
+        val storage = stack.getCapability(ForgeCapabilities.ENERGY).resolve()
+
+        if (storage.isEmpty || storage.get() !is IEln2EnergyStorage) {
+            powerDemand = 0.0
+            chargeFraction = 0.0
+            return
+        }
+
+        val eln2Storage = storage.get() as IEln2EnergyStorage
+
+        val capacity = !eln2Storage.capacityJoules
+        val current = !eln2Storage.energyJoules
+
+        chargeFraction = if (capacity.approxEq(0.0)) 0.0 else (current / capacity).coerceIn(0.0, 1.0)
+
+        if (current.approxEq(capacity)) {
+            powerDemand = 0.0
+            return
+        }
+
+        powerDemand = !eln2Storage.maxPowerInput
+
+        val pending = pendingChargeEnergy
+
+        if (pending.approxEq(0.0)) {
+            return
+        }
+
+        pendingChargeEnergy = 0.0
+
+        val accepted = eln2Storage.receiveEnergyJoules(Quantity(pending, JOULE), simulate = false)
+
+        val rejected = pending - !accepted
+
+        if (rejected > 0.0) {
+            pendingChargeEnergy = rejected
+        }
+
+        blockEntity.setChanged()
+    }
+}
+
+class PowerCellChargerBlock : UprightHorizontalDirectionCellBlock<PowerCellChargerCell>() {
+    override fun getCellProvider(): CellProvider<PowerCellChargerCell> {
+        return Eln2InventoryPower.POWER_CELL_CHARGER_CELL.get()
+    }
+
+    override fun newBlockEntity(pPos: BlockPos, pState: BlockState): BlockEntity {
+        return PowerCellChargerBlockEntity(pPos, pState)
+    }
+
+    override fun <T : BlockEntity?> getTicker(
+        pLevel: Level,
+        pState: BlockState,
+        pBlockEntityType: BlockEntityType<T>,
+    ): BlockEntityTicker<T>? {
+        if (pLevel.isClientSide) {
+            return null
+        }
+
+        return BlockEntityTicker { _, _, _, pBlockEntity ->
+            if (pBlockEntity is PowerCellChargerBlockEntity) {
+                pBlockEntity.serverTick()
+            }
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun use(
+        pState: BlockState,
+        pLevel: Level,
+        pPos: BlockPos,
+        pPlayer: Player,
+        pHand: InteractionHand,
+        pHit: BlockHitResult,
+    ): InteractionResult {
+        if (pHand != InteractionHand.MAIN_HAND) {
+            return InteractionResult.FAIL
+        }
+
+        return pLevel.constructMenuHelper2(pPos, pPlayer, Component.translatable("menu.$MODID.power_cell_charger"), ::PowerCellChargerMenu)
+    }
+}
+
+class PowerCellChargerBlockEntity(pos: BlockPos, state: BlockState) : CellBlockEntity<PowerCellChargerCell>(pos, state, Eln2InventoryPower.POWER_CELL_CHARGER_BLOCK_ENTITY.get()) {
+    companion object {
+        private const val INVENTORY = "inventory"
+        private const val SLOT_COUNT = 1
+
+        fun tick(pLevel: Level?, pPos: BlockPos?, pState: BlockState?, pBlockEntity: BlockEntity?) {
+            if (pLevel == null || pBlockEntity == null) {
+                return
+            }
+
+            if (pBlockEntity !is PowerCellChargerBlockEntity) {
+                return
+            }
+
+            if (!pLevel.isClientSide) {
+                pBlockEntity.serverTick()
+            }
+        }
+    }
+
+    class InventoryHandler(val blockEntity: PowerCellChargerBlockEntity) : ItemStackHandler(SLOT_COUNT) {
+        override fun isItemValid(slot: Int, stack: ItemStack): Boolean {
+            return stack.getCapability(ForgeCapabilities.ENERGY).resolve().let {
+                it.isPresent && it.get() is IEln2EnergyStorage
+            }
+        }
+
+        override fun onContentsChanged(slot: Int) {
+            blockEntity.setChanged()
+        }
+    }
+
+    val inventoryHandler = InventoryHandler(this)
+    val inventoryHandlerLazy: LazyOptional<InventoryHandler> = LazyOptional.of { inventoryHandler }
+
+    val cellProgressData = ProgressContainerData()
+
+    override fun <T> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {
+        if (cap == ForgeCapabilities.ITEM_HANDLER) {
+            return inventoryHandlerLazy.cast()
+        }
+
+        return super.getCapability(cap, side)
+    }
+
+    override fun invalidateCaps() {
+        super.invalidateCaps()
+        inventoryHandlerLazy.invalidate()
+    }
+
+    @ServerOnly
+    fun serverTick() {
+        cellProgressData.progress = cell.chargeFraction.toFloat()
+    }
+
+    override fun saveAdditional(pTag: CompoundTag) {
+        super.saveAdditional(pTag)
+        pTag.put(INVENTORY, inventoryHandler.serializeNBT())
+    }
+
+    override fun load(pTag: CompoundTag) {
+        super.load(pTag)
+        inventoryHandler.deserializeNBT(pTag.getCompound(INVENTORY))
+    }
+}
+
+class PowerCellChargerMenu(
+    pContainerId: Int,
+    playerInventory: Inventory,
+    handler: ItemStackHandler,
+    val containerData: ProgressContainerData,
+    val access: ContainerLevelAccess,
+    val level: Level,
+) : AbstractContainerMenu(Eln2InventoryPower.POWER_CELL_CHARGER_MENU.get(), pContainerId), ProgressSupplierMenu {
+    companion object {
+        private val SLOT_POS = Vector2di(80, 35)
+    }
+
+    @ServerOnly
+    constructor(entity: PowerCellChargerBlockEntity, id: Int, inventory: Inventory) : this(
+        id,
+        inventory,
+        entity.inventoryHandler,
+        entity.cellProgressData,
+        ContainerLevelAccess.create(entity.level!!, entity.blockPos),
+        entity.level!!
+    )
+
+    @ClientOnly
+    constructor(pContainerId: Int, playerInventory: Inventory) : this(
+        pContainerId,
+        playerInventory,
+        ItemStackHandler(1),
+        ProgressContainerData(),
+        ContainerLevelAccess.NULL,
+        playerInventory.player.level()
+    )
+
+    init {
+        addSlot(
+            SlotItemHandlerWithPlacePredicate(handler, 0, SLOT_POS.x, SLOT_POS.y) { stack ->
+                stack.getCapability(ForgeCapabilities.ENERGY).resolve().let {
+                    it.isPresent && it.get() is IEln2EnergyStorage
+                }
+            }
+        )
+
+        addDataSlots(containerData)
+
+        ContainerHelper.addPlayerGrid(playerInventory, this::addSlot)
+    }
+
+    override fun stillValid(pPlayer: Player) =
+        stillValid(access, pPlayer, Eln2InventoryPower.POWER_CELL_CHARGER_BLOCK.block.get())
+
+    override fun quickMoveStack(pPlayer: Player, pIndex: Int) =
+        ContainerHelper.quickMove(slots, pPlayer, pIndex)
+
+    override fun getProgressForRender() = containerData.progress
 }
