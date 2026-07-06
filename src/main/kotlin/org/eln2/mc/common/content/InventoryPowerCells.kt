@@ -4,8 +4,12 @@ package org.eln2.mc.common.content
 
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.network.chat.Component
+import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.TooltipFlag
+import net.minecraft.world.level.Level
 import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.capabilities.ICapabilityProvider
@@ -16,6 +20,7 @@ import org.ageseries.libage.data.JOULE
 import org.ageseries.libage.data.Power
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.rounded
 import org.eln2.mc.RF_PER_JOULE
 import org.eln2.mc.common.events.Scheduler
 import kotlin.math.min
@@ -154,9 +159,6 @@ interface IEln2EnergyStorage : IEnergyStorage {
  * Mirrors the [org.eln2.mc.common.LightBulbItem] pattern for stack NBT access.
  * */
 class PowerCellItem(val powerCellModel: InventoryPowerCellModel, val initialChargeFraction: Double = 0.9) : Item(Properties().stacksTo(1)) {
-    /**
-     * Reads the stored energy from the stack's NBT.
-     * */
     fun getEnergy(stack: ItemStack): Quantity<Energy> {
         val tag = stack.tag
             ?: return Quantity(0.0, JOULE)
@@ -217,6 +219,46 @@ class PowerCellItem(val powerCellModel: InventoryPowerCellModel, val initialChar
         val cap = stack.getCapability(ForgeCapabilities.ENERGY).resolve()
         return if (cap.isPresent) cap.get() as? IEln2EnergyStorage else null
     }
+
+    override fun appendHoverText(
+        pStack: ItemStack,
+        pLevel: Level?,
+        pTooltipComponents: MutableList<Component>,
+        pIsAdvanced: TooltipFlag,
+    ) {
+        super.appendHoverText(pStack, pLevel, pTooltipComponents, pIsAdvanced)
+
+        val energy = getEnergy(pStack)
+        val capacity = powerCellModel.energyCapacity
+        val charge = !energy / !capacity
+
+        pTooltipComponents.add(Component.literal("Charge: ${(charge * 100).rounded()}%"))
+    }
+}
+
+/**
+ * Finds the highest charge fraction among all [PowerCellItem]s in the given player's inventory.
+ * Returns null if the player has no power cells.
+ * Used by tools to display a charge bar.
+ * */
+fun findBestBatteryCharge(player: Player): Double? {
+    var bestCharge: Double? = null
+
+    for (pStack in player.inventory.items) {
+        if (pStack.isEmpty) {
+            continue
+        }
+
+        val cell = pStack.item as? PowerCellItem ?: continue
+        val energy = cell.getEnergy(pStack)
+        val charge = !energy / !cell.powerCellModel.energyCapacity
+
+        if (bestCharge == null || charge > bestCharge) {
+            bestCharge = charge
+        }
+    }
+
+    return bestCharge
 }
 
 /**
