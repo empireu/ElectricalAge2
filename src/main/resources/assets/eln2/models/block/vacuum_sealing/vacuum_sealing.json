@@ -1,39 +1,13 @@
 {
-    "parent": "eln2:block/templates/block",
-    "format_version": "1.9.0",
+	"format_version": "1.9.0",
 	"credit": "Made with Blockbench",
+	"parent": "eln2:block/templates/block",
 	"texture_size": [64, 64],
 	"textures": {
 		"0": "eln2:block/vacuum_sealing/vacuum_sealing",
 		"particle": "eln2:block/vacuum_sealing/vacuum_sealing"
 	},
 	"elements": [
-		{
-			"name": "cable0",
-			"from": [7, 0, 0],
-			"to": [9, 1.5, 1],
-			"rotation": {"angle": 0, "axis": "y", "origin": [7, 0, 0]},
-			"faces": {
-				"north": {"uv": [0, 0.5, 1.75, 1.75], "texture": "#0"},
-				"east": {"uv": [0, 0, 0.75, 0.25], "rotation": 270, "texture": "#0"},
-				"west": {"uv": [0, 0, 0.75, 0.25], "rotation": 270, "texture": "#0"},
-				"up": {"uv": [0, 0.25, 1, 0.5], "texture": "#0"},
-				"down": {"uv": [0.75, 0, 1, 0.25], "texture": "#0"}
-			}
-		},
-		{
-			"name": "cable0",
-			"from": [7, 0, 15],
-			"to": [9, 1.5, 16],
-			"rotation": {"angle": 0, "axis": "y", "origin": [9, 0, 16]},
-			"faces": {
-				"east": {"uv": [0, 0, 0.75, 0.25], "rotation": 270, "texture": "#0"},
-				"south": {"uv": [0, 0.5, 1.75, 1.75], "texture": "#0"},
-				"west": {"uv": [0, 0, 0.75, 0.25], "rotation": 270, "texture": "#0"},
-				"up": {"uv": [0, 0.25, 1, 0.5], "rotation": 180, "texture": "#0"},
-				"down": {"uv": [0.75, 0, 1, 0.25], "rotation": 180, "texture": "#0"}
-			}
-		},
 		{
 			"name": "base",
 			"from": [1, 0, 1],
@@ -213,14 +187,12 @@
 		3,
 		4,
 		5,
-		6,
-		7,
 		{
 			"name": "pump_assembly",
 			"origin": [10, 2, 2.975],
 			"scope": 0,
 			"color": 0,
-			"children": [8, 9, 10, 11, 12, 13, 14]
+			"children": [6, 7, 8, 9, 10, 11, 12]
 		}
 	]
 }
