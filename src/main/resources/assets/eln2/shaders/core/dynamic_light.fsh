@@ -67,12 +67,17 @@ float screenSpaceShadow(vec3 worldPos) {
     float distToLight = length(toLight);
     vec3 dir = toLight / distToLight;
 
+    float minDist = 0.5;
     float maxDist = min(distToLight, u_range);
+    if (maxDist <= minDist) {
+        return 1.0;
+    }
+
     int steps = 12;
     float result = 1.0;
 
     for (int i = 1; i <= steps; i++) {
-        float t = (float(i) / float(steps)) * maxDist;
+        float t = minDist + (float(i) / float(steps)) * (maxDist - minDist);
         vec3 samplePos = worldPos + dir * t;
 
         vec4 clipPos = InvViewProjMat * vec4(samplePos, 1.0);
@@ -84,7 +89,7 @@ float screenSpaceShadow(vec3 worldPos) {
         }
 
         float sampleDepth = texture(DepthSampler, sampleUV).r;
-        float bias = 0.002;
+        float bias = 0.005;
         if (sampleDepth < ndc.z - bias) {
             result = 0.0;
             break;

@@ -2,6 +2,7 @@
 
 package org.eln2.mc.client.dynamicLight
 
+import com.mojang.blaze3d.pipeline.TextureTarget
 import com.mojang.blaze3d.platform.GlStateManager
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.BufferUploader
@@ -28,6 +29,9 @@ object DynamicLightManager {
     private const val FLASHLIGHT_HALF_ANGLE_DEG = 25.0f
 
     private var shader: ShaderInstance? = null
+    private var depthCopyTarget: TextureTarget? = null
+    private var depthCopyWidth = 0
+    private var depthCopyHeight = 0
 
     fun register(event: RegisterShadersEvent) {
         val src = ShaderInstance(
@@ -67,6 +71,23 @@ object DynamicLightManager {
         )
     }
 
+    private fun ensureDepthCopyTarget(width: Int, height: Int): TextureTarget {
+        val current = depthCopyTarget
+        if (current != null && depthCopyWidth == width && depthCopyHeight == height) {
+            return current
+        }
+
+        current?.destroyBuffers()
+
+        val target = TextureTarget(width, height, true, false)
+        target.setClearColor(0f, 0f, 0f, 0f)
+        depthCopyTarget = target
+        depthCopyWidth = width
+        depthCopyHeight = height
+        LOG.info("Resized depth copy target to ${width}x${height}")
+        return target
+    }
+
     private fun renderFlashlightPass(
         shader: ShaderInstance,
         projectionMatrix: Matrix4f,
@@ -75,6 +96,10 @@ object DynamicLightManager {
         lookDirection: Vec3
     ) {
         val mainTarget = Minecraft.getInstance().mainRenderTarget
+        val depthCopy = ensureDepthCopyTarget(mainTarget.width, mainTarget.height)
+
+        depthCopy.copyDepthFrom(mainTarget)
+        mainTarget.bindWrite(false)
 
         val deg2rad = PI.toFloat() / 180f
 
@@ -118,7 +143,7 @@ object DynamicLightManager {
         RenderSystem.depthMask(false)
 
         RenderSystem.setShader { shader }
-        shader.setSampler("DepthSampler", mainTarget.depthTextureId)
+        shader.setSampler("DepthSampler", depthCopy.depthTextureId)
 
         shader.safeGetUniform("ModelViewMat").set(Matrix4f())
         shader.safeGetUniform("ProjMat").set(Matrix4f())
