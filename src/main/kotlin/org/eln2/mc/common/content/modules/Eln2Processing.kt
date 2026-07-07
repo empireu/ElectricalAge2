@@ -118,7 +118,7 @@ object Eln2Processing : ContentModule() {
      * Registers the machine hull item, which is then used in the [registerMachine] API.
      * */
     private fun registerMachineHull(hullName: String) : MachineHullRegistryItem {
-        val hullItem = ItemRegistry.item(hullName) {
+        val hullItem = item(hullName) {
             Item(Item.Properties())
         }
 
@@ -933,7 +933,7 @@ object Eln2Processing : ContentModule() {
     val VACUUM_SEALING_SOUND = soundEventVariableRange("vacuum_sealing")
 
     val VACUUM_SEALING_MODEL = lazy {
-        ProcessingMachineCompositeModel(FlwModels.CRUSHER_BODY) {
+        ProcessingMachineCompositeModel(FlwModels.VACUUM_SEALING) {
         }
     }
 

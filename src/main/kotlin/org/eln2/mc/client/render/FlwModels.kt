@@ -230,6 +230,12 @@ object FlwModels {
 
     //#endregion
 
+    //#region Vacuum Sealing
+
+    val VACUUM_SEALING = partialBlock("vacuum_sealing/vacuum_sealing")
+
+    //#endregion
+
     fun partialBlock(path: String): PartialModel = PartialModel.of(resource("block/$path"))
     fun polarBlock(path: String): PolarModel = PolarModel(resource("block/$path"))
 
