@@ -29,6 +29,7 @@ import org.eln2.mc.common.containers.ContainerRegistry
 import org.eln2.mc.common.content.OscilloscopeCopyManager
 import org.eln2.mc.common.content.OscilloscopeShader
 import org.eln2.mc.common.content.ScrewdriverItem
+import org.eln2.mc.client.dynamicLight.DynamicLightManager
 import org.eln2.mc.common.content.fluid.ChemicalBottleItem
 import org.eln2.mc.common.content.modules.ContentManager
 import org.eln2.mc.common.entities.EntityRegistry
@@ -115,7 +116,9 @@ class Eln2 {
         modEventBus.addListener(OverlayRegistry::register)
         modEventBus.addListener(KeyMappingRegistry::register)
         modEventBus.addListener(OscilloscopeShader::register)
+        modEventBus.addListener(DynamicLightManager::register)
 
+        forgeEventBus.addListener(DynamicLightManager::render)
         forgeEventBus.addListener(Eln2Config::registerClientCommands);
 
         forgeEventBus.addListener(EventPriority.LOWEST, SpecContainerPart::renderHighlightEvent)

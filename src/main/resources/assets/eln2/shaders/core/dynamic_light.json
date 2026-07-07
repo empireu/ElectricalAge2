@@ -1,0 +1,55 @@
+{
+    "blend": {
+        "func": "add",
+        "srcrgb": "one",
+        "dstrgb": "one"
+    },
+    "vertex": "eln2:dynamic_light",
+    "fragment": "eln2:dynamic_light",
+    "samplers": [
+        { "name": "DepthSampler" }
+    ],
+    "attributes": [ "Position" ],
+    "uniforms": [
+        {
+            "name": "ModelViewMat",
+            "type": "matrix4x4",
+            "count": 16,
+            "values": [
+                1.0, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0, 0.0,
+                0.0, 0.0, 1.0, 0.0,
+                0.0, 0.0, 0.0, 1.0
+            ]
+        },
+        {
+            "name": "ProjMat",
+            "type": "matrix4x4",
+            "count": 16,
+            "values": [
+                1.0, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0, 0.0,
+                0.0, 0.0, 1.0, 0.0,
+                0.0, 0.0, 0.0, 1.0
+            ]
+        },
+        {
+            "name": "InvViewProjMat",
+            "type": "matrix4x4",
+            "count": 16,
+            "values": [
+                1.0, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0, 0.0,
+                0.0, 0.0, 1.0, 0.0,
+                0.0, 0.0, 0.0, 1.0
+            ]
+        },
+        { "name": "u_lightPosition", "type": "float", "count": 3, "values": [ 0.0, 0.0, 0.0 ] },
+        { "name": "u_lightDirection", "type": "float", "count": 3, "values": [ 0.0, 0.0, -1.0 ] },
+        { "name": "u_lightColor", "type": "float", "count": 3, "values": [ 1.0, 1.0, 0.9 ] },
+        { "name": "u_cosHalfAngle", "type": "float", "count": 1, "values": [ 0.8 ] },
+        { "name": "u_range", "type": "float", "count": 1, "values": [ 16.0 ] },
+        { "name": "u_intensity", "type": "float", "count": 1, "values": [ 1.0 ] },
+        { "name": "u_screenSize", "type": "float", "count": 2, "values": [ 1.0, 1.0 ] }
+    ]
+}
