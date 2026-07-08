@@ -7,7 +7,8 @@
     "vertex": "eln2:dynamic_light",
     "fragment": "eln2:dynamic_light",
     "samplers": [
-        { "name": "DepthSampler" }
+        { "name": "DepthSampler" },
+        { "name": "ShadowMap" }
     ],
     "attributes": [ "Position" ],
     "uniforms": [
@@ -35,6 +36,17 @@
         },
         {
             "name": "InvViewProjMat",
+            "type": "matrix4x4",
+            "count": 16,
+            "values": [
+                1.0, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0, 0.0,
+                0.0, 0.0, 1.0, 0.0,
+                0.0, 0.0, 0.0, 1.0
+            ]
+        },
+        {
+            "name": "u_lightViewProj",
             "type": "matrix4x4",
             "count": 16,
             "values": [
