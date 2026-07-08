@@ -18,6 +18,7 @@ import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.Vec3
 import org.eln2.mc.LOG
+import org.eln2.mc.integration.sodium.EmbeddiumShadowRenderer
 import org.eln2.mc.resource
 import org.joml.Matrix4f
 import org.joml.Vector3f
@@ -25,12 +26,19 @@ import kotlin.math.abs
 import kotlin.math.PI
 
 /**
- * Renders a shadow map by rendering solid block cubes from the light's point of view.
+ * Renders a shadow map from the light's point of view.
  *
- * The shadow map is a depth texture that stores the distance from the light to the nearest solid block.
- * The flashlight shader samples this texture to determine if a pixel is occluded (shadowed) by geometry
- * between the light source and the pixel's world position. This works for off-screen occluders because
- * the shadow map captures geometry from the light's perspective, not the player's.
+ * When embeddium is present, delegates to [EmbeddiumShadowRenderer], which dispatches terrain
+ * rendering through embeddium's [SodiumWorldRenderer] to render real block geometry (stairs, slabs,
+ * fences, custom models) into the shadow depth buffer. This produces accurate shadows for all
+ * block shapes and is compatible with embeddium's optimized rendering pipeline.
+ *
+ * When embeddium is not present, falls back to rendering unit cubes for solid blocks. This is a
+ * brute-force approximation that only models cube volumes, but requires no mixins.
+ *
+ * The shadow map is a depth texture that stores the distance from the light to the nearest surface.
+ * The flashlight shader samples this texture to determine if a pixel is occluded (shadowed) by
+ * geometry between the light source and the pixel's world position.
  */
 object ShadowMapRenderer {
     private const val SHADOW_MAP_SIZE = 1024
@@ -88,7 +96,8 @@ object ShadowMapRenderer {
     ): Matrix4f {
         RenderSystem.assertOnRenderThread()
 
-        val lightViewProj = computeLightViewProj(lightPosition, lightDirection, halfAngleDeg, range)
+        val (lightView, lightProj) = computeLightViewAndProjection(lightPosition, lightDirection, halfAngleDeg, range)
+        val lightViewProj = Matrix4f(lightProj).mul(lightView)
 
         val target = ensureShadowTarget()
         target.bindWrite(true)
@@ -97,7 +106,6 @@ object ShadowMapRenderer {
         target.bindWrite(true)
 
         RenderSystem.backupProjectionMatrix()
-        RenderSystem.setProjectionMatrix(Matrix4f(), VertexSorting.DISTANCE_TO_ORIGIN)
 
         val modelViewStack = RenderSystem.getModelViewStack()
         modelViewStack.pushPose()
@@ -109,7 +117,11 @@ object ShadowMapRenderer {
         RenderSystem.disableBlend()
         RenderSystem.colorMask(false, false, false, false)
 
-        drawOccluderCubes(lightPosition, range, lightViewProj)
+        if (EmbeddiumShadowRenderer.isAvailable()) {
+            renderEmbeddiumShadow(lightPosition, lightView, lightProj)
+        } else {
+            drawOccluderCubes(lightPosition, range, lightViewProj)
+        }
 
         RenderSystem.colorMask(true, true, true, true)
         RenderSystem.disableDepthTest()
@@ -128,12 +140,20 @@ object ShadowMapRenderer {
         return shadowTarget?.depthTextureId ?: 0
     }
 
-    private fun computeLightViewProj(
+    private fun renderEmbeddiumShadow(
+        lightPosition: Vec3,
+        lightView: Matrix4f,
+        lightProj: Matrix4f
+    ) {
+        EmbeddiumShadowRenderer.renderTerrainShadow(lightPosition, lightView, lightProj)
+    }
+
+    private fun computeLightViewAndProjection(
         lightPosition: Vec3,
         lightDirection: Vec3,
         halfAngleDeg: Float,
         range: Float
-    ): Matrix4f {
+    ): Pair<Matrix4f, Matrix4f> {
         val fovy = halfAngleDeg.toDouble() * 2.0 * PI / 180.0
         val proj = Matrix4f().setPerspective(fovy.toFloat(), 1.0f, NEAR_PLANE, range)
 
@@ -150,7 +170,7 @@ object ShadowMapRenderer {
 
         val view = Matrix4f().setLookAt(eye, center, up)
 
-        return proj.mul(view)
+        return Pair(view, proj)
     }
 
     /**
