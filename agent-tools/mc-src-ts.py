@@ -303,7 +303,17 @@ def cmd_read(args: list[str]) -> None:
         for i, line in enumerate(chunk, start=start + 1):
             print(f"{i:5d}:{line}")
     else:
-        sys.stdout.write(content)
+        lines = content.splitlines()
+        total = len(lines)
+        cap = 100
+        if total <= cap:
+            for i, line in enumerate(lines, start=1):
+                print(f"{i:5d}:{line}")
+        else:
+            for i, line in enumerate(lines[:cap], start=1):
+                print(f"{i:5d}:{line}")
+            print(f"\n... output truncated: showing first {cap} of {total} lines ...")
+            print(f"(use --lines {cap + 1}- to see the rest, or --lines N-M for a range)")
 
 
 # =====================================================================
@@ -316,7 +326,7 @@ def cmd_grep(args: list[str]) -> None:
     p.add_argument("pattern", help="Regex pattern to search")
     p.add_argument("--max", "-m", type=int, default=20, help="Max results")
     p.add_argument("--context", "-C", type=int, default=0, help="Context lines around match")
-    p.add_argument("--class", "-c", dest="class_filter", help="Only search in this class/package prefix")
+    p.add_argument("--class", "-c", dest="class_filter", help="Substring match on class/package path")
     p.add_argument("-F", "--fixed-strings", action="store_true", help="Treat pattern as literal text")
     opts = p.parse_args(args)
 
@@ -328,13 +338,20 @@ def cmd_grep(args: list[str]) -> None:
         print(f"No matches for '{opts.pattern}'")
         return
 
-    for r in results:
-        cls = r["file"].removesuffix(".java").replace("/", ".")
-        print(f"\n=== {cls}:{r['line']} ===")
-        for i, line in enumerate(r["lines"]):
-            line_num = r["context_start"] + i
-            marker = " >" if i == r["match_idx"] else "  "
-            print(f"{marker}{line_num:4d}:{line}")
+    if opts.context > 0:
+        for r in results:
+            cls = r["file"].removesuffix(".java").replace("/", ".")
+            print(f"\n--- {cls}:{r['context_start']}-{r['context_start'] + len(r['lines']) - 1} ---")
+            for i, line in enumerate(r["lines"]):
+                line_num = r["context_start"] + i
+                marker = ">" if i == r["match_idx"] else " "
+                print(f" {marker} {line_num:4d}:{line}")
+    else:
+        for r in results:
+            cls = r["file"].removesuffix(".java").replace("/", ".")
+            for i, line in enumerate(r["lines"]):
+                print(f"{cls}:{r['line']}:{line}")
+            # r["lines"] is a single-element list when context == 0
 
     plural = "s" if len(results) > 1 else ""
     print(f"\n{len(results)} result{plural}")
@@ -354,6 +371,7 @@ def cmd_list(args: list[str]) -> None:
         prefix += "/"
     jar = SourceJar.discover()
     seen = set()
+    matches = []
     with jar.open() as zf:
         for name in sorted(zf.namelist()):
             if not name.endswith(".java"):
@@ -362,8 +380,16 @@ def cmd_list(args: list[str]) -> None:
                 continue
             cls = name.removesuffix(".java").replace("/", ".")
             if cls not in seen:
-                print(cls)
+                matches.append(cls)
                 seen.add(cls)
+    if not matches:
+        print(f"No classes in package '{opts.package}'")
+        return
+    cap = 50
+    for cls in matches[:cap]:
+        print(cls)
+    if len(matches) > cap:
+        print(f"\n... and {len(matches) - cap} more — narrow your query with a longer package prefix ...")
 
 
 # =====================================================================
@@ -377,12 +403,18 @@ def cmd_find(args: list[str]) -> None:
     opts = p.parse_args(args)
     pat = re.compile(re.escape(opts.name), re.IGNORECASE)
     jar = SourceJar.discover()
+    matches = []
     with jar.open() as zf:
         for name in sorted(zf.namelist()):
             if not name.endswith(".java"):
                 continue
             if pat.search(name):
-                print(name.removesuffix(".java").replace("/", "."))
+                matches.append(name.removesuffix(".java").replace("/", "."))
+    if not matches:
+        print(f"No classes matching '{opts.name}'")
+        return
+    for cls in matches:
+        print(cls)
 
 
 # =====================================================================

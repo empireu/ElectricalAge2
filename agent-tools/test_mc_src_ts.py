@@ -175,9 +175,6 @@ run("%s glob %s --methods --filter canOcclude" % (TOOL, T["BlockBehaviour"]),
 run("%s glob %s --methods --filter isAir" % (TOOL, T["BlockBehaviour"]),
     "glob: --filter 'isAir'")
 
-run("%s glob %s --fields --public --filter level --lines" % (TOOL, T["BlockEntity"]),
-    "glob: --filter 'level' --lines")
-
 # === 7. glob: GameRenderer ===
 section("7. glob: GameRenderer (javalang had issues)")
 

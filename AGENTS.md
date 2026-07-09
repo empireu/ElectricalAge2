@@ -226,7 +226,7 @@ method <class-name> <method-name> [--lines M-N]
    Extract a method body with preceding javadoc.
 
 grep <pattern> [--max N] [--context M] [--class C] [-F]
-   Search source files. -F for literal, --class scopes search.
+   Search source files. -F for literal; --class C is a substring match on the jar entry path (matches any file with C in its path, e.g. `--class BlockEntity` matches `ChestBlockEntity` too).
 
 list [<package>]
    List classes under a package prefix.
