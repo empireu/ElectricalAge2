@@ -47,7 +47,6 @@ Commands:
             --static        Only static members
             --no-static     Only instance members
             --filter <str>  Substring match on member name
-            --lines         Show source lines alongside each member
 
         Class names support short names (if unique) and Outer.Inner syntax.
 """
@@ -149,7 +148,7 @@ class SourceJar:
         # Accept both \| and | as alternation (agents habit from grep basic mode)
         if not fixed_strings:
             pattern = pattern.replace(r"\|", "|")
-        compiled = re.compile(pattern)
+        compiled = re.compile(re.escape(pattern)) if fixed_strings else re.compile(pattern)
         with self.open() as zf:
             for info in zf.infolist():
                 if not info.filename.endswith(".java"):
@@ -933,7 +932,6 @@ def cmd_glob(args: list[str]) -> None:
     p.add_argument("--static", action="store_true")
     p.add_argument("--no-static", action="store_true")
     p.add_argument("--filter", "-f", type=str, default=None, help="Substring filter on member name")
-    p.add_argument("--lines", action="store_true", help="Show source lines alongside")
     opts = p.parse_args(args)
 
     if not _TS_AVAILABLE:
@@ -967,9 +965,6 @@ def cmd_glob(args: list[str]) -> None:
         text = safe_text(r["text"])
         range_str = f"L{r['range'][0]}-{r['range'][1]}" if r["range"][0] != r["range"][1] else f"L{r['range'][0]}"
         print(f"  {text:<58s} {range_str}")
-        if opts.lines:
-            for ln in range(r["range"][0] - 1, r["range"][1]):
-                print(f"          {ln+1:5d}:{lines[ln]}")
         count += 1
     print(f"\n{count} member{'' if count == 1 else 's'}")
 

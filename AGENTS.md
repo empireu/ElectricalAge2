@@ -212,8 +212,55 @@ Never run commands without being asked to (exception: you can build to make sure
 
 ## Agent Tools
 
-`agent-tools/mc-src-ts.py` — Read and search Minecraft/Forge vanilla source. Accesses the ForgeGradle build cache that contains Parchment-remapped sources jar with the full decompiled Minecraft + Forge source.
-`agent-tools/mc-src-ts.py` reads from it directly using **tree-sitter** for accurate AST parsing.
+### `agent-tools/mc-src-ts.py` 
+
+Read and search Minecraft/Forge vanilla source. Accesses the ForgeGradle build cache that contains Parchment-remapped sources jar with the full decompiled Minecraft + Forge source.
+
+**Commands:**
+
+read <class-name> [--lines M-N]
+   Dump source or a line range of a class.
+   Class names: FQN, short name (auto-resolves), or Outer.Inner.
+
+method <class-name> <method-name> [--lines M-N]
+   Extract a method body with preceding javadoc.
+
+grep <pattern> [--max N] [--context M] [--class C] [-F]
+   Search source files. -F for literal, --class scopes search.
+
+list [<package>]
+   List classes under a package prefix.
+
+find <name>
+   Find classes by substring (case-insensitive).
+
+glob <class-name> [flags...]
+   List class members (methods, fields, constructors, inner types).
+   
+   Category filters (default: all):
+      --methods       Methods only
+      --fields        Fields only
+      --ctors         Constructors only
+      --inner-types   Inner types only
+   
+   Visibility filters (default: public + protected):
+      --public        Include public
+      --private       Include private
+      --protected     Include protected
+      --package       Include package-private
+   
+   Other filters:
+      --static        Only static members
+      --no-static     Only instance members
+      --filter <str>  Substring match on member name
+
+**Class name resolution:**
+
+- FQN (`net.minecraft.Foo`) used directly
+- Short name (`Foo`) resolved against top-level classes; ambiguous names print candidates
+- Inner class (`Outer.Inner`) supported in all commands
+
+**Examples:**
 
 ```bash
 # Read a class (FQN, short name, or Outer.Inner)
@@ -248,32 +295,8 @@ python agent-tools/mc-src-ts.py glob BlockEntity --methods --filter get       # 
 python agent-tools/mc-src-ts.py glob BlockEntity --private --fields           # private fields
 python agent-tools/mc-src-ts.py glob BlockEntity --public --static --filter CODEC
 python agent-tools/mc-src-ts.py glob LevelRenderer.RenderChunkInfo           # inner class
-python agent-tools/mc-src-ts.py glob BlockBehaviour --methods --lines        # show source lines
+python agent-tools/mc-src-ts.py glob BlockBehaviour --methods        # show source lines
 ```
-
-**`glob` flags:**
-
-| Flag                          | Default      | Effect                                                 |
-| ----------------------------- | ------------ | ------------------------------------------------------ |
-| *(none)*                      | —            | Public + protected methods, fields, ctors, inner types |
-| `--methods`                   | —            | Only methods                                           |
-| `--fields`                    | —            | Only fields                                            |
-| `--ctors` / `--constructors`  | —            | Only constructors                                      |
-| `--inner-types`               | —            | Only inner types                                       |
-| `--public`                    | on (default) | Include public                                         |
-| `--private`                   | off          | Include private                                        |
-| `--protected`                 | on (default) | Include protected                                      |
-| `--package`                   | off          | Include package-private                                |
-| `--static`                    | off          | Only static members                                    |
-| `--no-static`                 | off          | Only instance members                                  |
-| `--filter <str>` / `-f <str>` | —            | Substring filter on member name                        |
-| `--lines`                     | off          | Show source line content                               |
-
-**Class name resolution:**
-
-- FQN (`net.minecraft.Foo`) used directly
-- Short name (`Foo`) resolved against top-level classes; ambiguous names print candidates
-- Inner class (`Outer.Inner`) supported in all commands
 
 **When to use:**
 
