@@ -7,6 +7,7 @@ import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.item.ItemStack
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
+import org.eln2.mc.requireIsOnServerThread
 import java.util.UUID
 
 /**
@@ -32,6 +33,7 @@ object PlayerPowerManager {
     }
 
     fun unregisterConsumer(player: ServerPlayer, consumer: InventoryPowerConsumer) {
+        requireIsOnServerThread()
         val state = states[player.uuid] ?: return
         state.consumers.remove(consumer)
     }
@@ -40,6 +42,7 @@ object PlayerPowerManager {
      * Called when the player's inventory changes or a producer item is added/removed, so the producer set is rebuilt on the next tick.
      * */
     fun invalidateProducers(player: ServerPlayer) {
+        requireIsOnServerThread()
         states[player.uuid]?.producers?.clear()
     }
 
@@ -52,16 +55,24 @@ object PlayerPowerManager {
      * 4. Delivers granted energy to the consumer.
      * */
     fun tick(player: ServerPlayer) {
+        requireIsOnServerThread()
         val state = states[player.uuid] ?: return
 
         if (state.consumers.isEmpty()) {
             return
         }
 
+        for (consumer in state.consumers.values) {
+            consumer.preTick()
+        }
+
         state.producers.clear()
         scanInventoryForProducers(player.inventory, state)
 
         if (state.producers.isEmpty()) {
+            for (consumer in state.consumers.values) {
+                consumer.postTick(DT)
+            }
             return
         }
 
@@ -70,6 +81,10 @@ object PlayerPowerManager {
             producers = state.producers.values.toList(),
             dt = DT,
         )
+
+        for (consumer in state.consumers.values) {
+            consumer.postTick(DT)
+        }
     }
 
     private fun rebuildProducersIfEmpty(player: ServerPlayer, state: PlayerPowerState) {
@@ -130,6 +145,7 @@ object PlayerPowerManager {
     }
 
     fun clear(player: ServerPlayer) {
+        requireIsOnServerThread()
         states.remove(player.uuid)
     }
 
@@ -138,6 +154,7 @@ object PlayerPowerManager {
      * Useful for HUD/tooltip display. Does not mutate state.
      * */
     fun totalAvailableEnergy(player: ServerPlayer): Quantity<Energy> {
+        requireIsOnServerThread()
         val state = states[player.uuid] ?: return Quantity(0.0, JOULE)
         if (state.producers.isEmpty()) {
             rebuildProducersIfEmpty(player, state)
@@ -154,6 +171,7 @@ object PlayerPowerManager {
      * Represents the maximum power the player can deliver this tick.
      * */
     fun totalMaxOutput(player: ServerPlayer): Quantity<Power> {
+        requireIsOnServerThread()
         val state = states[player.uuid] ?: return Quantity(0.0, WATT)
 
         if (state.producers.isEmpty()) {

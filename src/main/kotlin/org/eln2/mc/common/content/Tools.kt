@@ -346,7 +346,7 @@ private class DrillPowerConsumer(
         }
     }
 
-    fun tickBegin() {
+    override fun preTick() {
         grantedThisTick = 0.0
         demandThisTick = !powerDemand()
         ticked = true
@@ -357,18 +357,16 @@ private class DrillPowerConsumer(
         return granted
     }
 
-    fun computeFraction(dt: Double): Float {
-        if (!ticked) {
-            return 0.0f
+    override fun postTick(dt: Double) {
+        fraction = if (!ticked || demandThisTick.approxEq(0.0)) {
+            0.0f
+        } else {
+            (grantedThisTick / (demandThisTick * dt)).toFloat().coerceIn(0.0f, 1.0f)
         }
-
-        if (demandThisTick.approxEq(0.0)) {
-            return 0.0f
-        }
-
-        val requested = demandThisTick * dt
-        return (grantedThisTick / requested).toFloat().coerceIn(0.0f, 1.0f)
     }
+
+    var fraction: Float = 0.0f
+        private set
 
     fun markStopped() {
         stopped = true
@@ -487,9 +485,6 @@ class DrillItem(val drillModel: DrillModel) : Item(Properties().stacksTo(1)) {
         }
 
         fun onLeftClickBlock(event: PlayerInteractEvent.LeftClickBlock) {
-            if (event.level.isClientSide) {
-                return
-            }
 
             val player = event.entity as? ServerPlayer ?: return
             val stack = player.mainHandItem
@@ -536,12 +531,7 @@ class DrillItem(val drillModel: DrillModel) : Item(Properties().stacksTo(1)) {
             val fraction = if (player.level().isClientSide) {
                 DrillPowerMessage.clientFraction
             } else {
-                val consumer = consumers[player.uuid]
-                if (consumer == null) {
-                    0.0f
-                } else {
-                    consumer.computeFraction(DT)
-                }
+                consumers[player.uuid]?.fraction ?: 0.0f
             }
 
             if (fraction <= 0.0f) {
@@ -571,18 +561,10 @@ class DrillItem(val drillModel: DrillModel) : Item(Properties().stacksTo(1)) {
                 return
             }
 
-            consumer.tickBegin()
-
-            PlayerPowerManager.tick(player)
-
-            val fraction = consumer.computeFraction(DT)
-            Networking.send(DrillPowerMessage(fraction), player)
+            Networking.send(DrillPowerMessage(consumer.fraction), player)
         }
 
         fun onBlockBreak(event: BlockEvent.BreakEvent) {
-            if (event.level.isClientSide) {
-                return
-            }
 
             val player = event.player as? ServerPlayer ?: return
             val stack = player.mainHandItem

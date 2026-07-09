@@ -29,6 +29,7 @@ import org.eln2.mc.common.containers.ContainerRegistry
 import org.eln2.mc.common.content.OscilloscopeCopyManager
 import org.eln2.mc.common.content.OscilloscopeShader
 import org.eln2.mc.common.content.ScrewdriverItem
+import org.eln2.mc.common.content.FlashlightItem
 import org.eln2.mc.client.dynamicLight.DynamicLightManager
 import org.eln2.mc.common.content.fluid.ChemicalBottleItem
 import org.eln2.mc.common.content.modules.ContentManager
@@ -108,8 +109,8 @@ class Eln2 {
                 ContentManager.registerBlockEntityVisualizers()
                 ContentManager.registerPartVisualizers()
                 ContentManager.registerSpecVisualizers()
-                ContentManager.setupScreens()
                 ContentManager.setRenderLayers()
+                FlashlightItem.registerClient()
             }
         }
 

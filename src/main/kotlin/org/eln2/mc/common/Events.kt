@@ -36,6 +36,7 @@ import org.ageseries.libage.utils.Stopwatch
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.client.render.DebugVisualizer
+import org.eln2.mc.client.dynamicLight.DynamicLightManager
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.ModEvents.registerItemColors
 import org.eln2.mc.common.blocks.BlockRegistry
@@ -388,8 +389,8 @@ object ForgeEvents {
         SpecPlacementOverlayServer.clear()
 
         FluidPipeNetworkManager.clear()
-
         DrillItem.clearAll()
+        FlashlightItem.clearAll()
     }
 
     private fun scheduleWorldTrackingEventServer(event: BlockEvent, handler: (ServerLevel, BlockPos) -> Unit) {
@@ -427,18 +428,26 @@ object ForgeEvents {
             GridConnectionManagerClient.clear()
             DebugVisualizer.clear()
             DrillPowerMessage.reset()
+            FlashlightPowerMessage.reset()
+            FlashlightItem.clearClient()
+            DynamicLightManager.clear()
         }
     }
 
     @SubscribeEvent @JvmStatic
     fun onPlayerTick(event: TickEvent.PlayerTickEvent) {
-        if(event.phase != TickEvent.Phase.END) {
+        if (event.phase != TickEvent.Phase.END) {
             return
         }
 
-        val player = event.player as? ServerPlayer ?: return
+        if (!event.player.level().isClientSide) {
+            val player = event.player as? ServerPlayer ?: return
 
-        DrillItem.onPlayerTickEnd(player)
+            PlayerPowerManager.tick(player)
+
+            DrillItem.onPlayerTickEnd(player)
+            FlashlightItem.onPlayerTickEnd(player)
+        }
     }
 
     @SubscribeEvent @JvmStatic
@@ -448,49 +457,68 @@ object ForgeEvents {
 
     @SubscribeEvent @JvmStatic
     fun onLeftClickBlock(event: PlayerInteractEvent.LeftClickBlock) {
-        DrillItem.onLeftClickBlock(event)
+        if (!event.level.isClientSide) {
+            DrillItem.onLeftClickBlock(event)
+        }
     }
 
     @SubscribeEvent @JvmStatic
     fun onBlockBreak(event: BlockEvent.BreakEvent) {
-        DrillItem.onBlockBreak(event)
+        if (!event.level.isClientSide) {
+            DrillItem.onBlockBreak(event)
+        }
     }
 
     @SubscribeEvent @JvmStatic
     fun onPlayerLoggedIn(event: PlayerEvent.PlayerLoggedInEvent) {
-        val player = event.entity as? ServerPlayer ?: return
-        PlayerPowerManager.clear(player)
-        DrillItem.clearPlayer(player.uuid)
+        if (!event.entity.level().isClientSide) {
+            val player = event.entity as? ServerPlayer ?: return
+            PlayerPowerManager.clear(player)
+            DrillItem.clearPlayer(player.uuid)
+            FlashlightItem.clearPlayer(player.uuid)
+        }
     }
 
     @SubscribeEvent @JvmStatic
     fun onPlayerLoggedOut(event: PlayerEvent.PlayerLoggedOutEvent) {
-        val player = event.entity as? ServerPlayer ?: return
-        PlayerPowerManager.clear(player)
-        DrillItem.clearPlayer(player.uuid)
+        if (!event.entity.level().isClientSide) {
+            val player = event.entity as? ServerPlayer ?: return
+            PlayerPowerManager.clear(player)
+            DrillItem.clearPlayer(player.uuid)
+            FlashlightItem.clearPlayer(player.uuid)
+        }
     }
 
     @SubscribeEvent @JvmStatic
     fun onPlayerRespawn(event: PlayerEvent.PlayerRespawnEvent) {
-        val player = event.entity as? ServerPlayer ?: return
-        PlayerPowerManager.clear(player)
-        DrillItem.clearPlayer(player.uuid)
-        Networking.send(DrillPowerMessage(0.0f), player)
+        if (!event.entity.level().isClientSide) {
+            val player = event.entity as? ServerPlayer ?: return
+            PlayerPowerManager.clear(player)
+            DrillItem.clearPlayer(player.uuid)
+            FlashlightItem.clearPlayer(player.uuid)
+            Networking.send(DrillPowerMessage(0.0f), player)
+        }
     }
 
     @SubscribeEvent @JvmStatic
     fun onPlayerClone(event: PlayerEvent.Clone) {
-        val player = event.entity as? ServerPlayer ?: return
-        PlayerPowerManager.clear(player)
-        DrillItem.clearPlayer(player.uuid)
-        Networking.send(DrillPowerMessage(0.0f), player)
+        if (!event.entity.level().isClientSide) {
+            val player = event.entity as? ServerPlayer ?: return
+            PlayerPowerManager.clear(player)
+            DrillItem.clearPlayer(player.uuid)
+            FlashlightItem.clearPlayer(player.uuid)
+            Networking.send(DrillPowerMessage(0.0f), player)
+        }
     }
 
     @SubscribeEvent @JvmStatic
     fun onPlayerChangedDimension(event: PlayerEvent.PlayerChangedDimensionEvent) {
-        val player = event.entity as? ServerPlayer ?: return
-        PlayerPowerManager.clear(player)
-        DrillItem.clearPlayer(player.uuid)
-        Networking.send(DrillPowerMessage(0.0f), player)
+        if (!event.entity.level().isClientSide) {
+            val player = event.entity as? ServerPlayer ?: return
+            PlayerPowerManager.clear(player)
+            DrillItem.clearPlayer(player.uuid)
+            FlashlightItem.clearPlayer(player.uuid)
+            Networking.send(DrillPowerMessage(0.0f), player)
+        }
     }
 }

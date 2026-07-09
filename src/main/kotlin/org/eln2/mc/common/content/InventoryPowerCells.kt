@@ -118,6 +118,16 @@ interface InventoryPowerConsumer {
      * Returns the amount actually consumed (might be less than [granted] if the consumer's state changed, though typically equals [granted]).
      * */
     fun receivePower(granted: Quantity<Energy>): Quantity<Energy>
+
+    /**
+     * Called by [PlayerPowerManager] before distribution begins. Implementations should reset per-tick state (granted energy, demand cache).
+     * */
+    fun preTick() { }
+
+    /**
+     * Called by [PlayerPowerManager] after distribution completes. Implementations should compute and cache their power fraction for this tick.
+     * */
+    fun postTick(dt: Double) { }
 }
 
 /**

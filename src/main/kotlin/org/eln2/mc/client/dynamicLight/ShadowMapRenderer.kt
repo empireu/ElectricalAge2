@@ -117,8 +117,8 @@ object ShadowMapRenderer {
             drawOccluderCubes(lightPosition, range, lightViewProj)
         }
 
-        drawBlockEntityShadows(lightPosition, lightDirection, lightView, lightProj, range)
-        drawEntityShadows(lightPosition, lightDirection, lightView, lightProj, range)
+        drawBlockEntityShadows(lightPosition, lightDirection, lightView, lightProj, range, halfAngleDeg)
+        drawEntityShadows(lightPosition, lightDirection, lightView, lightProj, range, halfAngleDeg)
 
         RenderSystem.colorMask(true, true, true, true)
         RenderSystem.disableDepthTest()
@@ -160,14 +160,15 @@ object ShadowMapRenderer {
         lightDirection: Vec3,
         lightView: Matrix4f,
         lightProj: Matrix4f,
-        range: Float
+        range: Float,
+        halfAngleDeg: Float
     ) {
         val minecraft = Minecraft.getInstance()
         val level = minecraft.level ?: return
 
         renderFlywheelShadows(minecraft, level, lightPosition, lightView, lightProj)
 
-        val vanillaBlockEntities = collectBlockEntitiesInCone(level, lightPosition, lightDirection, range)
+        val vanillaBlockEntities = collectBlockEntitiesInCone(level, lightPosition, lightDirection, range, halfAngleDeg)
             .filter { !VisualizationHelper.skipVanillaRender(it) }
 
         if (vanillaBlockEntities.isNotEmpty()) {
@@ -189,14 +190,14 @@ object ShadowMapRenderer {
         lightDirection: Vec3,
         lightView: Matrix4f,
         lightProj: Matrix4f,
-        range: Float
+        range: Float,
+        halfAngleDeg: Float
     ) {
         val minecraft = Minecraft.getInstance()
         val level = minecraft.level ?: return
         val entityDispatcher = minecraft.entityRenderDispatcher
-
+        val cosHalfAngle = kotlin.math.cos(halfAngleDeg.toDouble() * PI / 180.0).toFloat()
         val partialTick = minecraft.getPartialTick()
-        val cosHalfAngle = kotlin.math.cos(FLASHLIGHT_HALF_ANGLE_DEG.toDouble() * PI / 180.0).toFloat()
         val dirLen = lightDirection.length()
 
         val player = minecraft.player
@@ -345,7 +346,8 @@ object ShadowMapRenderer {
         level: ClientLevel,
         lightPosition: Vec3,
         lightDirection: Vec3,
-        range: Float
+        range: Float,
+        halfAngleDeg: Float
     ): List<BlockEntity> {
         val r = range.toInt()
         val minChunkX = (lightPosition.x - r).toInt() shr 4
@@ -353,7 +355,7 @@ object ShadowMapRenderer {
         val minChunkZ = (lightPosition.z - r).toInt() shr 4
         val maxChunkZ = (lightPosition.z + r).toInt() shr 4
 
-        val cosHalfAngle = kotlin.math.cos(FLASHLIGHT_HALF_ANGLE_DEG.toDouble() * PI / 180.0).toFloat()
+        val cosHalfAngle = kotlin.math.cos(halfAngleDeg.toDouble() * PI / 180.0).toFloat()
         val dirLen = lightDirection.length()
         val result = ArrayList<BlockEntity>()
 
@@ -547,7 +549,6 @@ object ShadowMapRenderer {
         buffer.vertex(x1, y1, z1).endVertex()
     }
 
-    private const val FLASHLIGHT_HALF_ANGLE_DEG = 30.0f
 }
 
 /**

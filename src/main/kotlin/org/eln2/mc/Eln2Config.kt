@@ -11,6 +11,7 @@ import net.minecraftforge.common.ForgeConfigSpec.ConfigValue
 import net.minecraftforge.fml.ModLoadingContext
 import net.minecraftforge.fml.config.ModConfig
 import org.ageseries.libage.data.*
+import org.eln2.mc.client.dynamicLight.DynamicLightManager
 
 class ClientConfig(builder: Builder) {
     private val unitOverrides : ConfigValue<List<String>> = builder
@@ -135,6 +136,7 @@ object Eln2Config {
     private val clientSpec: ForgeConfigSpec
     val serverConfig: ServerConfig
     private val serverSpec: ForgeConfigSpec
+    private val testLights = mutableListOf<org.eln2.mc.client.dynamicLight.DynamicLightSource>()
 
     init {
         val clientPair = Builder().configure(::ClientConfig)
@@ -238,7 +240,44 @@ object Eln2Config {
                 }
             )
         )
-
         event.dispatcher.register(eln2)
+
+        val flashlightCmd = Commands.literal("flashlight")
+            .executes { _ ->
+                val player = Minecraft.getInstance().player
+                if (player == null) {
+                    return@executes 0
+                }
+
+                val position = player.getEyePosition(1.0f)
+                val direction = player.getViewVector(1.0f)
+                val source = DynamicLightManager.createLightSource(
+                    poseUpdater = { _ -> Pair(position, direction) },
+                    intensity = 0.6f,
+                    range = 24.0f,
+                    halfAngleDeg = 30.0f,
+                )
+                testLights.add(source)
+                player.displayClientMessage(
+                    Component.literal("Created test light at ${position} (total: ${testLights.size})"),
+                    false
+                )
+                Command.SINGLE_SUCCESS
+            }
+            .then(Commands.literal("clear").executes { _ ->
+                val player = Minecraft.getInstance().player
+                val count = testLights.size
+                for (source in testLights) {
+                    DynamicLightManager.removeLightSource(source)
+                }
+                testLights.clear()
+                player?.displayClientMessage(
+                    Component.literal("Cleared $count test lights"),
+                    false
+                )
+                Command.SINGLE_SUCCESS
+            })
+
+        event.dispatcher.register(flashlightCmd)
     }
 }

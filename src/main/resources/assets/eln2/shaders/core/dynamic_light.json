@@ -61,7 +61,7 @@
         { "name": "u_lightDirection", "type": "float", "count": 3, "values": [ 0.0, 0.0, -1.0 ] },
         { "name": "u_lightColor", "type": "float", "count": 3, "values": [ 1.0, 1.0, 0.9 ] },
         { "name": "u_cosHalfAngle", "type": "float", "count": 1, "values": [ 0.8 ] },
-        { "name": "u_range", "type": "float", "count": 1, "values": [ 16.0 ] },
+        { "name": "u_range", "type": "float", "count": 1, "values": [ 24.0 ] },
         { "name": "u_intensity", "type": "float", "count": 1, "values": [ 1.0 ] },
         { "name": "u_screenSize", "type": "float", "count": 2, "values": [ 1.0, 1.0 ] }
     ]
