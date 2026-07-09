@@ -4,14 +4,7 @@ package org.eln2.mc.client.dynamicLight
 
 import com.mojang.blaze3d.pipeline.TextureTarget
 import com.mojang.blaze3d.systems.RenderSystem
-import com.mojang.blaze3d.vertex.BufferBuilder
-import com.mojang.blaze3d.vertex.BufferUploader
-import com.mojang.blaze3d.vertex.DefaultVertexFormat
-import com.mojang.blaze3d.vertex.PoseStack
-import com.mojang.blaze3d.vertex.Tesselator
-import com.mojang.blaze3d.vertex.VertexBuffer
-import com.mojang.blaze3d.vertex.VertexFormat
-import com.mojang.blaze3d.vertex.VertexSorting
+import com.mojang.blaze3d.vertex.*
 import dev.engine_room.flywheel.api.visualization.VisualizationManager
 import dev.engine_room.flywheel.impl.event.RenderContextImpl
 import dev.engine_room.flywheel.lib.visualization.VisualizationHelper
@@ -21,20 +14,20 @@ import net.minecraft.client.renderer.ShaderInstance
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher
 import net.minecraft.core.BlockPos
-import net.minecraft.util.Mth
 import net.minecraft.world.entity.Entity
-import net.minecraft.world.level.chunk.LevelChunk
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
-import net.minecraft.world.phys.AABB
+import net.minecraft.world.level.chunk.LevelChunk
 import net.minecraft.world.phys.Vec3
+import org.ageseries.libage.mathematics.lerp
 import org.eln2.mc.LOG
+import org.eln2.mc.client.dynamicLight.ShadowMapRenderer.renderFlywheelShadows
 import org.eln2.mc.integration.sodium.EmbeddiumShadowRenderer
 import org.eln2.mc.resource
 import org.joml.Matrix4f
 import org.joml.Vector3f
-import kotlin.math.abs
 import kotlin.math.PI
+import kotlin.math.abs
 
 /**
  * Renders a shadow map from the light's point of view.
@@ -43,7 +36,7 @@ import kotlin.math.PI
  *
  * Block entities and entities within the light's range are also rendered into the shadow map:
  * - Flywheel-managed block entities and entities are rendered by calling [VisualizationManager.RenderDispatcher.afterEntities]
- *   with a [RenderContext] using the light's view-projection matrices. This renders actual flywheel instance geometry
+ *   with a [dev.engine_room.flywheel.api.backend.RenderContext] using the light's view-projection matrices. This renders actual flywheel instance geometry
  *   from the light's perspective without advancing animation state.
  * - Vanilla (non-flywheel) block entities are rendered through [BlockEntityRenderDispatcher.render] with the light's matrices.
  * - Vanilla entities (mobs, items, etc.) are rendered through [EntityRenderDispatcher.render] with the light's matrices.
@@ -52,7 +45,7 @@ import kotlin.math.PI
  */
 object ShadowMapRenderer {
     private const val SHADOW_MAP_SIZE = 1024
-    private const val NEAR_PLANE = 1.0f
+    private const val NEAR_PLANE = 0.1f
 
     private var shader: ShaderInstance? = null
     private var shadowTarget: TextureTarget? = null
@@ -148,7 +141,7 @@ object ShadowMapRenderer {
      * Renders block entities within [range] of [lightPosition] into the shadow map.
      *
      * Flywheel-managed block entities are rendered by calling [VisualizationManager.RenderDispatcher.afterEntities]
-     * with a [RenderContext] using the light's view-projection matrices. This draws the existing flywheel instances
+     * with a [dev.engine_room.flywheel.api.backend.RenderContext] using the light's view-projection matrices. This draws the existing flywheel instances
      * (which were already prepared during the vanilla frame) from the light's perspective, without advancing
      * animation state.
      *
@@ -197,7 +190,7 @@ object ShadowMapRenderer {
         val level = minecraft.level ?: return
         val entityDispatcher = minecraft.entityRenderDispatcher
         val cosHalfAngle = kotlin.math.cos(halfAngleDeg.toDouble() * PI / 180.0).toFloat()
-        val partialTick = minecraft.getPartialTick()
+        val partialTick = minecraft.partialTick
         val dirLen = lightDirection.length()
 
         val player = minecraft.player
@@ -212,14 +205,15 @@ object ShadowMapRenderer {
                 continue
             }
 
-            val interpPos = Vec3(
-                Mth.lerp(partialTick.toDouble(), entity.xOld, entity.x),
-                Mth.lerp(partialTick.toDouble(), entity.yOld, entity.y),
-                Mth.lerp(partialTick.toDouble(), entity.zOld, entity.z)
+            val interpolatedPos = Vec3(
+                lerp(partialTick.toDouble(), entity.xOld, entity.x),
+                lerp(partialTick.toDouble(), entity.yOld, entity.y),
+                lerp(partialTick.toDouble(), entity.zOld, entity.z)
             )
-            val toEntity = interpPos.subtract(lightPosition)
+
+            val toEntity = interpolatedPos.subtract(lightPosition)
             val dist = toEntity.length()
-            if (dist > range || dist < 0.01) {
+            if (dist !in 0.01f..range) {
                 continue
             }
             val cosTheta = toEntity.dot(lightDirection) / (dist * dirLen)
@@ -262,10 +256,10 @@ object ShadowMapRenderer {
         val bufferSource = minecraft.renderBuffers().bufferSource()
 
         for (entity in entities) {
-            val x = Mth.lerp(partialTick.toDouble(), entity.xOld, entity.x) - lightPosition.x
-            val y = Mth.lerp(partialTick.toDouble(), entity.yOld, entity.y) - lightPosition.y
-            val z = Mth.lerp(partialTick.toDouble(), entity.zOld, entity.z) - lightPosition.z
-            val yaw = Mth.lerp(partialTick, entity.yRotO, entity.yRot)
+            val x = lerp(partialTick.toDouble(), entity.xOld, entity.x) - lightPosition.x
+            val y = lerp(partialTick.toDouble(), entity.yOld, entity.y) - lightPosition.y
+            val z = lerp(partialTick.toDouble(), entity.zOld, entity.z) - lightPosition.z
+            val yaw = lerp(partialTick, entity.yRotO, entity.yRot)
 
             val packedLight = entityDispatcher.getPackedLightCoords(entity, partialTick)
 
@@ -285,13 +279,13 @@ object ShadowMapRenderer {
 
     /**
      * Renders flywheel-managed block entities and entities from the light's perspective by calling
-     * [VisualizationManager.RenderDispatcher.afterEntities] with a [RenderContext] constructed from the light's
+     * [VisualizationManager.RenderDispatcher.afterEntities] with a [dev.engine_room.flywheel.api.backend.RenderContext] constructed from the light's
      * view-projection matrices.
      *
-     * This only draws — it does not call [RenderDispatcher.onStartLevelRender] or the frame plan, so animation
-     * state is not advanced. The instances were already prepared during the vanilla [LevelRenderer.renderLevel] call.
+     * This only draws — it does not call [VisualizationManager.RenderDispatcher.onStartLevelRender] or the frame plan, so animation
+     * state is not advanced. The instances were already prepared during the vanilla [net.minecraft.client.renderer.LevelRenderer.renderLevel] call.
      *
-     * Flywheel's [Engine.render] uses [GlStateTracker.getRestoreState] to save/restore GL state (VAO, program,
+     * Flywheel's [dev.engine_room.flywheel.api.backend.Engine.render] uses [dev.engine_room.flywheel.backend.gl.GlStateTracker.getRestoreState] to save/restore GL state (VAO, program,
      * buffers, active texture), so this call does not corrupt GL state for subsequent rendering.
      */
     private fun renderFlywheelShadows(
@@ -314,7 +308,7 @@ object ShadowMapRenderer {
 
         val lightCamera = LightCamera(lightPosition)
 
-        val partialTick = minecraft.getPartialTick()
+        val partialTick = minecraft.partialTick
 
         val lightContext = RenderContextImpl.create(
             levelRenderer,
@@ -361,7 +355,7 @@ object ShadowMapRenderer {
 
         for (chunkX in minChunkX..maxChunkX) {
             for (chunkZ in minChunkZ..maxChunkZ) {
-                val chunk = level.getChunk(chunkX, chunkZ) as LevelChunk ?: continue
+                val chunk = level.getChunk(chunkX, chunkZ) as LevelChunk
                 for (be in chunk.blockEntities.values) {
                     val pos = be.blockPos
                     val toEntity = Vec3(
@@ -417,7 +411,7 @@ object ShadowMapRenderer {
         dispatcher.prepare(minecraft.level!!, lightCamera, minecraft.hitResult!!)
 
         val bufferSource = minecraft.renderBuffers().bufferSource()
-        val partialTick = minecraft.getPartialTick()
+        val partialTick = minecraft.partialTick
 
         for (be in blockEntities) {
             val pos = be.blockPos
@@ -446,8 +440,8 @@ object ShadowMapRenderer {
         halfAngleDeg: Float,
         range: Float
     ): Pair<Matrix4f, Matrix4f> {
-        val fovy = halfAngleDeg.toDouble() * 2.0 * PI / 180.0
-        val proj = Matrix4f().setPerspective(fovy.toFloat(), 1.0f, NEAR_PLANE, range)
+        val fovY = halfAngleDeg.toDouble() * 2.0 * PI / 180.0
+        val proj = Matrix4f().setPerspective(fovY.toFloat(), 1.0f, NEAR_PLANE, range)
 
         val eye = Vector3f(lightPosition.x.toFloat(), lightPosition.y.toFloat(), lightPosition.z.toFloat())
         val dir = Vector3f(lightDirection.x.toFloat(), lightDirection.y.toFloat(), lightDirection.z.toFloat())
@@ -552,8 +546,8 @@ object ShadowMapRenderer {
 }
 
 /**
- * A minimal [Camera] positioned at the light source, used to prepare dispatchers and construct
- * flywheel's [RenderContext] so that distance/frustum checks pass against the light position.
+ * A minimal [net.minecraft.client.Camera] positioned at the light source, used to prepare dispatchers and construct
+ * flywheel's [dev.engine_room.flywheel.api.backend.RenderContext] so that distance/frustum checks pass against the light position.
  */
 private class LightCamera(private val position: Vec3) : net.minecraft.client.Camera() {
     override fun getPosition(): Vec3 = position

@@ -3,18 +3,19 @@
 /**
  * Dynamic light rendering system with shadow map support.
  *
- * Multiple [DynamicLightSource]s can be registered. Each frame, the nearest [MAX_LIGHTS] sources to the camera
+ * Multiple [DynamicLightSource]s can be registered. Each frame, the nearest [DynamicLightManager.MAX_LIGHTS] sources to the camera
  * are selected. For each, a shadow map is rendered from the light's point of view by [ShadowMapRenderer],
- * then a fullscreen additive lighting pass is run using [dynamic_light] shader.
+ * then a fullscreen additive lighting pass is run using `dynamic_light` shader.
  *
  * The system fires at [RenderLevelStageEvent.Stage.AFTER_LEVEL], after the full scene is composited but before the hand.
  * It reads the main render target's depth and color buffers (copied to a temporary target to avoid the OpenGL feedback loop).
  *
- * Light source providers (e.g. [org.eln2.mc.common.content.FlashlightItem]) register update callbacks via [addUpdateCallback]
+ * Light source providers (e.g. [org.eln2.mc.common.content.FlashlightItem]) register update callbacks via [DynamicLightManager.addUpdateCallback]
  * to manage their sources each frame. The manager is light-source-agnostic: it only iterates whatever is registered.
  * */
 package org.eln2.mc.client.dynamicLight
 
+import com.mojang.blaze3d.pipeline.RenderTarget
 import com.mojang.blaze3d.pipeline.TextureTarget
 import com.mojang.blaze3d.platform.GlStateManager
 import com.mojang.blaze3d.shaders.BlendMode
@@ -221,12 +222,12 @@ object DynamicLightManager {
         return target
     }
 
-    private fun copyDepthAndColor(source: com.mojang.blaze3d.pipeline.RenderTarget, dest: TextureTarget) {
+    private fun copyDepthAndColor(source: RenderTarget, destination: TextureTarget) {
         GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, source.frameBufferId)
-        GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, dest.frameBufferId)
+        GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, destination.frameBufferId)
         GlStateManager._glBlitFrameBuffer(
             0, 0, source.width, source.height,
-            0, 0, dest.width, dest.height,
+            0, 0, destination.width, destination.height,
             16384 or 256, 9728
         )
         GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0)

@@ -33,6 +33,7 @@ interface DynamicLightSource {
  * This decouples the light from any specific entity type: a flashlight passes a lambda that reads the holding player,
  * a static test light passes a lambda that returns a fixed pose.
  * */
+@Suppress("CanBePrimaryConstructorProperty")
 class DynamicLightSourceImpl(
     private val poseUpdater: (Float) -> Pair<Vec3, Vec3>,
     color: Vector3f,
