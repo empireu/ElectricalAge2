@@ -547,7 +547,7 @@ object ShadowMapRenderer {
         buffer.vertex(x1, y1, z1).endVertex()
     }
 
-    private const val FLASHLIGHT_HALF_ANGLE_DEG = 25.0f
+    private const val FLASHLIGHT_HALF_ANGLE_DEG = 30.0f
 }
 
 /**

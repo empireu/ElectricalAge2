@@ -40,14 +40,15 @@ import org.joml.Matrix4f
 import org.joml.Vector3f
 import org.lwjgl.opengl.GL11
 import org.lwjgl.opengl.GL14
+import org.lwjgl.opengl.GL30
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.abs
 
 object DynamicLightManager {
-    private const val FLASHLIGHT_RANGE = 16.0f
-    private const val FLASHLIGHT_INTENSITY = 0.4f
-    private const val FLASHLIGHT_HALF_ANGLE_DEG = 25.0f
+    private const val FLASHLIGHT_RANGE = 24.0f
+    private const val FLASHLIGHT_INTENSITY = 0.6f
+    private const val FLASHLIGHT_HALF_ANGLE_DEG = 30.0f
 
     private var shader: ShaderInstance? = null
     private var depthCopyTarget: TextureTarget? = null
@@ -194,6 +195,19 @@ object DynamicLightManager {
         return target
     }
 
+    private fun copyDepthAndColor(source: com.mojang.blaze3d.pipeline.RenderTarget, dest: TextureTarget) {
+        // Blit both depth (256) and color (16384) from the source to the dest framebuffer.
+        // This is equivalent to copyDepthFrom but also copies the color buffer.
+        GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, source.frameBufferId)
+        GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, dest.frameBufferId)
+        GlStateManager._glBlitFrameBuffer(
+            0, 0, source.width, source.height,
+            0, 0, dest.width, dest.height,
+            16384 or 256, 9728
+        )
+        GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0)
+    }
+
     private fun renderFlashlightPass(
         shader: ShaderInstance,
         projectionMatrix: Matrix4f,
@@ -205,9 +219,11 @@ object DynamicLightManager {
         val mainTarget = Minecraft.getInstance().mainRenderTarget
         val depthCopy = ensureDepthCopyTarget(mainTarget.width, mainTarget.height)
 
-        // Copy depth to a temporary target to avoid the OpenGL feedback loop: sampling a texture attached to the currently-bound draw framebuffer is undefined.
-        depthCopy.copyDepthFrom(mainTarget)
-        // copyDepthFrom leaves the framebuffer bound to 0 (the default framebuffer), so we must rebind the main target for writing.
+        // Copy depth AND color to a temporary target to avoid the OpenGL feedback loop:
+        // sampling a texture attached to the currently-bound draw framebuffer is undefined.
+        // The color copy is used as the surface albedo in the lighting calculation, preserving
+        // texture detail in dark areas instead of adding a flat white blob.
+        copyDepthAndColor(mainTarget, depthCopy)
         mainTarget.bindWrite(true)
 
         val deg2rad = PI.toFloat() / 180f
@@ -257,6 +273,7 @@ object DynamicLightManager {
         RenderSystem.setShader { shader }
         shader.setSampler("DepthSampler", depthCopy.depthTextureId)
         shader.setSampler("ShadowMap", ShadowMapRenderer.getDepthTextureId())
+        shader.setSampler("SceneColorSampler", depthCopy.colorTextureId)
 
         shader.safeGetUniform("ModelViewMat").set(Matrix4f())
         shader.safeGetUniform("ProjMat").set(Matrix4f())

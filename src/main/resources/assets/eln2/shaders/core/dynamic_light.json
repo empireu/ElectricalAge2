@@ -8,7 +8,8 @@
     "fragment": "eln2:dynamic_light",
     "samplers": [
         { "name": "DepthSampler" },
-        { "name": "ShadowMap" }
+        { "name": "ShadowMap" },
+        { "name": "SceneColorSampler" }
     ],
     "attributes": [ "Position" ],
     "uniforms": [
