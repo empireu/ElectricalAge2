@@ -160,7 +160,7 @@ void main() {
     // World position as color: proves InvViewProjMat reconstruction works.
     if (depth >= 1.0) discard;
     vec3 worldPos = worldPosFromDepth(uv, depth);
-    fragColor = vec4 fract(worldPos * 0.1), 1.0);
+    fragColor = vec4(fract(worldPos * 0.1), 1.0);
     return;
 #endif
 
