@@ -109,6 +109,7 @@ class Eln2 {
                 ContentManager.registerBlockEntityVisualizers()
                 ContentManager.registerPartVisualizers()
                 ContentManager.registerSpecVisualizers()
+                ContentManager.setupScreens()
                 ContentManager.setRenderLayers()
                 FlashlightItem.registerClient()
             }

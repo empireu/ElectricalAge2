@@ -5,43 +5,47 @@ package org.eln2.mc.common.content
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntity
+import net.minecraft.world.level.block.entity.BlockEntityTicker
+import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.material.Fluid
 import net.minecraft.world.level.material.Fluids
+import net.minecraftforge.common.capabilities.Capability
+import net.minecraftforge.common.capabilities.ForgeCapabilities
+import net.minecraftforge.common.util.LazyOptional
+import net.minecraftforge.fluids.FluidStack
+import net.minecraftforge.fluids.capability.IFluidHandler
 import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
+import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.kinetic.KineticDouble
 import org.ageseries.libage.sim.kinetic.KineticExtension
-import org.ageseries.libage.sim.kinetic.KineticNode
 import org.ageseries.libage.sim.kinetic.KineticNodeSet
-import kotlin.math.abs
-import kotlin.math.max
-import kotlin.math.min
-import org.eln2.mc.common.fluids.foundation.FluidTransformationManager
-import net.minecraftforge.common.capabilities.Capability
-import net.minecraftforge.common.capabilities.ForgeCapabilities
-import net.minecraftforge.common.util.LazyOptional
-import net.minecraftforge.fluids.FluidStack
-import net.minecraftforge.fluids.capability.IFluidHandler
 import org.eln2.mc.*
 import org.eln2.mc.common.blocks.foundation.*
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
 import org.eln2.mc.common.content.modules.Eln2SteamTurbine
-import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
-import org.eln2.mc.common.fluids.foundation.IThermalFluidHandler
-import org.eln2.mc.common.fluids.foundation.PhysicalFluidManager
-import org.eln2.mc.common.fluids.foundation.ThermalFluidStack
-import org.eln2.mc.common.fluids.foundation.fractional
-import org.ageseries.libage.data.OptionalDouble
+import org.eln2.mc.common.fluids.foundation.*
+import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
+import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
+import org.eln2.mc.common.network.serverToClient.sendBulkPacket
+import org.eln2.mc.common.sounds.foundation.SimpleLoopingBlockEntitySoundInstance
+import org.eln2.mc.common.sounds.foundation.SoundInfo
+import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * Model parameters for the [SteamTurbineGenerator].
@@ -118,8 +122,8 @@ class SteamTurbineKineticObject(cell: SteamTurbineCell) : KineticObject<SteamTur
         private const val OMEGA = "omega"
     }
 }
-
 class SteamTurbineCell(ci: CellCreateInfo, val model: SteamTurbineGeneratorModel, val shaftFriction: FrictionNodeDescription) : Cell(ci) {
+
     @SimObject
     val kinetic = SteamTurbineKineticObject(this)
 
@@ -142,6 +146,14 @@ class SteamTurbineCell(ci: CellCreateInfo, val model: SteamTurbineGeneratorModel
         model.breakdownTemperature,
         this,
         thermal.thermalBody::temperature
+    )
+
+    @Replicator
+    fun kineticReplicator(target: InternalKineticStateConsumer) = InternalKineticReplicatorBehavior(
+        RotatingKineticState.accessor(kinetic.node),
+        target,
+        this,
+        kinetic.node::simulation
     )
 
     override fun kineticObjectPredicate(remote: KineticObject<*>): Boolean {
@@ -188,6 +200,8 @@ class SteamTurbineCell(ci: CellCreateInfo, val model: SteamTurbineGeneratorModel
 
     var deltaSteamProduced = 0.0
         internal set
+
+    internal var lastSentSteamFlow = Double.NaN
 
     var deltaColdSideHeat = 0.0
         internal set
@@ -251,6 +265,17 @@ class SteamTurbineCell(ci: CellCreateInfo, val model: SteamTurbineGeneratorModel
 
         if (deltaSteamConsumed > 0.0 || deltaWaterProduced > 0.0 || deltaSteamProduced > 0.0) {
             setChanged()
+        }
+
+        val blockEntity = container as? SteamTurbineBlockEntity
+
+        if (blockEntity != null) {
+            val currentFlow = deltaSteamConsumed / dt
+
+            if (!currentFlow.approxEq(lastSentSteamFlow, 0.001)) {
+                lastSentSteamFlow = currentFlow
+                blockEntity.sendBulkPacket(SteamTurbineBlockEntity.SteamFlowPacket::serialize, SteamTurbineBlockEntity.SteamFlowPacket(currentFlow))
+            }
         }
     }
 
@@ -375,6 +400,22 @@ class SteamTurbineBlock : UprightHorizontalDirectionCellBlock<SteamTurbineCell>(
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = SteamTurbineBlockEntity(pPos, pState)
 
+    override fun <T : BlockEntity?> getTicker(
+        pLevel: Level,
+        pState: BlockState,
+        pBlockEntityType: BlockEntityType<T>
+    ): BlockEntityTicker<T>? {
+        if (pLevel.isClientSide) {
+            return BlockEntityTicker { _, _, _, pBlockEntity ->
+                if (pBlockEntity is SteamTurbineBlockEntity) {
+                    pBlockEntity.clientTick()
+                }
+            }
+        }
+
+        return null
+    }
+
     @Suppress("OVERRIDE_DEPRECATION")
     override fun onRemove(
         pState: BlockState,
@@ -408,9 +449,112 @@ class SteamTurbineBlock : UprightHorizontalDirectionCellBlock<SteamTurbineCell>(
 class SteamTurbineBlockEntity(pos: BlockPos, state: BlockState) :
     CellBlockEntity<SteamTurbineCell>(pos, state, Eln2SteamTurbine.STEAM_TURBINE_BLOCK_ENTITY.get()),
     BigBlockRepresentativeBlockEntity<SteamTurbineBlockEntity>,
+    BulkPacketHandlerBlockEntity,
+    InternalKineticStateConsumer,
     ComponentDisplay
 {
     override val delegateMap: MultiblockDelegateMap get() = Eln2SteamTurbine.STEAM_TURBINE_DELEGATE_MAP.value
+
+    @ClientOnly
+    class RenderState {
+        var targetAngularVelocity = 0.0
+        var targetSteamFlow = 0.0
+
+        val angularVelocitySmoother = FramerateIndependentSmoother1d(0.2)
+        val steamFlowSmoother = FramerateIndependentSmoother1d(0.3)
+
+        var steamSound: SimpleLoopingBlockEntitySoundInstance<SteamTurbineBlockEntity>? = null
+        var frictionSound: SimpleLoopingBlockEntitySoundInstance<SteamTurbineBlockEntity>? = null
+    }
+
+    @ClientOnly
+    var renderState: RenderState? = null
+        private set
+
+    override fun setLevel(pLevel: Level) {
+        super.setLevel(pLevel)
+
+        if (pLevel.isClientSide) {
+            renderState = RenderState()
+        }
+    }
+
+    @ClientOnly
+    override val clientSidePacketHandlerLazy = createClientSideHandler()
+
+    @ClientOnly
+    override fun setupPacketsOnClient(handler: ClientSidePacketHandlerBuilder) {
+        handler.withHandler<RotatingKineticState>(RotatingKineticState::deserialize) {
+            renderState?.targetAngularVelocity = it.angularVelocity
+        }
+
+        handler.withHandler<SteamFlowPacket>(SteamFlowPacket::deserialize) {
+            renderState?.targetSteamFlow = it.flow
+        }
+    }
+
+    @ServerOnly
+    override fun onKineticStateChanged(state: RotatingKineticState) {
+        sendBulkPacket(RotatingKineticState::serialize, state)
+    }
+
+    @ClientOnly
+    fun clientTick() {
+        val state = renderState ?: return
+
+        if (state.steamSound == null) {
+            state.steamSound = SimpleLoopingBlockEntitySoundInstance(this, Eln2SteamTurbine.STEAM_TURBINE_STEAM_SOUND.get()).also {
+                it.events.registerHandler<SoundInstanceTickEvent> { _ ->
+                    state.steamFlowSmoother.update(state.targetSteamFlow)
+                    it.soundInfo = SoundInfo.steamFlow(
+                        state.steamFlowSmoother.value,
+                        Eln2SteamTurbine.STEAM_TURBINE_MODEL.maxFlowRate
+                    )
+                }
+
+                it.registerOnAudioManager()
+            }
+        }
+
+        if (state.frictionSound == null) {
+            state.frictionSound = SimpleLoopingBlockEntitySoundInstance(this, Eln2SteamTurbine.STEAM_TURBINE_FRICTION_SOUND.get()).also {
+                it.events.registerHandler<SoundInstanceTickEvent> { _ ->
+                    state.angularVelocitySmoother.update(state.targetAngularVelocity)
+                    it.soundInfo = SoundInfo.turbineFriction(
+                        state.angularVelocitySmoother.value,
+                        !Eln2SteamTurbine.STEAM_TURBINE_MODEL.referenceAngularVelocity
+                    )
+                }
+
+                it.registerOnAudioManager()
+            }
+        }
+    }
+
+    @ServerOnly
+    override fun getUpdateTag(): CompoundTag {
+        if (hasCell) {
+            sendBulkPacket(RotatingKineticState::serialize, RotatingKineticState(cell.kinetic.node.angle, cell.kinetic.node.angularVelocity))
+
+            val initialFlow = cell.deltaSteamConsumed
+            cell.lastSentSteamFlow = initialFlow
+            sendBulkPacket(SteamFlowPacket::serialize, SteamFlowPacket(initialFlow))
+        }
+
+        return super.getUpdateTag()
+    }
+
+    data class SteamFlowPacket(val flow: Double) {
+        companion object {
+            fun serialize(packet: SteamFlowPacket, buffer: FriendlyByteBuf) {
+                buffer.writeDouble(packet.flow)
+            }
+
+            fun deserialize(buffer: FriendlyByteBuf) = SteamFlowPacket(
+                buffer.readDouble()
+            )
+        }
+    }
 
     //#region Capability
 

@@ -22,8 +22,12 @@ import org.eln2.mc.common.cells.foundation.KineticSize
 import org.eln2.mc.common.cells.foundation.ThermalSize
 import org.eln2.mc.common.content.*
 import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
+import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
 
 object Eln2SteamTurbine : ContentModule() {
+    val STEAM_TURBINE_STEAM_SOUND = soundEventVariableRange("turbine.steam")
+    val STEAM_TURBINE_FRICTION_SOUND = soundEventVariableRange("turbine.friction")
+
     val STEAM_TURBINE_MODEL = SteamTurbineGeneratorModel(
         etaFactor = 0.5,
         maxFlowRate = 0.0431,

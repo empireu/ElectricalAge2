@@ -28,11 +28,14 @@ import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.containers.ContainerRegistry.menu
 import org.eln2.mc.common.content.*
 import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
+import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.monopolarMapPlanar
 import org.eln2.mc.resource
 
 object Eln2HeatGenerators : ContentModule() {
+    val BURNER_DRAFT_SOUND = soundEventVariableRange("burner.draft")
+
     override fun registerBlockEntityVisualizers() {
         VisualizerRegistry.setVisualizer(
             PRIMITIVE_BURNER_BLOCK_ENTITY.get(),
@@ -61,6 +64,8 @@ object Eln2HeatGenerators : ContentModule() {
 
     //#region Primitive Burner
 
+    const val PRIMITIVE_BURNER_MAX_DRAFT = 0.05
+
     val PRIMITIVE_BURNER_CELL = cellMemoize("primitive_burner") {
         val options = BurnerCellOptions(
             BurnerDeviceDescription(
@@ -79,10 +84,9 @@ object Eln2HeatGenerators : ContentModule() {
         )
 
         val map = monopolarMapPlanar(Base6Direction3d.Back)
-        val maxDraft = 0.05
 
         CellFactory {
-            PrimitiveBurnerCell(it, options, map, maxDraft)
+            PrimitiveBurnerCell(it, options, map, PRIMITIVE_BURNER_MAX_DRAFT)
         }
     }
 
@@ -94,6 +98,8 @@ object Eln2HeatGenerators : ContentModule() {
     //#endregion
 
     //#region Advanced Coal Burner
+
+    const val ADVANCED_COAL_BURNER_MAX_DRAFT = 0.15
 
     val ADVANCED_COAL_BURNER_CELL = cellMemoize("advanced_coal_burner") {
         val options = BurnerCellOptions(
@@ -113,7 +119,7 @@ object Eln2HeatGenerators : ContentModule() {
         )
 
         val map = monopolarMapPlanar(Base6Direction3d.Back)
-        val maxDraft = 0.15
+
         val pidGains = PIDGains(
             kP = 0.002,
             kI = 0.00001,
@@ -121,7 +127,7 @@ object Eln2HeatGenerators : ContentModule() {
         )
 
         CellFactory {
-            AdvancedBurnerCell(it, options, map, maxDraft, pidGains)
+            AdvancedBurnerCell(it, options, map, ADVANCED_COAL_BURNER_MAX_DRAFT, pidGains)
         }
     }
 

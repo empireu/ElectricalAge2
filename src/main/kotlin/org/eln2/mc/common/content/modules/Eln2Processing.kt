@@ -46,7 +46,6 @@ import org.eln2.mc.common.content.modules.Eln2Processing.registerBlockEntityVisu
 import org.eln2.mc.common.content.modules.Eln2Processing.registerMachine
 import org.eln2.mc.common.content.modules.Eln2Processing.registerMachineHull
 import org.eln2.mc.common.content.processing.*
-import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.items.ItemRegistry.itemNoStack
 import org.eln2.mc.common.parts.PartRegistry.partAndItemWithProvider
@@ -436,6 +435,8 @@ object Eln2Processing : ContentModule() {
 
     //#region Distillation
 
+    val DISTILLATION_SOUND = soundEventVariableRange("distillation")
+
     val DISTILLATION_COLUMN_CELL = cellImmediate("distillation_column", ::DistillationColumnCell)
 
     val DISTILLATION_COLUMN_BLOCK = blockAndItem("distillation_column", ::DistillationColumnBlock)
@@ -452,7 +453,7 @@ object Eln2Processing : ContentModule() {
         val maxTemperature = Quantity(600.0, CELSIUS)
 
         CellFactory {
-            PhaseChangeModuleCell(it, leakage, maxTemperature, replicatesTemperature = false, allowExternalConnections = true)
+            PhaseChangeModuleCell(it, leakage, maxTemperature, allowExternalConnections = true)
         }
     }
 
@@ -478,7 +479,7 @@ object Eln2Processing : ContentModule() {
         val maxTemperature = Quantity(700.0, CELSIUS)
 
         CellFactory {
-            PhaseChangeModuleCell(it, leakage, maxTemperature, replicatesTemperature = true, allowExternalConnections = true)
+            PhaseChangeModuleCell(it, leakage, maxTemperature, allowExternalConnections = true)
         }
     }
 
@@ -811,6 +812,7 @@ object Eln2Processing : ContentModule() {
     val HYDROGEN_REDUCTION_RECIPE = RecipeRegistry.register<HydrogenReductionRecipe>("hydrogen_reduction") {
         HydrogenReductionRecipe.Serializer(it)
     }
+    val HYDROGEN_REDUCTION_FURNACE_SOUND = soundEventVariableRange("furnace.hydrogen_reduction")
 
     val HYDROGEN_REDUCTION_FURNACE_CELL = cellMemoize("hydrogen_reduction_furnace_cell") {
         val map = directionPoleMapPlanar(Base6Direction3d.Left, Base6Direction3d.Right)

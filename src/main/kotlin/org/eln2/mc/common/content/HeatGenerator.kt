@@ -1,3 +1,5 @@
+@file:Suppress("unused")
+
 package org.eln2.mc.common.content
 
 import dev.engine_room.flywheel.api.instance.Instance
@@ -64,6 +66,10 @@ import org.eln2.mc.common.events.AtomicUpdate
 import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.sendBulkPacket
+import org.eln2.mc.common.sounds.foundation.SimpleLoopingBlockEntitySoundInstance
+import org.eln2.mc.common.sounds.foundation.SoundInfo
+import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
+import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
@@ -210,9 +216,8 @@ class BurnerSimulation(val ambientTemperature: Quantity<Temperature>, val hull: 
             transfer.coerceAtLeast(-to)
         }
 
-    val remainingMass get() = slices.sumOf { it.mass }
-
     val isDepleted get() = slices.isEmpty() || slices.all { it.mass.approxEq(0.0) }
+    val totalMass get() = slices.sumOf { it.mass }
 
     /**
      * Calculates the mass flow rate due to the chimney effect.
@@ -641,6 +646,30 @@ abstract class BurnerCell(ci: CellCreateInfo, val burnerCellOptions: BurnerCellO
  * */
 private val COAL_ITEM_MASS = Quantity(10.0, KILOGRAM)
 
+private data class BurnerActivityPacket(val injectionRate: Double) {
+    companion object {
+        fun serialize(packet: BurnerActivityPacket, buffer: FriendlyByteBuf) {
+            buffer.writeDouble(packet.injectionRate)
+        }
+
+        fun deserialize(buffer: FriendlyByteBuf) = BurnerActivityPacket(
+            buffer.readDouble(),
+        )
+    }
+}
+
+private data class HullTemperaturePacket(val hullTemperature: Double) {
+    companion object {
+        fun serialize(packet: HullTemperaturePacket, buffer: FriendlyByteBuf) {
+            buffer.writeDouble(packet.hullTemperature)
+        }
+
+        fun deserialize(buffer: FriendlyByteBuf) = HullTemperaturePacket(
+            buffer.readDouble()
+        )
+    }
+}
+
 //#region Primitive Burner
 
 /**
@@ -705,6 +734,26 @@ class PrimitiveBurnerBlock : UprightHorizontalDirectionCellBlock<PrimitiveBurner
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = PrimitiveBurnerBlockEntity(pPos, pState)
 
+    override fun <T : BlockEntity?> getTicker(
+        pLevel: Level,
+        pState: BlockState,
+        pBlockEntityType: BlockEntityType<T?>
+    ): BlockEntityTicker<T?> {
+        if (pLevel.isClientSide) {
+            return BlockEntityTicker { _, _, _, pBlockEntity ->
+                if (pBlockEntity is PrimitiveBurnerBlockEntity) {
+                    pBlockEntity.clientTick()
+                }
+            }
+        }
+
+        return BlockEntityTicker { _, _, _, pBlockEntity ->
+            if (pBlockEntity is PrimitiveBurnerBlockEntity) {
+                pBlockEntity.serverTick()
+            }
+        }
+    }
+
     @Deprecated("Deprecated in Java")
     override fun use(
         pState: BlockState,
@@ -733,6 +782,9 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
     ScrewdriverScrollable,
     ComponentDisplay
 {
+    @ServerOnly
+    private var lastSentInjectionRate = Double.NaN
+
     @ServerOnly
     fun interact(player: Player) : InteractionResult {
         val stack = player.mainHandItem
@@ -808,6 +860,11 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
         var hullTemperature = 0.0
         var externalTemperature = OptionalDouble.EMPTY
         var controlParameter = 0.0
+        var injectionRate = 0.0
+
+        val draftSmoother = FramerateIndependentSmoother1d(0.3)
+
+        var draftSound: SimpleLoopingBlockEntitySoundInstance<PrimitiveBurnerBlockEntity>? = null
     }
 
     var renderState: RenderState? = null
@@ -846,6 +903,42 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
             modifyState {
                 controlParameter = it.controlParameter
             }
+        }
+
+        handler.withHandler<BurnerActivityPacket>(BurnerActivityPacket::deserialize) {
+            modifyState {
+                injectionRate = it.injectionRate
+            }
+        }
+    }
+
+    @ClientOnly
+    fun clientTick() {
+        val state = renderState ?: return
+
+        if (state.draftSound == null) {
+            state.draftSound = SimpleLoopingBlockEntitySoundInstance(this, Eln2HeatGenerators.BURNER_DRAFT_SOUND.get()).also {
+                it.events.registerHandler<SoundInstanceTickEvent> { _ ->
+                    state.draftSmoother.update(state.injectionRate)
+                    it.soundInfo = SoundInfo.draft(state.draftSmoother.value, Eln2HeatGenerators.PRIMITIVE_BURNER_MAX_DRAFT)
+                }
+
+                it.registerOnAudioManager()
+            }
+        }
+    }
+
+    @ServerOnly
+    fun serverTick() {
+        val currentInjectionRate = cell.injectionRate
+
+        if (!currentInjectionRate.approxEq(lastSentInjectionRate, 0.001)) {
+            lastSentInjectionRate = currentInjectionRate
+
+            sendBulkPacket(
+                BurnerActivityPacket::serialize,
+                BurnerActivityPacket(currentInjectionRate)
+            )
         }
     }
 
@@ -901,19 +994,15 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
             ControlValvePacket(cell.controlParameter)
         )
 
+        val currentInjectionRate = cell.injectionRate
+        lastSentInjectionRate = currentInjectionRate
+
+        sendBulkPacket(
+            BurnerActivityPacket::serialize,
+            BurnerActivityPacket(currentInjectionRate)
+        )
+
         return super.getUpdateTag()
-    }
-
-    data class HullTemperaturePacket(val hullTemperature: Double) {
-        companion object {
-            fun serialize(packet: HullTemperaturePacket, buffer: FriendlyByteBuf) {
-                buffer.writeDouble(packet.hullTemperature)
-            }
-
-            fun deserialize(buffer: FriendlyByteBuf) = HullTemperaturePacket(
-                buffer.readDouble()
-            )
-        }
     }
 
     data class ExternalTemperaturePacket(val externalTemperature: OptionalDouble) {
@@ -1138,7 +1227,7 @@ private const val ADVANCED_BURNER_FUEL_SLOT_COUNT = 1
 /**
  * Advanced burner cell with PID temperature setpoint control.
  * Uses a [PIDController] to modulate the draft strength to maintain a target hull temperature.
- * @param maxDraftStrength The maximum draft strength.
+ * @param maxDraftStrength The maximum draft strength (mass flow rate of air).
  * @param pidGains The PID gains for the temperature controller.
  * */
 class AdvancedBurnerCell(
@@ -1240,7 +1329,7 @@ class AdvancedBurnerCell(
 
     override fun loadCellData(tag: CompoundTag) {
         super.loadCellData(tag)
-        targetTemperature = tag.getQuantity<Temperature>(TARGET_TEMPERATURE)
+        targetTemperature = tag.getQuantity(TARGET_TEMPERATURE)
         controller.setPoint = !targetTemperature
         controller.errorSum = tag.getDouble(CONTROLLER_ERROR_SUM)
         controller.lastError = tag.getDouble(CONTROLLER_LAST_ERROR)
@@ -1279,9 +1368,13 @@ class AdvancedCoalBurnerBlock : UprightHorizontalDirectionCellBlock<AdvancedBurn
         pLevel: Level,
         pState: BlockState,
         pBlockEntityType: BlockEntityType<T?>
-    ): BlockEntityTicker<T>? {
+    ): BlockEntityTicker<T> {
         if (pLevel.isClientSide) {
-            return null
+            return BlockEntityTicker { _, _, _, pBlockEntity ->
+                if (pBlockEntity is AdvancedCoalBurnerBlockEntity) {
+                    pBlockEntity.clientTick()
+                }
+            }
         }
 
         return BlockEntityTicker { _, _, _, pBlockEntity ->
@@ -1356,6 +1449,9 @@ class AdvancedCoalBurnerBlockEntity(pos: BlockPos, state: BlockState) :
     companion object {
         private const val FUEL_INVENTORY = "fuelInventory"
     }
+
+    @ServerOnly
+    private var lastSentInjectionRate = Double.NaN
 
     override val delegateMap: MultiblockDelegateMap
         get() = Eln2HeatGenerators.ADVANCED_COAL_BURNER_DELEGATE_MAP.value
@@ -1466,6 +1562,15 @@ class AdvancedCoalBurnerBlockEntity(pos: BlockPos, state: BlockState) :
                 setChanged()
             }
         }
+        val currentInjectionRate = cell.injectionRate
+
+        if (!currentInjectionRate.approxEq(lastSentInjectionRate, 0.001)) {
+            lastSentInjectionRate = currentInjectionRate
+            sendBulkPacket(
+                BurnerActivityPacket::serialize,
+                BurnerActivityPacket(currentInjectionRate)
+            )
+        }
     }
 
     override fun saveAdditional(pTag: CompoundTag) {
@@ -1494,6 +1599,10 @@ class AdvancedCoalBurnerBlockEntity(pos: BlockPos, state: BlockState) :
     class RenderState {
         var hullTemperature = 0.0
         var setpointTemperature = 800.0
+        var injectionRate = 0.0
+
+        val draftSmoother = FramerateIndependentSmoother1d(0.3)
+        var draftSound: SimpleLoopingBlockEntitySoundInstance<AdvancedCoalBurnerBlockEntity>? = null
     }
 
     var renderState: RenderState? = null
@@ -1525,10 +1634,31 @@ class AdvancedCoalBurnerBlockEntity(pos: BlockPos, state: BlockState) :
                 setpointTemperature = it.setpointTemperature
             }
         }
+
+        handler.withHandler<BurnerActivityPacket>(BurnerActivityPacket::deserialize) {
+            modifyState {
+                injectionRate = it.injectionRate
+            }
+        }
+    }
+
+    @ClientOnly
+    fun clientTick() {
+        val state = renderState ?: return
+
+        if (state.draftSound == null) {
+            state.draftSound = SimpleLoopingBlockEntitySoundInstance(this, Eln2HeatGenerators.BURNER_DRAFT_SOUND.get()).also {
+                it.events.registerHandler<SoundInstanceTickEvent> { _ ->
+                    state.draftSmoother.update(state.injectionRate)
+                    it.soundInfo = SoundInfo.draft(state.draftSmoother.value, Eln2HeatGenerators.ADVANCED_COAL_BURNER_MAX_DRAFT)
+                }
+
+                it.registerOnAudioManager()
+            }
+        }
     }
 
     //#endregion
-
     //#region Sync
 
     @ServerOnly
@@ -1548,19 +1678,15 @@ class AdvancedCoalBurnerBlockEntity(pos: BlockPos, state: BlockState) :
             SetpointPacket(!cell.targetTemperature)
         )
 
+        val currentInjectionRate = cell.injectionRate
+        lastSentInjectionRate = currentInjectionRate
+
+        sendBulkPacket(
+            BurnerActivityPacket::serialize,
+            BurnerActivityPacket(currentInjectionRate)
+        )
+
         return super.getUpdateTag()
-    }
-
-    data class HullTemperaturePacket(val hullTemperature: Double) {
-        companion object {
-            fun serialize(packet: HullTemperaturePacket, buffer: FriendlyByteBuf) {
-                buffer.writeDouble(packet.hullTemperature)
-            }
-
-            fun deserialize(buffer: FriendlyByteBuf) = HullTemperaturePacket(
-                buffer.readDouble()
-            )
-        }
     }
 
     data class SetpointPacket(val setpointTemperature: Double) {

@@ -43,6 +43,7 @@ import net.minecraftforge.registries.ForgeRegistries
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.geometry.Vector2di
 import org.ageseries.libage.mathematics.map
+import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Simulator
 import org.ageseries.libage.sim.ThermalMassDefinition
@@ -68,6 +69,15 @@ import org.eln2.mc.common.recipes.foundation.*
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
+import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
+import org.eln2.mc.common.network.serverToClient.sendBulkPacket
+import org.eln2.mc.common.sounds.foundation.SimpleLoopingBlockEntitySoundInstance
+import org.eln2.mc.common.sounds.foundation.SoundInfo
+import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
+import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
+import net.minecraft.sounds.SoundEvent
+import net.minecraftforge.registries.RegistryObject
 import java.util.function.Consumer
 import kotlin.math.abs
 
@@ -426,6 +436,7 @@ class HydrogenReductionFurnaceBlock : UprightHorizontalDirectionCellBlock<Electr
 
 class HydrogenReductionFurnaceBlockEntity(pos: BlockPos, state: BlockState) :
     CellBlockEntity<ElectricalFurnaceCell>(pos, state, BlockRegistry.getBlockEntityType(state.block).get()),
+    BulkPacketHandlerBlockEntity,
     ComponentDisplay {
 
     companion object {
@@ -434,6 +445,7 @@ class HydrogenReductionFurnaceBlockEntity(pos: BlockPos, state: BlockState) :
          * This defines the maximum processing speed of the machine.
          * */
         private const val HYDROGEN_FLOW_RATE = 0.025
+        private const val NOMINAL_POWER = 500.0
 
         fun tick(pLevel: Level?, pPos: BlockPos?, pState: BlockState?, pBlockEntity: BlockEntity?) {
             if (pLevel == null || pBlockEntity == null) {
@@ -445,12 +457,79 @@ class HydrogenReductionFurnaceBlockEntity(pos: BlockPos, state: BlockState) :
                 return
             }
 
-            if (!pLevel.isClientSide) {
+            if (pLevel.isClientSide) {
+                pBlockEntity.clientTick()
+            } else {
                 pBlockEntity.serverTick()
             }
         }
     }
 
+    @ServerOnly
+    private var lastSentPower = Double.NaN
+
+    @ClientOnly
+    class RenderState {
+        var targetPower = 0.0
+        val powerSmoother = FramerateIndependentSmoother1d(0.25)
+        var soundInstance: SimpleLoopingBlockEntitySoundInstance<HydrogenReductionFurnaceBlockEntity>? = null
+    }
+
+    @ClientOnly
+    var renderState: RenderState? = null
+        private set
+
+    @ClientOnly
+    override val clientSidePacketHandlerLazy = createClientSideHandler()
+
+    @ClientOnly
+    override fun setupPacketsOnClient(handler: ClientSidePacketHandlerBuilder) {
+        handler.withHandler<PowerPacket>(PowerPacket::deserialize) {
+            renderState?.targetPower = it.power
+        }
+    }
+
+    @ClientOnly
+    fun clientTick() {
+        val state = renderState ?: return
+
+        if (state.soundInstance == null) {
+            state.soundInstance = SimpleLoopingBlockEntitySoundInstance(this, Eln2Processing.HYDROGEN_REDUCTION_FURNACE_SOUND.get()).also {
+                it.events.registerHandler<SoundInstanceTickEvent> { _ ->
+                    state.powerSmoother.update(state.targetPower)
+                    it.soundInfo = SoundInfo.electromagnetic(
+                        state.powerSmoother.value,
+                        NOMINAL_POWER
+                    )
+                }
+
+                it.registerOnAudioManager()
+            }
+        }
+    }
+
+    @ServerOnly
+    override fun getUpdateTag(): CompoundTag {
+        if (hasCell) {
+            val currentPower = !cell.resistor.component.readouts.power
+            lastSentPower = currentPower
+            sendBulkPacket(PowerPacket::serialize, PowerPacket(currentPower))
+        }
+
+        return super.getUpdateTag()
+    }
+
+    data class PowerPacket(val power: Double) {
+        companion object {
+            fun serialize(packet: PowerPacket, buffer: FriendlyByteBuf) {
+                buffer.writeDouble(packet.power)
+            }
+
+            fun deserialize(buffer: FriendlyByteBuf) = PowerPacket(
+                buffer.readDouble()
+            )
+        }
+    }
     @ServerOnly
     @OnServerThread
     override fun onCellAcquired() {
@@ -710,7 +789,10 @@ class HydrogenReductionFurnaceBlockEntity(pos: BlockPos, state: BlockState) :
     override fun setLevel(pLevel: Level) {
         super.setLevel(pLevel)
 
-        if (!pLevel.isClientSide && savedOperationData != null) {
+        if (pLevel.isClientSide) {
+            renderState = RenderState()
+        }
+        else if (savedOperationData != null) {
             val optional = pLevel.recipeManager.byKey(savedOperationData!!.operationId)
 
             if (optional.isPresent && optional.get() is HydrogenReductionRecipe) {
@@ -803,6 +885,13 @@ class HydrogenReductionFurnaceBlockEntity(pos: BlockPos, state: BlockState) :
             data.progress = 0.0
             cell.isActive = false
             cell.processMaxPower = 0.0
+        }
+
+        val currentPower = !cell.resistor.component.readouts.power
+
+        if (!currentPower.approxEq(lastSentPower, 1.0)) {
+            lastSentPower = currentPower
+            sendBulkPacket(PowerPacket::serialize, PowerPacket(currentPower))
         }
     }
 

@@ -121,7 +121,7 @@ object Eln2ForgeFluids : ContentModule() {
         val leakage = ConnectionParameters(conductance = Quantity(1.0, WATT_PER_KELVIN))
 
         val cell = CellRegistry.cellImmediate(name) {
-            PhaseChangeModuleCell(it, leakage, maxTemperature, replicatesTemperature = false, allowExternalConnections = false)
+            PhaseChangeModuleCell(it, leakage, maxTemperature, allowExternalConnections = false)
         }
 
         var blockEntity: RegistryObject<BlockEntityType<PhaseChangeModuleBlockEntity>>? = null

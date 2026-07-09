@@ -1,3 +1,5 @@
+@file:Suppress("unused")
+
 package org.eln2.mc.common.content.processing
 
 import dev.engine_room.flywheel.api.instance.Instance
@@ -49,6 +51,12 @@ import org.eln2.mc.common.fluids.foundation.*
 import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.network.serverToClient.sendBulkPacket
+import org.eln2.mc.common.sounds.foundation.SimpleLoopingBlockEntitySoundInstance
+import org.eln2.mc.common.sounds.foundation.SoundInfo
+import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
+import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
+import net.minecraft.world.level.block.entity.BlockEntity
+import net.minecraft.world.level.block.entity.BlockEntityTicker
 import org.eln2.mc.Locators
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
@@ -187,7 +195,7 @@ class DistillationColumnBlockEntity(pos: BlockPos, state: BlockState) : CellBloc
  *
  * @param allowExternalConnections If false, refuses cell connections to anything that isn't a distillation module that also has [allowExternalConnections] set to false.
  * */
-class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, val maxTemperature: Quantity<Temperature>, val replicatesTemperature: Boolean, val allowExternalConnections: Boolean) :
+class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, val maxTemperature: Quantity<Temperature>, val allowExternalConnections: Boolean) :
     Cell(ci),
     SidedThermalFLBR<PhaseChangeModuleCell>,
     SimulationExecutionSubgraph.SynchronizationPointCell<PhaseChangeModuleCell>
@@ -236,13 +244,8 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
     //#endregion
 
     @Replicator
-    fun replicator(target: InternalTemperatureConsumer) = if(replicatesTemperature) {
-        InternalTemperatureReplicatorBehavior(target) {
-            !wire.thermalBody.temperature
-        }
-    }
-    else {
-        null
+    fun replicator(target: InternalTemperatureConsumer) =  InternalTemperatureReplicatorBehavior(target) {
+        !wire.thermalBody.temperature
     }
 
     override fun saveCellData() : CompoundTag {
@@ -254,7 +257,7 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
 
     override fun loadCellData(tag: CompoundTag) {
         wire.thermalBody.material = tag.getCompound("material").getMaterial()
-        wire.thermalBody.mass = tag.getQuantity<Mass>("mass")
+        wire.thermalBody.mass = tag.getQuantity("mass")
     }
 
     /**
@@ -1145,6 +1148,22 @@ class PhaseChangeModuleBlock(
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = PhaseChangeModuleBlockEntity(pPos, pState)
 
+    override fun <T : BlockEntity?> getTicker(
+        pLevel: Level,
+        pState: BlockState,
+        pBlockEntityType: BlockEntityType<T>
+    ): BlockEntityTicker<T>? {
+        if (pLevel.isClientSide) {
+            return BlockEntityTicker { _, _, _, pBlockEntity ->
+                if (pBlockEntity is PhaseChangeModuleBlockEntity) {
+                    pBlockEntity.clientTick()
+                }
+            }
+        }
+
+        return null
+    }
+
     /**
      * Adds the vertical neighbor modules (we excluded verticals from the thermal connections, see the cell as for why), and adds the columns.
      * */
@@ -1331,7 +1350,7 @@ class PhaseChangeModuleBlockEntity(pos: BlockPos, state: BlockState) :
     val sideHandler = ThermalLayer(this, SideHandler(liquidTank, gasTank))
     val sideHandlerLazy: LazyOptional<ThermalLayer<SideHandler>> = LazyOptional.of { sideHandler }
 
-    override fun <T : Any?> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T?> {
+    override fun <T> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T?> {
         if(cap == ForgeCapabilities.FLUID_HANDLER) {
             if(side != null) {
                 return when(side) {
@@ -1403,6 +1422,9 @@ class PhaseChangeModuleBlockEntity(pos: BlockPos, state: BlockState) :
 
     class RenderState {
         var temperature = 0.0
+
+        val activitySmoother = FramerateIndependentSmoother1d(0.5)
+        var soundInstance: SimpleLoopingBlockEntitySoundInstance<PhaseChangeModuleBlockEntity>? = null
     }
 
     @ClientOnly
@@ -1424,6 +1446,23 @@ class PhaseChangeModuleBlockEntity(pos: BlockPos, state: BlockState) :
     override fun setupPacketsOnClient(handler: ClientSidePacketHandlerBuilder) {
         handler.withHandler<InternalTemperatureReplicatorBehavior.InternalTemperaturePacket>(InternalTemperatureReplicatorBehavior.InternalTemperaturePacket::deserialize) { packet ->
             renderState!!.temperature = packet.temperature
+        }
+    }
+
+    @ClientOnly
+    fun clientTick() {
+        val state = renderState ?: return
+
+        if (state.soundInstance == null) {
+            state.soundInstance = SimpleLoopingBlockEntitySoundInstance(this, Eln2Processing.DISTILLATION_SOUND.get()).also {
+                it.events.registerHandler<SoundInstanceTickEvent> { _ ->
+                    val activity = ((state.temperature - 300.0) / 300.0).coerceIn(0.0, 1.0)
+                    state.activitySmoother.update(activity)
+                    it.soundInfo = SoundInfo.distillation(state.activitySmoother.value)
+                }
+
+                it.registerOnAudioManager()
+            }
         }
     }
 
