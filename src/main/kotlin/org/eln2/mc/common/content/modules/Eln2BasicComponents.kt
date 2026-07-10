@@ -38,6 +38,7 @@ import org.eln2.mc.directionPoleMapPlanar
 import org.eln2.mc.monopolarMapPlanar
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.ageseries.libage.sim.electrical.ElectricalSimulation
+import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
 
 object Eln2BasicComponents : ContentModule() {
     override fun registerPartVisualizers() {
@@ -112,6 +113,8 @@ object Eln2BasicComponents : ContentModule() {
     val DIODE_PART = partImmediateBB("diode", 3.0, 2.275, 16.0) {
         DiodePart(it)
     }
+
+    val SWITCH_SOUND = soundEventVariableRange("switch.scrape")
 
     val SWITCH_CELL = cellMemoize("switch") {
         val poleMap = directionPoleMapPlanar(

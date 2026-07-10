@@ -150,5 +150,13 @@
                 "stream": false
             }
         ]
+    },
+    "switch.scrape": {
+        "sounds": [
+            {
+                "name": "eln2:switch/switch0",
+                "stream": false
+            }
+        ]
     }
 }

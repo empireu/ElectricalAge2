@@ -7,7 +7,10 @@ import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
+import net.minecraft.client.Minecraft
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.sounds.SoundEvents
+import net.minecraft.sounds.SoundSource
 import net.minecraft.world.InteractionResult
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.geometry.Vector3d
@@ -32,6 +35,7 @@ import org.eln2.mc.easeInOutCubic
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.PoleMap
+import kotlin.random.Random
 
 data class SwitchOptions(
     val closedResistance: Quantity<Resistance>,
@@ -152,7 +156,21 @@ class SwitchPart(ci: PartCreateInfo) :
 
     @ClientOnly
     override fun handleSyncTag(tag: CompoundTag) {
+        val previous = isClosed
         isClosed = tag.getBoolean(IS_CLOSED)
+
+        if(previous != isClosed) {
+            val (x, y, z) = placement.mountingPointWorld
+
+            placement.level.playSound(
+                Minecraft.getInstance().player,
+                x, y, z,
+                Eln2BasicComponents.SWITCH_SOUND.get(),
+                SoundSource.BLOCKS,
+                Random.nextDouble(1.0, 1.3).toFloat(),
+                Random.nextDouble(0.9, 1.1).toFloat()
+            )
+        }
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
