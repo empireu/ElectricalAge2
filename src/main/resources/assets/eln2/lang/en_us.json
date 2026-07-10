@@ -325,6 +325,7 @@
     "item.eln2.basic_dc_motor": "Basic DC Motor",
     "item.eln2.diode": "Diode",
     "item.eln2.basic_single_channel_oscilloscope": "Basic Single-Channel Oscilloscope",
+    "item.eln2.switch": "Switch",
 
     // All implicit units:
     "waila.eln2.Mass_implicit": "Mass",

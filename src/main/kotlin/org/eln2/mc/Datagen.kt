@@ -1156,6 +1156,21 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .save(pWriter, resource("crafting/primitive_dc_to_dc_converter"))
         //#endregion
 
+        //#region Switch
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2BasicComponents.SWITCH_PART.item.get(), 4)
+            .pattern(" R ")
+            .pattern(" P ")
+            .pattern("WIW")
+            .define('R', Eln2Ingredients.RUBBER.get())
+            .define('P', Ingredient.of(ItemTags.PLANKS))
+            .define('W', Eln2Wires.STANDARD_INSULATED_COPPER_ELECTRICAL_WIRE.part.item.get())
+            .define('I', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .unlockedBy("has_insulated_wire", has(Eln2Wires.STANDARD_INSULATED_COPPER_ELECTRICAL_WIRE.part.item.get()))
+            .save(pWriter, resource("crafting/switch"))
+
+        //#endregion
+
         LOG.info("Generated manual recipes.")
     }
 
