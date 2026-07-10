@@ -10,11 +10,15 @@ import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.InteractionResult
 import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
+import org.ageseries.libage.utils.Stopwatch
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.FlwModels.iterateVertexPositions
 import org.eln2.mc.client.render.foundation.partTransformation
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.*
@@ -24,6 +28,7 @@ import org.eln2.mc.common.parts.foundation.AbstractPartVisual
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.common.parts.foundation.PartUseInfo
+import org.eln2.mc.easeInOutCubic
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.PoleMap
@@ -140,16 +145,15 @@ class SwitchPart(ci: PartCreateInfo) :
         return InteractionResult.SUCCESS
     }
 
+    @ServerOnly
+    override fun getSyncTag(): CompoundTag = CompoundTag().also {
+        it.putBoolean(IS_CLOSED, cell.isClosed)
+    }
+
     @ClientOnly
     override fun handleSyncTag(tag: CompoundTag) {
         isClosed = tag.getBoolean(IS_CLOSED)
     }
-
-    @ServerOnly
-    override fun getClientSaveTag(): CompoundTag? = getSyncTag()
-
-    @ClientOnly
-    override fun loadClientSaveTag(tag: CompoundTag) = handleSyncTag(tag)
 
     override fun submitDisplay(builder: ComponentDisplayList) {
         builder.translateBoolean("switch_closed", cell.isClosed)
@@ -169,35 +173,88 @@ class SwitchPartVisual(
     part: SwitchPart
 ) : AbstractPartVisual<SwitchPart>(visualizationContext, part), SimpleDynamicVisual {
 
-    val body: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(FlwModels.SWITCH))
+    companion object {
+        private const val ANIMATION_SPEED = 4.0
+        private const val OPEN_ANGLE = Math.PI / 6.0
+
+        private val leverPivot = lazy {
+            var minY = Double.POSITIVE_INFINITY
+
+            iterateVertexPositions(FlwModels.SWITCH_LEVER.get()) { (_, y, _) ->
+                if (y < minY) {
+                    minY = y
+                }
+            }
+
+            Vector3d(8.0, minY, 8.0)
+        }
+    }
+
+    val base: TransformedInstance = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, Models.partial(FlwModels.SWITCH_BASE))
         .createInstance()
         .also {
             it.partTransformation(visualizationContext.parent, part)
         }
 
-    var isClosed = false
-        private set
+    val lever: TransformedInstance = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, Models.partial(FlwModels.SWITCH_LEVER))
+        .createInstance()
 
-    init {
-        updateState()
+    private var targetClosed = part.isClosed
+    private var leverParameter = if (part.isClosed) 1.0 else 0.0
+    private val frameTimer = Stopwatch()
+
+    private fun poseLever() {
+        val pivot = leverPivot.value
+        val px = pivot.x
+        val py = pivot.y
+        val pz = pivot.z
+
+        val angle = map(easeInOutCubic(leverParameter), 0.0, 1.0, +OPEN_ANGLE, -OPEN_ANGLE).toFloat()
+
+        lever.setIdentityTransform()
+            .partTransformation(visualizationContext.parent, part)
+            .translate(px / 16.0, py / 16.0, pz / 16.0)
+            .rotateX(angle)
+            .translate(-px / 16.0, -py / 16.0, -pz / 16.0)
+            .handle()
+            .setChanged()
     }
 
-    private fun updateState() {
-        isClosed = part.isClosed
+    init {
+        poseLever()
     }
 
     override fun beginFrame(ctx: DynamicVisual.Context?) {
-        if (isClosed != part.isClosed) {
-            updateState()
+        val newTarget = part.isClosed
+
+        if (newTarget != targetClosed) {
+            targetClosed = newTarget
+        }
+
+        val targetParameter = if (targetClosed) 1.0 else 0.0
+
+        if (leverParameter != targetParameter) {
+            val dt = !frameTimer.sample()
+            val direction = if (targetParameter > leverParameter) 1.0 else -1.0
+            leverParameter = (leverParameter + direction * ANIMATION_SPEED * dt).coerceIn(
+                minOf(leverParameter, targetParameter),
+                maxOf(leverParameter, targetParameter)
+            )
+
+            poseLever()
+        } else {
+            frameTimer.sample()
         }
     }
 
     override fun updateLight(partialTick: Float) {
-        visualizationContext.parent.relightInstances(body)
+        visualizationContext.parent.relightInstances(base, lever)
     }
 
     override fun _delete() {
-        body.delete()
+        base.delete()
+        lever.delete()
     }
 }
