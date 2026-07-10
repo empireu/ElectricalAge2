@@ -176,6 +176,7 @@ object FlwModels {
     //#endregion
 
     val DIODE = partialBlock("diode/diode")
+    val SWITCH = partialBlock("switch/switch")
 
     //#region Wind Turbines
 

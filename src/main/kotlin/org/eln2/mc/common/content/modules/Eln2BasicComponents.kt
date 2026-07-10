@@ -26,6 +26,10 @@ import org.eln2.mc.common.content.DiodePart
 import org.eln2.mc.common.content.GroundCell
 import org.eln2.mc.common.content.GroundPart
 import org.eln2.mc.common.content.GroundSpec
+import org.eln2.mc.common.content.SwitchCell
+import org.eln2.mc.common.content.SwitchOptions
+import org.eln2.mc.common.content.SwitchPart
+import org.eln2.mc.common.content.SwitchPartVisual
 import org.eln2.mc.common.content.VoltageSourceCell
 import org.eln2.mc.common.content.VoltageSourcePart
 import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
@@ -33,6 +37,7 @@ import org.eln2.mc.common.specs.SpecRegistry.specImmediateBB
 import org.eln2.mc.directionPoleMapPlanar
 import org.eln2.mc.monopolarMapPlanar
 import org.eln2.mc.mathematics.Base6Direction3d
+import org.ageseries.libage.sim.electrical.ElectricalSimulation
 
 object Eln2BasicComponents : ContentModule() {
     override fun registerPartVisualizers() {
@@ -42,6 +47,10 @@ object Eln2BasicComponents : ContentModule() {
                 FlwModels.DIODE,
                 smoothLighting = true
             )
+        }
+
+        setPartVisualizer<SwitchPart>(SWITCH_PART.part.get()) { ctx, part ->
+            SwitchPartVisual(ctx, part)
         }
     }
 
@@ -102,5 +111,33 @@ object Eln2BasicComponents : ContentModule() {
 
     val DIODE_PART = partImmediateBB("diode", 3.0, 2.275, 16.0) {
         DiodePart(it)
+    }
+
+    val SWITCH_CELL = cellMemoize("switch") {
+        val poleMap = directionPoleMapPlanar(
+            Base6Direction3d.Back,
+            Base6Direction3d.Front
+        )
+
+        val model = SwitchOptions(
+            Quantity(1e-5, OHM),
+            Quantity(ElectricalSimulation.MAX_RESISTANCE, OHM),
+            ThermalMassDefinition(
+                ChemicalElement.Iron.asMaterial,
+                mass = Quantity(0.5, KILOGRAM)
+            ),
+            Quantity(200.0, CELSIUS),
+            Quantity(1000.0, VOLT)
+        )
+
+        val leakage = ConnectionParameters.DEFAULT
+
+        CellFactory {
+            SwitchCell(it, poleMap, model, leakage)
+        }
+    }
+
+    val SWITCH_PART = partImmediateBB("switch", 6.0, 4.0, 16.0) {
+        SwitchPart(it)
     }
 }
