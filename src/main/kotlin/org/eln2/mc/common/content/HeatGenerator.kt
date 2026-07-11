@@ -176,7 +176,7 @@ class BurnerSimulation(val ambientTemperature: Quantity<Temperature>, val hull: 
      * @param initialMass The initial mass added to this slice.
      * @param energy The internal energy of the slice.
      * */
-    class CoalSlice(val grade: CoalGrade, val initialMass: Double, var energy: Double) {
+    class CoalSlice(val grade: CoalGrade, var initialMass: Double, var energy: Double) {
         /**
          * The mass remaining in the slice.
          * */
@@ -194,17 +194,31 @@ class BurnerSimulation(val ambientTemperature: Quantity<Temperature>, val hull: 
     var slices: Array<CoalSlice> = emptyArray()
 
     /**
-     * Loads a lump of coal as [slices] individual slices for simulation.
+     * Adds coal to the simulation. If active slices exist, the mass is distributed across them; otherwise fresh slices are created.
      * */
-    fun loadCoal(grade: CoalGrade, mass: Double, sliceCount: Int) {
-        slices = Array(sliceCount) {
-            val sliceMass = mass / sliceCount
+    fun addCoal(grade: CoalGrade, mass: Double, sliceCount: Int) {
+        val activeSlices = slices.filter { !it.mass.approxEq(0.0) }
 
-            CoalSlice(
-                grade,
-                sliceMass,
-                sliceMass * !grade.specificHeat * !ambientTemperature
-            )
+        if (activeSlices.isEmpty()) {
+            slices = Array(sliceCount) {
+                val sliceMass = mass / sliceCount
+
+                CoalSlice(
+                    grade,
+                    sliceMass,
+                    sliceMass * !grade.specificHeat * !ambientTemperature
+                )
+            }
+        } else {
+            val massPerSlice = mass / activeSlices.size
+
+            activeSlices.forEach { slice ->
+                slice.initialMass += massPerSlice
+                slice.mass += massPerSlice
+                slice.energy += massPerSlice * !grade.specificHeat * !ambientTemperature
+            }
+
+            slices = activeSlices.toTypedArray()
         }
     }
 
@@ -376,6 +390,7 @@ data class BurnerCellOptions(
     val hullDef: ThermalMassDefinition,
     val leakageParameters: ConnectionParameters,
     val substeps: Int = 16,
+    val coalCapacity: Quantity<Mass> = Quantity(10.0, KILOGRAM),
 )
 
 object CoalGradeRegistry {
@@ -452,14 +467,24 @@ abstract class BurnerCell(ci: CellCreateInfo, val burnerCellOptions: BurnerCellO
         )
     }
 
+    val coalCapacity get() = burnerCellOptions.coalCapacity
+
+    val totalMass get() = simulation.totalMass
+
+    fun canAddCoal(amount: Quantity<Mass>): Boolean {
+        return totalMass + !amount <= !coalCapacity
+    }
+
+    val coalFillLevel: Float
+        get() = (totalMass / !coalCapacity).toFloat().coerceIn(0.0f, 1.0f)
+
     /**
-     * Inserts coal into the device.
-     * If called when the simulation is not depleted, this will overwrite the currently stored slices.
+     * Adds coal to the device. If active slices exist, the mass is distributed across them; otherwise fresh slices are created.
      * */
-    fun replaceCoal(grade: BurnerSimulation.CoalGrade, amount: Quantity<Mass>) {
+    fun addCoal(grade: BurnerSimulation.CoalGrade, amount: Quantity<Mass>) {
         // Atomic operation wrt the simulation method.
         // However, it is not atomic wrt to the cell's tick method.
-        simulation.loadCoal(grade, !amount, 16)
+        simulation.addCoal(grade, !amount, 16)
         setChanged()
     }
 
@@ -644,7 +669,7 @@ abstract class BurnerCell(ci: CellCreateInfo, val burnerCellOptions: BurnerCellO
 /**
  * The mass of coal loaded per item.
  * */
-private val COAL_ITEM_MASS = Quantity(10.0, KILOGRAM)
+private val COAL_ITEM_MASS = Quantity(1.0, KILOGRAM)
 
 private data class BurnerActivityPacket(val injectionRate: Double) {
     companion object {
@@ -810,11 +835,11 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
                     return InteractionResult.SUCCESS
                 }
 
-                if(!cell.simulation.isDepleted) {
+                if(!cell.canAddCoal(COAL_ITEM_MASS)) {
                     return InteractionResult.FAIL
                 }
 
-                cell.replaceCoal(
+                cell.addCoal(
                     CoalGradeRegistry.DEFAULT,
                     COAL_ITEM_MASS
                 )
@@ -1267,33 +1292,6 @@ class AdvancedBurnerCell(
         it.maxControl = maxDraftStrength
     }
 
-    /**
-     * The progress of the current coal load, from 0 to 1.
-     * Based on the remaining mass of the coal slices relative to the initial mass.
-     * */
-    val burnProgress: Float
-        get() {
-            if (simulation.isDepleted) {
-                return 0.0f
-            }
-
-            val totalInitial = simulation.slices.sumOf { it.initialMass }
-
-            if (totalInitial.approxEq(0.0)) {
-                return 0.0f
-            }
-
-            val remaining = simulation.slices.sumOf { it.mass }
-
-            return (1.0f - (remaining / totalInitial).toFloat()).coerceIn(0.0f, 1.0f)
-        }
-
-    /**
-     * The total remaining mass of all coal slices.
-     * */
-    val totalMass: Double
-        get() = simulation.slices.sumOf { it.mass }
-
     override fun calculateFlow(dt: Double) {
         if (simulation.isDepleted) {
             injectionRate = 0.0
@@ -1546,15 +1544,15 @@ class AdvancedCoalBurnerBlockEntity(pos: BlockPos, state: BlockState) :
 
     @ServerOnly
     fun serverTick() {
-        cellProgressData.progress = cell.burnProgress
+        cellProgressData.progress = cell.coalFillLevel
 
-        if (cell.simulation.isDepleted) {
+        if (cell.canAddCoal(COAL_ITEM_MASS)) {
             val fuelStack = fuelHandler.getStackInSlot(0)
 
             if (!fuelStack.isEmpty) {
                 fuelHandler.extractItem(0, 1, false)
 
-                cell.replaceCoal(
+                cell.addCoal(
                     CoalGradeRegistry.DEFAULT,
                     COAL_ITEM_MASS
                 )
@@ -1706,7 +1704,7 @@ class AdvancedCoalBurnerBlockEntity(pos: BlockPos, state: BlockState) :
 
 /**
  * Menu for the Advanced Coal Burner.
- * Shows a fuel slot and a progress bar representing how burnt the current coal load is.
+ * Shows a fuel slot and a progress bar representing the coal fill level.
  * */
 class AdvancedCoalBurnerMenu(
     pContainerId: Int,
