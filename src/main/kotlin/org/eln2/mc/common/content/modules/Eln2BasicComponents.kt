@@ -2,15 +2,11 @@
 
 package org.eln2.mc.common.content.modules
 
-import org.ageseries.libage.data.CELSIUS
-import org.ageseries.libage.data.KILO
-import org.ageseries.libage.data.KILOGRAM
-import org.ageseries.libage.data.OHM
-import org.ageseries.libage.data.Quantity
-import org.ageseries.libage.data.VOLT
+import org.ageseries.libage.data.*
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
+import org.ageseries.libage.sim.electrical.ElectricalSimulation
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.BasicPartVisual
 import org.eln2.mc.client.render.foundation.BasicSpecVisual
@@ -20,25 +16,14 @@ import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.CellRegistry.cellMemoize
 import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.cells.foundation.ElectricalSize
-import org.eln2.mc.common.content.DiodeCell
-import org.eln2.mc.common.content.DiodeOptions
-import org.eln2.mc.common.content.DiodePart
-import org.eln2.mc.common.content.GroundCell
-import org.eln2.mc.common.content.GroundPart
-import org.eln2.mc.common.content.GroundSpec
-import org.eln2.mc.common.content.SwitchCell
-import org.eln2.mc.common.content.SwitchOptions
-import org.eln2.mc.common.content.SwitchPart
-import org.eln2.mc.common.content.SwitchPartVisual
-import org.eln2.mc.common.content.VoltageSourceCell
-import org.eln2.mc.common.content.VoltageSourcePart
+import org.eln2.mc.common.content.*
+import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
+import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
 import org.eln2.mc.common.specs.SpecRegistry.specImmediateBB
 import org.eln2.mc.directionPoleMapPlanar
-import org.eln2.mc.monopolarMapPlanar
 import org.eln2.mc.mathematics.Base6Direction3d
-import org.ageseries.libage.sim.electrical.ElectricalSimulation
-import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
+import org.eln2.mc.monopolarMapPlanar
 
 object Eln2BasicComponents : ContentModule() {
     override fun registerPartVisualizers() {
@@ -53,10 +38,14 @@ object Eln2BasicComponents : ContentModule() {
         setPartVisualizer<SwitchPart>(SWITCH_PART.part.get()) { ctx, part ->
             SwitchPartVisual(ctx, part)
         }
+
+        setPartVisualizer<FusePanelPart>(FUSE_PANEL_PART.part.get()) { ctx, part ->
+            FusePanelPartVisual(ctx, part)
+        }
     }
 
     override fun registerSpecVisualizers() {
-        setSpecVisualizer<GroundSpec>(Eln2BasicComponents.GROUND_SPEC.spec.get()) { ctx, spec ->
+        setSpecVisualizer<GroundSpec>(GROUND_SPEC.spec.get()) { ctx, spec ->
             BasicSpecVisual(
                 ctx, spec,
                 FlwModels.GROUND_MICRO_GRID
@@ -142,5 +131,22 @@ object Eln2BasicComponents : ContentModule() {
 
     val SWITCH_PART = partImmediateBB("switch", 6.0, 4.0, 16.0) {
         SwitchPart(it)
+    }
+
+    val BURNT_FUSE_ITEM = item("burnt_fuse", ::BurntFuseItem)
+
+    val FUSE_CELL = cellMemoize("fuse") {
+        val map = directionPoleMapPlanar(
+            Base6Direction3d.Back,
+            Base6Direction3d.Front
+        )
+
+        CellFactory {
+            FusePanelCell(it, map)
+        }
+    }
+
+    val FUSE_PANEL_PART = partImmediateBB("fuse_panel", 8.0, 4.0, 16.0) {
+        FusePanelPart(it)
     }
 }

@@ -393,6 +393,28 @@ fun ServerLevel.addItem(x: Double, y: Double, z: Double, stack: ItemStack) {
 
 fun ServerLevel.addItem(pos: BlockPos, stack: ItemStack) = addItem(pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble(), stack)
 
+/**
+ * Adds an item to the player's inventory, falling back to dropping it in the world if not possible.
+ * */
+@ServerOnly
+fun ServerPlayer.addItem(x: Double, y: Double, z: Double, stack: ItemStack) {
+    requireIsOnServerThread {
+        "Cannot call org.eln2.mc.extensions.MinecraftExtensionsKt.addItem(net.minecraft.server.level.ServerPlayer, double, double, double, net.minecraft.world.item.ItemStack) on non-server thread"
+    }
+
+    if(!this.addItem(stack)) {
+        (this.level() as ServerLevel).addItem(x, y, z, stack)
+    }
+}
+
+/**
+ * Adds an item to the player's inventory, falling back to dropping it in the world if not possible.
+ * */
+@ServerOnly
+fun ServerPlayer.addItem(fallbackPosition: Vector3d, stack: ItemStack) {
+    this.addItem(fallbackPosition.x, fallbackPosition.y, fallbackPosition.z, stack)
+}
+
 @ServerOnly
 fun ServerLevel.destroyPart(part: Part, dropPart: Boolean) {
     val pos = part.placement.position
