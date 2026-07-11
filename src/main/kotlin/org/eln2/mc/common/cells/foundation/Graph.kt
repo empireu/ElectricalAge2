@@ -1159,9 +1159,13 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         }
 
         executionGraph.suspend()
-        val result = action()
-        executionGraph.resume()
-        return result
+
+        try {
+            return action()
+        }
+        finally {
+            executionGraph.resume()
+        }
     }
 
     // TODO revamp the schema

@@ -4,13 +4,18 @@ import dev.engine_room.flywheel.api.visual.DynamicVisual
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
+import net.minecraft.ChatFormatting
 import net.minecraft.nbt.CompoundTag
-import net.minecraft.server.level.ServerLevel
+import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.sounds.SoundEvents
+import net.minecraft.sounds.SoundSource
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.TooltipFlag
+import net.minecraft.world.level.Level
 import net.minecraftforge.registries.ForgeRegistries
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
@@ -19,15 +24,11 @@ import org.ageseries.libage.sim.Simulator
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.ElectricalSimulation
-import org.eln2.mc.CrossThreadAccess
-import org.eln2.mc.OnServerThread
-import org.eln2.mc.PoleMap
-import org.eln2.mc.ServerOnly
+import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.PartialModelHelper
 import org.eln2.mc.client.render.foundation.partTransformation
-import org.eln2.mc.common.LightBulbItem
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.content.modules.Eln2BasicComponents
@@ -36,25 +37,86 @@ import org.eln2.mc.common.parts.foundation.AbstractPartVisual
 import org.eln2.mc.common.parts.foundation.CellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.common.parts.foundation.PartUseInfo
-import org.eln2.mc.extensions.addItem
-import org.eln2.mc.extensions.getQuantity
-import org.eln2.mc.extensions.getResourceLocation
-import org.eln2.mc.extensions.putQuantity
-import org.eln2.mc.extensions.putResourceLocation
+import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
-import org.eln2.mc.requireIsOnServerThread
 import kotlin.math.abs
 
 data class FuseModel(
+    val materialName: String,
+    val ratedCurrent: Quantity<Current>,
     val resistance: Quantity<Resistance>,
     val massDef: ThermalMassDefinition,
     val meltingPoint: Quantity<Temperature>,
     val leakage: ConnectionParameters
 )
 
-class FuseItem(val model: FuseModel) : Item(Properties())
-class BurntFuseItem : Item(Properties())
+class FuseItem(val model: FuseModel) : Item(Properties()) {
+
+    override fun appendHoverText(
+        pStack: ItemStack,
+        pLevel: Level?,
+        pTooltipComponents: MutableList<Component>,
+        pIsAdvanced: TooltipFlag,
+    ) {
+        super.appendHoverText(pStack, pLevel, pTooltipComponents, pIsAdvanced)
+
+        val gray = ChatFormatting.GRAY
+        val yellow = ChatFormatting.YELLOW
+        val red = ChatFormatting.RED
+        val aqua = ChatFormatting.AQUA
+
+        pTooltipComponents.add(
+            Component.translatable("tooltip.eln2.fuse.material")
+                .append(": ")
+                .append(Component.translatable(getMaterialKey(model.materialName)).withStyle(gray))
+                .withStyle(yellow)
+        )
+
+        pTooltipComponents.add(
+            Component.translatable("tooltip.eln2.fuse.rated_current")
+                .append(": ")
+                .append(Component.literal(Eln2Config.clientConfig.classifyWithOverride(model.ratedCurrent)).withStyle(aqua))
+                .withStyle(yellow)
+        )
+
+        pTooltipComponents.add(
+            Component.translatable("tooltip.eln2.fuse.resistance")
+                .append(": ")
+                .append(Component.literal(Eln2Config.clientConfig.classifyWithOverride(model.resistance)).withStyle(gray))
+                .withStyle(yellow)
+        )
+
+        pTooltipComponents.add(
+            Component.translatable("tooltip.eln2.fuse.melting_point")
+                .append(": ")
+                .append(Component.literal(Eln2Config.clientConfig.classifyWithOverride(model.meltingPoint)).withStyle(gray))
+                .withStyle(yellow)
+        )
+
+        pTooltipComponents.add(
+            Component.translatable("tooltip.eln2.fuse.single_use")
+                .withStyle(red)
+        )
+    }
+}
+
+class BurntFuseItem : Item(Properties()) {
+
+    override fun appendHoverText(
+        pStack: ItemStack,
+        pLevel: Level?,
+        pTooltipComponents: MutableList<Component>,
+        pIsAdvanced: TooltipFlag,
+    ) {
+        super.appendHoverText(pStack, pLevel, pTooltipComponents, pIsAdvanced)
+
+        pTooltipComponents.add(
+            Component.translatable("tooltip.eln2.fuse.burnt")
+                .withStyle(ChatFormatting.DARK_RED)
+        )
+    }
+}
 
 class FusePanelCell(ci: CellCreateInfo, override val electricalMap: PoleMap) : Cell(ci), SidedElectricalMapped<FusePanelCell> {
     companion object {
@@ -172,6 +234,21 @@ class FusePanelCell(ci: CellCreateInfo, override val electricalMap: PoleMap) : C
             electrical.component.resistance = ElectricalSimulation.MAX_RESISTANCE
             setChanged()
             eventConsumer?.onFuseStateChanged()
+
+            locator.get(Locators.BLOCK)?.also { blockPos ->
+                runPre {
+                    if(graph.level.isLoaded(blockPos)) {
+                        graph.level.playSound(
+                            null,
+                            blockPos.x.toDouble(), blockPos.y.toDouble(), blockPos.z.toDouble(),
+                            SoundEvents.FIRE_EXTINGUISH,
+                            SoundSource.BLOCKS,
+                            randomFloat(0.9f, 1.1f),
+                            randomFloat(0.9f, 1.1f)
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -279,11 +356,13 @@ class FusePanelPart(ci: PartCreateInfo) :
                     placement.mountingPointWorld,
                     ItemStack(removedItem, 1)
                 )
+
+                return InteractionResult.SUCCESS
             }
 
             val mainHandStack = context.player.mainHandItem
 
-            if(mainHandStack != null && mainHandStack.item is FuseItem) {
+            if(mainHandStack.item is FuseItem) {
                 cell.insertItem(mainHandStack.item as FuseItem)
                 mainHandStack.shrink(1)
                 return InteractionResult.CONSUME
@@ -366,6 +445,7 @@ class FusePanelPartVisual(visualizationContext: MultipartVisualizationContext, p
         when(rendererState) {
             FusePanelCell.StateIndicator.None -> {
                 fuse?.delete()
+                fuse = null
             }
             FusePanelCell.StateIndicator.Burnt -> {
                 ensureInstanceCreated()

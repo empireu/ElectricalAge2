@@ -15,6 +15,7 @@ import net.minecraftforge.fml.ModLoadingContext
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext
+import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.utils.libageUseValidation
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
@@ -185,3 +186,6 @@ fun getResourceStringHelper(resource: String) : String =
 fun getResourceBinaryHelper(resource: String): ByteArray =
     if (!SharedConstants.IS_RUNNING_IN_IDE) getResourceBinary(resource(resource))
     else Files.readAllBytes(Path("./src/main/resources/assets/eln2/$resource"))
+
+fun getMaterialKey(material: String) : String = "material.$MODID.$material"
+fun getChemicalElementKey(element: ChemicalElement) = getMaterialKey(element.label)

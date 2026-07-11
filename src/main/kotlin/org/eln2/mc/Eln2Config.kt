@@ -109,6 +109,15 @@ class ClientConfig(builder: Builder) {
         unitOverrides.set(lines)
         unitOverrides.save()
     }
+
+    inline fun <reified T> classifyWithOverride(quantity: Quantity<T>): String {
+        val scale = getScaleOverride(T::class.java)
+        return if (scale != null) {
+            classifyAuxiliary(scale, !quantity)
+        } else {
+            quantity.classify()
+        }
+    }
 }
 
 class ServerConfig(builder: Builder) {
