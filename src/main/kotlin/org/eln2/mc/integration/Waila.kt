@@ -586,6 +586,10 @@ class ComponentDisplayList(private val entries: MutableList<Component>) {
         translateQuantityRow("hot_temperature", temperature, eps)
     }
 
+    fun signalInput(value: Double, eps: Double = EPS) {
+        translateQuantityRow("signal_input", Quantity(value, VOLT), eps)
+    }
+
     fun signalOutput(value: Double, eps: Double = EPS) {
         translateQuantityRow("signal_output", Quantity(value, VOLT), eps)
     }

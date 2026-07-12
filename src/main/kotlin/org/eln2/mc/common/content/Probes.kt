@@ -239,7 +239,7 @@ class ElectricalProbeCell(
     }
 }
 
-class PotentialProbePart(
+class ElectricalProbePart(
     ci: PartCreateInfo,
     val body: PartialModel,
     val models: Map<Base6Direction3d, WireConnectionModelPartial>,

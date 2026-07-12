@@ -3,11 +3,19 @@
 package org.eln2.mc.common.content.modules
 
 import net.minecraft.client.gui.screens.MenuScreens
+import org.ageseries.libage.data.*
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.geometry.Vector4d
+import org.ageseries.libage.sim.ChemicalElement
+import org.ageseries.libage.sim.ConnectionParameters
+import org.ageseries.libage.sim.ThermalMassDefinition
+import org.ageseries.libage.sim.electrical.ElectricalSimulation
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.BasicPartVisual
 import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setPartVisualizer
 import org.eln2.mc.common.cells.CellRegistry.cellImmediate
+import org.eln2.mc.common.cells.CellRegistry.cellMemoize
+import org.eln2.mc.common.cells.foundation.CellFactory
 import org.eln2.mc.common.cells.foundation.ElectricalSize
 import org.eln2.mc.common.containers.ContainerRegistry.menu
 import org.eln2.mc.common.content.*
@@ -71,7 +79,7 @@ object Eln2Signal : ContentModule() {
     }
 
     val POTENTIAL_PROBE_PART = partImmediateBB("potential_probe", 6.0, 2.025, 9.5) {
-        PotentialProbePart(
+        ElectricalProbePart(
             it,
             FlwModels.POTENTIAL_PROBE_BODY,
             STANDARD_PROBE_MODELS,
@@ -90,11 +98,46 @@ object Eln2Signal : ContentModule() {
     }
 
     val CURRENT_PROBE_PART = partImmediateBB("current_probe", 6.0, 2.025, 9.5) {
-        PotentialProbePart(
+        ElectricalProbePart(
             it,
             FlwModels.CURRENT_PROBE_BODY,
             STANDARD_PROBE_MODELS,
             CURRENT_PROBE_CELL.get()
+        )
+    }
+
+    //#endregion
+
+    //#region Relays
+
+    val RELAY_CELL = cellMemoize("relay") {
+        val options = RelayOptions(
+            Quantity(1e-5, OHM),
+            Quantity(ElectricalSimulation.MAX_RESISTANCE, OHM),
+            ThermalMassDefinition(
+                ChemicalElement.Iron.asMaterial,
+                mass = Quantity(0.5, KILOGRAM)
+            ),
+            Quantity(200.0, CELSIUS),
+            Quantity(1000.0, VOLT),
+            maxSwitchingInterval = 40
+        )
+
+        val leakage = ConnectionParameters.DEFAULT
+
+        CellFactory {
+            RelayCell(it, STANDARD_PROBE_COMPARER_MAP, ElectricalSize.Standard, STANDARD_PROBE_OUTPUT_MAP, options, leakage)
+        }
+    }
+
+    val RELAY_PART = partImmediateBB("relay", 6.0, 2.025, 9.5) {
+        RelayPart(
+            it,
+            FlwModels.RELAY_BODY,
+            FlwModels.RELAY_CONTACT,
+            Vector3d(0.0, -1.0 / 16.0, 0.0),
+            STANDARD_PROBE_MODELS,
+            RELAY_CELL.get()
         )
     }
 

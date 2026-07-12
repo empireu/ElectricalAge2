@@ -1410,7 +1410,7 @@ class PartWithKnobsVisual<T>(
     }
 }
 
-class ConnectedPartWithKnobsVisual<P>(
+open class ConnectedPartWithKnobsVisual<P>(
     ctx: MultipartVisualizationContext,
     part: P,
     body: PartialModel,

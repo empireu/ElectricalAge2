@@ -184,6 +184,9 @@ object FlwModels {
     val FUSE_BASE = partialBlock("fuse/base")
     val FUSE_FUSE = partialBlock("fuse/fuse")
 
+    val RELAY_BODY = partialBlock("relay/body")
+    val RELAY_CONTACT = partialBlock("relay/contact")
+
     //#region Wind Turbines
 
     val BASIC_WIND_TURBINE_BASE = partialBlock("wind_turbine/basic/base")
