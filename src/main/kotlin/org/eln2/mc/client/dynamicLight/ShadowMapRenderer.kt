@@ -147,6 +147,7 @@ object ShadowMapRenderer {
         }
 
         drawBlockEntityShadows(lightPosition, lightDirection, lightView, lightProj, range, halfAngleDeg)
+        drawEntityShadows(lightPosition, lightDirection, lightView, lightProj, range, halfAngleDeg)
         GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL)
 
         RenderSystem.colorMask(true, true, true, true)
