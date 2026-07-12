@@ -2,7 +2,9 @@
 
 package org.eln2.mc.client.dynamicLight
 
+import com.mojang.blaze3d.pipeline.RenderTarget
 import com.mojang.blaze3d.pipeline.TextureTarget
+import com.mojang.blaze3d.platform.GlStateManager
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.*
 import dev.engine_room.flywheel.api.visualization.VisualizationManager
@@ -26,6 +28,8 @@ import org.eln2.mc.integration.sodium.EmbeddiumShadowRenderer
 import org.eln2.mc.resource
 import org.joml.Matrix4f
 import org.joml.Vector3f
+import org.lwjgl.opengl.GL11
+import org.lwjgl.opengl.GL30
 import kotlin.math.PI
 import kotlin.math.abs
 
@@ -45,10 +49,13 @@ import kotlin.math.abs
  */
 object ShadowMapRenderer {
     private const val SHADOW_MAP_SIZE = 1024
-    private const val NEAR_PLANE = 0.1f
+    private const val NEAR_PLANE = 0.5f
 
     private var shader: ShaderInstance? = null
     private var shadowTarget: TextureTarget? = null
+    private var scratchTarget: TextureTarget? = null
+    private var scratchWidth = 0
+    private var scratchHeight = 0
 
     fun registerShader(event: net.minecraftforge.client.event.RegisterShadersEvent) {
         val src = ShaderInstance(
@@ -70,6 +77,33 @@ object ShadowMapRenderer {
         shadowTarget = target
         LOG.info("Created shadow map target ${SHADOW_MAP_SIZE}x${SHADOW_MAP_SIZE}")
         return target
+    }
+
+    private fun ensureScratchTarget(width: Int, height: Int): TextureTarget {
+        val current = scratchTarget
+        if (current != null && scratchWidth == width && scratchHeight == height) {
+            return current
+        }
+
+        current?.destroyBuffers()
+
+        val target = TextureTarget(width, height, true, false)
+        target.setClearColor(0f, 0f, 0f, 0f)
+        scratchTarget = target
+        scratchWidth = width
+        scratchHeight = height
+        return target
+    }
+
+    private fun blitFramebuffer(source: RenderTarget, destination: RenderTarget, mask: Int) {
+        GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, source.frameBufferId)
+        GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, destination.frameBufferId)
+        GlStateManager._glBlitFrameBuffer(
+            0, 0, source.width, source.height,
+            0, 0, destination.width, destination.height,
+            mask, 9728
+        )
+        GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0)
     }
 
     /**
@@ -104,6 +138,8 @@ object ShadowMapRenderer {
         RenderSystem.disableBlend()
         RenderSystem.colorMask(false, false, false, false)
 
+        GL11.glEnable(GL11.GL_POLYGON_OFFSET_FILL)
+        GL11.glPolygonOffset(4.0f, 4.0f)
         if (EmbeddiumShadowRenderer.isAvailable()) {
             renderEmbeddiumShadow(lightPosition, lightView, lightProj)
         } else {
@@ -111,7 +147,7 @@ object ShadowMapRenderer {
         }
 
         drawBlockEntityShadows(lightPosition, lightDirection, lightView, lightProj, range, halfAngleDeg)
-        drawEntityShadows(lightPosition, lightDirection, lightView, lightProj, range, halfAngleDeg)
+        GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL)
 
         RenderSystem.colorMask(true, true, true, true)
         RenderSystem.disableDepthTest()
@@ -206,9 +242,9 @@ object ShadowMapRenderer {
             }
 
             val interpolatedPos = Vec3(
-                lerp(partialTick.toDouble(), entity.xOld, entity.x),
-                lerp(partialTick.toDouble(), entity.yOld, entity.y),
-                lerp(partialTick.toDouble(), entity.zOld, entity.z)
+                lerp(entity.xOld, entity.x, partialTick.toDouble()),
+                lerp(entity.yOld, entity.y, partialTick.toDouble()),
+                lerp(entity.zOld, entity.z, partialTick.toDouble())
             )
 
             val toEntity = interpolatedPos.subtract(lightPosition)
@@ -223,7 +259,6 @@ object ShadowMapRenderer {
 
             entities.add(entity)
         }
-
         if (entities.isEmpty()) {
             return
         }
@@ -248,7 +283,7 @@ object ShadowMapRenderer {
 
         val lightCamera = LightCamera(lightPosition)
 
-        val savedRenderShadow = entityDispatcher.shouldRenderHitBoxes()
+        val savedShouldRenderHitBoxes = entityDispatcher.shouldRenderHitBoxes()
         entityDispatcher.setRenderShadow(false)
         entityDispatcher.setRenderHitBoxes(false)
         entityDispatcher.prepare(level, lightCamera, minecraft.crosshairPickEntity)
@@ -256,10 +291,10 @@ object ShadowMapRenderer {
         val bufferSource = minecraft.renderBuffers().bufferSource()
 
         for (entity in entities) {
-            val x = lerp(partialTick.toDouble(), entity.xOld, entity.x) - lightPosition.x
-            val y = lerp(partialTick.toDouble(), entity.yOld, entity.y) - lightPosition.y
-            val z = lerp(partialTick.toDouble(), entity.zOld, entity.z) - lightPosition.z
-            val yaw = lerp(partialTick, entity.yRotO, entity.yRot)
+            val x = lerp(entity.xOld, entity.x, partialTick.toDouble()) - lightPosition.x
+            val y = lerp(entity.yOld, entity.y, partialTick.toDouble()) - lightPosition.y
+            val z = lerp(entity.zOld, entity.z, partialTick.toDouble()) - lightPosition.z
+            val yaw = lerp(entity.yRotO, entity.yRot, partialTick)
 
             val packedLight = entityDispatcher.getPackedLightCoords(entity, partialTick)
 
@@ -269,7 +304,7 @@ object ShadowMapRenderer {
         bufferSource.endBatch()
 
         entityDispatcher.setRenderShadow(true)
-        entityDispatcher.setRenderHitBoxes(savedRenderShadow)
+        entityDispatcher.setRenderHitBoxes(savedShouldRenderHitBoxes)
         val playerCamera = minecraft.gameRenderer.mainCamera
         entityDispatcher.prepare(level, playerCamera, minecraft.crosshairPickEntity)
 
@@ -285,8 +320,11 @@ object ShadowMapRenderer {
      * This only draws — it does not call [VisualizationManager.RenderDispatcher.onStartLevelRender] or the frame plan, so animation
      * state is not advanced. The instances were already prepared during the vanilla [net.minecraft.client.renderer.LevelRenderer.renderLevel] call.
      *
-     * Flywheel's [dev.engine_room.flywheel.api.backend.Engine.render] uses [dev.engine_room.flywheel.backend.gl.GlStateTracker.getRestoreState] to save/restore GL state (VAO, program,
-     * buffers, active texture), so this call does not corrupt GL state for subsequent rendering.
+     * Flywheel's internal OIT (Order-Independent Transparency) pipeline, triggered when any managed instance uses a
+     * material with [dev.engine_room.flywheel.api.material.Transparency.ORDER_INDEPENDENT], composites its accumulated
+     * color directly onto the main render target and attaches the main render target's depth texture to its own FBO.
+     * This corrupts the main framebuffer during the shadow pass. To prevent this, the main render target's color and
+     * depth are blitted to a scratch target before the call and restored after.
      */
     private fun renderFlywheelShadows(
         minecraft: Minecraft,
@@ -321,6 +359,12 @@ object ShadowMapRenderer {
         )
 
         val target = shadowTarget ?: return
+
+        val mainTarget = minecraft.mainRenderTarget
+        val scratch = ensureScratchTarget(mainTarget.width, mainTarget.height)
+
+        blitFramebuffer(mainTarget, scratch, GL30.GL_COLOR_BUFFER_BIT or GL30.GL_DEPTH_BUFFER_BIT)
+
         target.bindWrite(true)
         RenderSystem.enableDepthTest()
         RenderSystem.depthMask(true)
@@ -329,8 +373,15 @@ object ShadowMapRenderer {
 
         vizManager.renderDispatcher().afterEntities(lightContext)
 
-        RenderSystem.colorMask(false, false, false, false)
+        RenderSystem.colorMask(true, true, true, true)
+
+        blitFramebuffer(scratch, mainTarget, GL30.GL_COLOR_BUFFER_BIT or GL30.GL_DEPTH_BUFFER_BIT)
+
+        target.bindWrite(true)
+        RenderSystem.enableDepthTest()
+        RenderSystem.depthMask(true)
         RenderSystem.disableBlend()
+        RenderSystem.colorMask(false, false, false, false)
     }
 
     /**

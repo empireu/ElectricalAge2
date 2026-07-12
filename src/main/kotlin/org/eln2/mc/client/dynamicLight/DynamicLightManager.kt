@@ -298,6 +298,8 @@ object DynamicLightManager {
         shader.safeGetUniform("u_lightColor").set(source.color)
         shader.safeGetUniform("u_cosHalfAngle").set(cosHalfAngle)
         shader.safeGetUniform("u_range").set(source.range)
+        shader.safeGetUniform("u_shadowNear").set(0.5f)
+        shader.safeGetUniform("u_shadowFar").set(source.range)
         shader.safeGetUniform("u_intensity").set(source.intensity)
         shader.safeGetUniform("u_screenSize").set(
             mainTarget.width.toFloat(),

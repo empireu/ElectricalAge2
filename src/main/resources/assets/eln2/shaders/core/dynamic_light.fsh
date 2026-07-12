@@ -31,6 +31,8 @@ uniform vec3 u_lightDirection;
 uniform vec3 u_lightColor;
 uniform float u_cosHalfAngle;
 uniform float u_range;
+uniform float u_shadowNear;
+uniform float u_shadowFar;
 uniform float u_intensity;
 uniform vec2 u_screenSize;
 
@@ -98,11 +100,11 @@ float shadowMapLookup(vec3 worldPos, vec3 normal) {
     }
 
     vec2 shadowUV = lightNDC.xy * 0.5 + 0.5;
-    float pixelDepth = lightNDC.z * 0.5 + 0.5;
 
-    vec3 lightDir = normalize(u_lightPosition - worldPos);
-    float slope = clamp(1.0 - dot(normal, lightDir), 0.0, 1.0);
-    float bias = 0.001 + 0.01 * slope;
+    float linearDepth = lightClipPos.w;
+    float biasedLinear = linearDepth - 0.02;
+    float biasedDepth = u_shadowFar * (biasedLinear - u_shadowNear) /
+                        (biasedLinear * (u_shadowFar - u_shadowNear));
 
     vec2 texelSize = vec2(1.0 / 1024.0);
     float pcfRadius = 4.0;
@@ -113,7 +115,7 @@ float shadowMapLookup(vec3 worldPos, vec3 normal) {
             vec2 offset = vec2(float(x), float(y)) * pcfRadius * texelSize;
             vec2 sampleUV = clamp(shadowUV + offset, vec2(0.0), vec2(1.0));
             float shadowDepth = texture(ShadowMap, sampleUV).r;
-            shadow += (shadowDepth < pixelDepth - bias) ? 0.0 : 1.0;
+            shadow += (shadowDepth < biasedDepth) ? 0.0 : 1.0;
         }
     }
 
