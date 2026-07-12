@@ -139,6 +139,8 @@ object FlwModels {
     val POTENTIAL_PROBE_KNOB_OUTPUT_RANGE_MIN = partialBlock("probes/potential/knob_output_range_min")
     val POTENTIAL_PROBE_KNOB_OUTPUT_RANGE_MAX = partialBlock("probes/potential/knob_output_range_max")
 
+    val CURRENT_PROBE_BODY = partialBlock("probes/current/body")
+
     //#endregion
 
     val WORK_BOX_COMPOSITE_SHAFT = partialBlock("work_box_machine_composite/kinetic_shaft")

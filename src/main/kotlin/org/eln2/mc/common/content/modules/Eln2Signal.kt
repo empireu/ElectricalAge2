@@ -10,23 +10,17 @@ import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setPartVisuali
 import org.eln2.mc.common.cells.CellRegistry.cellImmediate
 import org.eln2.mc.common.cells.foundation.ElectricalSize
 import org.eln2.mc.common.containers.ContainerRegistry.menu
-import org.eln2.mc.common.content.OscilloscopeCell
-import org.eln2.mc.common.content.OscilloscopeChannelGenerators
-import org.eln2.mc.common.content.OscilloscopePalette
-import org.eln2.mc.common.content.OscilloscopePart
+import org.eln2.mc.common.content.*
 import org.eln2.mc.common.content.OscilloscopePart.OscilloscopeScreen
-import org.eln2.mc.common.content.OscilloscopeSpecification
-import org.eln2.mc.common.content.PotentialProbeCell
-import org.eln2.mc.common.content.PotentialProbePart
 import org.eln2.mc.common.grids.GridMaterialCategory
 import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
 import org.eln2.mc.common.parts.PartRegistry.partMemoizeBB
 import org.eln2.mc.common.parts.foundation.PartFactory
 import org.eln2.mc.common.parts.foundation.eln2ReadPartGuiData
 import org.eln2.mc.directionPoleMapPlanar
+import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.monopolarMapPlanar
 import org.eln2.mc.nullMonopoleMap
-import org.eln2.mc.mathematics.Base6Direction3d
 
 object Eln2Signal : ContentModule() {
     override fun registerPartVisualizers() {
@@ -67,16 +61,41 @@ object Eln2Signal : ContentModule() {
     )
 
     val POTENTIAL_PROBE_CELL = cellImmediate("potential_probe") {
-        PotentialProbeCell(
+        ElectricalProbeCell(
             it,
             STANDARD_PROBE_COMPARER_MAP,
             ElectricalSize.Standard,
-            STANDARD_PROBE_OUTPUT_MAP
+            STANDARD_PROBE_OUTPUT_MAP,
+            ElectricalProbeType.Potential
         )
     }
 
     val POTENTIAL_PROBE_PART = partImmediateBB("potential_probe", 6.0, 2.025, 9.5) {
-        PotentialProbePart(it, STANDARD_PROBE_MODELS)
+        PotentialProbePart(
+            it,
+            FlwModels.POTENTIAL_PROBE_BODY,
+            STANDARD_PROBE_MODELS,
+            POTENTIAL_PROBE_CELL.get()
+        )
+    }
+
+    val CURRENT_PROBE_CELL = cellImmediate("current_probe") {
+        ElectricalProbeCell(
+            it,
+            STANDARD_PROBE_COMPARER_MAP,
+            ElectricalSize.Standard,
+            STANDARD_PROBE_OUTPUT_MAP,
+            ElectricalProbeType.Current
+        )
+    }
+
+    val CURRENT_PROBE_PART = partImmediateBB("current_probe", 6.0, 2.025, 9.5) {
+        PotentialProbePart(
+            it,
+            FlwModels.CURRENT_PROBE_BODY,
+            STANDARD_PROBE_MODELS,
+            CURRENT_PROBE_CELL.get()
+        )
     }
 
     //#endregion

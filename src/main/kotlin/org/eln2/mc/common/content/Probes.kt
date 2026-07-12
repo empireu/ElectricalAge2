@@ -1,5 +1,6 @@
 package org.eln2.mc.common.content
 
+import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerPlayer
 import org.ageseries.libage.data.classify
@@ -7,22 +8,24 @@ import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.Pole
-import org.ageseries.libage.sim.electrical.*
+import org.ageseries.libage.sim.electrical.ElectricalComponentSet
+import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
+import org.ageseries.libage.sim.electrical.ElectricalPin
+import org.ageseries.libage.sim.electrical.Resistor
 import org.eln2.mc.ClientOnly
+import org.eln2.mc.MonopoleMap
+import org.eln2.mc.PoleMap
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.*
-import org.eln2.mc.common.content.modules.Eln2Signal
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridMaterialCategory
 import org.eln2.mc.common.grids.GridNode
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
 import org.eln2.mc.common.parts.foundation.GridCellPart
 import org.eln2.mc.common.parts.foundation.PartCreateInfo
-import org.eln2.mc.MonopoleMap
-import org.eln2.mc.PoleMap
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d
@@ -90,7 +93,6 @@ class ProbeRangeToRangeMap : ProbeSignalMap {
  * The internal resistor may be used as a:
  * - Potential Probe - when the resistance is set high (near max resistance).
  * - Current Probe - when the resistance is set low (~wire).
- * - Power Probe - when the resistance is set low (~wire).
  *
  * The signal output is implicitly mapped to any terminal request.
  *
@@ -99,18 +101,18 @@ class ProbeRangeToRangeMap : ProbeSignalMap {
  * @param signalMap The map from measured quantities to the output signal.
  * */
 abstract class PassthroughElectricalProbeObject(
-    cell: PotentialProbeCell,
+    cell: ElectricalProbeCell,
     val comparerMap: PoleMap,
     val outputMap: MonopoleMap,
     val signalMap: ProbeSignalMap
-) : ElectricalObject<PotentialProbeCell>(cell) {
+) : ElectricalObject<ElectricalProbeCell>(cell) {
     val signalSource = SignalSource()
 
     /**
      * The internal resistor, mapped by [comparerMap].
      * Its resistance should be set based on the type of probe.
      * */
-    val internalResistor = Resistor() // P.S. real resistor because the virtual resistor is not signed correctly
+    val internalResistor = Resistor()
 
     override fun offerPolar(remote: ElectricalObject<*>) : ElectricalPin? {
         when(comparerMap.evaluateOrNull(cell, remote.cell)) {
@@ -158,7 +160,7 @@ abstract class PassthroughElectricalProbeObject(
 }
 
 class PotentialProbeObject(
-    cell: PotentialProbeCell,
+    cell: ElectricalProbeCell,
     comparerMap: PoleMap,
     outputMap: MonopoleMap,
     signalMap: ProbeSignalMap
@@ -168,16 +170,42 @@ class PotentialProbeObject(
     override fun getMeasuredQuantity(dt: Double, subscriberPhase: SimulationPhase) = internalResistor.potential
 }
 
-class PotentialProbeCell(
+class CurrentProbeObject(
+    cell: ElectricalProbeCell,
+    comparerMap: PoleMap,
+    outputMap: MonopoleMap,
+    signalMap: ProbeSignalMap
+) : PassthroughElectricalProbeObject(cell, comparerMap, outputMap, signalMap) {
+    init { internalResistor.resistance = 1e-5 }
+
+    override fun getMeasuredQuantity(dt: Double, subscriberPhase: SimulationPhase) = internalResistor.current
+}
+
+enum class ElectricalProbeType {
+    /**
+     * Uses a [PotentialProbeObject] and measures potential across the (high-resistance) resistor.
+     * */
+    Potential,
+    /**
+     * Uses a [CurrentProbeObject] and measures current across the (low-resistance) resistor.
+     * */
+    Current
+}
+
+class ElectricalProbeCell(
     ci: CellCreateInfo,
     comparerMap: PoleMap,
     val comparerWireSize: ElectricalSize,
-    outputMap: MonopoleMap
-) : Cell(ci), SidedElectrical<PotentialProbeCell> {
+    outputMap: MonopoleMap,
+    type: ElectricalProbeType
+) : Cell(ci), SidedElectrical<ElectricalProbeCell> {
     val signalMap = ProbeRangeToRangeMap()
 
     @SimObject
-    val probe = PotentialProbeObject(this, comparerMap, outputMap, signalMap)
+    val probe: PassthroughElectricalProbeObject = when(type) {
+        ElectricalProbeType.Potential -> PotentialProbeObject(this, comparerMap, outputMap, signalMap)
+        ElectricalProbeType.Current -> CurrentProbeObject(this, comparerMap, outputMap, signalMap)
+    }
 
     @Node
     val grid = GridNode(this)
@@ -207,11 +235,17 @@ class PotentialProbeCell(
         builder.debugInIDE { "Power: ${probe.internalResistor.readouts.power.classify()}" }
         builder.signalOutput(probe.signalSource.signal)
         builder.quantity(probe.internalResistor.readouts.potential)
+        builder.quantity(probe.internalResistor.readouts.current)
     }
 }
 
-class PotentialProbePart(ci: PartCreateInfo, val models: Map<Base6Direction3d, WireConnectionModelPartial>) :
-    GridCellPart<PotentialProbeCell>(ci, Eln2Signal.POTENTIAL_PROBE_CELL.get()),
+class PotentialProbePart(
+    ci: PartCreateInfo,
+    val body: PartialModel,
+    val models: Map<Base6Direction3d, WireConnectionModelPartial>,
+    provider: CellProvider<ElectricalProbeCell>
+) :
+    GridCellPart<ElectricalProbeCell>(ci, provider),
     ComponentDisplay,
     PartWithKnobs,
     ScrewdriverScrollable,
@@ -275,7 +309,7 @@ class PotentialProbePart(ci: PartCreateInfo, val models: Map<Base6Direction3d, W
     override fun onConnectivityChanged() = this.setSyncDirty()
 
     override fun createVisual(ctx: MultipartVisualizationContext) = ConnectedPartWithKnobsVisual(
-        ctx, this, FlwModels.POTENTIAL_PROBE_BODY, models
+        ctx, this, body, models
     )
 
     /**
