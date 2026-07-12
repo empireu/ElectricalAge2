@@ -127,6 +127,15 @@ object Networking {
 
         channel.registerMessage(
             id(),
+            ScrewdriverItem.SetConfigValue::class.java,
+            ScrewdriverItem.SetConfigValue::encode,
+            ScrewdriverItem.SetConfigValue::decode,
+            ScrewdriverItem.SetConfigValue::handle,
+            Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        )
+
+        channel.registerMessage(
+            id(),
             DrillPowerMessage::class.java,
             DrillPowerMessage::encode,
             DrillPowerMessage::decode,

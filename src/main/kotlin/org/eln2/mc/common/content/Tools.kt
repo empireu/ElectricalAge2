@@ -26,6 +26,7 @@ import net.minecraftforge.event.entity.player.PlayerInteractEvent
 import net.minecraftforge.event.level.BlockEvent
 import net.minecraftforge.network.NetworkEvent
 import org.ageseries.libage.data.Energy
+import org.ageseries.libage.data.OptionalDouble
 import org.ageseries.libage.data.Power
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.WATT
@@ -35,6 +36,7 @@ import org.eln2.mc.LOG
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.content.modules.Eln2Tools
+import org.eln2.mc.client.screens.ScrewdriverConfigScreen
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.extensions.plus
@@ -115,7 +117,7 @@ class WrenchItem : Item(Properties().stacksTo(1)) {
 
 interface ScrewdriverInteractable {
     @ServerOnly
-    fun applyScrewdriver(screwdriver: ScrewdriverItem, context: UseOnContext)
+    fun applyScrewdriver(screwdriver: ScrewdriverItem, context: UseOnContext, configValue: OptionalDouble)
 }
 
 interface ScrewdriverScrollable {
@@ -131,16 +133,34 @@ class ScrewdriverItem : Item(Properties().stacksTo(1)) {
 
         val player = pContext.player ?: return InteractionResult.FAIL
 
-        val multipart = pContext.level.getBlockEntity(pContext.clickedPos) as? MultipartBlockEntity ?: return InteractionResult.FAIL
-
-        val part = multipart.pickPart(player) ?: return InteractionResult.FAIL
-
-        if(part is ScrewdriverInteractable) {
-            part.applyScrewdriver(this, pContext)
-            return InteractionResult.SUCCESS
+        if(!player.isShiftKeyDown) {
+            return InteractionResult.PASS
         }
 
-        return InteractionResult.FAIL
+        val interactable = pickGameObject<ScrewdriverInteractable>(player)?.first ?: return InteractionResult.FAIL
+        val configValue = getConfigValue(pContext.itemInHand)
+        interactable.applyScrewdriver(this, pContext, configValue)
+
+        return InteractionResult.SUCCESS
+    }
+
+    override fun use(pLevel: Level, pPlayer: Player, pUsedHand: InteractionHand): InteractionResultHolder<ItemStack> {
+        val stack = pPlayer.getItemInHand(pUsedHand)
+
+        if(pPlayer.isShiftKeyDown) {
+            if(!pLevel.isClientSide) {
+                clearConfigValue(stack)
+                pPlayer.displayClientMessage(CLEARED_MESSAGE, true)
+            }
+
+            return InteractionResultHolder.success(stack)
+        }
+
+        if(pLevel.isClientSide) {
+            ScrewdriverConfigScreen.open()
+        }
+
+        return InteractionResultHolder.success(stack)
     }
 
     data class Scroll(val delta: Double) {
@@ -210,7 +230,56 @@ class ScrewdriverItem : Item(Properties().stacksTo(1)) {
         }
     }
 
+    data class SetConfigValue(val value: Double) {
+        companion object {
+            fun encode(packet: SetConfigValue, buf: FriendlyByteBuf): FriendlyByteBuf = buf.also {
+                buf.writeDouble(packet.value)
+            }
+
+            fun decode(buf: FriendlyByteBuf) = SetConfigValue(
+                buf.readDouble()
+            )
+
+            fun handle(packet: SetConfigValue, ctx: Supplier<NetworkEvent.Context>) {
+                ctx.get().enqueueWork {
+                    val sender = ctx.get().sender ?: return@enqueueWork
+
+                    if(packet.value.isNaN() || packet.value.isInfinite()) {
+                        return@enqueueWork
+                    }
+
+                    val stack = sender.mainHandItem
+
+                    if(stack.item !is ScrewdriverItem) {
+                        return@enqueueWork
+                    }
+
+                    setConfigValue(stack, packet.value)
+                }
+            }
+        }
+    }
+
     companion object {
+        private const val CONFIG_VALUE = "configValue"
+
+        private val CLEARED_MESSAGE = Component.translatable("item.eln2.screwdriver.config.cleared")
+
+        fun getConfigValue(stack: ItemStack): OptionalDouble {
+            val tag = stack.tag ?: return OptionalDouble.EMPTY
+            return if(tag.contains(CONFIG_VALUE)) OptionalDouble.wrap(tag.getDouble(CONFIG_VALUE))
+                else OptionalDouble.EMPTY
+        }
+
+        @ServerOnly
+        fun setConfigValue(stack: ItemStack, value: Double) {
+            stack.getOrCreateTag().putDouble(CONFIG_VALUE, value)
+        }
+
+        @ServerOnly
+        fun clearConfigValue(stack: ItemStack) {
+            stack.tag?.remove(CONFIG_VALUE)
+        }
         private inline fun<reified T> pickGameObject(player: Player?) : Pair<T, Vector3d>? {
             if(player == null) {
                 return null

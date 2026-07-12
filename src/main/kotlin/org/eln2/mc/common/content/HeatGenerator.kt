@@ -22,6 +22,7 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
+import net.minecraft.world.item.context.UseOnContext
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
@@ -805,6 +806,7 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
     InternalMultiThermalBodyTemperatureConsumer,
     ExternalTemperatureConsumer,
     ScrewdriverScrollable,
+    ScrewdriverInteractable,
     ComponentDisplay
 {
     @ServerOnly
@@ -867,6 +869,25 @@ class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
         }
 
         return false
+    }
+
+
+    @ServerOnly
+    override fun applyScrewdriver(screwdriver: ScrewdriverItem, context: UseOnContext, configValue: OptionalDouble) {
+        if (!configValue.isPresent) {
+            context.player!!.sendSystemMessage(Component.translatable("waila.eln2.injection_rate"))
+            return
+        }
+
+        val clamped = configValue.unwrap().coerceIn(0.0, 1.0)
+
+        if (clamped != cell.controlParameter) {
+            cell.controlParameter = clamped
+            cell.setChanged()
+            sendBulkPacket(ControlValvePacket::serialize, ControlValvePacket(clamped))
+        }
+
+        context.player!!.sendSystemMessage(Component.translatable("waila.eln2.injection_rate").append(": ").append(String.format("%.3f", clamped)))
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
@@ -1442,6 +1463,7 @@ class AdvancedCoalBurnerBlockEntity(pos: BlockPos, state: BlockState) :
     BulkPacketHandlerBlockEntity,
     InternalMultiThermalBodyTemperatureConsumer,
     ScrewdriverScrollable,
+    ScrewdriverInteractable,
     ComponentDisplay
 {
     companion object {
@@ -1540,6 +1562,24 @@ class AdvancedCoalBurnerBlockEntity(pos: BlockPos, state: BlockState) :
         }
 
         return false
+    }
+
+    @ServerOnly
+    override fun applyScrewdriver(screwdriver: ScrewdriverItem, context: UseOnContext, configValue: OptionalDouble) {
+        if (!configValue.isPresent) {
+            context.player!!.sendSystemMessage(Component.translatable("waila.eln2.Temperature_setpoint_implicit"))
+            return
+        }
+
+        val clamped = configValue.unwrap().coerceIn(300.0, 1500.0)
+
+        if (clamped != !cell.targetTemperature) {
+            cell.setTargetTemperature(Quantity(clamped, KELVIN))
+            setChanged()
+            sendBulkPacket(SetpointPacket::serialize, SetpointPacket(clamped))
+        }
+
+        context.player!!.sendSystemMessage(Component.translatable("waila.eln2.Temperature_setpoint_implicit").append(": ").append(String.format("%.3f", clamped)))
     }
 
     @ServerOnly

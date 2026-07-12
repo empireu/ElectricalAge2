@@ -35,10 +35,12 @@ import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
+import net.minecraft.network.chat.Component
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.level.block.entity.BlockEntity
+import org.ageseries.libage.data.OptionalDouble
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
 import org.ageseries.libage.mathematics.geometry.BoundingBox3d
@@ -1032,10 +1034,49 @@ fun<T : Affine<T>> T.specTransformation(parent: SpecContainerPartVisual, spec: S
         .translate(-0.5, 0.0, -0.5)
 }
 
-/**
- * @param changedNotifier Called when the state changes and needs both saving and syncing.
- * */
 class KnobMap(val changedNotifier: (() -> Unit)?) {
+    /**
+     * Holds optional configuration for a [Knob], such as bounds and screwdriver-settable metadata.
+     * */
+    class KnobConfiguration {
+        var lowerBound: Double? = null
+            private set
+
+        var upperBound: Double? = null
+            private set
+
+        var interactableTranslationKey: String? = null
+            private set
+
+        fun setLowerBound(value: Double) {
+            lowerBound = value
+        }
+
+        fun setUpperBound(value: Double) {
+            upperBound = value
+        }
+
+        fun setLimits(lower: Double, upper: Double) {
+            lowerBound = lower
+            upperBound = upper
+        }
+
+        fun makeInteractable(translationKey: String) {
+            interactableTranslationKey = translationKey
+        }
+
+        fun clamp(value: Double): Double {
+            val lo = lowerBound
+            val hi = upperBound
+            return when {
+                lo != null && hi != null -> value.coerceIn(lo, hi)
+                lo != null -> value.coerceAtLeast(lo)
+                hi != null -> value.coerceAtMost(hi)
+                else -> value
+            }
+        }
+    }
+
     /**
      * Holds the rotation state of a knob ([rotation]).
      * @param model The partial model. Safe to exist on the server side as long as the underlying data isn't accessed.
@@ -1050,13 +1091,29 @@ class KnobMap(val changedNotifier: (() -> Unit)?) {
         initialRotation: Double,
         private val boundingBoxSupplier: (Double) -> OrientedBoundingBox3d
     ) {
+        var configuration: KnobConfiguration? = null
+            private set
+
+        /**
+         * Configures this knob's bounds and interactability.
+         * */
+        fun configure(action: KnobConfiguration.() -> Unit): Knob {
+            val config = configuration ?: KnobConfiguration().also { configuration = it }
+            config.action()
+            return this
+        }
+
+        val isInteractable: Boolean get() = configuration?.interactableTranslationKey != null
+
         /**
          * The turn state of the knob. Changing the value will mark the state as changed, for synchronization.
+         * If bounds are configured, the value is clamped to them.
          * */
         var rotation : Double = initialRotation
             set(value) {
-                if(field != value) {
-                    field = value
+                val clamped = configuration?.clamp(value) ?: value
+                if(field != clamped) {
+                    field = clamped
                     map.knobChanged()
                 }
             }
@@ -1181,18 +1238,18 @@ class KnobMap(val changedNotifier: (() -> Unit)?) {
     }
 
     /**
-     * Handles rotating a knob using the screwdriver.
+     * Finds the knob the player is looking at, or null if none.
      * */
     @ServerOnly
-    fun screwdriverInteraction(player: ServerPlayer, delta: Double) : Boolean {
+    fun pickKnob(player: ServerPlayer) : Knob? {
         requireIsOnServerThread {
-            "Tried to scroll knob on non-server side"
+            "Tried to pick knob on non-server side"
         }
 
         val ray = player.getViewRay()
 
         var minDistance = Double.POSITIVE_INFINITY
-        var knob: Knob? = null
+        var result: Knob? = null
 
         for (it in mapInternal) {
             val obb = it.computeOBB()
@@ -1205,11 +1262,21 @@ class KnobMap(val changedNotifier: (() -> Unit)?) {
                 if(t > 0.0) {
                     if(t < minDistance) {
                         minDistance = t
-                        knob = it
+                        result = it
                     }
                 }
             }
         }
+
+        return result
+    }
+
+    /**
+     * Handles rotating a knob using the screwdriver scroll.
+     * */
+    @ServerOnly
+    fun screwdriverInteraction(player: ServerPlayer, delta: Double) : Boolean {
+        val knob = pickKnob(player)
 
         if(knob != null) {
             knob.rotation += delta
@@ -1217,6 +1284,34 @@ class KnobMap(val changedNotifier: (() -> Unit)?) {
         }
 
         return false
+    }
+
+    /**
+     * Handles setting a knob to an exact value using the screwdriver.
+     * If [value] is empty, sends the player a chat message with the knob name (if interactable).
+     * If [value] is present, clamps and applies it, then sends a confirmation chat message.
+     * Returns false if no interactable knob was found.
+     * */
+    @ServerOnly
+    fun screwdriverConfigure(player: ServerPlayer, value: OptionalDouble) : Boolean {
+        val knob = pickKnob(player) ?: return false
+
+        val key = knob.configuration?.interactableTranslationKey ?: return false
+
+        if(!value.isPresent) {
+            player.sendSystemMessage(Component.translatable(key))
+            return true
+        }
+
+        val raw = value.unwrap()
+        val clamped = knob.configuration?.clamp(raw) ?: raw
+        knob.rotation = clamped
+
+        player.sendSystemMessage(
+            Component.translatable(key).append(": ").append(String.format("%.3f", clamped))
+        )
+
+        return true
     }
 
     fun getSyncPacket() : SyncPacket {

@@ -29,6 +29,8 @@ import org.eln2.mc.common.parts.foundation.PartCreateInfo
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d
+import net.minecraft.world.item.context.UseOnContext
+import org.ageseries.libage.data.OptionalDouble
 
 /**
  * The bound for signal ([-[MAX_SIGNAL], +[MAX_SIGNAL]]).
@@ -249,6 +251,7 @@ class ElectricalProbePart(
     ComponentDisplay,
     PartWithKnobs,
     ScrewdriverScrollable,
+    ScrewdriverInteractable,
     ConnectedPart
 {
     override val knobMap = KnobMap(this::onKnobMapChanged)
@@ -260,7 +263,7 @@ class ElectricalProbePart(
         "knob_input_range_min",
         6.35, 2.025, 5.125,
         0.325, 0.45, 0.325
-    )
+    ).configure { setLimits(-MAX_SIGNAL, MAX_SIGNAL); makeInteractable("waila.eln2.signal_input_min") }
 
     val knobInputRangeMax = knobMap.addKnobBB(
         this,
@@ -269,7 +272,7 @@ class ElectricalProbePart(
         "knob_input_range_max",
         6.35, 2.025, 5.625,
         0.325, 0.45, 0.325
-    )
+    ).configure { setLimits(-MAX_SIGNAL, MAX_SIGNAL); makeInteractable("waila.eln2.signal_input_max") }
 
     val knobOutputRangeMin = knobMap.addKnobBB(
         this,
@@ -278,7 +281,7 @@ class ElectricalProbePart(
         "knob_output_range_min",
         6.35, 2.025, 6.125,
         0.325, 0.45, 0.325
-    )
+    ).configure { setLimits(-MAX_SIGNAL, MAX_SIGNAL); makeInteractable("waila.eln2.signal_output_min") }
 
     val knobOutputRangeMax = knobMap.addKnobBB(
         this,
@@ -287,7 +290,7 @@ class ElectricalProbePart(
         "knob_output_range_max",
         6.35, 2.025, 6.625,
         0.325, 0.45, 0.325
-    )
+    ).configure { setLimits(-MAX_SIGNAL, MAX_SIGNAL); makeInteractable("waila.eln2.signal_output_max") }
 
     val terminal = defineCellBoxTerminalBB(
         10.6, 0.775, 7.85,
@@ -358,6 +361,11 @@ class ElectricalProbePart(
     @ServerOnly
     override fun scrollScrewdriver(player: ServerPlayer, delta: Double): Boolean {
         return knobMap.screwdriverInteraction(player, delta)
+    }
+
+    @ServerOnly
+    override fun applyScrewdriver(screwdriver: ScrewdriverItem, context: UseOnContext, configValue: OptionalDouble) {
+        knobMap.screwdriverConfigure(context.player as ServerPlayer, configValue)
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {

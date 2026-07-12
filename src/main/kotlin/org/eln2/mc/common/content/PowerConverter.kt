@@ -5,6 +5,8 @@ import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.network.chat.Component
+import net.minecraft.world.item.context.UseOnContext
 import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntity
@@ -342,6 +344,7 @@ class PowerLoadReplicatorBehavior(
 class DcToDcConverterSpec(ci: SpecCreateInfo) :
     CellSpec<TerminalDcToDcConverterCell>(ci, Eln2PowerDevices.TERMINAL_DC_TO_DC_CONVERTER_CELL_800W.get()),
     ScrewdriverScrollable,
+    ScrewdriverInteractable,
     ComponentDisplay
 {
     val inputNegative = defineCellBoxTerminalBB(
@@ -380,6 +383,24 @@ class DcToDcConverterSpec(ci: SpecCreateInfo) :
         cell.setChanged()
 
         return true
+    }
+
+    @ServerOnly
+    override fun applyScrewdriver(screwdriver: ScrewdriverItem, context: UseOnContext, configValue: OptionalDouble) {
+        if(!hasCell) {
+            return
+        }
+
+        if(!configValue.isPresent) {
+            context.player!!.sendSystemMessage(Component.translatable("waila.eln2.Potential_setpoint_implicit"))
+            return
+        }
+
+        val max = !cell.converter.model.potentialRating
+        val clamped = configValue.unwrap().coerceIn(0.0, max)
+        cell.converter.setpointPotential = Quantity(clamped)
+        cell.setChanged()
+        context.player!!.sendSystemMessage(Component.translatable("waila.eln2.Potential_setpoint_implicit").append(": ").append(String.format("%.3f", clamped)))
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
@@ -465,6 +486,7 @@ class PrimitivePowerConverterBlock : UprightHorizontalDirectionCellBlock<Termina
 class PrimitivePowerConverterBlockEntity(pos: BlockPos, state: BlockState) :
     GridCellBlockEntity<TerminalDcToDcConverterCell>(pos, state, Eln2PowerDevices.PRIMITIVE_DC_TO_DC_CONVERTER_BLOCK_ENTITY.get()),
     ScrewdriverScrollable,
+    ScrewdriverInteractable,
     ComponentDisplay,
     BulkPacketHandlerBlockEntity,
     PowerLoadConsumer
@@ -513,6 +535,24 @@ class PrimitivePowerConverterBlockEntity(pos: BlockPos, state: BlockState) :
         cell.setChanged()
 
         return true
+    }
+
+    @ServerOnly
+    override fun applyScrewdriver(screwdriver: ScrewdriverItem, context: UseOnContext, configValue: OptionalDouble) {
+        if(!hasCell) {
+            return
+        }
+
+        if(!configValue.isPresent) {
+            context.player!!.sendSystemMessage(Component.translatable("waila.eln2.Potential_setpoint_implicit"))
+            return
+        }
+
+        val max = !cell.converter.model.potentialRating
+        val clamped = configValue.unwrap().coerceIn(0.0, max)
+        cell.converter.setpointPotential = Quantity(clamped)
+        cell.setChanged()
+        context.player!!.sendSystemMessage(Component.translatable("waila.eln2.Potential_setpoint_implicit").append(": ").append(String.format("%.3f", clamped)))
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {

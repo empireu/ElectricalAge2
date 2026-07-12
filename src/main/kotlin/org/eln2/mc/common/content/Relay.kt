@@ -9,6 +9,7 @@ import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.world.item.context.UseOnContext
 import net.minecraft.world.InteractionResult
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.geometry.Vector3d
@@ -251,6 +252,7 @@ class RelayPart(
     ComponentDisplay,
     PartWithKnobs,
     ScrewdriverScrollable,
+    ScrewdriverInteractable,
     ConnectedPart,
     RelayEventConsumer
 {
@@ -263,7 +265,10 @@ class RelayPart(
         "knob_threshold",
         6.35, 2.025, 5.125,
         0.325, 0.45, 0.325
-    )
+    ).configure {
+        setLimits(-MAX_SIGNAL, MAX_SIGNAL)
+        makeInteractable("waila.eln2.relay_threshold")
+    }
 
     val terminal = defineCellBoxTerminalBB(
         10.6, 0.775, 7.85,
@@ -341,6 +346,11 @@ class RelayPart(
     @ServerOnly
     override fun scrollScrewdriver(player: ServerPlayer, delta: Double): Boolean {
         return knobMap.screwdriverInteraction(player, delta)
+    }
+
+    @ServerOnly
+    override fun applyScrewdriver(screwdriver: ScrewdriverItem, context: UseOnContext, configValue: OptionalDouble) {
+        knobMap.screwdriverConfigure(context.player as ServerPlayer, configValue)
     }
 
     override fun onUsedBy(context: PartUseInfo): InteractionResult {
