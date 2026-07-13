@@ -208,6 +208,29 @@ object Eln2Signal : ContentModule() {
         )
     }
 
+    val SIGNAL_PID_INPUT_MAP = monopolarMapPlanar(Base6Direction3d.Left)
+    val SIGNAL_PID_REFERENCE_MAP = monopolarMapPlanar(Base6Direction3d.Right)
+    val SIGNAL_PID_OUTPUT_MAP = monopolarMapPlanar(Base6Direction3d.Front)
+
+    val SIGNAL_PID_MODELS = mapOf(
+        Base6Direction3d.Left to FlwModels.SIGNAL_WIRE_CONNECTION.hub,
+        Base6Direction3d.Right to FlwModels.SIGNAL_WIRE_CONNECTION.hub,
+        Base6Direction3d.Front to FlwModels.SIGNAL_WIRE_CONNECTION.hub
+    )
+
+    val SIGNAL_PID_CELL = cellImmediate("signal_pid") {
+        SignalPidCell(it, SIGNAL_PID_INPUT_MAP, SIGNAL_PID_REFERENCE_MAP, SIGNAL_PID_OUTPUT_MAP)
+    }
+
+    val SIGNAL_PID_PART = partImmediateBB("signal_pid", 6.0, 2.025, 9.5) {
+        SignalPidPart(
+            it,
+            FlwModels.POTENTIAL_PROBE_BODY,
+            SIGNAL_PID_MODELS,
+            SIGNAL_PID_CELL.get()
+        )
+    }
+
     //#endregion
 
     //#region Oscilloscopes

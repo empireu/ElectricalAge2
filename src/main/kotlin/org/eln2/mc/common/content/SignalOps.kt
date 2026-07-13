@@ -9,6 +9,7 @@ import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.context.UseOnContext
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.electrical.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
@@ -45,8 +46,8 @@ class SignalOpAmpElectricalObject(
     val inputBMap: MonopoleMap,
     val outputMap: MonopoleMap
 ) : ElectricalObject<SignalOpAmpCell>(cell) {
-    val inputAResistor = Resistor().also { it.resistance = SIGNAL_SERIES_RESISTANCE }
-    val inputBResistor = Resistor().also { it.resistance = SIGNAL_SERIES_RESISTANCE }
+    val inputAResistor = Resistor().also { it.resistance = SIGNAL_COMPARE_RESISTANCE }
+    val inputBResistor = Resistor().also { it.resistance = SIGNAL_COMPARE_RESISTANCE }
     val signalSource = SignalSource()
 
     override fun offerPolar(remote: ElectricalObject<*>): ElectricalPin? {
@@ -468,7 +469,7 @@ class SignalReferencePart(
  * The output is a [SignalSource] set to the clamped value.
  * */
 class SignalClamperElectricalObject(cell: SignalClamperCell, val inputMap: MonopoleMap, val outputMap: MonopoleMap) : ElectricalObject<SignalClamperCell>(cell) {
-    val inputResistor = Resistor().also { it.resistance = SIGNAL_SERIES_RESISTANCE }
+    val inputResistor = Resistor().also { it.resistance = SIGNAL_COMPARE_RESISTANCE }
     val signalSource = SignalSource()
 
     override fun offerPolar(remote: ElectricalObject<*>): ElectricalPin? {
@@ -683,6 +684,322 @@ class SignalClamperPart(
             "Min: ${knobMin.rotation.rounded()}, Max: ${knobMax.rotation.rounded()}"
         }
 
+        cell.submitDisplay(builder)
+    }
+}
+/**
+ * PID controller with 3 terminals: main input, reference, and output.
+ * When the reference terminal is unconnected, the main input is treated as the error directly.
+ * When both are connected, the error is computed as reference minus main input.
+ * Anti-windup: the integral is frozen when the output saturates to [-[MAX_SIGNAL], +[MAX_SIGNAL]].
+ * */
+class SignalPidElectricalObject(
+    cell: SignalPidCell,
+    val inputMap: MonopoleMap,
+    val referenceMap: MonopoleMap,
+    val outputMap: MonopoleMap
+) : ElectricalObject<SignalPidCell>(cell) {
+    val inputResistor = Resistor().also { it.resistance = SIGNAL_COMPARE_RESISTANCE }
+    val referenceResistor = Resistor().also { it.resistance = SIGNAL_COMPARE_RESISTANCE }
+    val signalSource = SignalSource()
+
+    private var referenceConnected = false
+
+    override fun clear() {
+        super.clear()
+        referenceConnected = false
+    }
+
+    override fun offerPolar(remote: ElectricalObject<*>): ElectricalPin? {
+        if(inputMap.evaluates(cell, remote.cell)) {
+            return inputResistor.positive
+        }
+
+        if(referenceMap.evaluates(cell, remote.cell)) {
+            referenceConnected = true
+            return referenceResistor.positive
+        }
+
+        if(outputMap.evaluates(cell, remote.cell)) {
+            return signalSource.offerOutput()
+        }
+
+        return null
+    }
+
+    override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo): ElectricalPin? {
+        return when(m0.terminal) {
+            cell.inputTerminal -> inputResistor.positive
+            cell.referenceTerminal -> {
+                referenceConnected = true
+                referenceResistor.positive
+            }
+            cell.outputTerminal -> signalSource.offerOutput()
+            else -> null
+        }
+    }
+
+    override fun addComponents(circuit: ElectricalComponentSet) {
+        circuit.add(inputResistor)
+        circuit.add(referenceResistor)
+        circuit.add(signalSource)
+    }
+
+    override fun build(map: ElectricalConnectivityMap) {
+        super.build(map)
+        map.ground(inputResistor.negative)
+        map.ground(referenceResistor.negative)
+        signalSource.build(map)
+    }
+
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
+        subscribers.addPost(this::tick)
+    }
+
+    fun tick(dt: Double, phase: SimulationPhase) {
+        val error = if(referenceConnected) {
+            referenceResistor.potential - inputResistor.potential
+        } else {
+            inputResistor.potential
+        }
+
+        val proportional = cell.kP * error
+
+        val derivative = if(dt > 0.0) {
+            (error - cell.lastError) / dt
+        } else {
+            0.0
+        }
+
+        val rawOutput = proportional + cell.kI * cell.integral + cell.kD * derivative
+
+        val output = rawOutput.coerceIn(-MAX_SIGNAL, MAX_SIGNAL)
+
+        val saturated = !rawOutput.approxEq(output, 1e-6)
+
+        val freezeIntegral = saturated &&
+            ((rawOutput > 0 && error > 0) || (rawOutput < 0 && error < 0))
+
+        if(!freezeIntegral) {
+            cell.integral += error * dt
+        }
+
+        cell.lastError = error
+
+        signalSource.signal = output
+    }
+}
+
+class SignalPidCell(
+    ci: CellCreateInfo,
+    inputMap: MonopoleMap,
+    referenceMap: MonopoleMap,
+    outputMap: MonopoleMap,
+    val inputTerminal: Int = 0,
+    val referenceTerminal: Int = 1,
+    val outputTerminal: Int = 2
+) : Cell(ci), SidedElectrical<SignalPidCell> {
+
+    companion object {
+        private const val KP = "kP"
+        private const val KI = "kI"
+        private const val KD = "kD"
+        private const val INTEGRAL = "integral"
+        private const val LAST_ERROR = "lastError"
+    }
+
+    var kP = 1.0
+        set(value) {
+            field = value.coerceIn(0.0, 10.0)
+            setChanged()
+        }
+
+    var kI = 0.0
+        set(value) {
+            field = value.coerceIn(0.0, 10.0)
+            setChanged()
+        }
+
+    var kD = 0.0
+        set(value) {
+            field = value.coerceIn(0.0, 10.0)
+            setChanged()
+        }
+
+    var integral = 0.0
+
+    var lastError = 0.0
+
+    @SimObject
+    val pid = SignalPidElectricalObject(this, inputMap, referenceMap, outputMap)
+
+    @Node
+    val grid = GridNode(this)
+
+    override fun getElectricalSizeOnSide(side: Base6Direction3d, targetCell: Cell): ElectricalSize? {
+        if(pid.inputMap.evaluates(this, targetCell) ||
+            pid.referenceMap.evaluates(this, targetCell) ||
+            pid.outputMap.evaluates(this, targetCell)) {
+            return ElectricalSize.Signal
+        }
+
+        return null
+    }
+
+    override fun saveCellData() = CompoundTag().also {
+        it.putDouble(KP, kP)
+        it.putDouble(KI, kI)
+        it.putDouble(KD, kD)
+        it.putDouble(INTEGRAL, integral)
+        it.putDouble(LAST_ERROR, lastError)
+    }
+
+    override fun loadCellData(tag: CompoundTag) {
+        kP = tag.getDouble(KP)
+        kI = tag.getDouble(KI)
+        kD = tag.getDouble(KD)
+        integral = tag.getDouble(INTEGRAL)
+        lastError = tag.getDouble(LAST_ERROR)
+    }
+
+    fun submitDisplay(builder: ComponentDisplayList) {
+        builder.translateRow("pid_kP", String.format("%.3f", kP))
+        builder.translateRow("pid_kI", String.format("%.3f", kI))
+        builder.translateRow("pid_kD", String.format("%.3f", kD))
+        builder.signalInput(pid.inputResistor.potential)
+        builder.signalInput(pid.referenceResistor.potential)
+        builder.signalOutput(pid.signalSource.signal)
+    }
+}
+
+class SignalPidPart(
+    ci: PartCreateInfo,
+    val body: PartialModel,
+    val models: Map<Base6Direction3d, WireConnectionModelPartial>,
+    provider: CellProvider<SignalPidCell>
+) :
+    GridCellPart<SignalPidCell>(ci, provider),
+    ComponentDisplay,
+    PartWithKnobs,
+    ScrewdriverScrollable,
+    ScrewdriverInteractable,
+    ConnectedPart {
+
+    override val knobMap = KnobMap(this::onKnobMapChanged)
+
+    val knobKP = knobMap.addKnobBB(
+        this,
+        FlwModels.POTENTIAL_PROBE_KNOB_INPUT_RANGE_MIN,
+        Vector3d.unitY,
+        "knob_kP",
+        6.35, 2.025, 4.625,
+        0.325, 0.45, 0.325
+    ).configure { setLimits(0.0, 10.0); makeInteractable("waila.eln2.pid_kP") }
+
+    val knobKI = knobMap.addKnobBB(
+        this,
+        FlwModels.POTENTIAL_PROBE_KNOB_INPUT_RANGE_MAX,
+        Vector3d.unitY,
+        "knob_kI",
+        6.35, 2.025, 5.625,
+        0.325, 0.45, 0.325
+    ).configure { setLimits(0.0, 10.0); makeInteractable("waila.eln2.pid_kI") }
+
+    val knobKD = knobMap.addKnobBB(
+        this,
+        FlwModels.POTENTIAL_PROBE_KNOB_OUTPUT_RANGE_MIN,
+        Vector3d.unitY,
+        "knob_kD",
+        6.35, 2.025, 6.625,
+        0.325, 0.45, 0.325
+    ).configure { setLimits(0.0, 10.0); makeInteractable("waila.eln2.pid_kD") }
+
+    val inputTerminal = defineCellBoxTerminalBB(
+        10.6, 0.775, 5.85,
+        0.3, 0.55, 0.3,
+        highlightColor = MyColor.RED,
+        categories = listOf(GridMaterialCategory.SignalGrid)
+    )
+
+    val referenceTerminal = defineCellBoxTerminalBB(
+        10.6, 0.775, 7.85,
+        0.3, 0.55, 0.3,
+        highlightColor = MyColor.GREEN,
+        categories = listOf(GridMaterialCategory.SignalGrid)
+    )
+
+    val outputTerminal = defineCellBoxTerminalBB(
+        10.6, 0.775, 9.85,
+        0.3, 0.55, 0.3,
+        highlightColor = MyColor.BLUE,
+        categories = listOf(GridMaterialCategory.SignalGrid)
+    )
+
+    @ClientOnly
+    private var renderStateImpl = ConnectedPartRenderStateImpl.createIfApplicable(this)
+
+    @ClientOnly
+    override val connectedRenderState: ConnectedPartRenderState get() = renderStateImpl!!
+
+    override fun getSyncTag() = ConnectedPart.pack(this)
+
+    @ClientOnly
+    override fun handleSyncTag(tag: CompoundTag) {
+        renderStateImpl!!.set(getConnectedPartsFromTag(tag))
+    }
+
+    override fun onConnectivityChanged() = this.setSyncDirty()
+
+    override fun createVisual(ctx: MultipartVisualizationContext) = ConnectedPartWithKnobsVisual(
+        ctx, this, body, models
+    )
+
+    override fun onCellAcquired() {
+        knobMap.loadChanges {
+            knobKP.rotation = cell.kP
+            knobKI.rotation = cell.kI
+            knobKD.rotation = cell.kD
+        }
+    }
+
+    private fun onKnobMapChanged() {
+        if(!placement.level.isClientSide) {
+            if(hasCell) {
+                cell.kP = knobKP.rotation
+                cell.kI = knobKI.rotation
+                cell.kD = knobKD.rotation
+                sendBulkPacket(KnobMap.SyncPacket::serialize, knobMap.getSyncPacket())
+            }
+        }
+    }
+
+    @ServerOnly
+    override fun onSyncSuggested() {
+        super.onSyncSuggested()
+        sendBulkPacket(KnobMap.SyncPacket::serialize, knobMap.getSyncPacket())
+    }
+
+    @ClientOnly
+    override fun setupPacketsOnClient(builder: ClientSidePacketHandlerBuilder) {
+        builder.withHandler<KnobMap.SyncPacket>(KnobMap.SyncPacket::deserialize) {
+            knobMap.loadSyncPacket(it)
+        }
+    }
+
+    @ServerOnly
+    override fun scrollScrewdriver(player: ServerPlayer, delta: Double): Boolean {
+        return knobMap.screwdriverInteraction(player, delta)
+    }
+
+    @ServerOnly
+    override fun applyScrewdriver(screwdriver: ScrewdriverItem, context: UseOnContext, configValue: OptionalDouble) {
+        knobMap.screwdriverConfigure(context.player as ServerPlayer, configValue)
+    }
+
+    override fun submitDisplay(builder: ComponentDisplayList) {
+        builder.debugInIDE {
+            "kP: ${knobKP.rotation.rounded()}, kI: ${knobKI.rotation.rounded()}, kD: ${knobKD.rotation.rounded()}"
+        }
         cell.submitDisplay(builder)
     }
 }

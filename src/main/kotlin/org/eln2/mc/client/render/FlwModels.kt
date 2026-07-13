@@ -204,6 +204,8 @@ object FlwModels {
     val PRIMITIVE_COAL_BURNER_CONDUIT = polarBlock("primitive_coal_burner/conduit")
     val PRIMITIVE_COAL_BURNER_DOOR = partialBlock("primitive_coal_burner/airflow_door")
 
+    val ADVANCED_COAL_BURNER = partialBlock("advanced_coal_burner/advanced_coal_burner")
+
     //#endregion
 
     //#region Vulcanizing Autoclave

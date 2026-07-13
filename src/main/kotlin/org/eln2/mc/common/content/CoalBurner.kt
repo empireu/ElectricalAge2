@@ -4,6 +4,8 @@ package org.eln2.mc.common.content
 
 import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.visual.DynamicVisual
+import dev.engine_room.flywheel.api.visual.SectionTrackedVisual
+import dev.engine_room.flywheel.api.visual.ShaderLightVisual
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
@@ -71,6 +73,7 @@ import org.eln2.mc.common.sounds.foundation.SimpleLoopingBlockEntitySoundInstanc
 import org.eln2.mc.common.sounds.foundation.SoundInfo
 import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
 import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
+import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
@@ -1798,6 +1801,45 @@ class AdvancedCoalBurnerMenu(
         ContainerHelper.quickMove(slots, pPlayer, pIndex)
 
     override fun getProgressForRender() = containerData.progress
+}
+
+class AdvancedCoalBurnerMainBlockEntityVisual(
+    ctx: VisualizationContext,
+    blockEntity: AdvancedCoalBurnerBlockEntity,
+    partialTick: Float
+) : AbstractBlockEntityVisual<AdvancedCoalBurnerBlockEntity>(ctx, blockEntity, partialTick), ShaderLightVisual {
+    val body: TransformedInstance = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.ADVANCED_COAL_BURNER, FlwMaterials.CUTOUT_SMOOTH_LIT))
+        .createInstance()
+        .also {
+            it.translate(visualPosition)
+            it.center()
+            it.rotateToFace(blockEntity.representativeFacing.opposite)
+            it.uncenter()
+        }
+
+    override fun updateLight(p0: Float) {
+        // NOOP
+    }
+
+    override fun setSectionCollector(sectionCollector: SectionTrackedVisual.SectionCollector) {
+        this.lightSections = sectionCollector
+
+        sectionCollector.sections(
+            blockEntity.delegateMap.getTotalSpannedSectionsFat(
+                blockState.getValue(HorizontalDirectionalBlock.FACING),
+                pos
+            )
+        )
+    }
+
+    override fun collectCrumblingInstances(p0: Consumer<Instance?>) {
+        p0.accept(body)
+    }
+
+    override fun _delete() {
+        body.delete()
+    }
 }
 
 //#endregion

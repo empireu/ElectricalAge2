@@ -41,11 +41,21 @@ object Eln2HeatGenerators : ContentModule() {
             PRIMITIVE_BURNER_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::PrimitiveBurnerBlockEntityVisual) { true }
         )
+
+        VisualizerRegistry.setVisualizer(
+            ADVANCED_COAL_BURNER_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::AdvancedCoalBurnerMainBlockEntityVisual) { true }
+        )
     }
 
     override fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
         event.registerBlockEntityRenderer(
             PRIMITIVE_BURNER_BLOCK_ENTITY.get(),
+            DummyBlockEntityRendererProvider()
+        )
+
+        event.registerBlockEntityRenderer(
+            ADVANCED_COAL_BURNER_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
     }
