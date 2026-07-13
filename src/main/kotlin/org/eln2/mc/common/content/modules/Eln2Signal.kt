@@ -143,6 +143,73 @@ object Eln2Signal : ContentModule() {
 
     //#endregion
 
+    //#region Signal Operations
+
+    val SIGNAL_OPAMP_INPUT_A_MAP = monopolarMapPlanar(Base6Direction3d.Left)
+    val SIGNAL_OPAMP_INPUT_B_MAP = monopolarMapPlanar(Base6Direction3d.Right)
+    val SIGNAL_OPAMP_OUTPUT_MAP = monopolarMapPlanar(Base6Direction3d.Front)
+
+    val SIGNAL_OPAMP_MODELS = mapOf(
+        Base6Direction3d.Left to FlwModels.SIGNAL_WIRE_CONNECTION.hub,
+        Base6Direction3d.Right to FlwModels.SIGNAL_WIRE_CONNECTION.hub,
+        Base6Direction3d.Front to FlwModels.SIGNAL_WIRE_CONNECTION.hub
+    )
+
+    val SIGNAL_OPAMP_CELL = cellImmediate("signal_opamp") {
+        SignalOpAmpCell(it, SIGNAL_OPAMP_INPUT_A_MAP, SIGNAL_OPAMP_INPUT_B_MAP, SIGNAL_OPAMP_OUTPUT_MAP)
+    }
+
+    val SIGNAL_OPAMP_PART = partImmediateBB("signal_opamp", 6.0, 2.025, 9.5) {
+        SignalOpAmpPart(
+            it,
+            FlwModels.POTENTIAL_PROBE_BODY,
+            SIGNAL_OPAMP_MODELS,
+            SIGNAL_OPAMP_CELL.get()
+        )
+    }
+
+    val SIGNAL_REFERENCE_OUTPUT_MAP = monopolarMapPlanar(Base6Direction3d.Right)
+
+    val SIGNAL_REFERENCE_MODELS = mapOf(
+        Base6Direction3d.Right to FlwModels.SIGNAL_WIRE_CONNECTION.hub
+    )
+
+    val SIGNAL_REFERENCE_CELL = cellImmediate("signal_reference") {
+        SignalReferenceCell(it, SIGNAL_REFERENCE_OUTPUT_MAP)
+    }
+
+    val SIGNAL_REFERENCE_PART = partImmediateBB("signal_reference", 6.0, 2.025, 9.5) {
+        SignalReferencePart(
+            it,
+            FlwModels.POTENTIAL_PROBE_BODY,
+            SIGNAL_REFERENCE_MODELS,
+            SIGNAL_REFERENCE_CELL.get()
+        )
+    }
+
+    val SIGNAL_CLAMPER_INPUT_MAP = monopolarMapPlanar(Base6Direction3d.Left)
+    val SIGNAL_CLAMPER_OUTPUT_MAP = monopolarMapPlanar(Base6Direction3d.Right)
+
+    val SIGNAL_CLAMPER_MODELS = mapOf(
+        Base6Direction3d.Left to FlwModels.SIGNAL_WIRE_CONNECTION.hub,
+        Base6Direction3d.Right to FlwModels.SIGNAL_WIRE_CONNECTION.hub
+    )
+
+    val SIGNAL_CLAMPER_CELL = cellImmediate("signal_clamper") {
+        SignalClamperCell(it, SIGNAL_CLAMPER_INPUT_MAP, SIGNAL_CLAMPER_OUTPUT_MAP)
+    }
+
+    val SIGNAL_CLAMPER_PART = partImmediateBB("signal_clamper", 6.0, 2.025, 9.5) {
+        SignalClamperPart(
+            it,
+            FlwModels.POTENTIAL_PROBE_BODY,
+            SIGNAL_CLAMPER_MODELS,
+            SIGNAL_CLAMPER_CELL.get()
+        )
+    }
+
+    //#endregion
+
     //#region Oscilloscopes
 
     val BASIC_TWO_CHANNEL_OSCILLOSCOPE_SPECIFICATION = OscilloscopeSpecification(
