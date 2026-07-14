@@ -1,7 +1,7 @@
 {
 	"format_version": "1.9.0",
 	"credit": "Made with Blockbench",
-	"parent": "eln2:block/templates/block",
+	"parent": "eln2:block/displays/standard_block",
 	"texture_size": [64, 64],
 	"textures": {
 		"0": "eln2:block/vacuum_sealing/vacuum_sealing",
