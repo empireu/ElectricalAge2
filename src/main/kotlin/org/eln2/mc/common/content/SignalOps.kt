@@ -8,6 +8,8 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.context.UseOnContext
 import org.ageseries.libage.data.*
+import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.data.VOLT
 import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.rounded
@@ -18,7 +20,6 @@ import org.ageseries.libage.sim.electrical.Resistor
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.CrossThreadAccess
 import org.eln2.mc.MonopoleMap
-import org.eln2.mc.PoleMap
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.*
@@ -455,12 +456,13 @@ class SignalReferencePart(ci: PartCreateInfo, provider: CellProvider<SignalRefer
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.debugInIDE { "Value knob: ${knobValue.rotation.rounded()}" }
         cell.submitDisplay(builder)
     }
 }
 
 //#endregion
+
+//#region Signal Clamper
 
 /**
  * Clamps the input signal to the range `[clampMin, clampMax]`.
@@ -563,20 +565,9 @@ class SignalClamperCell(
         clampMax = tag.getDouble(CLAMP_MAX)
     }
 
-    fun submitDisplay(builder: ComponentDisplayList) {
-        builder.signalInput(clamper.inputResistor.potential)
-        builder.signalOutput(clamper.signalSource.signal)
-        builder.translateQuantityRow("clamper_min", Quantity(clampMin, VOLT))
-        builder.translateQuantityRow("clamper_max", Quantity(clampMax, VOLT))
-    }
 }
 
-class SignalClamperPart(
-    ci: PartCreateInfo,
-    val body: PartialModel,
-    val models: Map<Base6Direction3d, WireConnectionModelPartial>,
-    provider: CellProvider<SignalClamperCell>
-) :
+class SignalClamperPart(ci: PartCreateInfo, provider: CellProvider<SignalClamperCell>) :
     GridCellPart<SignalClamperCell>(ci, provider),
     ComponentDisplay,
     PartWithKnobs,
@@ -588,31 +579,37 @@ class SignalClamperPart(
 
     val knobMin = knobMap.addKnobBB(
         this,
-        FlwModels.POTENTIAL_PROBE_KNOB_INPUT_RANGE_MIN,
+        FlwModels.SIGNAL_CLAMPER_MIN_KNOB,
         Vector3d.unitY,
         "knob_min",
-        6.35, 2.025, 5.125,
+        5.85, 0.8, 5.675,
         0.325, 0.45, 0.325
-    ).configure { setLimits(-MAX_SIGNAL, MAX_SIGNAL); makeInteractable("waila.eln2.clamper_min") }
+    ).configure {
+        setLimits(-MAX_SIGNAL, MAX_SIGNAL);
+        makeInteractable("waila.eln2.clamper_min")
+    }
 
     val knobMax = knobMap.addKnobBB(
         this,
-        FlwModels.POTENTIAL_PROBE_KNOB_OUTPUT_RANGE_MAX,
+        FlwModels.SIGNAL_CLAMPER_MAX_KNOB,
         Vector3d.unitY,
         "knob_max",
-        6.35, 2.025, 6.625,
+        5.85, 0.8, 6.175,
         0.325, 0.45, 0.325
-    ).configure { setLimits(-MAX_SIGNAL, MAX_SIGNAL); makeInteractable("waila.eln2.clamper_max") }
+    ).configure {
+        setLimits(-MAX_SIGNAL, MAX_SIGNAL);
+        makeInteractable("waila.eln2.clamper_max")
+    }
 
     val inputTerminal = defineCellBoxTerminalBB(
-        10.6, 0.775, 5.85,
+        7.8438, 0.775, 4.1437,
         0.3, 0.55, 0.3,
         highlightColor = MyColor.RED,
         categories = listOf(GridMaterialCategory.SignalGrid)
     )
 
     val outputTerminal = defineCellBoxTerminalBB(
-        10.6, 0.775, 9.85,
+        7.8437, 0.775, 11.5812,
         0.3, 0.55, 0.3,
         highlightColor = MyColor.BLUE,
         categories = listOf(GridMaterialCategory.SignalGrid)
@@ -634,7 +631,7 @@ class SignalClamperPart(
     override fun onConnectivityChanged() = this.setSyncDirty()
 
     override fun createVisual(ctx: MultipartVisualizationContext) = ConnectedPartWithKnobsVisual(
-        ctx, this, body, models
+        ctx, this, FlwModels.SIGNAL_CLAMPER_BODY, Eln2Signal.SIGNAL_CLAMPER_MODELS
     )
 
     override fun onCellAcquired() {
@@ -678,13 +675,15 @@ class SignalClamperPart(
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.debugInIDE {
-            "Min: ${knobMin.rotation.rounded()}, Max: ${knobMax.rotation.rounded()}"
-        }
-
-        cell.submitDisplay(builder)
+        builder.signalInput(cell.clamper.inputResistor.potential)
+        builder.signalOutput(cell.clamper.signalSource.signal)
+        builder.translateQuantityRow<Potential>("clamper_min", Quantity(cell.clampMin, VOLT))
+        builder.translateQuantityRow<Potential>("clamper_max", Quantity(cell.clampMax, VOLT))
     }
 }
+
+//#endregion
+
 /**
  * PID controller with 3 terminals: main input, reference, and output.
  * When the reference terminal is unconnected, the main input is treated as the error directly.

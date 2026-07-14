@@ -190,25 +190,20 @@ object Eln2Signal : ContentModule() {
 
     //#region Signal Clamper
 
-    val SIGNAL_CLAMPER_INPUT_MAP = monopolarMapPlanar(Base6Direction3d.Left)
-    val SIGNAL_CLAMPER_OUTPUT_MAP = monopolarMapPlanar(Base6Direction3d.Right)
+    val SIGNAL_CLAMPER_INPUT_MAP = monopolarMapPlanar(Base6Direction3d.Front)
+    val SIGNAL_CLAMPER_OUTPUT_MAP = monopolarMapPlanar(Base6Direction3d.Back)
 
     val SIGNAL_CLAMPER_MODELS = mapOf(
-        Base6Direction3d.Left to FlwModels.SIGNAL_WIRE_CONNECTION.hub,
-        Base6Direction3d.Right to FlwModels.SIGNAL_WIRE_CONNECTION.hub
+        Base6Direction3d.Front to FlwModels.SIGNAL_WIRE_CONNECTION.hub,
+        Base6Direction3d.Back to FlwModels.SIGNAL_WIRE_CONNECTION.hub
     )
 
     val SIGNAL_CLAMPER_CELL = cellImmediate("signal_clamper") {
         SignalClamperCell(it, SIGNAL_CLAMPER_INPUT_MAP, SIGNAL_CLAMPER_OUTPUT_MAP)
     }
 
-    val SIGNAL_CLAMPER_PART = partImmediateBB("signal_clamper", 6.0, 2.025, 9.5) {
-        SignalClamperPart(
-            it,
-            FlwModels.POTENTIAL_PROBE_BODY,
-            SIGNAL_CLAMPER_MODELS,
-            SIGNAL_CLAMPER_CELL.get()
-        )
+    val SIGNAL_CLAMPER_PART = partImmediateBB("signal_clamper", 4.675, 1.25, 8.625) {
+        SignalClamperPart(it, SIGNAL_CLAMPER_CELL.get())
     }
 
     //#endregion

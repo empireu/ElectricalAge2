@@ -330,6 +330,7 @@
     "item.eln2.relay": "Relay",
     "item.eln2.signal_opamp": "Signal OpAmp",
     "item.eln2.signal_reference": "Signal Reference",
+    "item.eln2.signal_clamper": "Signal Clamper",
     "item.eln2.fuse_panel": "Fuse Panel",
     "item.eln2.burnt_fuse": "Burnt Fuse",
     "item.eln2.tin_fuse_1a": "Tin Fuse (1A)",

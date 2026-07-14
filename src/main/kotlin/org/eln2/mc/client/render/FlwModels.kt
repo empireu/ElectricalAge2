@@ -151,6 +151,10 @@ object FlwModels {
     val SIGNAL_REFERENCE_BODY = partialBlock("signal_reference/body")
     val SIGNAL_REFERENCE_VALUE_KNOB = partialBlock("signal_reference/value_knob")
 
+    val SIGNAL_CLAMPER_BODY = partialBlock("signal_clamper/body")
+    val SIGNAL_CLAMPER_MIN_KNOB = partialBlock("signal_clamper/min_knob")
+    val SIGNAL_CLAMPER_MAX_KNOB = partialBlock("signal_clamper/max_knob")
+
     //#endregion
 
     val WORK_BOX_COMPOSITE_SHAFT = partialBlock("work_box_machine_composite/kinetic_shaft")
