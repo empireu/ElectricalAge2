@@ -143,6 +143,13 @@ object FlwModels {
 
     //#endregion
 
+    //#region Signal Ops
+
+    val OPAMP_BODY = partialBlock("signal_opamp/body")
+    val OPAMP_GAIN_KNOB = partialBlock("signal_opamp/gain_knob")
+
+    //#endregion
+
     val WORK_BOX_COMPOSITE_SHAFT = partialBlock("work_box_machine_composite/kinetic_shaft")
     val WORK_BOX_COMPOSITE_CABLE = partialBlock("work_box_machine_composite/electrical_cable")
 

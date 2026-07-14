@@ -159,10 +159,11 @@ object Eln2Signal : ContentModule() {
         SignalOpAmpCell(it, SIGNAL_OPAMP_INPUT_A_MAP, SIGNAL_OPAMP_INPUT_B_MAP, SIGNAL_OPAMP_OUTPUT_MAP)
     }
 
-    val SIGNAL_OPAMP_PART = partImmediateBB("signal_opamp", 6.0, 2.025, 9.5) {
+    val SIGNAL_OPAMP_PART = partImmediateBB("signal_opamp", 7.3, 1.25, 7.3) {
         SignalOpAmpPart(
             it,
-            FlwModels.POTENTIAL_PROBE_BODY,
+            FlwModels.OPAMP_BODY,
+            FlwModels.OPAMP_GAIN_KNOB,
             SIGNAL_OPAMP_MODELS,
             SIGNAL_OPAMP_CELL.get()
         )

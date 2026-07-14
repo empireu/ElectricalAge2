@@ -153,19 +153,12 @@ class SignalOpAmpCell(
         gain = tag.getDouble(GAIN)
         subtractMode = tag.getBoolean(SUBTRACT_MODE)
     }
-
-    fun submitDisplay(builder: ComponentDisplayList) {
-        builder.translateRow("opamp_mode", if(subtractMode) "A - B" else "A + B")
-        builder.translateRow("opamp_gain", String.format("%.3f", gain))
-        builder.signalInput(opamp.inputAResistor.potential)
-        builder.signalInput(opamp.inputBResistor.potential)
-        builder.signalOutput(opamp.signalSource.signal)
-    }
 }
 
 class SignalOpAmpPart(
     ci: PartCreateInfo,
     val body: PartialModel,
+    knobModel: PartialModel,
     val models: Map<Base6Direction3d, WireConnectionModelPartial>,
     provider: CellProvider<SignalOpAmpCell>
 ) :
@@ -176,15 +169,14 @@ class SignalOpAmpPart(
     ScrewdriverInteractable,
     ConnectedPart
 {
-
     override val knobMap = KnobMap(this::onKnobMapChanged)
 
     val knobGain = knobMap.addKnobBB(
         this,
-        FlwModels.POTENTIAL_PROBE_KNOB_INPUT_RANGE_MIN,
+        knobModel,
         Vector3d.unitY,
         "knob_gain",
-        6.35, 2.025, 5.125,
+        5.85, 0.8, 5.675,
         0.325, 0.45, 0.325
     ).configure { setLimits(0.0, 10.0); makeInteractable("waila.eln2.opamp_gain") }
 
@@ -274,6 +266,10 @@ class SignalOpAmpPart(
     }
 
     override fun onUsedBy(context: PartUseInfo): InteractionResult {
+        if(!context.player.mainHandItem.isEmpty) {
+            return InteractionResult.FAIL
+        }
+
         if(placement.level.isClientSide) {
             return InteractionResult.SUCCESS
         }
@@ -285,8 +281,11 @@ class SignalOpAmpPart(
     }
 
     override fun submitDisplay(builder: ComponentDisplayList) {
-        builder.debugInIDE { "Gain knob: ${knobGain.rotation.rounded()}" }
-        cell.submitDisplay(builder)
+        builder.translateRow("opamp_mode", if (cell.subtractMode) "A - B" else "A + B")
+        builder.translateRow("opamp_gain", cell.gain.rounded().toString())
+        builder.signalInput(cell.opamp.inputAResistor.potential)
+        builder.signalInput(cell.opamp.inputBResistor.potential)
+        builder.signalOutput(cell.opamp.signalSource.signal)
     }
 
     companion object {
