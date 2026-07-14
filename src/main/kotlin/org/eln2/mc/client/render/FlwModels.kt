@@ -75,7 +75,6 @@ object FlwModels {
     //#endregion
 
     val VOLTAGE_SOURCE = partialBlock("voltage_source")
-    val RESISTOR = partialBlock("resistor")
     val GROUND = partialBlock("ground_pin")
     val GROUND_MICRO_GRID = partialBlock("ground_pin_micro_grid")
 
@@ -154,6 +153,11 @@ object FlwModels {
     val SIGNAL_CLAMPER_BODY = partialBlock("signal_clamper/body")
     val SIGNAL_CLAMPER_MIN_KNOB = partialBlock("signal_clamper/min_knob")
     val SIGNAL_CLAMPER_MAX_KNOB = partialBlock("signal_clamper/max_knob")
+
+    val SIGNAL_PID_BODY = partialBlock("signal_pid/body")
+    val SIGNAL_PID_KP_KNOB = partialBlock("signal_pid/kp_knob")
+    val SIGNAL_PID_KI_KNOB = partialBlock("signal_pid/ki_knob")
+    val SIGNAL_PID_KD_KNOB = partialBlock("signal_pid/kd_knob")
 
     //#endregion
 
@@ -300,7 +304,7 @@ object FlwModels {
     private val modelCentersCache = ConcurrentHashMap<BakedModel, Vector3d>()
 
     fun iterateVertexPositions(model: BakedModel, consumer: (Vector3d) -> Unit) {
-        @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")
+        @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS", "DEPRECATION")
         model.getQuads(null, null, null).forEach { quad ->
             require(quad.vertices.size == 32)
 

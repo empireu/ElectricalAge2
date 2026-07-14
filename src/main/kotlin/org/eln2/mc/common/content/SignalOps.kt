@@ -2,16 +2,16 @@
 
 package org.eln2.mc.common.content
 
-import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.context.UseOnContext
-import org.ageseries.libage.data.*
+import org.ageseries.libage.data.OptionalDouble
+import org.ageseries.libage.data.Potential
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.VOLT
-import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.electrical.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
@@ -387,7 +387,7 @@ class SignalReferencePart(ci: PartCreateInfo, provider: CellProvider<SignalRefer
         6.2, 1.0, 6.175,
         0.325, 0.45, 0.325
     ).configure {
-        setLimits(-MAX_SIGNAL, MAX_SIGNAL);
+        setLimits(-MAX_SIGNAL, MAX_SIGNAL)
         makeInteractable("waila.eln2.signal_reference_value")
     }
 
@@ -585,7 +585,7 @@ class SignalClamperPart(ci: PartCreateInfo, provider: CellProvider<SignalClamper
         5.85, 0.8, 5.675,
         0.325, 0.45, 0.325
     ).configure {
-        setLimits(-MAX_SIGNAL, MAX_SIGNAL);
+        setLimits(-MAX_SIGNAL, MAX_SIGNAL)
         makeInteractable("waila.eln2.clamper_min")
     }
 
@@ -597,7 +597,7 @@ class SignalClamperPart(ci: PartCreateInfo, provider: CellProvider<SignalClamper
         5.85, 0.8, 6.175,
         0.325, 0.45, 0.325
     ).configure {
-        setLimits(-MAX_SIGNAL, MAX_SIGNAL);
+        setLimits(-MAX_SIGNAL, MAX_SIGNAL)
         makeInteractable("waila.eln2.clamper_max")
     }
 
@@ -869,66 +869,70 @@ class SignalPidCell(
     }
 }
 
-class SignalPidPart(
-    ci: PartCreateInfo,
-    val body: PartialModel,
-    val models: Map<Base6Direction3d, WireConnectionModelPartial>,
-    provider: CellProvider<SignalPidCell>
-) :
+class SignalPidPart(ci: PartCreateInfo, provider: CellProvider<SignalPidCell>) :
     GridCellPart<SignalPidCell>(ci, provider),
     ComponentDisplay,
     PartWithKnobs,
     ScrewdriverScrollable,
     ScrewdriverInteractable,
-    ConnectedPart {
-
+    ConnectedPart
+{
     override val knobMap = KnobMap(this::onKnobMapChanged)
 
     val knobKP = knobMap.addKnobBB(
         this,
-        FlwModels.POTENTIAL_PROBE_KNOB_INPUT_RANGE_MIN,
+        FlwModels.SIGNAL_PID_KP_KNOB,
         Vector3d.unitY,
         "knob_kP",
-        6.35, 2.025, 4.625,
+        5.85, 0.8, 5.675,
         0.325, 0.45, 0.325
-    ).configure { setLimits(0.0, 10.0); makeInteractable("waila.eln2.pid_kP") }
+    ).configure {
+        setLimits(0.0, 10.0)
+        makeInteractable("waila.eln2.pid_kP")
+    }
 
     val knobKI = knobMap.addKnobBB(
         this,
-        FlwModels.POTENTIAL_PROBE_KNOB_INPUT_RANGE_MAX,
+        FlwModels.SIGNAL_PID_KI_KNOB,
         Vector3d.unitY,
         "knob_kI",
-        6.35, 2.025, 5.625,
+        5.85, 0.8, 6.175,
         0.325, 0.45, 0.325
-    ).configure { setLimits(0.0, 10.0); makeInteractable("waila.eln2.pid_kI") }
+    ).configure {
+        setLimits(0.0, 10.0)
+        makeInteractable("waila.eln2.pid_kI")
+    }
 
     val knobKD = knobMap.addKnobBB(
         this,
-        FlwModels.POTENTIAL_PROBE_KNOB_OUTPUT_RANGE_MIN,
+        FlwModels.SIGNAL_PID_KD_KNOB,
         Vector3d.unitY,
         "knob_kD",
-        6.35, 2.025, 6.625,
+        5.85, 0.8, 6.675,
         0.325, 0.45, 0.325
-    ).configure { setLimits(0.0, 10.0); makeInteractable("waila.eln2.pid_kD") }
+    ).configure {
+        setLimits(0.0, 10.0)
+        makeInteractable("waila.eln2.pid_kD")
+    }
 
     val inputTerminal = defineCellBoxTerminalBB(
-        10.6, 0.775, 5.85,
+        10.9, 0.775, 7.85,
         0.3, 0.55, 0.3,
         highlightColor = MyColor.RED,
         categories = listOf(GridMaterialCategory.SignalGrid)
     )
 
     val referenceTerminal = defineCellBoxTerminalBB(
-        10.6, 0.775, 7.85,
+        4.7875, 0.775, 7.85,
         0.3, 0.55, 0.3,
-        highlightColor = MyColor.GREEN,
+        highlightColor = MyColor.BLUE,
         categories = listOf(GridMaterialCategory.SignalGrid)
     )
 
     val outputTerminal = defineCellBoxTerminalBB(
-        10.6, 0.775, 9.85,
+        7.8438, 0.775, 4.1437,
         0.3, 0.55, 0.3,
-        highlightColor = MyColor.BLUE,
+        highlightColor = MyColor.GREEN,
         categories = listOf(GridMaterialCategory.SignalGrid)
     )
 
@@ -948,7 +952,7 @@ class SignalPidPart(
     override fun onConnectivityChanged() = this.setSyncDirty()
 
     override fun createVisual(ctx: MultipartVisualizationContext) = ConnectedPartWithKnobsVisual(
-        ctx, this, body, models
+        ctx, this, FlwModels.SIGNAL_PID_BODY, Eln2Signal.SIGNAL_PID_MODELS
     )
 
     override fun onCellAcquired() {

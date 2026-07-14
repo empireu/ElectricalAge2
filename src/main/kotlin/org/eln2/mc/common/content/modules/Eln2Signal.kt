@@ -25,7 +25,6 @@ import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
 import org.eln2.mc.common.parts.PartRegistry.partMemoizeBB
 import org.eln2.mc.common.parts.foundation.PartFactory
 import org.eln2.mc.common.parts.foundation.eln2ReadPartGuiData
-import org.eln2.mc.directionMonopolarMapPlanar
 import org.eln2.mc.directionPoleMapPlanar
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.Base6Direction3dMask
@@ -221,16 +220,16 @@ object Eln2Signal : ContentModule() {
     )
 
     val SIGNAL_PID_CELL = cellImmediate("signal_pid") {
-        SignalPidCell(it, SIGNAL_PID_INPUT_MAP, SIGNAL_PID_REFERENCE_MAP, SIGNAL_PID_OUTPUT_MAP)
+        SignalPidCell(
+            it,
+            SIGNAL_PID_INPUT_MAP,
+            SIGNAL_PID_REFERENCE_MAP,
+            SIGNAL_PID_OUTPUT_MAP
+        )
     }
 
-    val SIGNAL_PID_PART = partImmediateBB("signal_pid", 6.0, 2.025, 9.5) {
-        SignalPidPart(
-            it,
-            FlwModels.POTENTIAL_PROBE_BODY,
-            SIGNAL_PID_MODELS,
-            SIGNAL_PID_CELL.get()
-        )
+    val SIGNAL_PID_PART = partImmediateBB("signal_pid", 7.3, 1.325, 7.3) {
+        SignalPidPart(it, SIGNAL_PID_CELL.get())
     }
 
     //#endregion
