@@ -148,6 +148,9 @@ object FlwModels {
     val OPAMP_BODY = partialBlock("signal_opamp/body")
     val OPAMP_GAIN_KNOB = partialBlock("signal_opamp/gain_knob")
 
+    val SIGNAL_REFERENCE_BODY = partialBlock("signal_reference/body")
+    val SIGNAL_REFERENCE_VALUE_KNOB = partialBlock("signal_reference/value_knob")
+
     //#endregion
 
     val WORK_BOX_COMPOSITE_SHAFT = partialBlock("work_box_machine_composite/kinetic_shaft")

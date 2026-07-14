@@ -25,8 +25,10 @@ import org.eln2.mc.common.parts.PartRegistry.partImmediateBB
 import org.eln2.mc.common.parts.PartRegistry.partMemoizeBB
 import org.eln2.mc.common.parts.foundation.PartFactory
 import org.eln2.mc.common.parts.foundation.eln2ReadPartGuiData
+import org.eln2.mc.directionMonopolarMapPlanar
 import org.eln2.mc.directionPoleMapPlanar
 import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.monopolarMapPlanar
 import org.eln2.mc.nullMonopoleMap
 
@@ -143,7 +145,7 @@ object Eln2Signal : ContentModule() {
 
     //#endregion
 
-    //#region Signal Operations
+    //#region Signal OpAmp
 
     val SIGNAL_OPAMP_INPUT_A_MAP = monopolarMapPlanar(Base6Direction3d.Left)
     val SIGNAL_OPAMP_INPUT_B_MAP = monopolarMapPlanar(Base6Direction3d.Right)
@@ -160,33 +162,33 @@ object Eln2Signal : ContentModule() {
     }
 
     val SIGNAL_OPAMP_PART = partImmediateBB("signal_opamp", 7.3, 1.25, 7.3) {
-        SignalOpAmpPart(
-            it,
-            FlwModels.OPAMP_BODY,
-            FlwModels.OPAMP_GAIN_KNOB,
-            SIGNAL_OPAMP_MODELS,
-            SIGNAL_OPAMP_CELL.get()
-        )
+        SignalOpAmpPart(it, SIGNAL_OPAMP_CELL.get())
     }
 
-    val SIGNAL_REFERENCE_OUTPUT_MAP = monopolarMapPlanar(Base6Direction3d.Right)
+    //#region
+
+    //#region Signal Reference
 
     val SIGNAL_REFERENCE_MODELS = mapOf(
-        Base6Direction3d.Right to FlwModels.SIGNAL_WIRE_CONNECTION.hub
+        Base6Direction3d.Left to FlwModels.SIGNAL_WIRE_CONNECTION.hub,
+        Base6Direction3d.Right to FlwModels.SIGNAL_WIRE_CONNECTION.hub,
+        Base6Direction3d.Front to FlwModels.SIGNAL_WIRE_CONNECTION.hub,
+        Base6Direction3d.Back to FlwModels.SIGNAL_WIRE_CONNECTION.hub
     )
+
+    val SIGNAL_REFERENCE_OUTPUT_MAP = monopolarMapPlanar(Base6Direction3dMask.HORIZONTALS)
 
     val SIGNAL_REFERENCE_CELL = cellImmediate("signal_reference") {
         SignalReferenceCell(it, SIGNAL_REFERENCE_OUTPUT_MAP)
     }
 
-    val SIGNAL_REFERENCE_PART = partImmediateBB("signal_reference", 6.0, 2.025, 9.5) {
-        SignalReferencePart(
-            it,
-            FlwModels.POTENTIAL_PROBE_BODY,
-            SIGNAL_REFERENCE_MODELS,
-            SIGNAL_REFERENCE_CELL.get()
-        )
+    val SIGNAL_REFERENCE_PART = partImmediateBB("signal_reference", 4.0, 2.0, 4.0) {
+        SignalReferencePart(it, SIGNAL_REFERENCE_CELL.get())
     }
+
+    //#endregion
+
+    //#region Signal Clamper
 
     val SIGNAL_CLAMPER_INPUT_MAP = monopolarMapPlanar(Base6Direction3d.Left)
     val SIGNAL_CLAMPER_OUTPUT_MAP = monopolarMapPlanar(Base6Direction3d.Right)
@@ -208,6 +210,10 @@ object Eln2Signal : ContentModule() {
             SIGNAL_CLAMPER_CELL.get()
         )
     }
+
+    //#endregion
+
+    //#region Signal PID
 
     val SIGNAL_PID_INPUT_MAP = monopolarMapPlanar(Base6Direction3d.Left)
     val SIGNAL_PID_REFERENCE_MAP = monopolarMapPlanar(Base6Direction3d.Right)

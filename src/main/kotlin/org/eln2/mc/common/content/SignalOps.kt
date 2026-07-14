@@ -18,11 +18,13 @@ import org.ageseries.libage.sim.electrical.Resistor
 import org.eln2.mc.ClientOnly
 import org.eln2.mc.CrossThreadAccess
 import org.eln2.mc.MonopoleMap
+import org.eln2.mc.PoleMap
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.*
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.*
+import org.eln2.mc.common.content.modules.Eln2Signal
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.grids.GridMaterialCategory
 import org.eln2.mc.common.grids.GridNode
@@ -33,6 +35,8 @@ import org.eln2.mc.common.parts.foundation.PartUseInfo
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import org.eln2.mc.mathematics.Base6Direction3d
+
+//#region OpAmp
 
 /**
  * Opamp that computes output = gain * (inputA +/- inputB).
@@ -155,13 +159,7 @@ class SignalOpAmpCell(
     }
 }
 
-class SignalOpAmpPart(
-    ci: PartCreateInfo,
-    val body: PartialModel,
-    knobModel: PartialModel,
-    val models: Map<Base6Direction3d, WireConnectionModelPartial>,
-    provider: CellProvider<SignalOpAmpCell>
-) :
+class SignalOpAmpPart(ci: PartCreateInfo, provider: CellProvider<SignalOpAmpCell>) :
     GridCellPart<SignalOpAmpCell>(ci, provider),
     ComponentDisplay,
     PartWithKnobs,
@@ -173,7 +171,7 @@ class SignalOpAmpPart(
 
     val knobGain = knobMap.addKnobBB(
         this,
-        knobModel,
+        FlwModels.OPAMP_GAIN_KNOB,
         Vector3d.unitY,
         "knob_gain",
         5.85, 0.8, 5.675,
@@ -181,23 +179,23 @@ class SignalOpAmpPart(
     ).configure { setLimits(0.0, 10.0); makeInteractable("waila.eln2.opamp_gain") }
 
     val inputATerminal = defineCellBoxTerminalBB(
-        10.6, 0.775, 5.85,
+        4.7875, 0.775, 7.85,
         0.3, 0.55, 0.3,
         highlightColor = MyColor.RED,
         categories = listOf(GridMaterialCategory.SignalGrid)
     )
 
     val inputBTerminal = defineCellBoxTerminalBB(
-        10.6, 0.775, 7.85,
+        10.9, 0.775, 7.85,
         0.3, 0.55, 0.3,
-        highlightColor = MyColor.GREEN,
+        highlightColor = MyColor.BLUE,
         categories = listOf(GridMaterialCategory.SignalGrid)
     )
 
     val outputTerminal = defineCellBoxTerminalBB(
-        10.6, 0.775, 9.85,
+        7.8438, 0.775, 4.1437,
         0.3, 0.55, 0.3,
-        highlightColor = MyColor.BLUE,
+        highlightColor = MyColor.GREEN,
         categories = listOf(GridMaterialCategory.SignalGrid)
     )
 
@@ -224,7 +222,7 @@ class SignalOpAmpPart(
     override fun onConnectivityChanged() = this.setSyncDirty()
 
     override fun createVisual(ctx: MultipartVisualizationContext) = ConnectedPartWithKnobsVisual(
-        ctx, this, body, models
+        ctx, this, FlwModels.OPAMP_BODY, Eln2Signal.SIGNAL_OPAMP_MODELS
     )
 
     override fun onCellAcquired() {
@@ -293,14 +291,15 @@ class SignalOpAmpPart(
     }
 }
 
+//#endregion
+
+//#region Signal Reference
+
 /**
  * Signal reference that outputs a settable signal voltage in the [-100, 100] V range.
  * The value is set via a knob and fine-tuned via screwdriver interaction.
  * */
-class SignalReferenceElectricalObject(
-    cell: SignalReferenceCell,
-    val outputMap: MonopoleMap
-) : ElectricalObject<SignalReferenceCell>(cell) {
+class SignalReferenceElectricalObject(cell: SignalReferenceCell, val outputMap: MonopoleMap) : ElectricalObject<SignalReferenceCell>(cell) {
     val signalSource = SignalSource()
 
     override fun offerPolar(remote: ElectricalObject<*>): ElectricalPin? {
@@ -369,12 +368,7 @@ class SignalReferenceCell(ci: CellCreateInfo, outputMap: MonopoleMap) : Cell(ci)
     }
 }
 
-class SignalReferencePart(
-    ci: PartCreateInfo,
-    val body: PartialModel,
-    val models: Map<Base6Direction3d, WireConnectionModelPartial>,
-    provider: CellProvider<SignalReferenceCell>
-) :
+class SignalReferencePart(ci: PartCreateInfo, provider: CellProvider<SignalReferenceCell>) :
     GridCellPart<SignalReferenceCell>(ci, provider),
     ComponentDisplay,
     PartWithKnobs,
@@ -386,17 +380,20 @@ class SignalReferencePart(
 
     val knobValue = knobMap.addKnobBB(
         this,
-        FlwModels.POTENTIAL_PROBE_KNOB_INPUT_RANGE_MIN,
+        FlwModels.SIGNAL_REFERENCE_VALUE_KNOB,
         Vector3d.unitY,
         "knob_value",
-        6.35, 2.025, 5.125,
+        6.2, 1.0, 6.175,
         0.325, 0.45, 0.325
-    ).configure { setLimits(-MAX_SIGNAL, MAX_SIGNAL); makeInteractable("waila.eln2.signal_reference_value") }
+    ).configure {
+        setLimits(-MAX_SIGNAL, MAX_SIGNAL);
+        makeInteractable("waila.eln2.signal_reference_value")
+    }
 
     val outputTerminal = defineCellBoxTerminalBB(
-        10.6, 0.775, 7.85,
-        0.3, 0.55, 0.3,
-        highlightColor = MyColor.BLUE,
+        7.8, 1.0, 7.8,
+        0.4, 1.0, 0.4,
+        highlightColor = MyColor.GREEN,
         categories = listOf(GridMaterialCategory.SignalGrid)
     )
 
@@ -416,7 +413,7 @@ class SignalReferencePart(
     override fun onConnectivityChanged() = this.setSyncDirty()
 
     override fun createVisual(ctx: MultipartVisualizationContext) = ConnectedPartWithKnobsVisual(
-        ctx, this, body, models
+        ctx, this, FlwModels.SIGNAL_REFERENCE_BODY, Eln2Signal.SIGNAL_REFERENCE_MODELS
     )
 
     override fun onCellAcquired() {
@@ -462,6 +459,8 @@ class SignalReferencePart(
         cell.submitDisplay(builder)
     }
 }
+
+//#endregion
 
 /**
  * Clamps the input signal to the range `[clampMin, clampMax]`.
