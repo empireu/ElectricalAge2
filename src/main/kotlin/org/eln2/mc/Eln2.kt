@@ -2,11 +2,15 @@
 
 package org.eln2.mc
 
+import com.mojang.brigadier.Command
 import net.minecraft.SharedConstants
 import net.minecraft.client.Minecraft
+import net.minecraft.commands.Commands
+import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.packs.resources.Resource
 import net.minecraftforge.api.distmarker.Dist
+import net.minecraftforge.client.event.RegisterClientCommandsEvent
 import net.minecraftforge.common.MinecraftForge
 import net.minecraftforge.eventbus.api.EventPriority
 import net.minecraftforge.eventbus.api.IEventBus
@@ -15,6 +19,19 @@ import net.minecraftforge.fml.ModLoadingContext
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext
+import org.ageseries.libage.data.AUXILIARY_CLASSIFIERS
+import org.ageseries.libage.data.DIMENSION_TYPES
+import org.ageseries.libage.data.AngularVelocity
+import org.ageseries.libage.data.Distance
+import org.ageseries.libage.data.Energy
+import org.ageseries.libage.data.Mass
+import org.ageseries.libage.data.Power
+import org.ageseries.libage.data.Temperature
+import org.ageseries.libage.data.Time
+import org.ageseries.libage.data.Torque
+import org.ageseries.libage.data.Volume
+import org.ageseries.libage.data.classify
+import org.ageseries.libage.data.classifyAuxiliary
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.utils.libageUseValidation
 import org.apache.logging.log4j.LogManager
@@ -122,7 +139,7 @@ class Eln2 {
         modEventBus.addListener(DynamicLightManager::register)
 
         forgeEventBus.addListener(DynamicLightManager::render)
-        forgeEventBus.addListener(Eln2Config::registerClientCommands);
+        forgeEventBus.addListener(::registerClientCommands)
 
         forgeEventBus.addListener(EventPriority.LOWEST, SpecContainerPart::renderHighlightEvent)
         forgeEventBus.addListener(TerminalHighlightRenderer::render)
@@ -189,3 +206,132 @@ fun getResourceBinaryHelper(resource: String): ByteArray =
 
 fun getMaterialKey(material: String) : String = "material.$MODID.$material"
 fun getChemicalElementKey(element: ChemicalElement) = getMaterialKey(element.label)
+
+fun registerClientCommands(event: RegisterClientCommandsEvent) {
+    val eln2 = Commands.literal("eln2").then(
+        Commands.literal("units").then(
+            Commands.literal("set").also { pSet ->
+                DIMENSION_TYPES.forward.entries.sortedBy { it.value }.forEach { (dimensionType, dimensionName) ->
+                    val auxiliaryUnits = AUXILIARY_CLASSIFIERS[dimensionType]
+                        ?: return@forEach
+
+                    if(auxiliaryUnits.keys.isNotEmpty()) {
+                        pSet.then(
+                            Commands.literal(dimensionName).also { pDimension ->
+                                auxiliaryUnits.keys.forEach { scaleRef ->
+                                    auxiliaryUnits[scaleRef].forEach { identifier ->
+                                        pDimension.then(
+                                            Commands.literal("to").then(
+                                                Commands.literal(identifier).executes {
+                                                    Eln2Config.clientConfig.setScaleOverride(dimensionType, identifier)
+
+                                                    Minecraft.getInstance().player?.also { player ->
+                                                        player.displayClientMessage(
+                                                            Component.literal("$dimensionName -> ${
+                                                                classifyAuxiliary(
+                                                                    scaleRef,
+                                                                    1.0
+                                                                )
+                                                            }"), false)
+                                                    }
+
+                                                    Command.SINGLE_SUCCESS
+                                                }
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        ).then(
+            Commands.literal("reset").also { pReset ->
+                DIMENSION_TYPES.forward.entries.sortedBy { it.value }.forEach { (dimensionType, dimensionName) ->
+                    val auxiliaryUnits = AUXILIARY_CLASSIFIERS[dimensionType]
+                        ?: return@forEach
+
+                    if(auxiliaryUnits.keys.isNotEmpty()) {
+                        pReset.then(Commands.literal(dimensionName).executes {
+                            Eln2Config.clientConfig.resetScaleOverride(dimensionType)
+
+                            Minecraft.getInstance().player?.also { player ->
+                                player.displayClientMessage(
+                                    Component.literal("$dimensionName -> ${
+                                        classify(
+                                            dimensionType,
+                                            1.0 /*Factor*/
+                                        )
+                                    }"), false)
+                            }
+
+                            Command.SINGLE_SUCCESS
+                        })
+                    }
+                }
+            }
+        ).then(
+            Commands.literal("preset").also { pPreset ->
+                fun definePreset(name: String, buildPreset: (applicator: (Class<*>, String) -> Unit) -> Unit) {
+                    pPreset.then(Commands.literal(name).executes {
+                        fun applicator(dimensionType: Class<*>, alias: String) {
+                            if(alias.isEmpty()) {
+                                Eln2Config.clientConfig.resetScaleOverride(dimensionType)
+                            }
+                            else {
+                                Eln2Config.clientConfig.setScaleOverride(dimensionType, alias)
+                            }
+                        }
+
+                        buildPreset(::applicator)
+
+                        Minecraft.getInstance().player?.also { player ->
+                            player.displayClientMessage(Component.literal("*$name"), false)
+                        }
+
+                        Command.SINGLE_SUCCESS
+                    })
+                }
+
+                definePreset("SI") {
+                    it(Time::class.java, "")
+                    it(Distance::class.java, "")
+                    it(Mass::class.java, "")
+                    it(Energy::class.java, "")
+                    it(Temperature::class.java, "")
+                    it(Power::class.java, "")
+                    it(Volume::class.java, "")
+                    it(AngularVelocity::class.java, "")
+                    it(Torque::class.java, "")
+                }
+
+                definePreset("Metric") {
+                    it(Time::class.java, "")
+                    it(Distance::class.java, "")
+                    it(Mass::class.java, "")
+                    it(Energy::class.java, "")
+                    it(Temperature::class.java, "C")
+                    it(Power::class.java, "")
+                    it(Volume::class.java, "L")
+                    it(AngularVelocity::class.java, "")
+                    it(Torque::class.java, "")
+                }
+
+                definePreset("Imperial") {
+                    it(Time::class.java, "")
+                    it(Distance::class.java, "ft")
+                    it(Mass::class.java, "lb")
+                    it(Energy::class.java, "BTU")
+                    it(Temperature::class.java, "F")
+                    it(Power::class.java, "hp")
+                    it(Volume::class.java, "gal")
+                    it(AngularVelocity::class.java, "rpm")
+                    it(Torque::class.java, "ftlbf")
+                }
+            }
+        )
+    )
+
+    event.dispatcher.register(eln2)
+}

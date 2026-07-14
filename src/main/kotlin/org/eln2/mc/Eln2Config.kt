@@ -1,17 +1,11 @@
 package org.eln2.mc
 
-import com.mojang.brigadier.Command
-import net.minecraft.client.Minecraft
-import net.minecraft.commands.Commands
-import net.minecraft.network.chat.Component
-import net.minecraftforge.client.event.RegisterClientCommandsEvent
 import net.minecraftforge.common.ForgeConfigSpec
 import net.minecraftforge.common.ForgeConfigSpec.Builder
 import net.minecraftforge.common.ForgeConfigSpec.ConfigValue
 import net.minecraftforge.fml.ModLoadingContext
 import net.minecraftforge.fml.config.ModConfig
 import org.ageseries.libage.data.*
-import org.eln2.mc.client.dynamicLight.DynamicLightManager
 
 class ClientConfig(builder: Builder) {
     private val unitOverrides : ConfigValue<List<String>> = builder
@@ -144,8 +138,7 @@ object Eln2Config {
     val clientConfig: ClientConfig
     private val clientSpec: ForgeConfigSpec
     val serverConfig: ServerConfig
-    private val serverSpec: ForgeConfigSpec
-    private val testLights = mutableListOf<org.eln2.mc.client.dynamicLight.DynamicLightSource>()
+    val serverSpec: ForgeConfigSpec
 
     init {
         val clientPair = Builder().configure(::ClientConfig)
@@ -162,131 +155,4 @@ object Eln2Config {
         context.registerConfig(ModConfig.Type.SERVER, serverSpec)
     }
 
-    fun registerClientCommands(event: RegisterClientCommandsEvent) {
-        val eln2 = Commands.literal("eln2").then(
-            Commands.literal("units").then(
-                Commands.literal("set").also { pSet ->
-                    DIMENSION_TYPES.forward.entries.sortedBy { it.value }.forEach { (dimensionType, dimensionName) ->
-                        val auxiliaryUnits = AUXILIARY_CLASSIFIERS[dimensionType]
-                            ?: return@forEach
-
-                        if(auxiliaryUnits.keys.isNotEmpty()) {
-                            pSet.then(
-                                Commands.literal(dimensionName).also { pDimension ->
-                                    auxiliaryUnits.keys.forEach { scaleRef ->
-                                        auxiliaryUnits[scaleRef].forEach { identifier ->
-                                            pDimension.then(
-                                                Commands.literal("to").then(
-                                                    Commands.literal(identifier).executes {
-                                                        clientConfig.setScaleOverride(dimensionType, identifier)
-
-                                                        Minecraft.getInstance().player?.also { player ->
-                                                            player.displayClientMessage(Component.literal("$dimensionName -> ${classifyAuxiliary(scaleRef, 1.0)}"), false)
-                                                        }
-
-                                                        Command.SINGLE_SUCCESS
-                                                    }
-                                                )
-                                            )
-                                        }
-                                    }
-                                }
-                            )
-                        }
-                    }
-                }
-            ).then(
-                Commands.literal("reset").also { pReset ->
-                    DIMENSION_TYPES.forward.entries.sortedBy { it.value }.forEach { (dimensionType, dimensionName) ->
-                        val auxiliaryUnits = AUXILIARY_CLASSIFIERS[dimensionType]
-                            ?: return@forEach
-
-                        if(auxiliaryUnits.keys.isNotEmpty()) {
-                            pReset.then(Commands.literal(dimensionName).executes {
-                                clientConfig.resetScaleOverride(dimensionType)
-
-                                Minecraft.getInstance().player?.also { player ->
-                                    player.displayClientMessage(Component.literal("$dimensionName -> ${classify(dimensionType, 1.0 /*Factor*/)}"), false)
-                                }
-
-                                Command.SINGLE_SUCCESS
-                            })
-                        }
-                    }
-                }
-            ).then(
-                Commands.literal("preset").also { pPreset ->
-                    fun definePreset(name: String, buildPreset: (applicator: (Class<*>, String) -> Unit) -> Unit) {
-                        pPreset.then(Commands.literal(name).executes {
-                            fun applicator(dimensionType: Class<*>, alias: String) {
-                                if(alias.isEmpty()) {
-                                    clientConfig.resetScaleOverride(dimensionType)
-                                }
-                                else {
-                                    clientConfig.setScaleOverride(dimensionType, alias)
-                                }
-                            }
-
-                            buildPreset(::applicator)
-
-                            Minecraft.getInstance().player?.also { player ->
-                                player.displayClientMessage(Component.literal("*$name"), false)
-                            }
-
-                            Command.SINGLE_SUCCESS
-                        })
-                    }
-
-                    definePreset("SI") {
-                        it(Time::class.java, "")
-                        it(Distance::class.java, "")
-                        it(Mass::class.java, "")
-                        it(Energy::class.java, "")
-                        it(Temperature::class.java, "")
-                    }
-
-                    // Todo actually add these
-                }
-            )
-        )
-        event.dispatcher.register(eln2)
-
-        val flashlightCmd = Commands.literal("flashlight")
-            .executes { _ ->
-                val player = Minecraft.getInstance().player
-                if (player == null) {
-                    return@executes 0
-                }
-
-                val position = player.getEyePosition(1.0f)
-                val direction = player.getViewVector(1.0f)
-                val source = DynamicLightManager.createLightSource(
-                    poseUpdater = { _ -> Pair(position, direction) },
-                    intensity = 0.6f,
-                    range = 24.0f,
-                    halfAngleDeg = 30.0f,
-                )
-                testLights.add(source)
-                player.displayClientMessage(
-                    Component.literal("Created test light at ${position} (total: ${testLights.size})"),
-                    false
-                )
-                Command.SINGLE_SUCCESS
-            }
-            .then(Commands.literal("clear").executes { _ ->
-                val player = Minecraft.getInstance().player
-                val count = testLights.size
-                for (source in testLights) {
-                    DynamicLightManager.removeLightSource(source)
-                }
-                testLights.clear()
-                player?.displayClientMessage(
-                    Component.literal("Cleared $count test lights"),
-                    false
-                )
-                Command.SINGLE_SUCCESS
-            })
-
-        event.dispatcher.register(flashlightCmd)
-    }
 }
