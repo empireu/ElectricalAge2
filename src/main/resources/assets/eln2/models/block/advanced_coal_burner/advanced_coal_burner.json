@@ -1,5 +1,6 @@
 {
-	"format_version": "1.9.0",
+    "parent": "eln2:block/displays/big_block_2x",
+    "format_version": "1.9.0",
 	"credit": "Made with Blockbench",
 	"texture_size": [128, 128],
 	"textures": {

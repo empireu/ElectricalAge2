@@ -43,6 +43,7 @@ import net.minecraft.world.inventory.ContainerLevelAccess
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.entity.BlockEntityType
+import net.minecraftforge.client.extensions.common.IClientBlockExtensions
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Vector2di
@@ -74,6 +75,7 @@ import org.eln2.mc.common.sounds.foundation.SoundInfo
 import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
 import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
 import org.eln2.mc.client.render.FlwMaterials
+import org.eln2.mc.common.blocks.foundation.ReplaceVanillaParticlesBlockExtension
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
@@ -1386,6 +1388,10 @@ class AdvancedCoalBurnerBlock : UprightHorizontalDirectionCellBlock<AdvancedBurn
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = AdvancedCoalBurnerBlockEntity(pPos, pState)
 
+    override fun initializeClient(consumer: Consumer<IClientBlockExtensions?>) {
+        consumer.accept(ReplaceVanillaParticlesBlockExtension)
+    }
+
     override fun <T : BlockEntity?> getTicker(
         pLevel: Level,
         pState: BlockState,
@@ -1759,7 +1765,7 @@ class AdvancedCoalBurnerMenu(
 ) : AbstractContainerMenu(Eln2HeatGenerators.ADVANCED_COAL_BURNER_MENU.get(), pContainerId), ProgressSupplierMenu {
 
     companion object {
-        private val FUEL_SLOT_POS = Vector2di(80, 24)
+        private val FUEL_SLOT_POS = Vector2di(80, 43)
     }
 
     @ServerOnly

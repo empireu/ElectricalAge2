@@ -14,6 +14,7 @@ import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.material.Fluid
 import net.minecraft.world.level.material.Fluids
+import net.minecraftforge.client.extensions.common.IClientBlockExtensions
 import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
@@ -43,6 +44,7 @@ import org.eln2.mc.common.sounds.foundation.SoundInfo
 import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import java.util.function.Consumer
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -399,6 +401,10 @@ class SteamTurbineBlock : UprightHorizontalDirectionCellBlock<SteamTurbineCell>(
     override fun getCellProvider() = Eln2SteamTurbine.STEAM_TURBINE_CELL.get()
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = SteamTurbineBlockEntity(pPos, pState)
+
+    override fun initializeClient(consumer: Consumer<IClientBlockExtensions?>) {
+        consumer.accept(ReplaceVanillaParticlesBlockExtension)
+    }
 
     override fun <T : BlockEntity?> getTicker(
         pLevel: Level,

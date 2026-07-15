@@ -64,10 +64,10 @@ object Eln2HeatGenerators : ContentModule() {
         MenuScreens.register(ADVANCED_COAL_BURNER_MENU.get()) { menu, inventory, title ->
             BasicProgressScreen(
                 menu, inventory, title,
-                resource("textures/gui/container/crusher_base.png"),
-                resource("textures/gui/container/crusher_progress.png"),
+                resource("textures/gui/container/advanced_coal_burner/base.png"),
+                resource("textures/gui/container/advanced_coal_burner/progress.png"),
                 79.0f,
-                103.0f
+                96.0f
             )
         }
     }

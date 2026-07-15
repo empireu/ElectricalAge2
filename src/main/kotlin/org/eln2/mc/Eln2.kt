@@ -6,9 +6,13 @@ import com.mojang.brigadier.Command
 import net.minecraft.SharedConstants
 import net.minecraft.client.Minecraft
 import net.minecraft.commands.Commands
+import net.minecraft.core.RegistryAccess
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.packs.resources.Resource
+import net.minecraft.world.item.Item
+import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.crafting.Recipe
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.client.event.RegisterClientCommandsEvent
 import net.minecraftforge.common.MinecraftForge
@@ -19,6 +23,7 @@ import net.minecraftforge.fml.ModLoadingContext
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext
+import net.minecraftforge.registries.ForgeRegistries
 import org.ageseries.libage.data.AUXILIARY_CLASSIFIERS
 import org.ageseries.libage.data.DIMENSION_TYPES
 import org.ageseries.libage.data.AngularVelocity
@@ -51,6 +56,11 @@ import org.eln2.mc.common.content.FlashlightItem
 import org.eln2.mc.client.dynamicLight.DynamicLightManager
 import org.eln2.mc.common.content.fluid.ChemicalBottleItem
 import org.eln2.mc.common.content.modules.ContentManager
+import org.eln2.mc.common.content.processing.AlloyingRecipe
+import org.eln2.mc.common.content.processing.AqueousElectrolysisRecipe
+import org.eln2.mc.common.content.processing.BurningRecipe
+import org.eln2.mc.common.content.processing.CokingRecipe
+import org.eln2.mc.common.content.processing.HydrogenReductionRecipe
 import org.eln2.mc.common.entities.EntityRegistry
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.grids.TerminalHighlightRenderer
@@ -331,7 +341,99 @@ fun registerClientCommands(event: RegisterClientCommandsEvent) {
                 }
             }
         )
+    ).then(
+        Commands.literal("recipes").then(
+            Commands.literal("missing").executes {
+                val connection = Minecraft.getInstance().connection
+                val level = Minecraft.getInstance().level
+
+                if(connection == null || level == null) {
+                    LOG.error("Cannot list missing recipes: not connected to a world.")
+                    return@executes Command.SINGLE_SUCCESS
+                }
+
+                val recipeManager = connection.recipeManager
+                val registryAccess = level.registryAccess()
+
+                val eln2ItemIds = ForgeRegistries.ITEMS.entries
+                    .asSequence()
+                    .map { it.key.location() }
+                    .filter { it.namespace == MODID }
+                    .filter { id ->
+                        val path = id.path
+                        !path.endsWith("_bucket") &&
+                            !path.endsWith("_bottle") &&
+                            !path.endsWith("_ore") &&
+                            !path.startsWith("raw_")
+                    }
+                    .filter { it !in MISSING_RECIPE_BLACKLIST }
+                    .toMutableSet()
+
+                for(recipe in recipeManager.recipes) {
+                    val resultItem = recipe.getResultItem(registryAccess)
+
+                    if(!resultItem.isEmpty) {
+                        val resultId = ForgeRegistries.ITEMS.getKey(resultItem.item)
+                        if(resultId != null && resultId.namespace == MODID) {
+                            eln2ItemIds.remove(resultId)
+                        }
+                    } else {
+                        for(outputItem in extractNonStandardRecipeOutputs(recipe)) {
+                            val resultId = ForgeRegistries.ITEMS.getKey(outputItem.item)
+                            if(resultId != null && resultId.namespace == MODID) {
+                                eln2ItemIds.remove(resultId)
+                            }
+                        }
+                    }
+                }
+
+                if(eln2ItemIds.isEmpty()) {
+                    LOG.info("All ELN2 items have at least one recipe.")
+                } else {
+                    LOG.info("ELN2 items without any recipe ({} total):", eln2ItemIds.size)
+                    eln2ItemIds.sortedBy { it.path }.forEach {
+                        LOG.info("  {}", it)
+                    }
+                }
+
+                Minecraft.getInstance().player?.displayClientMessage(
+                    Component.literal("Wrote items with missing recipes to logs"), false
+                )
+
+                Command.SINGLE_SUCCESS
+            }
+        )
     )
 
     event.dispatcher.register(eln2)
+}
+
+/**
+ * Items that are intentionally not craftable and should be excluded from the missing-recipe check.
+ * */
+private val MISSING_RECIPE_BLACKLIST = setOf(
+    resource("spec_container"),
+    resource("voltage_source"),
+    resource("burnt_fuse"),
+    resource("burnt_heating_element")
+)
+
+/**
+ * Extracts output [ItemStack]s from non-standard recipes that return [ItemStack.EMPTY] from [Recipe.getResultItem].
+ * These recipes carry their outputs in custom fields.
+ * */
+private fun extractNonStandardRecipeOutputs(recipe: Recipe<*>): List<ItemStack> {
+    return when(recipe) {
+        is AlloyingRecipe -> listOf(recipe.output)
+
+        is HydrogenReductionRecipe -> listOf(recipe.output)
+
+        is BurningRecipe -> listOfNotNull(recipe.outputItem)
+
+        is CokingRecipe -> recipe.outputItems ?: emptyList()
+
+        is AqueousElectrolysisRecipe -> listOfNotNull(recipe.anodeOutputItem, recipe.cathodeOutputItem)
+
+        else -> emptyList()
+    }
 }
