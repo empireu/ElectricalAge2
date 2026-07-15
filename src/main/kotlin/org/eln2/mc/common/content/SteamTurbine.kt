@@ -858,6 +858,11 @@ class SteamTurbineBlockEntity(pos: BlockPos, state: BlockState) :
         builder.quantity(cell.thermal.thermalBody.temperature)
         builder.quantity(cell.kinetic.node.angularVelocityQuantity)
     }
+
+    override fun setDestroyed() {
+        destroyDelegates()
+        super.setDestroyed()
+    }
 }
 
 class SteamTurbineKineticPortKineticObject(cell: SteamTurbineKineticPortCell) : KineticObject<SteamTurbineKineticPortCell>(cell), PersistentObject {

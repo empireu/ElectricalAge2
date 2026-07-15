@@ -918,6 +918,11 @@ class WindTurbineBlockEntity(pos: BlockPos, state: BlockState) :
         builder.quantity(cell.kinetic.node.angularVelocityQuantity)
         builder.quantityOutput(Quantity(cell.lastWindTorque, NEWTON_METER))
     }
+
+    override fun setDestroyed() {
+        destroyDelegates()
+        super.setDestroyed()
+    }
 }
 
 class WindTurbineBlockEntityVisual(
