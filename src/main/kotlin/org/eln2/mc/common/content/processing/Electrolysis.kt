@@ -1897,11 +1897,11 @@ class ElectrolysisMenu(
     val level: Level,
 ) : AbstractContainerMenu(Eln2Processing.ELECTROLYSIS_MENU.get(), pContainerId), ProgressSupplierMenu {
     companion object {
-        private val ANODE_ELECTRODE_POS = Vector2di(30, 17)
-        private val CATHODE_ELECTRODE_POS = Vector2di(52, 17)
-        private val SEPARATOR_POS = Vector2di(41, 53)
-        private val ANODE_OUTPUT_POS = Vector2di(30, 53)
-        private val CATHODE_OUTPUT_POS = Vector2di(52, 53)
+        private val ANODE_ELECTRODE_POS = Vector2di(45, 22)
+        private val CATHODE_ELECTRODE_POS = Vector2di(96, 22)
+        private val SEPARATOR_POS = Vector2di(70, 40)
+        private val ANODE_OUTPUT_POS = Vector2di(45, 58)
+        private val CATHODE_OUTPUT_POS = Vector2di(96, 58)
     }
 
     @ServerOnly

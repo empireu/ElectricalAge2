@@ -78,6 +78,8 @@ import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
 import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
 import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.entity.BlockEntityType
+import net.minecraftforge.client.extensions.common.IClientBlockExtensions
+import org.eln2.mc.common.blocks.foundation.ReplaceVanillaParticlesBlockExtension
 import org.eln2.mc.extensions.cast
 import org.eln2.mc.extensions.loadNbt
 import org.eln2.mc.extensions.minus
@@ -793,6 +795,10 @@ class WindTurbineBlock(
 ) : UprightHorizontalDirectionCellBlock<WindTurbineCell>() {
     @Deprecated("Deprecated in Java", ReplaceWith("true"))
     override fun skipRendering(pState: BlockState, pAdjacentBlockState: BlockState, pDirection: Direction): Boolean = true
+
+    override fun initializeClient(consumer: Consumer<IClientBlockExtensions?>) {
+        consumer.accept(ReplaceVanillaParticlesBlockExtension)
+    }
 
     override fun getCellProvider() = cellProvider.get()
 

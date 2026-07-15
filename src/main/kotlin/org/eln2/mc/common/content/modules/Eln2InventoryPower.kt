@@ -70,10 +70,10 @@ object Eln2InventoryPower : ContentModule() {
         MenuScreens.register(POWER_CELL_CHARGER_MENU.get()) { menu, inventory, title ->
             BasicProgressScreen(
                 menu, inventory, title,
-                resource("textures/gui/container/crusher_base.png"),
-                resource("textures/gui/container/crusher_progress.png"),
-                79.0f,
-                103.0f
+                resource("textures/gui/container/power_cell_charger/base.png"),
+                resource("textures/gui/container/power_cell_charger/progress.png"),
+                78.0f,
+                97.0f
             )
         }
     }

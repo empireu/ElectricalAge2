@@ -719,7 +719,7 @@ class PowerCellChargerMenu(
     val level: Level,
 ) : AbstractContainerMenu(Eln2InventoryPower.POWER_CELL_CHARGER_MENU.get(), pContainerId), ProgressSupplierMenu {
     companion object {
-        private val SLOT_POS = Vector2di(80, 35)
+        private val SLOT_POS = Vector2di(80, 33)
     }
 
     @ServerOnly

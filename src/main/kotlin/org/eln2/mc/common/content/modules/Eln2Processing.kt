@@ -304,10 +304,10 @@ object Eln2Processing : ContentModule() {
         MenuScreens.register(BURNING_MENU.get()) { menu, inventory, title ->
             BasicProgressScreen(
                 menu, inventory, title,
-                resource("textures/gui/container/crusher_base.png"),
-                resource("textures/gui/container/crusher_progress.png"),
-                79.0f,
-                103.0f
+                resource("textures/gui/container/burner_reactor/base.png"),
+                resource("textures/gui/container/burner_reactor/progress.png"),
+                72.0f,
+                110.0f
             )
         }
 
@@ -316,20 +316,20 @@ object Eln2Processing : ContentModule() {
         MenuScreens.register(ELECTROLYSIS_MENU.get()) { menu, inventory, title ->
             BasicProgressScreen(
                 menu, inventory, title,
-                resource("textures/gui/container/crusher_base.png"),
-                resource("textures/gui/container/crusher_progress.png"),
-                79.0f,
-                103.0f
+                resource("textures/gui/container/electrolysis/base.png"),
+                resource("textures/gui/container/electrolysis/progress.png"),
+                39.0f,
+                117.0f
             )
         }
 
         MenuScreens.register(VACUUM_SEALING_MENU.get()) { menu, inventory, title ->
             BasicProgressScreen(
                 menu, inventory, title,
-                resource("textures/gui/container/crusher_base.png"),
-                resource("textures/gui/container/crusher_progress.png"),
-                53.0f,
-                121.0f
+                resource("textures/gui/container/vacuum_sealing/base.png"),
+                resource("textures/gui/container/vacuum_sealing/progress.png"),
+                55.0f,
+                125.0f
             )
         }
     }

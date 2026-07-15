@@ -686,10 +686,10 @@ class BurningMenu(
 ) : AbstractContainerMenu(Eln2Processing.BURNING_MENU.get(), pContainerId), ProgressSupplierMenu {
     companion object {
         private val INPUT_SLOTS = mapOf(
-            0 to Vector2di(21, 24),
-            1 to Vector2di(48, 24),
-            2 to Vector2di(75, 24),
-            3 to Vector2di(102, 24)
+            0 to Vector2di(33, 29),
+            1 to Vector2di(52, 29),
+            2 to Vector2di(33, 48),
+            3 to Vector2di(52, 48)
         )
     }
 
@@ -718,7 +718,7 @@ class BurningMenu(
             addSlot(SlotItemHandler(handler, slot, pos.x, pos.y))
         }
 
-        addSlot(SlotItemHandlerWithPlacePredicate(handler, BURNER_OUTPUT_SLOT, 129, 35) { false })
+        addSlot(SlotItemHandlerWithPlacePredicate(handler, BURNER_OUTPUT_SLOT, 117, 38) { false })
 
         addDataSlots(containerData)
 
