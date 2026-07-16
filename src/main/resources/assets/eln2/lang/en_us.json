@@ -162,6 +162,8 @@
     "item.eln2.potential_probe": "Potential Probe",
     "item.eln2.current_probe": "Current Probe",
     "item.eln2.basic_two_channel_oscilloscope": "Basic Oscilloscope",
+    "item.eln2.probe_body": "Probe Body",
+
 
     // Materials:
     "item.eln2.coke": "Coke",
@@ -188,6 +190,8 @@
     "item.eln2.carbon_putty": "Carbon Putty",
     "item.eln2.raw_carbon_brush": "Raw Carbon Brush",
     "item.eln2.carbon_brush": "Carbon Brush",
+    "item.eln2.raw_graphite_electrode": "Raw Graphite Electrode",
+    "item.eln2.graphite_electrode": "Graphite Electrode",
     "item.eln2.raw_resin": "Raw Resin",
     "item.eln2.sulfur_dust": "Sulfur Dust",
     "item.eln2.potassium_nitrate_dust": "Potassium Nitrate Dust",
@@ -201,6 +205,7 @@
     "item.eln2.tin_wire": "Tin Wire",
     "item.eln2.tin_dust": "Tin Dust",
     "item.eln2.iron_dust": "Iron Dust",
+    "item.eln2.iron_wire": "Iron Wire",
     "item.eln2.copper_plate": "Copper Plate",
     "item.eln2.hot_copper_plate": "Hot Copper Plate",
     "item.eln2.copper_wire": "Copper Wire",

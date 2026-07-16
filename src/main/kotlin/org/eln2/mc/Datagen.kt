@@ -608,6 +608,14 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_micro_grid_cable", has(Eln2Grid.MICRO_GRID_CONNECT_COPPER.item.get()))
             .save(pWriter, resource("crafting/micro_grid_interface"))
 
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Grid.MICRO_GRID_ANCHOR_SPEC.item.get(), 4)
+            .pattern(" R ")
+            .pattern(" P ")
+            .define('R', Eln2Ingredients.COPPER_ROD.get())
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .unlockedBy("has_copper_rod", has(Eln2Ingredients.COPPER_ROD.get()))
+            .save(pWriter, resource("crafting/micro_grid_anchor"))
+
         //#endregion
 
         //#region Simple Plate Recipes
@@ -1168,6 +1176,332 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .define('I', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
             .unlockedBy("has_insulated_wire", has(Eln2Wires.STANDARD_INSULATED_COPPER_ELECTRICAL_WIRE.part.item.get()))
             .save(pWriter, resource("crafting/switch"))
+
+        //#endregion
+
+        //#region Asbestos Separator
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Processing.ASBESTOS_SEPARATOR.get())
+            .pattern("RAR")
+            .pattern("AAA")
+            .pattern("RAR")
+            .define('A', Eln2Ingredients.ASBESTOS_FIBER.get())
+            .define('R', Eln2Ingredients.RUBBER.get())
+            .unlockedBy("has_asbestos_fiber", has(Eln2Ingredients.ASBESTOS_FIBER.get()))
+            .save(pWriter, resource("crafting/asbestos_separator"))
+
+        //#endregion
+
+        //#region Fuses
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2BasicComponents.TIN_FUSE_1A.get(), 4)
+            .pattern(" C ")
+            .pattern(" T ")
+            .pattern(" C ")
+            .define('C', Eln2Ingredients.COPPER_WIRE.get())
+            .define('T', Eln2Ingredients.TIN_WIRE.get())
+            .unlockedBy("has_tin_wire", has(Eln2Ingredients.TIN_WIRE.get()))
+            .save(pWriter, resource("crafting/tin_fuse_1a"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2BasicComponents.TIN_FUSE_5A.get(), 2)
+            .pattern("CC ")
+            .pattern("TT ")
+            .pattern("CC ")
+            .define('C', Eln2Ingredients.COPPER_WIRE.get())
+            .define('T', Eln2Ingredients.TIN_WIRE.get())
+            .unlockedBy("has_tin_wire", has(Eln2Ingredients.TIN_WIRE.get()))
+            .save(pWriter, resource("crafting/tin_fuse_5a"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2BasicComponents.LEAD_FUSE_10A.get(), 2)
+            .pattern(" C ")
+            .pattern(" L ")
+            .pattern(" C ")
+            .define('C', Eln2Ingredients.COPPER_WIRE.get())
+            .define('L', Eln2Ingredients.LEAD_WIRE.get())
+            .unlockedBy("has_lead_wire", has(Eln2Ingredients.LEAD_WIRE.get()))
+            .save(pWriter, resource("crafting/lead_fuse_10a"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2BasicComponents.LEAD_FUSE_25A.get())
+            .pattern("CC ")
+            .pattern("LL ")
+            .pattern("CC ")
+            .define('C', Eln2Ingredients.COPPER_WIRE.get())
+            .define('L', Eln2Ingredients.LEAD_WIRE.get())
+            .unlockedBy("has_lead_wire", has(Eln2Ingredients.LEAD_WIRE.get()))
+            .save(pWriter, resource("crafting/lead_fuse_25a"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2BasicComponents.BRONZE_FUSE_50A.get())
+            .pattern(" C ")
+            .pattern(" B ")
+            .pattern(" C ")
+            .define('C', Eln2Ingredients.COPPER_WIRE.get())
+            .define('B', Eln2Ingredients.BRONZE_PLATE.get())
+            .unlockedBy("has_bronze_plate", has(Eln2Ingredients.BRONZE_PLATE.get()))
+            .save(pWriter, resource("crafting/bronze_fuse_50a"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2BasicComponents.COPPER_FUSE_100A.get())
+            .pattern(" C ")
+            .pattern(" W ")
+            .pattern(" C ")
+            .define('C', Eln2Ingredients.COPPER_WIRE.get())
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .unlockedBy("has_copper_wire", has(Eln2Ingredients.COPPER_WIRE.get()))
+            .save(pWriter, resource("crafting/copper_fuse_100a"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2BasicComponents.COPPER_FUSE_150A.get())
+            .pattern("CC ")
+            .pattern("WW ")
+            .pattern("CC ")
+            .define('C', Eln2Ingredients.COPPER_WIRE.get())
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .unlockedBy("has_copper_wire", has(Eln2Ingredients.COPPER_WIRE.get()))
+            .save(pWriter, resource("crafting/copper_fuse_150a"))
+
+        //#endregion
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2BasicComponents.FUSE_PANEL_PART.item.get())
+            .pattern(" C ")
+            .pattern(" P ")
+            .pattern(" C ")
+            .define('C', Eln2Ingredients.COPPER_WIRE.get())
+            .define('P', Eln2Ingredients.RUBBER_WOOD_PANEL.get())
+            .unlockedBy("has_rubber_wood_panel", has(Eln2Ingredients.RUBBER_WOOD_PANEL.get()))
+            .save(pWriter, resource("crafting/fuse_panel"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Processing.BURNING_BLOCK.item.get())
+            .pattern("PIP")
+            .pattern("BVB")
+            .pattern("PPP")
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .define('I', Items.FURNACE)
+            .define('B', Items.BRICKS)
+            .define('V', Eln2ForgeFluids.FLUID_PIPE_EXTRACTION_VALVE.get())
+            .unlockedBy("has_fluid_extraction_valve", has(Eln2ForgeFluids.FLUID_PIPE_EXTRACTION_VALVE.get()))
+            .save(pWriter, resource("crafting/burner_reactor"))
+
+        //#region Probes
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.PROBE_BODY.get(), 4)
+            .pattern("WR")
+            .pattern("CP")
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .define('R', Items.REDSTONE)
+            .define('C', Eln2Ingredients.PRIMITIVE_CIRCUIT.get())
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .unlockedBy("has_primitive_circuit", has(Eln2Ingredients.PRIMITIVE_CIRCUIT.get()))
+            .save(pWriter, resource("crafting/probe_body"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Signal.POTENTIAL_PROBE_PART.item.get())
+            .pattern(" B ")
+            .pattern(" R ")
+            .pattern(" W ")
+            .define('B', Eln2Ingredients.PROBE_BODY.get())
+            .define('R', Eln2Ingredients.RESISTOR.get())
+            .define('W', Eln2Wires.STANDARD_INSULATED_COPPER_ELECTRICAL_WIRE.part.item.get())
+            .unlockedBy("has_probe_body", has(Eln2Ingredients.PROBE_BODY.get()))
+            .save(pWriter, resource("crafting/potential_probe"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Signal.CURRENT_PROBE_PART.item.get())
+            .pattern(" B ")
+            .pattern(" C ")
+            .pattern(" W ")
+            .define('B', Eln2Ingredients.PROBE_BODY.get())
+            .define('C', Eln2Ingredients.COPPER_WIRE.get())
+            .define('W', Eln2Wires.STANDARD_INSULATED_COPPER_ELECTRICAL_WIRE.part.item.get())
+            .unlockedBy("has_probe_body", has(Eln2Ingredients.PROBE_BODY.get()))
+            .save(pWriter, resource("crafting/current_probe"))
+
+        //#endregion
+
+        //#region Signal Grid
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Grid.SIGNAL_GRID_CONNECT.item.get(), 8)
+            .pattern(" W ")
+            .pattern(" R ")
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .define('R', Items.REDSTONE)
+            .unlockedBy("has_redstone", has(Items.REDSTONE))
+            .save(pWriter, resource("crafting/signal_grid_cable"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Grid.SIGNAL_GRID_ANCHOR_SPEC.item.get(), 4)
+            .pattern(" R ")
+            .pattern(" R ")
+            .define('R', Items.REDSTONE)
+            .unlockedBy("has_redstone", has(Items.REDSTONE))
+            .save(pWriter, resource("crafting/signal_grid_anchor"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Grid.SIGNAL_GRID_INTERFACE_PART.item.get(), 4)
+            .pattern(" R ")
+            .pattern(" C ")
+            .define('R', Items.REDSTONE)
+            .define('C', Eln2Grid.SIGNAL_GRID_CONNECT.item.get())
+            .unlockedBy("has_signal_grid_cable", has(Eln2Grid.SIGNAL_GRID_CONNECT.item.get()))
+            .save(pWriter, resource("crafting/signal_grid_interface"))
+
+        //#endregion
+
+        //#region Signal Components
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Signal.SIGNAL_REFERENCE_PART.item.get())
+            .pattern(" W ")
+            .pattern(" R ")
+            .pattern(" C ")
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .define('R', Items.REDSTONE)
+            .define('C', Eln2Ingredients.PRIMITIVE_CIRCUIT.get())
+            .unlockedBy("has_primitive_circuit", has(Eln2Ingredients.PRIMITIVE_CIRCUIT.get()))
+            .save(pWriter, resource("crafting/signal_reference"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Signal.SIGNAL_CLAMPER_PART.item.get())
+            .pattern("RC")
+            .pattern("RW")
+            .define('R', Items.REDSTONE)
+            .define('C', Eln2Ingredients.PRIMITIVE_CIRCUIT.get())
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .unlockedBy("has_primitive_circuit", has(Eln2Ingredients.PRIMITIVE_CIRCUIT.get()))
+            .save(pWriter, resource("crafting/signal_clamper"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Signal.SIGNAL_OPAMP_PART.item.get())
+            .pattern("RC")
+            .pattern("WC")
+            .define('R', Items.REDSTONE)
+            .define('C', Eln2Ingredients.PRIMITIVE_CIRCUIT.get())
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .unlockedBy("has_primitive_circuit", has(Eln2Ingredients.PRIMITIVE_CIRCUIT.get()))
+            .save(pWriter, resource("crafting/signal_opamp"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Signal.SIGNAL_PID_PART.item.get())
+            .pattern("CC")
+            .pattern("CW")
+            .pattern("RR")
+            .define('C', Eln2Ingredients.PRIMITIVE_CIRCUIT.get())
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .define('R', Items.REDSTONE)
+            .unlockedBy("has_primitive_circuit", has(Eln2Ingredients.PRIMITIVE_CIRCUIT.get()))
+            .save(pWriter, resource("crafting/signal_pid"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Signal.RELAY_PART.item.get())
+            .pattern("WGW")
+            .pattern("RCP")
+            .define('W', Eln2Ingredients.COPPER_COIL.get())
+            .define('G', Items.GOLD_NUGGET)
+            .define('R', Items.REDSTONE)
+            .define('C', Eln2Ingredients.PRIMITIVE_CIRCUIT.get())
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .unlockedBy("has_primitive_circuit", has(Eln2Ingredients.PRIMITIVE_CIRCUIT.get()))
+            .save(pWriter, resource("crafting/relay"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2BasicComponents.GROUND_PART.item.get())
+            .pattern(" I ")
+            .pattern(" W ")
+            .pattern(" P ")
+            .define('I', Items.IRON_INGOT)
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .define('P', Ingredient.of(ItemTags.PLANKS))
+            .unlockedBy("has_iron_ingot", has(Items.IRON_INGOT))
+            .save(pWriter, resource("crafting/ground"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2BasicComponents.GROUND_SPEC.item.get())
+            .pattern(" R ")
+            .pattern(" N ")
+            .pattern(" P ")
+            .define('R', Eln2Ingredients.COPPER_ROD.get())
+            .define('N', Items.IRON_NUGGET)
+            .define('P', Ingredient.of(ItemTags.PLANKS))
+            .unlockedBy("has_copper_rod", has(Eln2Ingredients.COPPER_ROD.get()))
+            .save(pWriter, resource("crafting/ground_micro_grid"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2HeatingElements.LOW_VOLTAGE_IRON_HEATING_ELEMENT.get())
+            .pattern("WW")
+            .pattern("WW")
+            .define('W', Eln2Ingredients.IRON_WIRE.get())
+            .unlockedBy("has_iron_wire", has(Eln2Ingredients.IRON_WIRE.get()))
+            .save(pWriter, resource("crafting/low_voltage_iron_heating_element"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Processing.HYDROGEN_REDUCTION_FURNACE_BLOCK.item.get())
+            .pattern("AAA")
+            .pattern("WBW")
+            .pattern("PPP")
+            .define('A', Eln2Ingredients.ASBESTOS_FIBER.get())
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .define('B', Items.BRICKS)
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .unlockedBy("has_asbestos_fiber", has(Eln2Ingredients.ASBESTOS_FIBER.get()))
+            .save(pWriter, resource("crafting/hydrogen_reduction_furnace"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Processing.RAW_GRAPHITE_ELECTRODE.get())
+            .pattern("CCC")
+            .pattern(" W ")
+            .define('C', Eln2Ingredients.CARBON_PUTTY.get())
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .unlockedBy("has_carbon_putty", has(Eln2Ingredients.CARBON_PUTTY.get()))
+            .save(pWriter, resource("crafting/raw_graphite_electrode"))
+
+        SimpleCookingRecipeBuilder.smelting(
+            Ingredient.of(Eln2Processing.RAW_GRAPHITE_ELECTRODE.get()),
+            RecipeCategory.MISC,
+            Eln2Processing.GRAPHITE_ELECTRODE.get(),
+            0.5f,
+            200
+        ).apply {
+            unlockedBy("has_raw_graphite_electrode", has(Eln2Processing.RAW_GRAPHITE_ELECTRODE.get()))
+            save(pWriter, resource("smelting/raw_graphite_electrode_to_graphite_electrode"))
+        }
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Processing.ELECTROLYSIS_BLOCK_ITEM.get())
+            .pattern("WPW")
+            .pattern("FRF")
+            .pattern("PPP")
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .define('F', Eln2Ingredients.MACHINE_FRAME.get())
+            .define('R', Eln2Ingredients.RUBBER.get())
+            .unlockedBy("has_machine_frame", has(Eln2Ingredients.MACHINE_FRAME.get()))
+            .save(pWriter, resource("crafting/electrolysis"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Processing.LEAD_CHAMBER_BLOCK.item.get(), 2)
+            .pattern("P P")
+            .pattern("   ")
+            .pattern("P P")
+            .define('P', taggedIngredient(Eln2Ingredients.LEAD_PLATE.get()))
+            .unlockedBy("has_lead_plate", has(Eln2ConventionTags.PLATE_LEAD))
+            .save(pWriter, resource("crafting/lead_chamber"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, Eln2Tools.DRILL.get())
+            .pattern("DII")
+            .pattern("MCP")
+            .define('D', Items.DIAMOND)
+            .define('I', Items.IRON_INGOT)
+            .define('M', Eln2Ingredients.BRUSHED_DC_MOTOR.get())
+            .define('C', Eln2Ingredients.PRIMITIVE_CIRCUIT.get())
+            .define('P', Eln2Grid.POWER_GRID_CONNECT_COPPER.item.get())
+            .unlockedBy("has_brushed_dc_motor", has(Eln2Ingredients.BRUSHED_DC_MOTOR.get()))
+            .save(pWriter, resource("crafting/drill"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, Eln2Tools.FLASHLIGHT.get())
+            .pattern("GLG")
+            .pattern("ICP")
+            .pattern(" R ")
+            .define('G', Items.GLASS_PANE)
+            .define('L', Eln2Lights.LIGHT_BULB_240V_100W.get())
+            .define('I', Items.IRON_INGOT)
+            .define('C', Eln2Ingredients.PRIMITIVE_CIRCUIT.get())
+            .define('P', Eln2Grid.POWER_GRID_CONNECT_COPPER.item.get())
+            .define('R', Eln2Ingredients.RUBBER.get())
+            .unlockedBy("has_light_bulb", has(Eln2Lights.LIGHT_BULB_240V_100W.get()))
+            .save(pWriter, resource("crafting/flashlight"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2InventoryPower.POWER_CELL_CHARGER_BLOCK.item.get())
+            .pattern("WPW")
+            .pattern("MHC")
+            .pattern("PPP")
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .define('M', Eln2Ingredients.MACHINE_FRAME.get())
+            .define('H', Items.CHEST)
+            .define('C', Eln2Ingredients.PRIMITIVE_CIRCUIT.get())
+            .unlockedBy("has_machine_frame", has(Eln2Ingredients.MACHINE_FRAME.get()))
+            .save(pWriter, resource("crafting/power_cell_charger"))
 
         //#endregion
 

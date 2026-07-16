@@ -854,6 +854,10 @@ object Eln2Processing : ContentModule() {
 
     //#region Electrolysis
 
+    val RAW_GRAPHITE_ELECTRODE = item("raw_graphite_electrode") {
+        Item(Item.Properties())
+    }
+
     val GRAPHITE_ELECTRODE = item("graphite_electrode") {
         ElectrodeItem()
     }

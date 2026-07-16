@@ -258,6 +258,10 @@ object Eln2Ingredients : ContentModule() {
         fromCrushing(IRON_PLATE)
     }.withItemTagDatagen(Eln2ConventionTags.DUST_IRON)
 
+    val IRON_WIRE = WIRES.build("iron_wire", MyColor(180, 180, 190)) {
+        sourceItemForExtruding = HOT_IRON_INGOT
+    }
+
     //#endregion
 
     //#region Copper
@@ -417,6 +421,12 @@ object Eln2Ingredients : ContentModule() {
     val INSULATED_COMBUSTION_CHAMBER = itemDefault("insulated_combustion_chamber")
     val BURNER_CONTROLLER_UNIT = itemDefault("burner_controller_unit")
     val BURNER_FUEL_HOPPER = itemDefault("burner_fuel_hopper")
+
+    //#endregion
+
+    //#region Probes
+
+    val PROBE_BODY = itemDefault("probe_body")
 
     //#endregion
 }
