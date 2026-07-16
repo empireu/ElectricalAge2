@@ -338,9 +338,9 @@ object Eln2Ingredients : ContentModule() {
     val VACUUM_TUBE = itemDefault("vacuum_tube")
     val UNSEALED_240V_100W_LIGHT_BULB = itemDefault("unsealed_240v_100w_light_bulb")
 
-    val SCHEELITE_FUSION_MIX = itemDefault("scheelite_fusion_mix")
-    val SODIUM_TUNGSTENATE_MELT = itemDefault("sodium_tungstenate_melt")
-    val TUNGSTIC_ACID = itemDefault("tungstic_acid")
+    val SCHEELITE_FUSION_MIX = DUSTS.build("scheelite_fusion_mix", MyColor(245, 235, 195))
+    val SODIUM_TUNGSTENATE_MELT = DUSTS.build("sodium_tungstenate_melt", MyColor(215, 210, 200))
+    val TUNGSTIC_ACID = DUSTS.build("tungstic_acid", MyColor(235, 230, 215))
 
     val CRUDE_MAGNET = itemDefault("crude_magnet")
     val COPPER_COIL = itemDefault("copper_coil")

@@ -15,7 +15,7 @@
       "item": "minecraft:redstone"
     },
     "W": {
-      "item": "eln2:copper_wire"
+      "item": "eln2:copper_coil"
     }
   },
   "pattern": [
