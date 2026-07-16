@@ -5,8 +5,10 @@ import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import net.minecraft.ChatFormatting
+import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.chat.Component
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
@@ -234,21 +236,7 @@ class FusePanelCell(ci: CellCreateInfo, override val electricalMap: PoleMap) : C
             electrical.component.resistance = ElectricalSimulation.MAX_RESISTANCE
             setChanged()
             eventConsumer?.onFuseStateChanged()
-
-            locator.get(Locators.BLOCK)?.also { blockPos ->
-                runPre {
-                    if(graph.level.isLoaded(blockPos)) {
-                        graph.level.playSound(
-                            null,
-                            blockPos.x.toDouble(), blockPos.y.toDouble(), blockPos.z.toDouble(),
-                            SoundEvents.FIRE_EXTINGUISH,
-                            SoundSource.BLOCKS,
-                            randomFloat(0.9f, 1.1f),
-                            randomFloat(0.9f, 1.1f)
-                        )
-                    }
-                }
-            }
+            eventConsumer?.playAv()
         }
     }
 
@@ -321,6 +309,9 @@ class FusePanelCell(ci: CellCreateInfo, override val electricalMap: PoleMap) : C
 interface FuseEventConsumer {
     @CrossThreadAccess
     fun onFuseStateChanged()
+
+    @CrossThreadAccess
+    fun playAv()
 }
 
 class FusePanelPart(ci: PartCreateInfo) :
@@ -368,7 +359,7 @@ class FusePanelPart(ci: PartCreateInfo) :
                 return InteractionResult.CONSUME
             }
 
-            return if(removedItem != null) InteractionResult.SUCCESS else InteractionResult.FAIL
+            return InteractionResult.FAIL
         }
     }
 
@@ -376,6 +367,54 @@ class FusePanelPart(ci: PartCreateInfo) :
     override fun onFuseStateChanged() {
         runPre {
             setSyncDirty()
+        }
+    }
+
+    @CrossThreadAccess
+    override fun playAv() {
+        runPre {
+            val blockPos = placement.position
+            val serverLevel = placement.level as ServerLevel
+
+            serverLevel.playSound(
+                null,
+                blockPos.x.toDouble(), blockPos.y.toDouble(), blockPos.z.toDouble(),
+                SoundEvents.FIRE_EXTINGUISH,
+                SoundSource.BLOCKS,
+                randomFloat(0.9f, 1.1f),
+                randomFloat(0.9f, 1.1f)
+            )
+
+
+            val (originX, originY, originZ) = placement.mountingPointWorld
+            val outDirection = placement.facingWorld
+            val dirX = outDirection.stepX.toDouble()
+            val dirY = outDirection.stepY.toDouble()
+            val dirZ = outDirection.stepZ.toDouble()
+
+            serverLevel.sendParticles(
+                ParticleTypes.FLAME,
+                originX, originY, originZ,
+                12,
+                dirX * 0.15, dirY * 0.15, dirZ * 0.15,
+                0.6
+            )
+
+            serverLevel.sendParticles(
+                ParticleTypes.LARGE_SMOKE,
+                originX, originY, originZ,
+                6,
+                dirX * 0.05, dirY * 0.05, dirZ * 0.05,
+                0.3
+            )
+
+            serverLevel.sendParticles(
+                ParticleTypes.SMOKE,
+                originX, originY, originZ,
+                4,
+                dirX * 0.08, dirY * 0.08, dirZ * 0.08,
+                0.4
+            )
         }
     }
 
