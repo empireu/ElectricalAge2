@@ -1,7 +1,7 @@
 {
     "feature": "eln2:scheelite_ore",
     "placement": [
-        { "type": "minecraft:count", "count": 3 },
+        { "type": "minecraft:count", "count": 15 },
         { "type": "minecraft:in_square" },
         {
             "type": "minecraft:height_range",
