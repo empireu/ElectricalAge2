@@ -16,12 +16,16 @@ import net.minecraft.client.renderer.LevelRenderer
 import net.minecraft.client.renderer.LightTexture
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.sounds.SoundEvents
+import net.minecraft.sounds.SoundSource
+import net.minecraft.util.RandomSource
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.context.UseOnContext
@@ -47,6 +51,7 @@ import net.minecraftforge.client.extensions.common.IClientBlockExtensions
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
 import org.ageseries.libage.mathematics.geometry.Vector2di
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.ageseries.libage.mathematics.rounded
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMass
@@ -77,12 +82,15 @@ import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
 import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.common.blocks.foundation.ReplaceVanillaParticlesBlockExtension
 import org.eln2.mc.extensions.*
+import org.eln2.mc.mathematics.toHorizontalFacing
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
 import java.util.function.Consumer
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 //#region Simulation
@@ -803,6 +811,42 @@ class PrimitiveBurnerBlock : UprightHorizontalDirectionCellBlock<PrimitiveBurner
 
         return blockEntity.interact(pPlayer)
     }
+
+    override fun animateTick(pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {
+        val blockEntity = pLevel.getBlockEntity(pPos) as? PrimitiveBurnerBlockEntity
+            ?: return
+
+        if (blockEntity.renderState?.injectionRate?.let { it > 0.0 } != true) {
+            return
+        }
+
+        val facing = pState.getValue(HorizontalDirectionalBlock.FACING)
+        val centerX = pPos.x + 0.5
+        val baseY = pPos.y.toDouble()
+        val centerZ = pPos.z + 0.5
+
+        if (pRandom.nextDouble() < 0.1) {
+            pLevel.playLocalSound(
+                centerX,
+                baseY + 0.5,
+                centerZ,
+                SoundEvents.FURNACE_FIRE_CRACKLE,
+                SoundSource.BLOCKS,
+                pRandom.nextDouble(0.9, 1.1).toFloat(),
+                pRandom.nextDouble(0.9, 1.1).toFloat(),
+                false
+            )
+        }
+
+        repeat(3) {
+            val offset = pRandom.nextDouble() * 0.6 - 0.3
+            val offsetX = if (facing.axis === Direction.Axis.X) facing.stepX.toDouble() * 0.52 else offset
+            val offsetY = pRandom.nextDouble() * 6.0 / 16.0
+            val offsetZ = if (facing.axis === Direction.Axis.Z) facing.stepZ.toDouble() * 0.52 else offset
+
+            pLevel.addParticle(ParticleTypes.SMOKE, centerX + offsetX, baseY + offsetY, centerZ + offsetZ, 0.0, 0.0, 0.0)
+        }
+    }
 }
 
 class PrimitiveBurnerBlockEntity(pos: BlockPos, state: BlockState) :
@@ -1379,6 +1423,30 @@ class AdvancedCoalBurnerBlock : UprightHorizontalDirectionCellBlock<AdvancedBurn
                 Component.translatable("menu.$MODID.advanced_coal_burner"),
                 ::AdvancedCoalBurnerMenu
             )
+
+        /**
+         * The chimney opening in model space (BlockBench 16x coordinates), authored for the SOUTH-facing model.
+         * The visual applies [TransformedInstance.rotateToFace] with the facing's opposite, so we replicate that rotation here.
+         * */
+        private const val CHIMNEY_MODEL_X = 2.0 / 16.0
+        private const val CHIMNEY_MODEL_Y = 27.0 / 16.0
+        private const val CHIMNEY_MODEL_Z = 9.0 / 16.0
+
+        private fun rotatedChimneyOffset(facing: Direction): Vector3d {
+            val pivotX = 0.5
+            val pivotZ = 0.5
+            val localX = CHIMNEY_MODEL_X - pivotX
+            val localZ = CHIMNEY_MODEL_Z - pivotZ
+
+            val angle = facing.opposite.toHorizontalFacing().angle
+            val cos = cos(angle)
+            val sin = sin(angle)
+
+            val worldX = pivotX + cos * localX + sin * localZ
+            val worldZ = pivotZ - sin * localX + cos * localZ
+
+            return Vector3d(worldX, CHIMNEY_MODEL_Y, worldZ)
+        }
     }
 
     @Deprecated("Deprecated in Java")
@@ -1435,6 +1503,50 @@ class AdvancedCoalBurnerBlock : UprightHorizontalDirectionCellBlock<AdvancedBurn
         }
 
         return result
+    }
+
+    override fun animateTick(pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {
+        val blockEntity = pLevel.getBlockEntity(pPos) as? AdvancedCoalBurnerBlockEntity
+            ?: return
+
+        if (blockEntity.renderState?.injectionRate?.let { it > 0.0 } != true) {
+            return
+        }
+
+        val facing = pState.getValue(HorizontalDirectionalBlock.FACING)
+        val chimneyOffset = rotatedChimneyOffset(facing)
+
+        val smokeX = pPos.x + chimneyOffset.x
+        val smokeY = pPos.y + chimneyOffset.y
+        val smokeZ = pPos.z + chimneyOffset.z
+
+        if (pRandom.nextDouble() < 0.1) {
+            pLevel.playLocalSound(
+                smokeX,
+                smokeY,
+                smokeZ,
+                SoundEvents.FURNACE_FIRE_CRACKLE,
+                SoundSource.BLOCKS,
+                pRandom.nextDouble(0.9, 1.1).toFloat(),
+                pRandom.nextDouble(0.9, 1.1).toFloat(),
+                false
+            )
+        }
+
+        repeat(4) {
+            val spreadX = pRandom.nextDouble() * 0.4 - 0.2
+            val spreadZ = pRandom.nextDouble() * 0.4 - 0.2
+
+            pLevel.addParticle(
+                ParticleTypes.CAMPFIRE_COSY_SMOKE,
+                smokeX + spreadX,
+                smokeY,
+                smokeZ + spreadZ,
+                0.0,
+                0.05 + pRandom.nextDouble() * 0.02,
+                0.0
+            )
+        }
     }
 }
 
