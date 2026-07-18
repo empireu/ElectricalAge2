@@ -1,5 +1,4 @@
 {
-    "parent": "eln2:models/block/displays/big_block_2x",
     "loader": "forge:obj",
     "model": "eln2:models/block/wind_turbine/basic/inventory.obj",
     "flip_v": true
