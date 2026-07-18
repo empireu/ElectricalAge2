@@ -226,6 +226,7 @@
     "item.eln2.raw_saltpeter": "Raw Saltpeter",
     "item.eln2.asbestos_fiber": "Asbestos Fiber",
     "item.eln2.raw_asbestos": "Raw Asbestos",
+    "item.eln2.asbestos_separator": "Asbestos Separator",
     "item.eln2.raw_scheelite": "Raw Scheelite",
     "item.eln2.raw_trona": "Raw Trona",
 
@@ -246,6 +247,9 @@
     "item.eln2.autoclave_door": "Autoclave Door",
     "item.eln2.wind_turbine_blade": "Wind Turbine Blade",
     "item.eln2.wind_turbine_core": "Wind Turbine Core",
+    "item.eln2.insulated_combustion_chamber": "Insulated Combustion Chamber",
+    "item.eln2.burner_controller_unit": "Burner Controller Unit",
+    "item.eln2.burner_fuel_hopper": "Burner Fuel Hopper",
     "item.eln2.magnetite_dust": "Magnetite Dust",
     "item.eln2.scheelite_dust": "Scheelite Dust",
     "item.eln2.sodium_carbonate_dust": "Sodium Carbonate Dust",
