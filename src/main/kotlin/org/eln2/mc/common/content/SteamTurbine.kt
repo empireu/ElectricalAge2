@@ -8,6 +8,7 @@ import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.entity.BlockEntityType
@@ -20,6 +21,16 @@ import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.fluids.capability.IFluidHandler
+import dev.engine_room.flywheel.api.instance.Instance
+import dev.engine_room.flywheel.api.visual.SectionTrackedVisual
+import dev.engine_room.flywheel.api.visual.ShaderLightVisual
+import dev.engine_room.flywheel.api.visualization.VisualizationContext
+import dev.engine_room.flywheel.lib.instance.InstanceTypes
+import dev.engine_room.flywheel.lib.instance.TransformedInstance
+import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
+import org.eln2.mc.client.render.FlwMaterials
+import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.PartialModelHelper
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
 import org.ageseries.libage.mathematics.approxEq
@@ -401,6 +412,9 @@ class SteamTurbineBlock : UprightHorizontalDirectionCellBlock<SteamTurbineCell>(
     override fun getCellProvider() = Eln2SteamTurbine.STEAM_TURBINE_CELL.get()
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = SteamTurbineBlockEntity(pPos, pState)
+
+    @Deprecated("Deprecated in Java")
+    override fun skipRendering(pState: BlockState?, pAdjacentState: BlockState?, pDirection: Direction?) = true
 
     override fun initializeClient(consumer: Consumer<IClientBlockExtensions?>) {
         consumer.accept(ReplaceVanillaParticlesBlockExtension)
@@ -1074,3 +1088,42 @@ private val KINETIC_PORT_FRICTION_DESCRIPTION = FrictionNodeDescription(
         Quantity(0.0, NEWTON_METER)
     )
 )
+
+class SteamTurbineBlockEntityVisual(
+    ctx: VisualizationContext,
+    blockEntity: SteamTurbineBlockEntity,
+    partialTick: Float
+) : AbstractBlockEntityVisual<SteamTurbineBlockEntity>(ctx, blockEntity, partialTick), ShaderLightVisual {
+    val body: TransformedInstance = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(FlwModels.STEAM_TURBINE, FlwMaterials.CUTOUT_SMOOTH_LIT))
+        .createInstance()
+        .also {
+            it.translate(visualPosition)
+            it.center()
+            it.rotateToFace(blockEntity.representativeFacing.opposite)
+            it.uncenter()
+        }
+
+    override fun updateLight(p0: Float) {
+        // NOOP
+    }
+
+    override fun setSectionCollector(sectionCollector: SectionTrackedVisual.SectionCollector) {
+        this.lightSections = sectionCollector
+
+        sectionCollector.sections(
+            blockEntity.delegateMap.getTotalSpannedSectionsFat(
+                blockState.getValue(HorizontalDirectionalBlock.FACING),
+                pos
+            )
+        )
+    }
+
+    override fun collectCrumblingInstances(p0: Consumer<Instance?>) {
+        p0.accept(body)
+    }
+
+    override fun _delete() {
+        body.delete()
+    }
+}

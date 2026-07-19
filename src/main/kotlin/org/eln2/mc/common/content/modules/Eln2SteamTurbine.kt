@@ -23,6 +23,10 @@ import org.eln2.mc.common.cells.foundation.ThermalSize
 import org.eln2.mc.common.content.*
 import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
 import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
+import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
+import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
+import net.minecraftforge.client.event.EntityRenderersEvent
+import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
 
 object Eln2SteamTurbine : ContentModule() {
     val STEAM_TURBINE_STEAM_SOUND = soundEventVariableRange("turbine.steam")
@@ -164,6 +168,20 @@ object Eln2SteamTurbine : ContentModule() {
         BigBlockItem(
             STEAM_TURBINE_DELEGATE_MAP.value,
             STEAM_TURBINE_BLOCK.get()
+        )
+    }
+
+    override fun registerBlockEntityVisualizers() {
+        VisualizerRegistry.setVisualizer(
+            STEAM_TURBINE_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer(::SteamTurbineBlockEntityVisual) { true }
+        )
+    }
+
+    override fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
+        event.registerBlockEntityRenderer(
+            STEAM_TURBINE_BLOCK_ENTITY.get(),
+            DummyBlockEntityRendererProvider()
         )
     }
 }

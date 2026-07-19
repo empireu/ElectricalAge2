@@ -266,6 +266,8 @@ object FlwModels {
 
     //#endregion
 
+    val STEAM_TURBINE = partialBlock("steam_turbine/steam_turbine")
+
     fun partialBlock(path: String): PartialModel = PartialModel.of(resource("block/$path"))
     fun polarBlock(path: String): PolarModel = PolarModel(resource("block/$path"))
 
