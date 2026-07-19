@@ -15,6 +15,8 @@ import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.mathematics.Base6Direction3dMask
+import org.eln2.mc.monopolarMapPlanar
 import org.eln2.mc.client.render.foundation.BasicSpecVisual
 import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
 import org.eln2.mc.client.render.foundation.FlwVisualizerRegistry.setSpecVisualizer
@@ -75,6 +77,7 @@ object Eln2PowerDevices : ContentModule() {
             0.8,
             2.5,
             Quantity(800.0, VOLT),
+            Quantity(5.0, VOLT),
             Quantity(0.0006571, OHM),
             Quantity(0.1027, FARAD),
             Quantity(0.0001167, OHM),
@@ -108,14 +111,17 @@ object Eln2PowerDevices : ContentModule() {
             0.7,
             1.5,
             Quantity(300.0, VOLT),
+            Quantity(5.0, VOLT),
             Quantity(0.0075, OHM),
             Quantity(0.25, FARAD),
             Quantity(0.01, OHM),
             Quantity(0.0075, OHM)
         )
 
+        val signalMap = monopolarMapPlanar(Base6Direction3dMask.HORIZONTALS)
+
         CellFactory {
-            TerminalDcToDcConverterCell(it, thermalDef, environmentParameters, model)
+            TerminalDcToDcConverterCell(it, thermalDef, environmentParameters, model, signalMap)
         }
     }
 

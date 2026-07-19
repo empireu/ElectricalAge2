@@ -19,15 +19,18 @@ import net.minecraft.world.phys.shapes.VoxelShape
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.map
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.Capacitor
 import org.ageseries.libage.sim.electrical.ElectricalComponentSet
 import org.ageseries.libage.sim.electrical.ElectricalConnectivityMap
+import org.ageseries.libage.sim.electrical.ElectricalPin
 import org.ageseries.libage.sim.electrical.PowerConsumer
 import org.ageseries.libage.sim.electrical.PowerSource
 import org.ageseries.libage.sim.electrical.Resistor
 import org.eln2.mc.*
+import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.client.render.foundation.MyColor
 import org.eln2.mc.common.blocks.foundation.GridCellBlockEntity
 import org.eln2.mc.common.blocks.foundation.UprightHorizontalDirectionCellBlock
@@ -57,6 +60,7 @@ import kotlin.math.min
  * This value should always be greater than 1.
  * @param potentialRating The max potential across the device's inputs.
  * This value is used to calculate the initial resistance of the sink resistor, such that the input power is bounded regardless of the source circuit's potential, as long as its open-circuit voltage is, at most, [potentialRating].
+ * @param minPotentialRating The minimum output potential. Both the signal-mapped and manual setpoints are clamped to at least this value.
  * @param inputSeriesResistance Impedance in series with the input circuit.
  * @param inputSmoothingCapacitance Capacitance in parallel with the input circuit.
  * @param outputSeriesResistance Impedance in series with the output circuit.
@@ -68,6 +72,7 @@ data class DcToDcConverterModel(
     val eta: Double,
     val energyK: Double,
     val potentialRating: Quantity<Potential>,
+    val minPotentialRating: Quantity<Potential>,
     val inputSeriesResistance: Quantity<Resistance>,
     val inputSmoothingCapacitance: Quantity<Capacitance>,
     val inputEquivalentResistance: Quantity<Resistance>,
@@ -86,8 +91,15 @@ fun interface PowerLoadConsumer {
 /**
  * DC-DC converter implemented as a power sink + power source.
  * This can generate 2 sub-solvers.
+ *
+ * @param signalMap If non-null, exposes a high-impedance signal input. When a signal cable is connected, the measured potential is mapped from [0, [MAX_SIGNAL]] to [0, potentialRating] and overrides [setpointPotential]. If null, signal connectivity is disabled and [setpointPotential] is always used.
  * */
-abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConverterModel, val rejectedEnergyAcceptor: RejectedEnergyAcceptor? = null) : ElectricalObject<C>(cell), PersistentObject {
+abstract class DcToDcConverterObject<C : Cell>(
+    cell: C,
+    val model: DcToDcConverterModel,
+    val signalMap: MonopoleMap? = null,
+    val rejectedEnergyAcceptor: RejectedEnergyAcceptor? = null
+) : ElectricalObject<C>(cell), PersistentObject {
     /**
      * The internal energy in the device.
      * This value bounds the maximum output power and the maximum input power.
@@ -106,6 +118,10 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
 
     val outputSource = PowerSource()
     val outputSeriesResistor = Resistor()
+
+    val signalResistor: Resistor? = if(signalMap != null) Resistor().also { it.resistance = SIGNAL_COMPARE_RESISTANCE } else null
+
+    private var signalConnected = false
     // Bypass diode might also be necessary!
 
     init {
@@ -118,11 +134,29 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
         outputSeriesResistor.resistance = !model.outputSeriesResistance
     }
 
+    override fun clear() {
+        super.clear()
+        signalConnected = false
+    }
+
+    override fun offerPolar(remote: ElectricalObject<*>): ElectricalPin? {
+        if(signalMap != null && signalMap.evaluates(cell, remote.cell)) {
+            signalConnected = true
+            return signalResistor!!.positive
+        }
+
+        return null
+    }
+
     override fun addComponents(circuit: ElectricalComponentSet) {
         circuit.add(
             inputSeriesResistor, inputParallelCapacitor, inputConsumer,
             outputSource, outputSeriesResistor
         )
+
+        if(signalResistor != null) {
+            circuit.add(signalResistor)
+        }
     }
 
     protected fun offerInputNegative() = inputParallelCapacitor.negative
@@ -152,6 +186,10 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
             outputSource.positive,
             outputSeriesResistor.negative
         )
+
+        if(signalResistor != null) {
+            map.ground(signalResistor.negative)
+        }
     }
 
     override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
@@ -184,7 +222,13 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
         val maxInstantaneousPower = (energyBuffer / dt) * model.eta
 
         outputSource.targetPower = min(maxInstantaneousPower, !model.powerRating)
-        outputSource.maxPotential = !setpointPotential
+
+        outputSource.maxPotential = if(signalConnected) {
+            val mapped = map(signalResistor!!.potential, 0.0, MAX_SIGNAL, 0.0, !model.potentialRating)
+            mapped.coerceIn(!model.minPotentialRating, !model.potentialRating)
+        } else {
+            (!setpointPotential).coerceAtLeast(!model.minPotentialRating)
+        }
     }
 
     private fun tickPre(dt: Double, phase: SimulationPhase) {
@@ -274,12 +318,13 @@ abstract class DcToDcConverterObject<C : Cell>(cell: C, val model: DcToDcConvert
 class TerminalDcToDcConverterObject<C : Cell>(
     cell: C,
     model: DcToDcConverterModel,
+    signalMap: MonopoleMap? = null,
     val inputNegative: Int,
     val inputPositive: Int,
     val outputNegative: Int,
     val outputPositive: Int,
     rejectedEnergyAcceptor: RejectedEnergyAcceptor? = null
-) : DcToDcConverterObject<C>(cell, model, rejectedEnergyAcceptor) {
+) : DcToDcConverterObject<C>(cell, model, signalMap, rejectedEnergyAcceptor) {
     override fun offerTerminal(gc: GridConnectionCell, m0: GridConnectionCell.NodeInfo) = when(m0.terminal) {
         inputNegative -> offerInputNegative()
         inputPositive -> offerInputPositive()
@@ -294,19 +339,28 @@ class TerminalDcToDcConverterCell(
     thermalDef: ThermalMassDefinition,
     leakage: ConnectionParameters,
     model: DcToDcConverterModel,
+    val signalMap: MonopoleMap? = null,
     inputNegative: Int = 0,
     inputPositive: Int = 1,
     outputNegative: Int = 2,
     outputPositive: Int = 3
-) : Cell(ci) {
+) : Cell(ci), SidedElectrical<TerminalDcToDcConverterCell> {
     override val isExclusivelyGridConnected: Boolean
-        get() = true
+        get() = false
 
     @SimObject
     val thermalWire = ThermalWireObject(this, thermalDef(), leakage)
 
     @SimObject
-    val converter = TerminalDcToDcConverterObject(this, model, inputNegative, inputPositive, outputNegative, outputPositive) { rejectedEnergy ->
+    val converter = TerminalDcToDcConverterObject(
+        this,
+        model,
+        signalMap,
+        inputNegative,
+        inputPositive,
+        outputNegative,
+        outputPositive
+    ) { rejectedEnergy ->
         thermalWire.thermalBody.energy += rejectedEnergy
     }.also { it.setpointPotential = Quantity(24.0, VOLT) }
 
@@ -315,6 +369,14 @@ class TerminalDcToDcConverterCell(
 
     @Node
     val grid = GridNode(this)
+
+    override fun getElectricalSizeOnSide(side: Base6Direction3d, targetCell: Cell): ElectricalSize? {
+        if(signalMap != null && signalMap.evaluates(this, targetCell)) {
+            return ElectricalSize.Signal
+        }
+
+        return null
+    }
 }
 
 class PowerLoadReplicatorBehavior(
@@ -377,7 +439,7 @@ class DcToDcConverterSpec(ci: SpecCreateInfo) :
         }
 
         val increment = delta / 10.0
-        val newPotential = (!cell.converter.setpointPotential + increment).coerceIn(0.0, !cell.converter.model.potentialRating)
+        val newPotential = (!cell.converter.setpointPotential + increment).coerceIn(!cell.converter.model.minPotentialRating, !cell.converter.model.potentialRating)
 
         cell.converter.setpointPotential = Quantity(newPotential)
         cell.setChanged()
@@ -397,7 +459,8 @@ class DcToDcConverterSpec(ci: SpecCreateInfo) :
         }
 
         val max = !cell.converter.model.potentialRating
-        val clamped = configValue.unwrap().coerceIn(0.0, max)
+        val min = !cell.converter.model.minPotentialRating
+        val clamped = configValue.unwrap().coerceIn(min, max)
         cell.converter.setpointPotential = Quantity(clamped)
         cell.setChanged()
         context.player!!.sendSystemMessage(Component.translatable("waila.eln2.Potential_setpoint_implicit").append(": ").append(String.format("%.3f", clamped)))
@@ -422,6 +485,11 @@ class DcToDcConverterSpec(ci: SpecCreateInfo) :
 
         builder.quantity(cell.thermalWire.thermalBody.temperature)
         builder.quantityInput(inputPower)
+
+        if(cell.signalMap != null) {
+            builder.signalInput(cell.converter.signalResistor!!.potential)
+        }
+
         builder.quantityOutput(cell.converter.outputSource.readouts.potential)
         builder.quantityOutput(cell.converter.outputSource.readouts.current)
         builder.quantityOutput(cell.converter.outputSource.readouts.power)
@@ -529,7 +597,7 @@ class PrimitivePowerConverterBlockEntity(pos: BlockPos, state: BlockState) :
         }
 
         val increment = delta / 10.0
-        val newPotential = (!cell.converter.setpointPotential + increment).coerceIn(0.0, !cell.converter.model.potentialRating)
+        val newPotential = (!cell.converter.setpointPotential + increment).coerceIn(!cell.converter.model.minPotentialRating, !cell.converter.model.potentialRating)
 
         cell.converter.setpointPotential = Quantity(newPotential)
         cell.setChanged()
@@ -547,9 +615,9 @@ class PrimitivePowerConverterBlockEntity(pos: BlockPos, state: BlockState) :
             context.player!!.sendSystemMessage(Component.translatable("waila.eln2.Potential_setpoint_implicit"))
             return
         }
-
         val max = !cell.converter.model.potentialRating
-        val clamped = configValue.unwrap().coerceIn(0.0, max)
+        val min = !cell.converter.model.minPotentialRating
+        val clamped = configValue.unwrap().coerceIn(min, max)
         cell.converter.setpointPotential = Quantity(clamped)
         cell.setChanged()
         context.player!!.sendSystemMessage(Component.translatable("waila.eln2.Potential_setpoint_implicit").append(": ").append(String.format("%.3f", clamped)))
@@ -573,6 +641,11 @@ class PrimitivePowerConverterBlockEntity(pos: BlockPos, state: BlockState) :
 
         builder.quantity(cell.thermalWire.thermalBody.temperature)
         builder.quantityInput(inputPower)
+
+        if(cell.signalMap != null) {
+            builder.signalInput(cell.converter.signalResistor!!.potential)
+        }
+
         builder.quantityOutput(cell.converter.outputSource.readouts.potential)
         builder.quantityOutput(cell.converter.outputSource.readouts.current)
         builder.quantityOutput(cell.converter.outputSource.readouts.power)
