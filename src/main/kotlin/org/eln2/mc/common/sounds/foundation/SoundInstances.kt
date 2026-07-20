@@ -114,7 +114,7 @@ data class SoundInfo(val pitch: Double, val volume: Double) {
 
             return SoundInfo(
                 pitch = (0.6 + clamped * 0.6).coerceIn(0.4, 2.0),
-                volume = (clamped.pow(1.5) * 1.5 + 0.1).coerceIn(0.0, 2.5)
+                volume = ((clamped.pow(1.5) * 0.5 + 0.1)).coerceIn(0.0, 1.0)
             )
         }
 
@@ -144,7 +144,7 @@ data class SoundInfo(val pitch: Double, val volume: Double) {
 
             return SoundInfo(
                 pitch = 1.0,
-                volume = (ratio * 0.3 + 0.1).coerceIn(0.0, 1.5)
+                volume = (ratio * 0.15 + 0.05).coerceIn(0.0, 1.5)
             )
         }
 

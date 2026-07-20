@@ -548,6 +548,7 @@ class SimulationExecutionSubgraph(val graph: CellGraph) {
             try {
                 isRunning = false
                 isPaused = false
+                pauseRequested = false
                 pausedSignal.signalAll()
             }
             finally {

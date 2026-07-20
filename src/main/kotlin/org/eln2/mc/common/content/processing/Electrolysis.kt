@@ -982,6 +982,9 @@ class ElectrolysisMainBlock : UprightHorizontalDirectionCellBlock<ElectrolysisCe
 
     override fun newBlockEntity(pPos: BlockPos, pState: BlockState) = ElectrolysisMainBlockEntity(pPos, pState)
 
+    @Deprecated("Deprecated in Java")
+    override fun skipRendering(pState: BlockState?, pAdjacentState: BlockState?, pDirection: Direction?) = true
+
     override fun <T : BlockEntity?> getTicker(
         pLevel: Level,
         pState: BlockState,

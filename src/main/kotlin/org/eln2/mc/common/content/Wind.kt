@@ -259,7 +259,8 @@ object WindSystem {
                     maxOf(
                         volumeOfInfluence.width,
                         volumeOfInfluence.height,
-                        volumeOfInfluence.depth)
+                        volumeOfInfluence.depth
+                    ) + 1
                 )
             ).toInt()
         )
