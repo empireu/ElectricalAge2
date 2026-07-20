@@ -268,6 +268,8 @@ object FlwModels {
 
     val STEAM_TURBINE = partialBlock("steam_turbine/steam_turbine")
 
+    val ELECTROLYSIS = partialBlock("electrolysis_main/electrolysis_main")
+
     fun partialBlock(path: String): PartialModel = PartialModel.of(resource("block/$path"))
     fun polarBlock(path: String): PolarModel = PolarModel(resource("block/$path"))
 

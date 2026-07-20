@@ -3,6 +3,13 @@
 package org.eln2.mc.common.content.processing
 
 import com.google.gson.JsonObject
+import dev.engine_room.flywheel.api.instance.Instance
+import dev.engine_room.flywheel.api.visual.SectionTrackedVisual
+import dev.engine_room.flywheel.api.visual.ShaderLightVisual
+import dev.engine_room.flywheel.api.visualization.VisualizationContext
+import dev.engine_room.flywheel.lib.instance.InstanceTypes
+import dev.engine_room.flywheel.lib.instance.TransformedInstance
+import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import net.minecraft.advancements.Advancement
 import net.minecraft.advancements.CriterionTriggerInstance
 import net.minecraft.core.BlockPos
@@ -58,6 +65,9 @@ import org.eln2.mc.Locators
 import org.eln2.mc.OnServerThread
 import org.eln2.mc.PoleMap
 import org.eln2.mc.ServerOnly
+import org.eln2.mc.client.render.FlwMaterials
+import org.eln2.mc.client.render.FlwModels
+import org.eln2.mc.client.render.foundation.PartialModelHelper
 import org.eln2.mc.client.screens.ProgressSupplierMenu
 import org.eln2.mc.common.blocks.foundation.*
 import org.eln2.mc.common.cells.foundation.*
@@ -1952,3 +1962,4 @@ class ElectrolysisMenu(
 
     override fun getProgressForRender() = containerData.progress
 }
+

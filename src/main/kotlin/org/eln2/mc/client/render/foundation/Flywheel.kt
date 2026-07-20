@@ -8,15 +8,13 @@ import dev.engine_room.flywheel.api.layout.IntegerRepr
 import dev.engine_room.flywheel.api.layout.LayoutBuilder
 import dev.engine_room.flywheel.api.material.Material
 import dev.engine_room.flywheel.api.model.Model
-import dev.engine_room.flywheel.api.visual.DynamicVisual
-import dev.engine_room.flywheel.api.visual.ShaderLightVisual
-import dev.engine_room.flywheel.api.visual.TickableVisual
-import dev.engine_room.flywheel.api.visual.Visual
+import dev.engine_room.flywheel.api.visual.*
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
 import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.SimpleInstanceType
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
+import dev.engine_room.flywheel.lib.material.SimpleMaterial
 import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.model.baked.BakedModelBuilder
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
@@ -29,60 +27,44 @@ import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntArrayList
-import kotlinx.serialization.Serializable
 import net.minecraft.client.renderer.block.model.BakedQuad
 import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
-import net.minecraft.network.chat.Component
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.entity.BlockEntity
 import org.ageseries.libage.data.OptionalDouble
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
-import org.ageseries.libage.mathematics.geometry.BoundingBox3d
-import org.ageseries.libage.mathematics.geometry.OrientedBoundingBox3d
-import org.ageseries.libage.mathematics.geometry.Rotation2d
-import org.ageseries.libage.mathematics.geometry.Rotation3d
-import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.mathematics.geometry.*
 import org.ageseries.libage.utils.putUnique
-import org.eln2.mc.ClientOnly
-import org.eln2.mc.DEBUGGER_BREAK
-import org.eln2.mc.LOG
-import org.eln2.mc.ServerOnly
-import org.eln2.mc.buildDirectionTable
+import org.eln2.mc.*
 import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.PartWithKnobsVisual.Companion.createKnobList
 import org.eln2.mc.client.render.foundation.PartWithKnobsVisual.Companion.transformKnobList
-import org.eln2.mc.client.render.foundation.WirePatchType.Inner
-import org.eln2.mc.client.render.foundation.WirePatchType.Wrapped
 import org.eln2.mc.common.blocks.BlockRegistry
+import org.eln2.mc.common.blocks.foundation.BigBlockRepresentativeBlockEntity
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityVisual
 import org.eln2.mc.common.blocks.foundation.MultipartVisualizationContext
 import org.eln2.mc.common.cells.foundation.KineticInterpolatorClient
 import org.eln2.mc.common.cells.foundation.RotatingKineticState
-import org.eln2.mc.common.content.*
+import org.eln2.mc.common.content.PartConnectionRenderInfo
+import org.eln2.mc.common.content.WireConnectionModelPartial
+import org.eln2.mc.common.content.WirePart
+import org.eln2.mc.common.content.getPartConnectionAsContactSectionConnectionOrNull
 import org.eln2.mc.common.grids.GridConnectionCell
 import org.eln2.mc.common.parts.foundation.*
 import org.eln2.mc.common.specs.foundation.*
-import org.eln2.mc.common.specs.foundation.SpecGeometry
-import org.eln2.mc.extensions.bind
-import org.eln2.mc.extensions.cast
-import org.eln2.mc.extensions.getListTag
-import org.eln2.mc.extensions.getViewRay
-import org.eln2.mc.extensions.readDoubleArray
-import org.eln2.mc.extensions.rotationFast
-import org.eln2.mc.extensions.vector3d
-import org.eln2.mc.extensions.writeDoubleArray
+import org.eln2.mc.extensions.*
 import org.eln2.mc.mathematics.Axis3d
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.maskXY
-import org.eln2.mc.requireIsOnServerThread
-import org.eln2.mc.resource
 import org.joml.Quaternionf
 import org.lwjgl.system.MemoryUtil
 import java.nio.ByteBuffer
@@ -1565,5 +1547,46 @@ class TestBlockEntityVisual<T : BlockEntity>(
 
     override fun _delete() {
         instance.delete()
+    }
+}
+
+class SimpleBigBlockEntityVisual<TBlockEntity>(
+    ctx: VisualizationContext,
+    blockEntity: TBlockEntity,
+    partialTick: Float,
+    model: PartialModel,
+    material: SimpleMaterial = FlwMaterials.SMOOTH_LIT
+) : AbstractBlockEntityVisual<TBlockEntity>(ctx, blockEntity, partialTick), ShaderLightVisual where TBlockEntity : BigBlockRepresentativeBlockEntity<TBlockEntity>, TBlockEntity : BlockEntity {
+    val body: TransformedInstance = visualizationContext.instancerProvider()
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.applyMaterial(model, material))
+        .createInstance()
+        .also {
+            it.translate(visualPosition)
+            it.center()
+            it.rotateToFace(blockEntity.representativeFacing.opposite)
+            it.uncenter()
+        }
+
+    override fun updateLight(p0: Float) {
+        // NOOP (shader light)
+    }
+
+    override fun setSectionCollector(sectionCollector: SectionTrackedVisual.SectionCollector) {
+        this.lightSections = sectionCollector
+
+        sectionCollector.sections(
+            blockEntity.delegateMap.getTotalSpannedSectionsFat(
+                blockState.getValue(HorizontalDirectionalBlock.FACING),
+                pos
+            )
+        )
+    }
+
+    override fun collectCrumblingInstances(p0: Consumer<Instance?>) {
+        p0.accept(body)
+    }
+
+    override fun _delete() {
+        body.delete()
     }
 }

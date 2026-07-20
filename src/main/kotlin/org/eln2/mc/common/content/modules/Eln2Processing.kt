@@ -20,8 +20,10 @@ import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.utils.addUnique
 import org.eln2.mc.NodeFrictionDescription
+import org.eln2.mc.client.render.FlwMaterials
 import org.eln2.mc.client.render.FlwModels
 import org.eln2.mc.client.render.foundation.DummyBlockEntityRendererProvider
+import org.eln2.mc.client.render.foundation.SimpleBigBlockEntityVisual
 import org.eln2.mc.client.screens.BasicProgressScreen
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.blocks.BlockRegistry.blockAndItem
@@ -237,6 +239,13 @@ object Eln2Processing : ContentModule() {
             CONDENSER_DISTILLATION_MODULE_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer(::PhaseChangeModuleBlockEntityVisual) { true }
         )
+
+        VisualizerRegistry.setVisualizer(
+            ELECTROLYSIS_MAIN_BLOCK_ENTITY.get(),
+            SimpleBlockEntityVisualizer({ ctx, be, pt ->
+                SimpleBigBlockEntityVisual(ctx, be, pt, FlwModels.ELECTROLYSIS)}
+            ) { true }
+        )
     }
 
     override fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
@@ -262,6 +271,11 @@ object Eln2Processing : ContentModule() {
 
         event.registerBlockEntityRenderer(
             CONDENSER_DISTILLATION_MODULE_BLOCK_ENTITY.get(),
+            DummyBlockEntityRendererProvider()
+        )
+
+        event.registerBlockEntityRenderer(
+            ELECTROLYSIS_MAIN_BLOCK_ENTITY.get(),
             DummyBlockEntityRendererProvider()
         )
     }
