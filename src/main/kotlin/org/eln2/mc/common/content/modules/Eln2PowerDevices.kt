@@ -32,6 +32,7 @@ import org.eln2.mc.common.content.PrimitivePowerConverterBlockEntity
 import org.eln2.mc.common.content.TerminalDcToDcConverterCell
 import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
 import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
+import org.eln2.mc.extensions.transformFacingBlock
 import org.eln2.mc.common.specs.SpecRegistry.specImmediateBB
 
 object Eln2PowerDevices : ContentModule() {
@@ -48,8 +49,8 @@ object Eln2PowerDevices : ContentModule() {
         VisualizerRegistry.setVisualizer(
             PRIMITIVE_DC_TO_DC_CONVERTER_BLOCK_ENTITY.get(),
             SimpleBlockEntityVisualizer({ ctx, blockEntity, partialTick ->
-                TestBlockEntityVisual(ctx, blockEntity, partialTick, FlwModels.LEAD_ACID_BATTERY) { instance, renderer ->
-                    instance.translate(renderer.visualPosition)
+                TestBlockEntityVisual(ctx, blockEntity, partialTick, FlwModels.PRIMITIVE_DC_TO_DC_CONVERTER) { instance, renderer ->
+                    instance.transformFacingBlock(renderer.visualPosition, blockEntity)
                 }
             }) { true }
         )

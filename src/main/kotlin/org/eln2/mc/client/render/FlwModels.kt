@@ -270,6 +270,8 @@ object FlwModels {
 
     val ELECTROLYSIS = partialBlock("electrolysis_main/electrolysis_main")
 
+    val PRIMITIVE_DC_TO_DC_CONVERTER = partialBlock("primitive_dc_to_dc_converter/primitive_dc_to_dc_converter")
+
     fun partialBlock(path: String): PartialModel = PartialModel.of(resource("block/$path"))
     fun polarBlock(path: String): PolarModel = PolarModel(resource("block/$path"))
 

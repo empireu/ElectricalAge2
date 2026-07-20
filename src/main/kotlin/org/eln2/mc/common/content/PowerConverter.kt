@@ -545,8 +545,8 @@ class PrimitivePowerConverterBlock : UprightHorizontalDirectionCellBlock<Termina
 
     companion object {
         private val COLLIDER = Shapes.box(
-            0.2, 0.0, 0.2,
-            0.8, 0.7, 0.8
+            0.0, 0.0, 0.0,
+            1.0, 11.5 / 16.0, 1.0
         )
     }
 }
@@ -562,30 +562,30 @@ class PrimitivePowerConverterBlockEntity(pos: BlockPos, state: BlockState) :
     override fun createTerminals() {
         val categories = listOf(GridMaterialCategory.PowerGrid)
 
-        defineCellBoxTerminal(
-            -0.3, 0.85, -0.3,
-            0.12, 0.12, 0.12,
+        defineCellBoxTerminalBB(
+            3.7, 8.5, 12.7,
+            1.6, 3.0, 1.6,
             highlightColor = MyColor.BLUE,
             categories = categories
         )
 
-        defineCellBoxTerminal(
-            -0.3, 0.85, 0.3,
-            0.12, 0.12, 0.12,
+        defineCellBoxTerminalBB(
+            12.7, 8.5, 12.7,
+            1.6, 3.0, 1.6,
             highlightColor = MyColor.RED,
             categories = categories
         )
 
-        defineCellBoxTerminal(
-            0.3, 0.85, -0.3,
-            0.12, 0.12, 0.12,
+        defineCellBoxTerminalBB(
+            3.7, 8.5, 1.7,
+            1.6, 3.0, 1.6,
             highlightColor = MyColor.BLUE,
             categories = categories
         )
 
-        defineCellBoxTerminal(
-            0.3, 0.85, 0.3,
-            0.12, 0.12, 0.12,
+        defineCellBoxTerminalBB(
+            12.7, 8.5, 1.7,
+            1.6, 3.0, 1.6,
             highlightColor = MyColor.RED,
             categories = categories
         )
