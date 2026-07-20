@@ -10,7 +10,8 @@
     "MixinRenderRegionCache"
   ],
   "client": [
-    "MixinDebugRenderer"
+    "MixinDebugRenderer",
+    "client.MixinLevelRenderer"
   ],
   "minVersion": "0.8"
 }

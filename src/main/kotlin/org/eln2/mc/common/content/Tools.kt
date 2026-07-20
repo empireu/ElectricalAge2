@@ -451,7 +451,6 @@ private class DrillPowerConsumer(
  * In area modes, neighbors perpendicular to the clicked face are broken when the center block completes.
  * */
 class DrillItem(val drillModel: DrillModel) : Item(Properties().stacksTo(1)) {
-
     fun getMode(stack: ItemStack): DrillMode {
         val tag = stack.tag ?: return DrillMode.Single
         val ordinal = tag.getInt(DRILL_MODE)
@@ -542,7 +541,6 @@ class DrillItem(val drillModel: DrillModel) : Item(Properties().stacksTo(1)) {
     }
 
     companion object {
-        private const val DT = 1.0 / 20.0
         private val consumers = HashMap<UUID, DrillPowerConsumer>()
 
         fun clearAll() {
@@ -554,7 +552,6 @@ class DrillItem(val drillModel: DrillModel) : Item(Properties().stacksTo(1)) {
         }
 
         fun onLeftClickBlock(event: PlayerInteractEvent.LeftClickBlock) {
-
             val player = event.entity as? ServerPlayer ?: return
             val stack = player.mainHandItem
             val drill = stack.item as? DrillItem ?: return
@@ -680,7 +677,7 @@ class DrillItem(val drillModel: DrillModel) : Item(Properties().stacksTo(1)) {
             }
         }
 
-        private fun computeAreaPositions(center: BlockPos, face: Direction, radius: Int): List<BlockPos> {
+        internal fun computeAreaPositions(center: BlockPos, face: Direction, radius: Int): List<BlockPos> {
             val positions = ArrayList<BlockPos>()
 
             val (axisA, axisB) = when (face.axis) {
@@ -703,6 +700,19 @@ class DrillItem(val drillModel: DrillModel) : Item(Properties().stacksTo(1)) {
             }
 
             return positions
+        }
+
+        /**
+         * Picks the face of [center] that [player] is mining, derived from the player's eye position relative to the block center.
+         * Only the axis matters for [computeAreaPositions], so the sign is irrelevant.
+         * */
+        internal fun pickMiningFace(center: BlockPos, player: Player): Direction {
+            val eye = player.eyePosition
+            return Direction.getNearest(
+                eye.x - (center.x + 0.5),
+                eye.y - (center.y + 0.5),
+                eye.z - (center.z + 0.5)
+            )
         }
     }
 }
