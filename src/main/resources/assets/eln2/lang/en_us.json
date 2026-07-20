@@ -62,6 +62,12 @@
     "item.eln2.acetylene_bucket": "Acetylene Bucket",
     "item.eln2.sodium_tungstate_solution_bucket": "Sodium Tungstate Solution Bucket",
     "item.eln2.sodium_hydroxide_solution_bucket": "Sodium Hydroxide Solution Bucket",
+    "item.eln2.sulfur_dioxide_bucket": "Sulfur Dioxide Bucket",
+    "item.eln2.dilute_sulfuric_acid_bucket": "Dilute Sulfuric Acid Bucket",
+    "item.eln2.nitrogen_dioxide_bucket": "Nitrogen Dioxide Bucket",
+    "item.eln2.liquid_oxygen_bucket": "Liquid Oxygen Bucket",
+    "item.eln2.oxygen_bucket": "Oxygen Bucket",
+    "item.eln2.hho_gas_bucket": "HHO Gas Bucket",
 
     // Fluid Blocks
     "block.eln2.steam_block": "Steam",
@@ -112,6 +118,7 @@
 
     // Wire Parts:
     "item.eln2.standard_uninsulated_copper_thermal_wire": "Standard Uninsulated Copper Thermal Conduit",
+    "item.eln2.standard_insulated_copper_thermal_wire": "Standard Insulated Copper Thermal Conduit",
     "item.eln2.standard_insulated_copper_electrical_wire": "Standard Copper Electrical Cable",
     "item.eln2.signal_wire": "Signal Cable",
 
@@ -131,9 +138,12 @@
     "item.eln2.signal_grid_anchor": "Signal Grid Anchor",
 
     // Tools:
+    "item.eln2.lead_acid_power_cell": "Lead-Acid Power Cell",
     "item.eln2.wrench": "Dragon Wrench",
     "item.eln2.grid_cable_pliers": "Grid Cable Pliers",
     "item.eln2.screwdriver": "Screwdriver",
+    "item.eln2.drill": "Drill",
+    "item.eln2.flashlight": "Flashlight",
 
     // Valves:
     "item.eln2.fluid_pipe_extraction_valve": "Fluid Pipe Extraction Valve",
@@ -142,6 +152,7 @@
     // Lightbulbs:
     "item.eln2.light_bulb_240v_100w": "240V 100W Light Bulb",
     "item.eln2.unsealed_240v_100w_light_bulb": "Unsealed 240V 100W Light Bulb",
+
     // Batteries:
     "item.eln2.lead_acid_battery_12v": "12V Lead-Acid Battery",
     "item.eln2.micro_grid_lead_acid_battery_12v": "12V Lead-Acid Battery",
@@ -163,7 +174,6 @@
     "item.eln2.current_probe": "Current Probe",
     "item.eln2.basic_two_channel_oscilloscope": "Basic Oscilloscope",
     "item.eln2.probe_body": "Probe Body",
-
 
     // Materials:
     "item.eln2.coke": "Coke",
@@ -307,6 +317,8 @@
     "item.eln2.sodium_tungstate_solution_bottle": "Sodium Tungstate Solution Bottle",
     "item.eln2.sodium_hydroxide_solution_bottle": "Sodium Hydroxide Solution Bottle",
     "item.eln2.insulating_varnish_bucket": "Insulating Varnish Bucket",
+    "item.eln2.dilute_sulfuric_acid_bottle": "Dilute Sulfuric Acid Bottle",
+    "item.eln2.liquid_oxygen_bottle": "Liquid Oxygen Bottle",
 
     // Machines (blocks):
     "block.eln2.magnetite_ore": "Magnetite Ore",
@@ -329,6 +341,13 @@
     "block.eln2.alloying_smelter": "Alloying Smelter",
     "block.eln2.hydrogen_reduction_furnace": "Hydrogen Reduction Furnace",
     "block.eln2.burner_reactor": "Burner Reactor",
+    "block.eln2.power_cell_charger": "Power Cell Charger",
+    "block.eln2.primitive_dc_to_dc_converter": "Primitive DC-DC Converter",
+    "block.eln2.lead_chamber": "Lead Chamber",
+    "block.eln2.electrolysis_main": "Electrolysis Device",
+    "block.eln2.steam_turbine": "Steam Turbine",
+    "block.eln2.grid_pass_pole": "Grid Pass Pole",
+    "block.eln2.iron_tank": "Iron Fluid Tank",
 
     // Parts:
     "item.eln2.tree_tap": "Tree Tap",
