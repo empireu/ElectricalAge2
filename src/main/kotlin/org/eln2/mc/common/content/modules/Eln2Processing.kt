@@ -307,10 +307,10 @@ object Eln2Processing : ContentModule() {
         MenuScreens.register(ALLOYING_SMELTER_MENU.get()) { menu, inventory, title ->
             BasicProgressScreen(
                 menu, inventory, title,
-                resource("textures/gui/container/crusher_base.png"),
-                resource("textures/gui/container/crusher_progress.png"),
-                79.0f,
-                103.0f
+                resource("textures/gui/container/alloying_smelter/base.png"),
+                resource("textures/gui/container/alloying_smelter/progress.png"),
+                71.0f,
+                114.0f
             )
         }
 

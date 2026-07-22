@@ -493,13 +493,19 @@ class AlloyingSmelterMenu(
     )
 
     init {
-        for (i in 0 until ALLOYING_INPUT_SLOT_COUNT) {
-            addSlot(SlotItemHandlerWithPlacePredicate(handler, i, 21 + i * 21, 24) { stack ->
+        fun inputSlot(idx: Int, x: Int, y: Int) {
+            addSlot(SlotItemHandlerWithPlacePredicate(handler, idx, x, y) { stack ->
                 ForgeHooks.getBurnTime(stack, RecipeType.SMELTING) <= 0
             })
         }
-        addSlot(SlotItemHandler(handler, ALLOYING_INPUT_SLOT_COUNT, 21, 49))
-        addSlot(SlotItemHandlerWithPlacePredicate(handler, ALLOYING_INPUT_SLOT_COUNT + 1, 129, 35) { false })
+
+        inputSlot(0, 34, 26)
+        inputSlot(1, 53, 26)
+        inputSlot(2, 34, 45)
+        inputSlot(3, 53, 45)
+
+        addSlot(SlotItemHandler(handler, ALLOYING_INPUT_SLOT_COUNT, 86, 57))
+        addSlot(SlotItemHandlerWithPlacePredicate(handler, ALLOYING_INPUT_SLOT_COUNT + 1, 122, 35) { false })
         addDataSlots(containerData)
         ContainerHelper.addPlayerGrid(playerInventory, this::addSlot)
     }
