@@ -289,6 +289,14 @@
     "item.eln2.copper_rotor": "Copper Rotor",
     "item.eln2.brushed_dc_motor": "Brushed DC Motor",
 
+    // Steam Turbine:
+    "item.eln2.turbine_rotor": "Turbine Rotor",
+    "item.eln2.steam_injector": "Steam Injector",
+    "item.eln2.condenser_unit": "Condenser Unit",
+    "item.eln2.bearing_assembly": "Bearing Assembly",
+    "item.eln2.turbine_casing": "Turbine Casing",
+    "item.eln2.turbine_controller": "Turbine Controller",
+
     // Work boxes:
     "item.eln2.primitive_kinetic_work_box": "Primitive Kinetic Work Box",
     "item.eln2.brushed_dc_motor_work_box": "Brushed DC Motor Work Box",

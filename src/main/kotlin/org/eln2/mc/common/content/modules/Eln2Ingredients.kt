@@ -429,4 +429,15 @@ object Eln2Ingredients : ContentModule() {
     val PROBE_BODY = itemDefault("probe_body")
 
     //#endregion
+
+    //#region Steam Turbine
+
+    val TURBINE_ROTOR = itemDefault("turbine_rotor")
+    val STEAM_INJECTOR = itemDefault("steam_injector")
+    val CONDENSER_UNIT = itemDefault("condenser_unit")
+    val BEARING_ASSEMBLY = itemDefault("bearing_assembly")
+    val TURBINE_CASING = itemDefault("turbine_casing")
+    val TURBINE_CONTROLLER = itemDefault("turbine_controller")
+
+    //#endregion
 }

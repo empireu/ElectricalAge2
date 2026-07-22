@@ -1391,6 +1391,8 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_primitive_circuit", has(Eln2Ingredients.PRIMITIVE_CIRCUIT.get()))
             .save(pWriter, resource("crafting/relay"))
 
+        //#endregion
+
         ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2BasicComponents.GROUND_PART.item.get())
             .pattern(" I ")
             .pattern(" W ")
@@ -1502,6 +1504,96 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .define('C', Eln2Ingredients.PRIMITIVE_CIRCUIT.get())
             .unlockedBy("has_machine_frame", has(Eln2Ingredients.MACHINE_FRAME.get()))
             .save(pWriter, resource("crafting/power_cell_charger"))
+
+        //#region Steam Turbine
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.TURBINE_ROTOR.get())
+            .pattern(" B ")
+            .pattern("BSB")
+            .pattern(" B ")
+            .define('B', taggedIngredient(Eln2Ingredients.BRONZE_PLATE.get()))
+            .define('S', Eln2Ingredients.IRON_SHAFT.get())
+            .unlockedBy("has_bronze_plate", has(Eln2Ingredients.BRONZE_PLATE.get()))
+            .save(pWriter, resource("crafting/turbine_rotor"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.STEAM_INJECTOR.get())
+            .pattern(" P ")
+            .pattern("THT")
+            .pattern(" P ")
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .define('T', Eln2ForgeFluids.IRON_TANK.blockAndItem.item.get())
+            .define('H', Eln2Ingredients.PIPE_HEAT_EXCHANGE_ASSEMBLY.get())
+            .unlockedBy("has_pipe_heat_exchange_assembly", has(Eln2Ingredients.PIPE_HEAT_EXCHANGE_ASSEMBLY.get()))
+            .save(pWriter, resource("crafting/steam_injector"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.CONDENSER_UNIT.get())
+            .pattern("PPP")
+            .pattern("CDC")
+            .pattern("PPP")
+            .define('P', Eln2ForgeFluids.FLUID_PIPE_BLOCK.item.get())
+            .define('D', Eln2Processing.CONDENSER_DISTILLATION_MODULE_BLOCK.item.get())
+            .define('C', taggedIngredient(Eln2Ingredients.COPPER_PLATE.get()))
+            .unlockedBy("has_condenser_distillation_module", has(Eln2Processing.CONDENSER_DISTILLATION_MODULE_BLOCK.item.get()))
+            .save(pWriter, resource("crafting/condenser_unit"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.BEARING_ASSEMBLY.get())
+            .pattern("I I")
+            .pattern("S S")
+            .pattern("A A")
+            .define('I', Items.IRON_BLOCK)
+            .define('S', Eln2Ingredients.IRON_SHAFT.get())
+            .define('A', Eln2Ingredients.IRON_AXLE_MOUNT.get())
+            .unlockedBy("has_iron_axle_mount", has(Eln2Ingredients.IRON_AXLE_MOUNT.get()))
+            .save(pWriter, resource("crafting/bearing_assembly"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.TURBINE_CASING.get())
+            .pattern("III")
+            .pattern("IMI")
+            .pattern("IAI")
+            .define('I', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .define('M', Eln2Ingredients.MACHINE_FRAME.get())
+            .define('A', Eln2Ingredients.ASBESTOS_FIBER.get())
+            .unlockedBy("has_machine_frame", has(Eln2Ingredients.MACHINE_FRAME.get()))
+            .save(pWriter, resource("crafting/turbine_casing"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.TURBINE_CONTROLLER.get())
+            .pattern("CC ")
+            .pattern("RG ")
+            .pattern("WW ")
+            .define('C', Eln2Ingredients.PRIMITIVE_CIRCUIT.get())
+            .define('R', Items.REDSTONE)
+            .define('G', Items.GOLD_NUGGET)
+            .define('W', Eln2Ingredients.COPPER_WIRE.get())
+            .unlockedBy("has_primitive_circuit", has(Eln2Ingredients.PRIMITIVE_CIRCUIT.get()))
+            .save(pWriter, resource("crafting/turbine_controller"))
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2SteamTurbine.STEAM_TURBINE_BLOCK_ITEM.get())
+            .pattern("BSB")
+            .pattern("CRC")
+            .pattern("UXU")
+            .define('B', Eln2Ingredients.BEARING_ASSEMBLY.get())
+            .define('S', Eln2Ingredients.STEAM_INJECTOR.get())
+            .define('R', Eln2Ingredients.TURBINE_ROTOR.get())
+            .define('C', Eln2Ingredients.TURBINE_CASING.get())
+            .define('U', Eln2Ingredients.CONDENSER_UNIT.get())
+            .define('X', Eln2Ingredients.TURBINE_CONTROLLER.get())
+            .unlockedBy("has_turbine_rotor", has(Eln2Ingredients.TURBINE_ROTOR.get()))
+            .save(pWriter, resource("crafting/steam_turbine"))
+
+        //#endregion
+
+        //#region Alloying Smelter
+
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Processing.ALLOYING_SMELTER_BLOCK.item.get())
+            .pattern("BAB")
+            .pattern("BFB")
+            .pattern("BPB")
+            .define('B', Items.BRICKS)
+            .define('A', Eln2Ingredients.ASBESTOS_FIBER.get())
+            .define('F', Items.FURNACE)
+            .define('P', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
+            .unlockedBy("has_bricks", has(Items.BRICKS))
+            .save(pWriter, resource("crafting/alloying_smelter"))
 
         //#endregion
 
