@@ -313,7 +313,7 @@ class BurningRecipe(
 
 //#region Block
 
-class BurningBlock : HorizontalDirectionalBlock(Properties.of().strength(3.5f).requiresCorrectToolForDrops()), EntityBlock {
+class BurnerBlock : HorizontalDirectionalBlock(Properties.of().strength(3.5f).requiresCorrectToolForDrops()), EntityBlock {
     companion object {
         val LIT: BooleanProperty = BooleanProperty.create("lit")
     }
@@ -326,16 +326,16 @@ class BurningBlock : HorizontalDirectionalBlock(Properties.of().strength(3.5f).r
         pBuilder.add(FACING, LIT)
     }
 
-    override fun newBlockEntity(pPos: BlockPos, pState: BlockState): BlockEntity = BurningBlockEntity(pPos, pState)
+    override fun newBlockEntity(pPos: BlockPos, pState: BlockState): BlockEntity = BurnerBlockEntity(pPos, pState)
 
     override fun <T : BlockEntity?> getTicker(pLevel: Level, pState: BlockState, pBlockEntityType: BlockEntityType<T>): BlockEntityTicker<T>? {
         if (pLevel.isClientSide) return null
-        return BlockEntityTicker(BurningBlockEntity::tickServer)
+        return BlockEntityTicker(BurnerBlockEntity::tickServer)
     }
 
     @Deprecated("Deprecated in Java")
     override fun use(pState: BlockState, pLevel: Level, pPos: BlockPos, pPlayer: Player, pHand: InteractionHand, pHit: BlockHitResult): InteractionResult {
-        return pLevel.constructMenuHelper2<BurningBlockEntity>(pPos, pPlayer, Component.literal("Burner Reactor"), ::BurningMenu)
+        return pLevel.constructMenuHelper2<BurnerBlockEntity>(pPos, pPlayer, Component.literal("Burner Reactor"), ::BurnerMenu)
     }
 
     override fun animateTick(pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {
@@ -363,11 +363,11 @@ class BurningBlock : HorizontalDirectionalBlock(Properties.of().strength(3.5f).r
 
 //#region Block Entity
 
-class BurningBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln2Processing.BURNING_BLOCK_ENTITY.get(), pPos, pState), ComponentDisplay {
+class BurnerBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln2Processing.BURNER_BLOCK_ENTITY.get(), pPos, pState), ComponentDisplay {
     companion object {
         @ServerOnly
         fun tickServer(pLevel: Level?, pPos: BlockPos?, pState: BlockState?, pBlockEntity: BlockEntity?) {
-            if (pBlockEntity is BurningBlockEntity) {
+            if (pBlockEntity is BurnerBlockEntity) {
                 pBlockEntity.serverTick()
             }
         }
@@ -375,7 +375,7 @@ class BurningBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln2P
 
     //#region Capability
 
-    class InventoryHandler(val blockEntity: BurningBlockEntity) : ItemStackHandler(BURNER_SLOT_COUNT) {
+    class InventoryHandler(val blockEntity: BurnerBlockEntity) : ItemStackHandler(BURNER_SLOT_COUNT) {
         val inputRange = 0 until BURNER_INPUT_SLOT_COUNT
         val outputSlot = BURNER_OUTPUT_SLOT
 
@@ -445,7 +445,7 @@ class BurningBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln2P
         false
     )
 
-    class ThermalHandler(val parent: PurityBasedMultipleFractionalFluidTank, val blockEntity: BurningBlockEntity) : IFractionalFluidHandler by parent, IThermalFluidHandler {
+    class ThermalHandler(val parent: PurityBasedMultipleFractionalFluidTank, val blockEntity: BurnerBlockEntity) : IFractionalFluidHandler by parent, IThermalFluidHandler {
         override fun fill(resource: FluidStack, action: IFluidHandler.FluidAction) = 0
         override fun fillFractional(resource: FractionalFluidStack, action: IFluidHandler.FluidAction) = 0.0
         override fun fillThermal(resource: FractionalFluidStack, temperature: OptionalDouble, action: IFluidHandler.FluidAction) = 0.0
@@ -621,10 +621,10 @@ class BurningBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln2P
 
         val shouldBeLit = operation != null
 
-        if (blockState.getValue(BurningBlock.LIT) != shouldBeLit) {
+        if (blockState.getValue(BurnerBlock.LIT) != shouldBeLit) {
             level!!.setBlock(
                 blockPos,
-                blockState.setValue(BurningBlock.LIT, shouldBeLit),
+                blockState.setValue(BurnerBlock.LIT, shouldBeLit),
                 Block.UPDATE_ALL
             )
         }
@@ -676,14 +676,14 @@ class BurningBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln2P
 
 //#region Menu
 
-class BurningMenu(
+class BurnerMenu(
     pContainerId: Int,
     playerInventory: Inventory,
     handler: ItemStackHandler,
     val containerData: ProgressContainerData,
     val access: ContainerLevelAccess,
     val level: Level
-) : AbstractContainerMenu(Eln2Processing.BURNING_MENU.get(), pContainerId), ProgressSupplierMenu {
+) : AbstractContainerMenu(Eln2Processing.BURNER_MENU.get(), pContainerId), ProgressSupplierMenu {
     companion object {
         private val INPUT_SLOTS = mapOf(
             0 to Vector2di(33, 29),
@@ -694,7 +694,7 @@ class BurningMenu(
     }
 
     @ServerOnly
-    constructor(entity: BurningBlockEntity, id: Int, inventory: Inventory) : this(
+    constructor(entity: BurnerBlockEntity, id: Int, inventory: Inventory) : this(
         id,
         inventory,
         entity.inventoryHandler,
@@ -725,7 +725,7 @@ class BurningMenu(
         ContainerHelper.addPlayerGrid(playerInventory, this::addSlot)
     }
 
-    override fun stillValid(pPlayer: Player) = stillValid(access, pPlayer, Eln2Processing.BURNING_BLOCK.block.get())
+    override fun stillValid(pPlayer: Player) = stillValid(access, pPlayer, Eln2Processing.BURNER_BLOCK.block.get())
 
     override fun quickMoveStack(pPlayer: Player, pIndex: Int) = ContainerHelper.quickMove(slots, pPlayer, pIndex)
 

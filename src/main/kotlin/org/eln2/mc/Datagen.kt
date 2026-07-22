@@ -1268,7 +1268,7 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_rubber_wood_panel", has(Eln2Ingredients.RUBBER_WOOD_PANEL.get()))
             .save(pWriter, resource("crafting/fuse_panel"))
 
-        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Processing.BURNING_BLOCK.item.get())
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Processing.BURNER_BLOCK.item.get())
             .pattern("PIP")
             .pattern("BVB")
             .pattern("PPP")

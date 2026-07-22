@@ -539,9 +539,9 @@ class BurningCategory(guiHelper: IGuiHelper) : Eln2RecipeCategory<BurningRecipe>
     categoryTitle = Component.translatable("recipe.eln2.burning"),
     categoryWidth = 177,
     categoryHeight = 110,
-    categoryIcon = ItemIcon(ItemStack(Eln2Processing.BURNING_BLOCK.item.get())),
+    categoryIcon = ItemIcon(ItemStack(Eln2Processing.BURNER_BLOCK.item.get())),
     categoryCatalysts = listOf(
-        Supplier { ItemStack(Eln2Processing.BURNING_BLOCK.item.get()) }
+        Supplier { ItemStack(Eln2Processing.BURNER_BLOCK.item.get()) }
     ),
     guiHelper
 ) {
