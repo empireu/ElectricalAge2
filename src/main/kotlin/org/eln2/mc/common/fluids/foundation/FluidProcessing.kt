@@ -4,16 +4,19 @@ import com.google.gson.GsonBuilder
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import it.unimi.dsi.fastutil.longs.Long2BooleanOpenHashMap
+import net.minecraft.ChatFormatting
+import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.packs.resources.ResourceManager
 import net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener
 import net.minecraft.util.profiling.ProfilerFiller
 import net.minecraft.world.level.material.Fluid
-import net.minecraft.world.level.material.Fluids
 import net.minecraftforge.registries.ForgeRegistries
-import org.ageseries.libage.data.KELVIN
+import net.minecraft.world.level.material.Fluids
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.Temperature
+import org.ageseries.libage.data.classify
+import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.extensions.*
@@ -268,4 +271,72 @@ object FluidTransformationManager : SimpleJsonResourceReloadListener(GsonBuilder
     }
 
     fun getTransformations(fluid: Fluid) = transformationsByFluid[fluid]
+}
+
+/**
+ * Appends thermal fluid properties and phase-change information to [tooltips] for the given [fluid].
+ * Shows specific heat capacity, density, state (gas/liquid), and boiling/condensation points with enthalpies.
+ * Only adds lines for fluids that have [PhysicalFluid] data; non-thermal fluids are skipped.
+ * */
+fun appendThermalFluidTooltip(fluid: Fluid, tooltips: MutableList<Component>) {
+    val properties = PhysicalFluidManager.getProperties(fluid) ?: return
+
+    val yellow = ChatFormatting.YELLOW
+    val gray = ChatFormatting.GRAY
+    val aqua = ChatFormatting.AQUA
+
+    tooltips.add(
+        Component.translatable("tooltip.eln2.fluid.state")
+            .append(": ")
+            .append(Component.translatable(if (properties.isGaseous) "tooltip.eln2.fluid.gaseous" else "tooltip.eln2.fluid.liquid").withStyle(aqua))
+            .withStyle(yellow)
+    )
+
+    tooltips.add(
+        Component.translatable("tooltip.eln2.fluid.specific_heat")
+            .append(": ")
+            .append(Component.literal(properties.specificHeatCapacity.classify()).withStyle(gray))
+            .withStyle(yellow)
+    )
+
+    tooltips.add(
+        Component.translatable("tooltip.eln2.fluid.density")
+            .append(": ")
+            .append(Component.literal(properties.density.classify()).withStyle(gray))
+            .withStyle(yellow)
+    )
+
+    val transformation = FluidTransformationManager.getTransformations(fluid)
+
+    transformation?.boiling?.let { boiling ->
+        tooltips.add(
+            Component.translatable("tooltip.eln2.fluid.boiling_point")
+                .append(": ")
+                .append(Component.literal(boiling.temperature.classify()).withStyle(gray))
+                .withStyle(yellow)
+        )
+
+        tooltips.add(
+            Component.translatable("tooltip.eln2.fluid.vaporization_enthalpy")
+                .append(": ")
+                .append(Component.literal(boiling.enthalpy.classify()).withStyle(gray))
+                .withStyle(yellow)
+        )
+    }
+
+    transformation?.condensation?.let { condensation ->
+        tooltips.add(
+            Component.translatable("tooltip.eln2.fluid.condensation_point")
+                .append(": ")
+                .append(Component.literal(condensation.temperature.classify()).withStyle(gray))
+                .withStyle(yellow)
+        )
+
+        tooltips.add(
+            Component.translatable("tooltip.eln2.fluid.condensation_enthalpy")
+                .append(": ")
+                .append(Component.literal(condensation.enthalpy.classify()).withStyle(gray))
+                .withStyle(yellow)
+        )
+    }
 }

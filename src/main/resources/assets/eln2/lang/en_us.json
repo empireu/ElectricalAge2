@@ -552,5 +552,15 @@
     "tooltip.eln2.fluid_pipe_module.use": "Install in a fluid pipe block",
 
     "tooltip.eln2.electrode.use": "Install in an electrolysis device",
-    "tooltip.eln2.separator.use": "Install in an electrolysis device"
+    "tooltip.eln2.separator.use": "Install in an electrolysis device",
+
+    "tooltip.eln2.fluid.state": "State",
+    "tooltip.eln2.fluid.gaseous": "Gas",
+    "tooltip.eln2.fluid.liquid": "Liquid",
+    "tooltip.eln2.fluid.specific_heat": "Specific heat",
+    "tooltip.eln2.fluid.density": "Density",
+    "tooltip.eln2.fluid.boiling_point": "Boiling point",
+    "tooltip.eln2.fluid.vaporization_enthalpy": "Heat of vaporization",
+    "tooltip.eln2.fluid.condensation_point": "Condensation point",
+    "tooltip.eln2.fluid.condensation_enthalpy": "Heat of condensation"
 }

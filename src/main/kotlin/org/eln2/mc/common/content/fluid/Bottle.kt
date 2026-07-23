@@ -2,9 +2,12 @@ package org.eln2.mc.common.content.fluid
 
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
+import net.minecraft.network.chat.Component
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.TooltipFlag
+import net.minecraft.world.level.Level
 import net.minecraft.world.item.Items
 import net.minecraft.world.item.context.UseOnContext
 import net.minecraftforge.common.capabilities.ForgeCapabilities
@@ -12,9 +15,9 @@ import net.minecraftforge.event.entity.player.PlayerInteractEvent
 import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.fluids.capability.IFluidHandler
 import org.eln2.mc.LOG
-import org.eln2.mc.common.content.fluid.ChemicalBottleItem.Companion.onRightClickBlockEvent
-import org.eln2.mc.common.content.modules.Eln2ForgeFluids
 import org.eln2.mc.common.fluids.ForgeFluidRegistry
+import org.eln2.mc.common.fluids.foundation.appendThermalFluidTooltip
+import org.eln2.mc.common.content.modules.Eln2ForgeFluids
 
 /**
  * Bottle holding 250mB of fluid. This item can be emptied into tanks, giving a vanilla glass bottle.
@@ -95,6 +98,15 @@ class ChemicalBottleItem(val eln2Fluid: ForgeFluidRegistry.ForgeFluidRegistryIte
         return ItemStack(Items.GLASS_BOTTLE, 1)
     }
 
+    override fun appendHoverText(
+        pStack: ItemStack,
+        pLevel: Level?,
+        pTooltipComponents: MutableList<Component>,
+        pIsAdvanced: TooltipFlag,
+    ) {
+        super.appendHoverText(pStack, pLevel, pTooltipComponents, pIsAdvanced)
+        appendThermalFluidTooltip(eln2Fluid.get(), pTooltipComponents)
+    }
     override fun useOn(pContext: UseOnContext): InteractionResult {
         val player = pContext.player
             ?: return InteractionResult.FAIL

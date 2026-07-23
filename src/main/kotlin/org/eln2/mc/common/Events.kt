@@ -13,6 +13,7 @@ import net.minecraft.world.item.Item
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets
 import net.minecraftforge.client.event.EntityRenderersEvent
+import net.minecraftforge.event.entity.player.ItemTooltipEvent
 import net.minecraftforge.client.event.RegisterColorHandlersEvent
 import net.minecraftforge.client.extensions.common.IClientFluidTypeExtensions
 import net.minecraftforge.data.event.GatherDataEvent
@@ -52,9 +53,10 @@ import org.eln2.mc.common.content.processing.LeadChamberExecutionManager
 import org.eln2.mc.common.content.processing.TreeExtractionManager
 import org.eln2.mc.common.events.Scheduler
 import org.eln2.mc.common.events.schedulePost
-import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.fluids.foundation.FluidTransformationManager
+import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.fluids.foundation.PhysicalFluidManager
+import org.eln2.mc.common.fluids.foundation.appendThermalFluidTooltip
 import org.eln2.mc.common.grids.GridCollisions
 import org.eln2.mc.common.grids.GridConnectionManagerClient
 import org.eln2.mc.common.grids.GridConnectionManagerServer
@@ -262,6 +264,14 @@ object ForgeEvents {
         event.addListener(TreeExtractionManager)
     }
 
+    @SubscribeEvent @JvmStatic
+    fun onItemTooltip(event: ItemTooltipEvent) {
+        val item = event.itemStack.item
+
+        if (item is BucketItem) {
+            appendThermalFluidTooltip(item.fluid, event.toolTip)
+        }
+    }
     @SubscribeEvent @JvmStatic
     fun onServerStarting(event: ServerStartingEvent) {
         LOG.info("Making ELN2 thread pool")
