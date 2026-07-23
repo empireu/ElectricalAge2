@@ -143,6 +143,12 @@
     "item.eln2.grid_cable_pliers": "Grid Cable Pliers",
     "item.eln2.screwdriver": "Screwdriver",
     "item.eln2.drill": "Drill",
+    "item.eln2.drill.mode.single": "Single Block",
+    "item.eln2.drill.mode.area3x3": "3x3 Area",
+    "item.eln2.drill.mode.area5x5": "5x5 Area",
+    "item.eln2.drill.mode.Single.name": "Drill Single Block",
+    "item.eln2.drill.mode.Area3x3.name": "Drill 3x3 Area",
+    "item.eln2.drill.mode.Area5x5.name": "Drill 5x5 Area",
     "item.eln2.flashlight": "Flashlight",
 
     // Valves:
