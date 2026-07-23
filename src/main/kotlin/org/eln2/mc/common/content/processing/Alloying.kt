@@ -228,7 +228,7 @@ class AlloyingSmelterBlock : HorizontalDirectionalBlock(Properties.of().strength
             if (pRandom.nextDouble() < 0.5) {
                 pLevel.playLocalSound(d0, d1, d2, SoundEvents.FURNACE_FIRE_CRACKLE, SoundSource.BLOCKS, 1.0f, 1.0f, false)
             }
-            val direction = pState.getValue(FACING)
+            val direction = pState.getValue(FACING).counterClockWise
             repeat(4) {
                 val d4 = pRandom.nextDouble() * 0.6 - 0.3
                 val d5 = if (direction.axis === Direction.Axis.X) direction.stepX.toDouble() * 0.52 else d4
