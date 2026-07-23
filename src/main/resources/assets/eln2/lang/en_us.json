@@ -513,5 +513,34 @@
     "recipe.eln2.vacuum_sealing": "Vacuum Sealing",
 
     "jei.eln2.vulcanizing.temperature_range": "Temperature: %s\u00B0C - %s\u00B0C",
-    "jei.eln2.vulcanizing.burnt": "Result when overheated"
+    "jei.eln2.vulcanizing.burnt": "Result when overheated",
+
+    "tooltip.eln2.power_cell.charge": "Charge",
+    "tooltip.eln2.power_cell.capacity": "Capacity",
+    "tooltip.eln2.power_cell.max_in": "Max charge rate",
+    "tooltip.eln2.power_cell.max_out": "Max discharge rate",
+    "tooltip.eln2.power_cell.efficiency": "Round-trip efficiency",
+
+    "tooltip.eln2.drill.power": "Power demand",
+    "tooltip.eln2.drill.mode": "Mode",
+
+    "tooltip.eln2.flashlight.power": "Power demand",
+
+    "tooltip.eln2.heating_element.max_temp": "Max temperature",
+    "tooltip.eln2.heating_element.burnt": "Burnt out - replace in machine",
+
+    "tooltip.eln2.light_bulb.life": "Life",
+
+    "tooltip.eln2.wrench.use": "Right-click to rotate parts, Shift+Right-click for special actions",
+    "tooltip.eln2.wrench.rotate": "Shift rotates the opposite direction",
+
+    "tooltip.eln2.screwdriver.use": "Right-click to set value, Shift+Right-click to apply to a block",
+    "tooltip.eln2.screwdriver.scroll": "Shift+Scroll to adjust in-world",
+
+    "tooltip.eln2.grid_pliers.use": "Right-click a grid cable to cut and retrieve it",
+
+    "tooltip.eln2.fluid_pipe_module.use": "Install in a fluid pipe block",
+
+    "tooltip.eln2.electrode.use": "Install in an electrolysis device",
+    "tooltip.eln2.separator.use": "Install in an electrolysis device"
 }

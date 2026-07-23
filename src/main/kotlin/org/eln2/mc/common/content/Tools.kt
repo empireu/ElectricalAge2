@@ -1,5 +1,6 @@
 package org.eln2.mc.common.content
 
+import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -38,6 +39,7 @@ import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.content.modules.Eln2Tools
 import org.eln2.mc.client.screens.ScrewdriverConfigScreen
 import org.eln2.mc.common.network.Networking
+import org.eln2.mc.Eln2Config
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.extensions.plus
 import org.eln2.mc.extensions.toVector3d
@@ -113,6 +115,18 @@ class WrenchItem : Item(Properties().stacksTo(1)) {
 
         return InteractionResult.SUCCESS
     }
+
+    override fun appendHoverText(
+        pStack: ItemStack,
+        pLevel: Level?,
+        pTooltipComponents: MutableList<Component>,
+        pIsAdvanced: TooltipFlag,
+    ) {
+        super.appendHoverText(pStack, pLevel, pTooltipComponents, pIsAdvanced)
+
+        pTooltipComponents.add(Component.translatable("tooltip.eln2.wrench.use").withStyle(ChatFormatting.GRAY))
+        pTooltipComponents.add(Component.translatable("tooltip.eln2.wrench.rotate").withStyle(ChatFormatting.DARK_GRAY))
+    }
 }
 
 interface ScrewdriverInteractable {
@@ -163,6 +177,17 @@ class ScrewdriverItem : Item(Properties().stacksTo(1)) {
         return InteractionResultHolder.success(stack)
     }
 
+    override fun appendHoverText(
+        pStack: ItemStack,
+        pLevel: Level?,
+        pTooltipComponents: MutableList<Component>,
+        pIsAdvanced: TooltipFlag,
+    ) {
+        super.appendHoverText(pStack, pLevel, pTooltipComponents, pIsAdvanced)
+
+        pTooltipComponents.add(Component.translatable("tooltip.eln2.screwdriver.use").withStyle(ChatFormatting.GRAY))
+        pTooltipComponents.add(Component.translatable("tooltip.eln2.screwdriver.scroll").withStyle(ChatFormatting.DARK_GRAY))
+    }
     data class Scroll(val delta: Double) {
         companion object {
             // Cooldown for sounds. Noticed it is *really* important with my G502's infinite scroll.
@@ -536,8 +561,23 @@ class DrillItem(val drillModel: DrillModel) : Item(Properties().stacksTo(1)) {
     ) {
         super.appendHoverText(pStack, pLevel, pTooltipComponents, pIsAdvanced)
 
+        val yellow = ChatFormatting.YELLOW
+        val gray = ChatFormatting.GRAY
+
+        pTooltipComponents.add(
+            Component.translatable("tooltip.eln2.drill.power")
+                .append(": ")
+                .append(Component.literal(Eln2Config.clientConfig.classifyWithOverride(drillModel.powerDemand)).withStyle(gray))
+                .withStyle(yellow)
+        )
+
         val mode = getMode(pStack)
-        pTooltipComponents.add(Component.translatable("item.eln2.drill.mode.${mode.name.lowercase()}"))
+        pTooltipComponents.add(
+            Component.translatable("tooltip.eln2.drill.mode")
+                .append(": ")
+                .append(Component.translatable("item.eln2.drill.mode.${mode.name.lowercase()}").withStyle(gray))
+                .withStyle(yellow)
+        )
     }
 
     companion object {

@@ -1,10 +1,16 @@
 package org.eln2.mc.common.content
 
 import net.minecraft.world.item.Item
+import net.minecraft.ChatFormatting
+import net.minecraft.network.chat.Component
+import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.TooltipFlag
+import net.minecraft.world.level.Level
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.InterpolationFunction
 import org.ageseries.libage.mathematics.InterpolatorBuilder
+import org.eln2.mc.Eln2Config
 import org.eln2.mc.common.items.ItemRegistry
 import kotlin.math.PI
 import kotlin.math.pow
@@ -27,6 +33,25 @@ class HeatingElementItem(
     val diameter: Quantity<Distance>,
 ) : Item(Properties().stacksTo(1)) {
 
+    override fun appendHoverText(
+        pStack: ItemStack,
+        pLevel: Level?,
+        pTooltipComponents: MutableList<Component>,
+        pIsAdvanced: TooltipFlag,
+    ) {
+        super.appendHoverText(pStack, pLevel, pTooltipComponents, pIsAdvanced)
+
+        val yellow = ChatFormatting.YELLOW
+        val gray = ChatFormatting.GRAY
+
+        pTooltipComponents.add(
+            Component.translatable("tooltip.eln2.heating_element.max_temp")
+                .append(": ")
+                .append(Component.literal(Eln2Config.clientConfig.classifyWithOverride(maxTemperature)).withStyle(gray))
+                .withStyle(yellow)
+        )
+    }
+
     /** Cross-sectional area from diameter (round wire). */
     private val crossSectionArea: Double = PI * (!diameter / 2.0).pow(2)
 
@@ -44,6 +69,18 @@ class HeatingElementItem(
      */
     fun isExceedingMaxTemperature(temperature: Quantity<Temperature>): Boolean {
         return !temperature > !maxTemperature
+    }
+}
+
+class BurntHeatingElementItem : Item(Properties().stacksTo(1)) {
+    override fun appendHoverText(
+        pStack: ItemStack,
+        pLevel: Level?,
+        pTooltipComponents: MutableList<Component>,
+        pIsAdvanced: TooltipFlag,
+    ) {
+        super.appendHoverText(pStack, pLevel, pTooltipComponents, pIsAdvanced)
+        pTooltipComponents.add(Component.translatable("tooltip.eln2.heating_element.burnt").withStyle(ChatFormatting.DARK_RED))
     }
 }
 

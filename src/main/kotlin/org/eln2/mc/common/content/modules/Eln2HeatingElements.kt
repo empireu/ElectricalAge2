@@ -7,10 +7,11 @@ import org.ageseries.libage.data.METER
 import org.ageseries.libage.data.MILLI
 import org.ageseries.libage.data.Quantity
 import org.eln2.mc.common.content.HeatingElementBuilder
-import org.eln2.mc.common.items.ItemRegistry.itemNoStack
+import org.eln2.mc.common.content.BurntHeatingElementItem
+import org.eln2.mc.common.items.ItemRegistry.item
 
 object Eln2HeatingElements : ContentModule() {
-    val BURNT_HEATING_ELEMENT = itemNoStack("burnt_heating_element")
+    val BURNT_HEATING_ELEMENT = item("burnt_heating_element") { BurntHeatingElementItem() }
 
     val LOW_VOLTAGE_IRON_HEATING_ELEMENT = HeatingElementBuilder("low_voltage_iron_heating_element")
         .setMaxTemperature(Quantity(1100.0, CELSIUS))

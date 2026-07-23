@@ -11,9 +11,11 @@ import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import it.unimi.dsi.fastutil.objects.Object2DoubleOpenHashMap
 import net.minecraft.core.BlockPos
+import net.minecraft.ChatFormatting
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.Connection
+import net.minecraft.network.chat.Component
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ClientGamePacketListener
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket
@@ -21,8 +23,9 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.entity.player.Player
-import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.Item
+import net.minecraft.world.item.TooltipFlag
 import net.minecraft.world.item.context.UseOnContext
 import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.level.Level
@@ -1159,6 +1162,17 @@ class FluidPipeBlock : Block(eln2StandardBlockProperties().noOcclusion().dynamic
 }
 
 class FluidPipeModuleItem : Item(Properties())
+{
+    override fun appendHoverText(
+        pStack: ItemStack,
+        pLevel: Level?,
+        pTooltipComponents: MutableList<Component>,
+        pIsAdvanced: TooltipFlag,
+    ) {
+        super.appendHoverText(pStack, pLevel, pTooltipComponents, pIsAdvanced)
+        pTooltipComponents.add(Component.translatable("tooltip.eln2.fluid_pipe_module.use").withStyle(ChatFormatting.GRAY))
+    }
+}
 
 class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln2ForgeFluids.FLUID_PIPE_BLOCK_ENTITY.get(), pPos, pState), WrenchInteractable, ComponentDisplay {
     //#region Block Entity Lifetime Hooks

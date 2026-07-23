@@ -2,6 +2,7 @@
 
 package org.eln2.mc.common.content
 
+import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
@@ -39,6 +40,7 @@ import org.ageseries.libage.sim.electrical.Capacitor
 import org.ageseries.libage.sim.electrical.PowerConsumer
 import org.ageseries.libage.sim.electrical.Resistor
 import org.eln2.mc.ClientOnly
+import org.eln2.mc.Eln2Config
 import org.eln2.mc.MODID
 import org.eln2.mc.RF_PER_JOULE
 import org.eln2.mc.ServerOnly
@@ -286,7 +288,44 @@ class PowerCellItem(val powerCellModel: InventoryPowerCellModel, val initialChar
         val capacity = powerCellModel.energyCapacity
         val charge = !energy / !capacity
 
-        pTooltipComponents.add(Component.literal("Charge: ${(charge * 100).rounded()}%"))
+        val yellow = ChatFormatting.YELLOW
+        val gray = ChatFormatting.GRAY
+        val aqua = ChatFormatting.AQUA
+
+        pTooltipComponents.add(
+            Component.translatable("tooltip.eln2.power_cell.charge")
+                .append(": ")
+                .append(Component.literal("${(charge * 100).rounded()}%").withStyle(aqua))
+                .withStyle(yellow)
+        )
+
+        pTooltipComponents.add(
+            Component.translatable("tooltip.eln2.power_cell.capacity")
+                .append(": ")
+                .append(Component.literal(Eln2Config.clientConfig.classifyWithOverride(capacity)).withStyle(gray))
+                .withStyle(yellow)
+        )
+
+        pTooltipComponents.add(
+            Component.translatable("tooltip.eln2.power_cell.max_in")
+                .append(": ")
+                .append(Component.literal(Eln2Config.clientConfig.classifyWithOverride(powerCellModel.maxPowerInput)).withStyle(gray))
+                .withStyle(yellow)
+        )
+
+        pTooltipComponents.add(
+            Component.translatable("tooltip.eln2.power_cell.max_out")
+                .append(": ")
+                .append(Component.literal(Eln2Config.clientConfig.classifyWithOverride(powerCellModel.maxPowerOutput)).withStyle(gray))
+                .withStyle(yellow)
+        )
+
+        pTooltipComponents.add(
+            Component.translatable("tooltip.eln2.power_cell.efficiency")
+                .append(": ")
+                .append(Component.literal("${(powerCellModel.efficiency * 100).rounded(1)}%").withStyle(gray))
+                .withStyle(yellow)
+        )
     }
 }
 

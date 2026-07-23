@@ -12,9 +12,10 @@ import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import net.minecraft.advancements.Advancement
 import net.minecraft.advancements.CriterionTriggerInstance
+import net.minecraft.data.recipes.FinishedRecipe
+import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
-import net.minecraft.data.recipes.FinishedRecipe
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.chat.Component
@@ -29,6 +30,7 @@ import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.inventory.ContainerLevelAccess
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.TooltipFlag
 import net.minecraft.world.item.crafting.Ingredient
 import net.minecraft.world.item.crafting.RecipeSerializer
 import net.minecraft.world.item.crafting.RecipeType
@@ -754,12 +756,32 @@ class SeparatedAqueousElectrolysisRecipe(
 /**
  * Marker item for electrolysis electrodes. Used by [ElectrolysisMainBlockEntity.ElectrolysisInventoryHandler] for slot filtering.
  * */
-open class ElectrodeItem : Item(Properties().stacksTo(1))
+open class ElectrodeItem : Item(Properties().stacksTo(1)) {
+    override fun appendHoverText(
+        pStack: ItemStack,
+        pLevel: Level?,
+        pTooltipComponents: MutableList<Component>,
+        pIsAdvanced: TooltipFlag,
+    ) {
+        super.appendHoverText(pStack, pLevel, pTooltipComponents, pIsAdvanced)
+        pTooltipComponents.add(Component.translatable("tooltip.eln2.electrode.use").withStyle(ChatFormatting.GRAY))
+    }
+}
 
 /**
  * Marker item for electrolysis separators. Used by [ElectrolysisMainBlockEntity.ElectrolysisInventoryHandler] for slot filtering.
  * */
-open class SeparatorItem : Item(Properties().stacksTo(1))
+open class SeparatorItem : Item(Properties().stacksTo(1)) {
+    override fun appendHoverText(
+        pStack: ItemStack,
+        pLevel: Level?,
+        pTooltipComponents: MutableList<Component>,
+        pIsAdvanced: TooltipFlag,
+    ) {
+        super.appendHoverText(pStack, pLevel, pTooltipComponents, pIsAdvanced)
+        pTooltipComponents.add(Component.translatable("tooltip.eln2.separator.use").withStyle(ChatFormatting.GRAY))
+    }
+}
 
 //#endregion
 

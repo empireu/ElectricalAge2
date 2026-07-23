@@ -3,24 +3,29 @@
 package org.eln2.mc.common.content
 
 import net.minecraft.client.Minecraft
+import net.minecraft.ChatFormatting
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.player.AbstractClientPlayer
+import net.minecraft.network.chat.Component
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.world.item.TooltipFlag
+import net.minecraft.world.level.Level
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
-import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
-import net.minecraft.world.phys.Vec3
+import net.minecraft.world.item.Item
+import org.ageseries.libage.mathematics.smoothstep
+import org.eln2.mc.Eln2Config
+import org.eln2.mc.requireIsOnRenderThread
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.approxEq
-import org.ageseries.libage.mathematics.smoothstep
-import org.eln2.mc.requireIsOnRenderThread
 import net.minecraftforge.network.NetworkEvent
 import org.eln2.mc.client.dynamicLight.DynamicLightManager
-import org.eln2.mc.client.dynamicLight.DynamicLightSource
 import org.eln2.mc.common.network.Networking
+import org.eln2.mc.client.dynamicLight.DynamicLightSource
 import org.joml.Vector3f
+import net.minecraft.world.phys.Vec3
 import java.util.*
 import java.util.function.Supplier
 import kotlin.math.abs
@@ -102,7 +107,24 @@ private fun isHoldingFlashlight(player: Player, flashlight: FlashlightItem): Boo
  * The power fraction is computed server-side and synced to all tracking players via [FlashlightPowerMessage].
  * */
 class FlashlightItem(val flashlightModel: FlashlightModel) : Item(Properties().stacksTo(1)) {
+    override fun appendHoverText(
+        pStack: ItemStack,
+        pLevel: Level?,
+        pTooltipComponents: MutableList<Component>,
+        pIsAdvanced: TooltipFlag,
+    ) {
+        super.appendHoverText(pStack, pLevel, pTooltipComponents, pIsAdvanced)
 
+        val yellow = ChatFormatting.YELLOW
+        val gray = ChatFormatting.GRAY
+
+        pTooltipComponents.add(
+            Component.translatable("tooltip.eln2.flashlight.power")
+                .append(": ")
+                .append(Component.literal(Eln2Config.clientConfig.classifyWithOverride(flashlightModel.powerDemand)).withStyle(gray))
+                .withStyle(yellow)
+        )
+    }
     companion object {
         private const val DT = 1.0 / 20.0
         private const val SYNC_INTERVAL_TICKS = 5
