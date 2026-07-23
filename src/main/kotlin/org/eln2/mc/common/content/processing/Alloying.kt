@@ -47,6 +47,7 @@ import net.minecraftforge.items.ItemStackHandler
 import net.minecraftforge.items.SlotItemHandler
 import net.minecraftforge.registries.ForgeRegistries
 import org.eln2.mc.LOG
+import org.eln2.mc.MODID
 import org.eln2.mc.ServerOnly
 import org.eln2.mc.client.screens.ProgressSupplierMenu
 import org.eln2.mc.common.containers.ContainerHelper
@@ -217,7 +218,7 @@ class AlloyingSmelterBlock : HorizontalDirectionalBlock(Properties.of().strength
 
     @Deprecated("Deprecated in Java")
     override fun use(pState: BlockState, pLevel: Level, pPos: BlockPos, pPlayer: Player, pHand: InteractionHand, pHit: BlockHitResult): InteractionResult {
-        return pLevel.constructMenuHelper2<AlloyingSmelterBlockEntity>(pPos, pPlayer, Component.literal("Alloying Smelter"), ::AlloyingSmelterMenu)
+        return pLevel.constructMenuHelper2<AlloyingSmelterBlockEntity>(pPos, pPlayer, Component.translatable("menu.$MODID.alloying_smelter"), ::AlloyingSmelterMenu)
     }
 
     override fun animateTick(pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {

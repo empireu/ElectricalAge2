@@ -335,7 +335,7 @@ class BurnerBlock : HorizontalDirectionalBlock(Properties.of().strength(3.5f).re
 
     @Deprecated("Deprecated in Java")
     override fun use(pState: BlockState, pLevel: Level, pPos: BlockPos, pPlayer: Player, pHand: InteractionHand, pHit: BlockHitResult): InteractionResult {
-        return pLevel.constructMenuHelper2<BurnerBlockEntity>(pPos, pPlayer, Component.literal("Burner Reactor"), ::BurnerMenu)
+        return pLevel.constructMenuHelper2<BurnerBlockEntity>(pPos, pPlayer, Component.translatable("menu.$MODID.burner_reactor"), ::BurnerMenu)
     }
 
     override fun animateTick(pState: BlockState, pLevel: Level, pPos: BlockPos, pRandom: RandomSource) {

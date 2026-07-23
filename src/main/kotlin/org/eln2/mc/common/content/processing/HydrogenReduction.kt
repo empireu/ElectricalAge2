@@ -430,7 +430,7 @@ class HydrogenReductionFurnaceBlock : UprightHorizontalDirectionCellBlock<Electr
         pHand: InteractionHand,
         pHit: BlockHitResult,
     ): InteractionResult {
-        return pLevel.constructMenuHelper2(pPos, pPlayer, Component.literal("Hydrogen Reduction Furnace"), ::HydrogenReductionFurnaceMenu)
+        return pLevel.constructMenuHelper2(pPos, pPlayer, Component.translatable("menu.$MODID.hydrogen_reduction_furnace"), ::HydrogenReductionFurnaceMenu)
     }
 }
 

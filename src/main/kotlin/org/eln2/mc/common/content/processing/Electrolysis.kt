@@ -62,6 +62,7 @@ import org.ageseries.libage.sim.Simulator
 import org.ageseries.libage.sim.ThermalMassDefinition
 import org.ageseries.libage.sim.electrical.ElectricalSimulation
 import org.eln2.mc.CrossThreadAccess
+import org.eln2.mc.MODID
 import org.eln2.mc.LOG
 import org.eln2.mc.Locators
 import org.eln2.mc.OnServerThread
@@ -1050,7 +1051,7 @@ class ElectrolysisMainBlock : UprightHorizontalDirectionCellBlock<ElectrolysisCe
         pHand: InteractionHand,
         pHit: BlockHitResult,
     ): InteractionResult {
-        return pLevel.constructMenuHelper2(pPos, pPlayer, Component.literal("Electrolysis"), ::ElectrolysisMenu)
+        return pLevel.constructMenuHelper2(pPos, pPlayer, Component.translatable("menu.$MODID.electrolysis"), ::ElectrolysisMenu)
     }
 }
 
