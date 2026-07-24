@@ -3,5 +3,8 @@
     "specificHeatCapacity": 900.0,
     "density": 1.4,
     "isGaseous": true,
-    "mixabilityTags": ["sulfur_dioxide_miscible"]
+    "mixabilityTags": [
+        "sulfur_dioxide_miscible"
+    ],
+    "gasExpansionFactor": 100.0
 }

@@ -23,7 +23,7 @@
     "fluid": "eln2:sodium_hydroxide_solution"
   },
   "cathodeOutputGas": {
-    "amount": 2,
+    "amount": 200,
     "fluid": "eln2:hydrogen"
   },
   "energyCost": 12000.0,

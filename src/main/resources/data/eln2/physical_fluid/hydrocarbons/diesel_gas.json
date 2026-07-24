@@ -5,5 +5,6 @@
     "isGaseous": true,
     "mixabilityTags": [
         "oil_miscible"
-    ]
+    ],
+    "gasExpansionFactor": 100.0
 }

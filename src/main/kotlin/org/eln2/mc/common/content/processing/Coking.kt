@@ -522,7 +522,7 @@ class CokeOvenMainBlockEntity(pPos: BlockPos, pState: BlockState) :
 
     val tank = EscapingMultipleFractionalFluidTank(
         20,
-        5.0,
+        100.0,
         false
     )
 

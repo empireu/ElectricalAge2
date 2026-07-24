@@ -444,7 +444,7 @@ class HydrogenReductionFurnaceBlockEntity(pos: BlockPos, state: BlockState) :
          * The maximum hydrogen input rate, in mB/tick.
          * This defines the maximum processing speed of the machine.
          * */
-        private const val HYDROGEN_FLOW_RATE = 0.025
+        private const val HYDROGEN_FLOW_RATE = 2.5
         private const val NOMINAL_POWER = 500.0
 
         fun tick(pLevel: Level?, pPos: BlockPos?, pState: BlockState?, pBlockEntity: BlockEntity?) {
@@ -729,7 +729,7 @@ class HydrogenReductionFurnaceBlockEntity(pos: BlockPos, state: BlockState) :
         override fun drain(maxDrain: Int, action: IFluidHandler.FluidAction): FluidStack = FluidStack.EMPTY
     }
 
-    val tank = HydrogenFluidHandler(10.0)
+    val tank = HydrogenFluidHandler(1000.0)
     val tankLazy: LazyOptional<HydrogenFluidHandler> = LazyOptional.of { tank }
 
     override fun <T> getCapability(cap: Capability<T>, side: Direction?): LazyOptional<T> {

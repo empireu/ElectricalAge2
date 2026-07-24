@@ -34,7 +34,7 @@ object Eln2SteamTurbine : ContentModule() {
 
     val STEAM_TURBINE_MODEL = SteamTurbineGeneratorModel(
         etaFactor = 0.5,
-        maxFlowRate = 0.0431,
+        maxFlowRate = 4.31,
         maxTorque = Quantity(2400.0, NEWTON_METER),
         maxPower = Quantity(50000.0, WATT),
         coldSideMass = Quantity(50.0, KILOGRAM),

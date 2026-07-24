@@ -12,7 +12,7 @@
     "fluid": "minecraft:water"
   },
   "outputGas": {
-    "amount": 1,
+    "amount": 100,
     "fluid": "eln2:hho_gas"
   },
   "resistance": 0.3,

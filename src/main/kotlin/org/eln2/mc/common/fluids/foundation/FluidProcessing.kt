@@ -24,9 +24,10 @@ import org.eln2.mc.extensions.*
 /**
  * Extra properties attached to a Forge Fluid.
  * @param cacheId Unique ID chosen by the [PhysicalFluidManager].
- * @param specificHeatCapacity The specific heat capacity.
- * @param density The density of the fluid. Used for gravity separation.
+ * @param specificHeatCapacity The specific heat capacity, in liquid-equivalent J/(mB*K). For gases, the effective heat capacity per gas mB is this value divided by [gasExpansionFactor].
+ * @param density The density of the fluid, in liquid-equivalent kg/mB. Used for gravity separation. For gases, the effective mass per gas mB is this value divided by [gasExpansionFactor].
  * @param isGaseous Indicates if this fluid is treated as gaseous (usually for fluid handler routing).
+ * @param gasExpansionFactor The expansion factor applied when this fluid is in gas phase. Liquids use 1.0, gases use 100.0. This means 1 mB of liquid boils into [gasExpansionFactor] mB of gas, and each gas mB carries 1/[gasExpansionFactor] of the liquid mass and heat capacity.
  * @param mixabilityTags If this fluid shares any of the [mixabilityTags] with another fluid, these two fluids mix and cannot be separated by gravity.
  *  */
 class PhysicalFluid(
@@ -36,6 +37,7 @@ class PhysicalFluid(
     val specificHeatCapacity: Quantity<ForgeFluidSpecificHeatCapacity>,
     val density: Quantity<ForgeFluidDensity>,
     val isGaseous: Boolean,
+    val gasExpansionFactor: Double,
     val mixabilityTags: List<String>
 ) {
     override fun equals(other: Any?): Boolean {
@@ -82,6 +84,7 @@ object PhysicalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().cre
             val specificHeatCapacity = Quantity(json.getDouble("specificHeatCapacity"), JOULE_PER_MILLIBUCKET_KELVIN)
             val density = Quantity(json.getDouble("density"), KILOGRAM_PER_MILLIBUCKET)
             val isGaseous = json.getBool("isGaseous")
+            val gasExpansionFactor = if(json.has("gasExpansionFactor")) json.get("gasExpansionFactor").asDouble else 1.0
             val mixabilityTags = if(json.has("mixabilityTags")) json.getAsJsonArray("mixabilityTags").map { it.asString } else emptyList<String>()
 
             val result = PhysicalFluid(
@@ -91,6 +94,7 @@ object PhysicalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().cre
                 specificHeatCapacity,
                 density,
                 isGaseous,
+                gasExpansionFactor,
                 mixabilityTags
             )
 

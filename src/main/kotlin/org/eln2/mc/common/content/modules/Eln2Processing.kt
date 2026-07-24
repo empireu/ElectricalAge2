@@ -473,7 +473,7 @@ object Eln2Processing : ContentModule() {
     val INSULATED_DISTILLATION_MODULE_BLOCK = blockAndItem("insulated_distillation_module") {
         PhaseChangeModuleBlock(
             INSULATED_DISTILLATION_MODULE_CELL,
-            500,
+            5000,
             INSULATED_DISTILLATION_MODULE_BLOCK_ENTITY,
             PhaseChangeModuleModel(false) {
                 FlwModels.INSULATED_DISTILLATION_MODULE
@@ -499,7 +499,7 @@ object Eln2Processing : ContentModule() {
     val CONDENSER_DISTILLATION_MODULE_BLOCK = blockAndItem("condenser_distillation_module") {
         PhaseChangeModuleBlock(
             CONDENSER_DISTILLATION_MODULE_CELL,
-            500,
+            5000,
             CONDENSER_DISTILLATION_MODULE_BLOCK_ENTITY,
             PhaseChangeModuleModel(true) {
                 FlwModels.CONDENSER_DISTILLATION_MODULE

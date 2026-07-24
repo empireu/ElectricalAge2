@@ -1063,7 +1063,7 @@ class ElectrolysisMainBlockEntity(pPos: BlockPos, pBlockState: BlockState) :
     ComponentDisplay
 {
     companion object {
-        const val TANK_CAPACITY = 4000.0
+        const val TANK_CAPACITY = 40000.0
 
         fun tick(pLevel: Level?, pPos: BlockPos?, pState: BlockState?, pBlockEntity: BlockEntity?) {
             if (pLevel == null || pBlockEntity == null) {

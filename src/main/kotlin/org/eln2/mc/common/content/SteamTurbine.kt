@@ -351,11 +351,13 @@ class SteamTurbineGenerator(val cell: SteamTurbineCell) {
         val eta = ((1.0 - tCold / tHot) * cell.model.etaFactor).coerceIn(0.0, 1.0)
 
         val tBoil = 373.15
-        val cpSteam = !PhysicalFluidManager.getPropertiesWithFallback(Eln2ForgeFluids.STEAM.get()).specificHeatCapacity
-        val cpWater = !PhysicalFluidManager.getPropertiesWithFallback(Fluids.WATER).specificHeatCapacity
+        val steamProperties = PhysicalFluidManager.getPropertiesWithFallback(Eln2ForgeFluids.STEAM.get())
+        val steamExpansionFactor = steamProperties.gasExpansionFactor
+        val cpSteam = !steamProperties.specificHeatCapacity / steamExpansionFactor
+        val cpWater = !PhysicalFluidManager.getPropertiesWithFallback(Fluids.WATER).specificHeatCapacity / steamExpansionFactor
 
         val steamTransformation = FluidTransformationManager.getTransformations(Eln2ForgeFluids.STEAM.get())
-        val lVap = steamTransformation?.condensation?.enthalpy?.value ?: 2260000.0
+        val lVap = (steamTransformation?.condensation?.enthalpy?.value ?: 2260000.0) / steamExpansionFactor
 
         val hSteam = cpWater * tBoil + lVap + cpSteam * (tHot - tBoil)
         val hExhaust = if (tCold < tBoil) {
@@ -384,7 +386,7 @@ class SteamTurbineGenerator(val cell: SteamTurbineCell) {
 
         cell.deltaSteamConsumed += mDot * dt
         if (tCold < tBoil) {
-            cell.deltaWaterProduced += mDot * dt
+            cell.deltaWaterProduced += mDot * dt / steamExpansionFactor
         } else {
             cell.deltaSteamProduced += mDot * dt
         }
@@ -580,9 +582,9 @@ class SteamTurbineBlockEntity(pos: BlockPos, state: BlockState) :
 
     class SteamTurbineFluidHandler(val ambientTemperature: () -> Quantity<Temperature>) {
         companion object {
-            const val INPUT_STEAM_CAPACITY = 128.0
+            const val INPUT_STEAM_CAPACITY = 12800.0
             const val OUTPUT_WATER_CAPACITY = 128.0
-            const val OUTPUT_STEAM_CAPACITY = 128.0
+            const val OUTPUT_STEAM_CAPACITY = 12800.0
 
             private const val INPUT_STEAM = "inputSteam"
             private const val INPUT_FLUID_ENERGY = "inputFluidEnergy"
@@ -600,7 +602,7 @@ class SteamTurbineBlockEntity(pos: BlockPos, state: BlockState) :
         val steamFluid: Fluid get() = Eln2ForgeFluids.STEAM.get()
         val waterFluid: Fluid get() = Fluids.WATER
 
-        val steamCp: Double get() = !PhysicalFluidManager.getPropertiesWithFallback(steamFluid).specificHeatCapacity
+        val steamCp: Double get() = !PhysicalFluidManager.getPropertiesWithFallback(steamFluid).specificHeatCapacity / PhysicalFluidManager.getPropertiesWithFallback(steamFluid).gasExpansionFactor
         val waterCp: Double get() = !PhysicalFluidManager.getPropertiesWithFallback(waterFluid).specificHeatCapacity
 
         val inputTemperature: Double get() = if (inputSteam < FractionalFluidStack.EPSILON) {

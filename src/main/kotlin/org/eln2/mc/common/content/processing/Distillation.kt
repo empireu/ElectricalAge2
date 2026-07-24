@@ -348,7 +348,7 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
             const val MAX_PHASE_CHANGE_RATE = 1.0
             const val DAMPENING_CONSTANT = 1.0 / 6.0
             const val MAX_LIQUID_FLOW_RATE = 10.0
-            const val MAX_GAS_FLOW_RATE = 15.0
+            const val MAX_GAS_FLOW_RATE = 1500.0
         }
 
         //#region Setup State
@@ -555,16 +555,19 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
                  * */
                 amountToBoil = min(amountToBoil, dT * !body.mass * !body.material.specificHeat / !boiling.enthalpy)
 
+                val gasProperties = PhysicalFluidManager.requireProperties(boiling.resultGas)
+                val gasExpansionFactor = gasProperties.gasExpansionFactor
+
                 /**
                  * Constrain by the remaining capacity in the gas tank:
                  * */
-                amountToBoil = min(amountToBoil, gasTank.remainingCapacity * 1000.0 / boiling.resultGasProportion)
+                amountToBoil = min(amountToBoil, gasTank.remainingCapacity * 1000.0 / boiling.resultGasProportion / gasExpansionFactor)
 
                 if (amountToBoil < FractionalFluidStack.EPSILON) {
                     continue
                 }
 
-                val gasGenerated = amountToBoil * boiling.resultGasProportion / 1000.0
+                val gasGenerated = amountToBoil * boiling.resultGasProportion / 1000.0 * gasExpansionFactor
 
                 if(gasGenerated < FractionalFluidStack.EPSILON) {
                     /**
@@ -575,7 +578,7 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
 
                 var residueStack: FractionalFluidStack? = null
                 if(boiling.resultLiquidResidue != null) {
-                    val residue = amountToBoil - gasGenerated
+                    val residue = amountToBoil * (1000.0 - boiling.resultGasProportion) / 1000.0
 
                     if(residue >= FractionalFluidStack.EPSILON) {
                         /**
@@ -587,10 +590,9 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
                 }
 
                 val liquidProperties = PhysicalFluidManager.requireProperties(target.fluid)
-                val gasProperties = PhysicalFluidManager.requireProperties(boiling.resultGas)
 
                 val liquidCapacity = amountToBoil * !liquidProperties.specificHeatCapacity
-                val gasCapacity = gasGenerated * !gasProperties.specificHeatCapacity
+                val gasCapacity = gasGenerated * !gasProperties.specificHeatCapacity / gasExpansionFactor
 
                 val residueCapacity = if (residueStack != null) {
                     val residueProperties = PhysicalFluidManager.requireProperties(residueStack.fluid)
@@ -608,7 +610,7 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
                 }
 
                 val sensibleCorrection = ((gasCapacity + residueCapacity) - liquidCapacity) * !temperature
-                val latentHeat = !boiling.enthalpy * gasGenerated
+                val latentHeat = !boiling.enthalpy * amountToBoil
 
                 body.energy += Quantity(sensibleCorrection - latentHeat, JOULE)
                 remainingEvaporation -= amountToBoil
@@ -671,7 +673,9 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
                 /**
                  * Calculates the total gas to condense by applying constraints:
                  * */
-                var amountToCondense = remainingCondensation
+                val gasProperties = PhysicalFluidManager.requireProperties(target.fluid)
+                val gasExpansionFactor = gasProperties.gasExpansionFactor
+                var amountToCondense = remainingCondensation * gasExpansionFactor
 
                 /**
                  * Constrain by available gas:
@@ -681,18 +685,18 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
                 /**
                  * Constrain by the energy limit:
                  * */
-                amountToCondense = min(amountToCondense, dT * !body.mass * !body.material.specificHeat / !condensation.enthalpy)
+                amountToCondense = min(amountToCondense, dT * !body.mass * !body.material.specificHeat * gasExpansionFactor / !condensation.enthalpy)
 
                 /**
                  * Constrain by remaining capacity in the liquid tank:
                  * */
-                amountToCondense = min(amountToCondense, liquidTank.remainingCapacity * 1000.0 / condensation.resultLiquidProportion)
+                amountToCondense = min(amountToCondense, liquidTank.remainingCapacity * 1000.0 / condensation.resultLiquidProportion * gasExpansionFactor)
 
                 if(amountToCondense < FractionalFluidStack.EPSILON) {
                     continue
                 }
 
-                val liquidGenerated = amountToCondense * condensation.resultLiquidProportion / 1000.0
+                val liquidGenerated = amountToCondense * condensation.resultLiquidProportion / 1000.0 / gasExpansionFactor
 
                 if(liquidGenerated < FractionalFluidStack.EPSILON) {
                     /**
@@ -704,7 +708,7 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
                 var residueStack: FractionalFluidStack? = null
 
                 if(condensation.resultGasResidue != null) {
-                    val residue = amountToCondense - liquidGenerated
+                    val residue = amountToCondense * (1000.0 - condensation.resultLiquidProportion) / 1000.0
 
                     if(residue >= FractionalFluidStack.EPSILON) {
                         /**
@@ -715,15 +719,14 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
                     }
                 }
 
-                val gasProperties = PhysicalFluidManager.requireProperties(target.fluid)
                 val liquidProperties = PhysicalFluidManager.requireProperties(condensation.resultLiquid)
 
-                val gasCapacity = amountToCondense * !gasProperties.specificHeatCapacity
+                val gasCapacity = amountToCondense * !gasProperties.specificHeatCapacity / gasExpansionFactor
                 val liquidCapacity = liquidGenerated * !liquidProperties.specificHeatCapacity
 
                 val residueCapacity = if (residueStack != null) {
                     val residueProperties = PhysicalFluidManager.requireProperties(residueStack.fluid)
-                    residueStack.amount * !residueProperties.specificHeatCapacity
+                    residueStack.amount * !residueProperties.specificHeatCapacity / residueProperties.gasExpansionFactor
                 }
                 else {
                     0.0
@@ -737,10 +740,10 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
                 }
 
                 val sensibleCorrection = ((liquidCapacity + residueCapacity) - gasCapacity) * !temperature
-                val latentHeat = !condensation.enthalpy * liquidGenerated
+                val latentHeat = !condensation.enthalpy * (amountToCondense / gasExpansionFactor)
                 body.energy += Quantity(sensibleCorrection + latentHeat, JOULE)
-                remainingCondensation -= amountToCondense
-                condensedAmount += amountToCondense
+                remainingCondensation -= amountToCondense / gasExpansionFactor
+                condensedAmount += amountToCondense / gasExpansionFactor
 
                 cell.setChanged()
                 blockEntity.setChanged()
@@ -1034,7 +1037,7 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
                      * Execute energy transfer:
                      * */
                     val fluidProperties = PhysicalFluidManager.requireProperties(resource.fluid)
-                    val energy = Quantity(amount * !fluidProperties.specificHeatCapacity * !neighbor.cell.distillation.transferTemperature, JOULE)
+                    val energy = Quantity(amount * !fluidProperties.specificHeatCapacity * !neighbor.cell.distillation.transferTemperature / fluidProperties.gasExpansionFactor, JOULE)
                     thermalBody.energy += energy
                     neighbor.cell.wire.thermalBody.energy -= energy
 

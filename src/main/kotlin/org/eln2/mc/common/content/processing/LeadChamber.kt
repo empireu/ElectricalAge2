@@ -377,7 +377,7 @@ class LeadChamberBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(E
         //#endregion
     }
 
-    val tank = FluidHandler(4096.0)
+    val tank = FluidHandler(40000.0)
     val tankLazy: LazyOptional<FluidHandler> = LazyOptional.of { tank }
 
     /**
@@ -431,8 +431,8 @@ class LeadChamberBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(E
             /**
              * Stoichiometric ratios: mB consumed per mB acid produced.
              * */
-            private const val STEAM_PER_ACID = 1.0
-            private const val SULFUR_DIOXIDE_PER_ACID = 1.0
+            private const val STEAM_PER_ACID = 100.0
+            private const val SULFUR_DIOXIDE_PER_ACID = 100.0
 
             /**
              * Nitrogen dioxide beyond this fraction of the capacity will not increase the reaction rate.
@@ -453,7 +453,7 @@ class LeadChamberBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(E
             /**
              * Max total gas outflow per fluid species (mB/tick).
              * */
-            private const val MAX_GAS_FLOW_RATE = 15.0
+            private const val MAX_GAS_FLOW_RATE = 1500.0
 
             private val HORIZONTAL_DIRECTIONS = intArrayOf(
                 Direction.NORTH.get3DDataValue(),

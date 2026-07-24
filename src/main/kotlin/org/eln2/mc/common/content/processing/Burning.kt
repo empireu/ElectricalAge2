@@ -441,7 +441,7 @@ class BurnerBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln2Pr
 
     val tank = EscapingMultipleFractionalFluidTank(
         20,
-        5.0,
+        100.0,
         false
     )
 

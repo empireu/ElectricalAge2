@@ -8,7 +8,7 @@
     "fluid": "minecraft:water"
   },
   "anodeOutputGas": {
-    "amount": 1,
+    "amount": 100,
     "fluid": "eln2:oxygen"
   },
   "cathodeElectrode": {
@@ -19,7 +19,7 @@
     "fluid": "minecraft:water"
   },
   "cathodeOutputGas": {
-    "amount": 2,
+    "amount": 200,
     "fluid": "eln2:hydrogen"
   },
   "energyCost": 10000.0,

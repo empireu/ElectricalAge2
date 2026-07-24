@@ -1673,7 +1673,7 @@ class AdvancedCoalBurnerBlockEntity(pos: BlockPos, state: BlockState) :
     override fun scrollScrewdriver(player: ServerPlayer, delta: Double): Boolean {
         val current = !cell.targetTemperature
         val step = 5.0
-        val newTemp = (current + delta * step).coerceIn(300.0, 1500.0)
+        val newTemp = (current + delta * step).coerceIn(300.0, 1100.0)
 
         if (newTemp != current) {
             cell.setTargetTemperature(Quantity(newTemp, KELVIN))

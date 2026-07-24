@@ -1,7 +1,7 @@
 {
   "type": "eln2:hydrogen_reduction",
-  "energyCost": 1000.0,
-  "hydrogenAmount": 50,
+  "energyCost": 10.0,
+  "hydrogenAmount": 5000,
   "inputItems": [
     {
       "options": [
