@@ -256,7 +256,7 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_shaft_die", has(Eln2Processing.EXTRUDER_SHAFT_DIE.get()))
             .save(pWriter, resource("extruding/iron_shaft"))
 
-        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Kinetic.PRIMITIVE_STANDARD_IRON_STRAIGHT_JOINT.partInfo.item.get())
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Kinetic.PRIMITIVE_STANDARD_IRON_STRAIGHT_JOINT.partInfo.item.get(), 4)
             .pattern(" L ")
             .pattern("BSB")
             .pattern(" P ")
@@ -267,10 +267,11 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_mount", has(Eln2Ingredients.IRON_AXLE_MOUNT.get()))
             .save(pWriter, resource("crafting/primitive_standard_iron_straight_joint"))
 
-        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Kinetic.PRIMITIVE_STANDARD_IRON_HUB_JOINT.partInfo.item.get())
-            .pattern(" M ")
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Kinetic.PRIMITIVE_STANDARD_IRON_HUB_JOINT.partInfo.item.get(), 4)
+            .pattern("LM ")
             .pattern("RGR")
             .pattern(" M ")
+            .define('L', Eln2ForgeFluids.CREOSOTE.requireBottle().bottleItem.get())
             .define('M', Eln2Ingredients.IRON_AXLE_MOUNT.get())
             .define('R', Eln2Ingredients.IRON_SHAFT.get())
             .define('G', Eln2Ingredients.IRON_GEAR.get())
