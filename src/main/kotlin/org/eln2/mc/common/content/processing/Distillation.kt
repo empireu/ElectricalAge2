@@ -12,6 +12,7 @@ import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.context.UseOnContext
 import net.minecraft.world.level.Level
@@ -55,6 +56,7 @@ import org.eln2.mc.common.sounds.foundation.SimpleLoopingBlockEntitySoundInstanc
 import org.eln2.mc.common.sounds.foundation.SoundInfo
 import org.eln2.mc.common.sounds.foundation.SoundInstanceTickEvent
 import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
+import org.ageseries.libage.mathematics.approxEq
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityTicker
 import org.eln2.mc.Locators
@@ -248,6 +250,11 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
         !wire.thermalBody.temperature
     }
 
+    @Replicator
+    fun activityReplicator(target: DistillationActivityConsumer) = DistillationActivityReplicatorBehavior(target) {
+        distillation.activity
+    }
+
     override fun saveCellData() : CompoundTag {
         val tag = CompoundTag()
         tag.put("material", wire.thermalBody.material.saveNbt())
@@ -422,6 +429,26 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
         var hasTransferred = false
 
         /**
+         * Total amount boiled this step, in [PhaseChangeSimulation.MAX_PHASE_CHANGE_RATE] units.
+         * Reset by [phaseChange].
+         * */
+        var boiledAmount = 0.0
+            private set
+
+        /**
+         * Total amount condensed this step, in [PhaseChangeSimulation.MAX_PHASE_CHANGE_RATE] units.
+         * Reset by [phaseChange].
+         * */
+        var condensedAmount = 0.0
+            private set
+
+        /**
+         * Normalized phase-change activity in [0, 1], combining evaporation and condensation.
+         * */
+        val activity: Double
+            get() = ((boiledAmount + condensedAmount) / (2.0 * MAX_PHASE_CHANGE_RATE)).coerceIn(0.0, 1.0)
+
+        /**
          * Fetches the block entity associated with [cell] into [blockEntity] and, if that's all good and in scope, fetches the target block entities that are in scope and loads them into [targetBlockEntities].
          * If our block entity is not in scope, we will [skipSimulation].
          * */
@@ -585,6 +612,7 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
 
                 body.energy += Quantity(sensibleCorrection - latentHeat, JOULE)
                 remainingEvaporation -= amountToBoil
+                boiledAmount += amountToBoil
 
                 cell.setChanged()
                 blockEntity.setChanged()
@@ -710,9 +738,9 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
 
                 val sensibleCorrection = ((liquidCapacity + residueCapacity) - gasCapacity) * !temperature
                 val latentHeat = !condensation.enthalpy * liquidGenerated
-
                 body.energy += Quantity(sensibleCorrection + latentHeat, JOULE)
                 remainingCondensation -= amountToCondense
+                condensedAmount += amountToCondense
 
                 cell.setChanged()
                 blockEntity.setChanged()
@@ -726,6 +754,9 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
          * Executes evaporation and condensation.
          * */
         fun phaseChange() {
+            boiledAmount = 0.0
+            condensedAmount = 0.0
+
             if(skipSimulation) {
                 return
             }
@@ -1197,6 +1228,7 @@ class PhaseChangeModuleBlockEntity(pos: BlockPos, state: BlockState) :
     ComponentDisplay,
     WrenchInteractable,
     InternalTemperatureConsumer,
+    DistillationActivityConsumer,
     BulkPacketHandlerBlockEntity
 {
     //#region Capability
@@ -1422,6 +1454,7 @@ class PhaseChangeModuleBlockEntity(pos: BlockPos, state: BlockState) :
 
     class RenderState {
         var temperature = 0.0
+        var activity = 0.0
 
         val activitySmoother = FramerateIndependentSmoother1d(0.5)
         var soundInstance: SimpleLoopingBlockEntitySoundInstance<PhaseChangeModuleBlockEntity>? = null
@@ -1447,6 +1480,10 @@ class PhaseChangeModuleBlockEntity(pos: BlockPos, state: BlockState) :
         handler.withHandler<InternalTemperatureReplicatorBehavior.InternalTemperaturePacket>(InternalTemperatureReplicatorBehavior.InternalTemperaturePacket::deserialize) { packet ->
             renderState!!.temperature = packet.temperature
         }
+
+        handler.withHandler<DistillationActivityReplicatorBehavior.ActivityPacket>(DistillationActivityReplicatorBehavior.ActivityPacket::deserialize) { packet ->
+            renderState!!.activity = packet.activity
+        }
     }
 
     @ClientOnly
@@ -1456,8 +1493,7 @@ class PhaseChangeModuleBlockEntity(pos: BlockPos, state: BlockState) :
         if (state.soundInstance == null) {
             state.soundInstance = SimpleLoopingBlockEntitySoundInstance(this, Eln2Processing.DISTILLATION_SOUND.get()).also {
                 it.events.registerHandler<SoundInstanceTickEvent> { _ ->
-                    val activity = ((state.temperature - 300.0) / 300.0).coerceIn(0.0, 1.0)
-                    state.activitySmoother.update(activity)
+                    state.activitySmoother.update(state.activity)
                     it.soundInfo = SoundInfo.distillation(state.activitySmoother.value)
                 }
 
@@ -1474,12 +1510,26 @@ class PhaseChangeModuleBlockEntity(pos: BlockPos, state: BlockState) :
         )
     }
 
+    @OnSimulationThread
+    override fun onDistillationActivityChange(activity: Double) {
+        sendBulkPacket(
+            DistillationActivityReplicatorBehavior.ActivityPacket::serialize,
+            DistillationActivityReplicatorBehavior.ActivityPacket(activity)
+        )
+    }
+
     // onSyncSuggested
     override fun getUpdateTag(): CompoundTag {
         sendBulkPacket(
             InternalTemperatureReplicatorBehavior.InternalTemperaturePacket::serialize,
             InternalTemperatureReplicatorBehavior.InternalTemperaturePacket(!cell.wire.thermalBody.temperature)
         )
+
+        sendBulkPacket(
+            DistillationActivityReplicatorBehavior.ActivityPacket::serialize,
+            DistillationActivityReplicatorBehavior.ActivityPacket(cell.distillation.activity)
+        )
+
         return super.getUpdateTag()
     }
 
@@ -1560,5 +1610,56 @@ class PhaseChangeModuleBlockEntityVisual(ctx: VisualizationContext, blockEntity:
 
     override fun _delete() {
         instance.delete()
+    }
+}
+
+/**
+ * Consumer for the distillation phase-change activity, used to drive client-side effects like sound.
+ * */
+fun interface DistillationActivityConsumer {
+    fun onDistillationActivityChange(activity: Double)
+}
+
+/**
+ * Replicates the normalized distillation phase-change activity to the client, where 0 is idle and 1 is maximal boiling and condensation.
+ * @param consumer The consumer for the changes.
+ * @param supplier The activity supplier.
+ * */
+class DistillationActivityReplicatorBehavior(val consumer: DistillationActivityConsumer, val supplier: Supplier<Double>) : ReplicatorBehavior {
+    var scanInterval = 5
+    var scanPhase = SimulationPhase.Pre
+    var tolerance = 0.0025
+
+    private var tracked = 0.0
+
+    override fun subscribe(subscribers: SubscriberCollection<SimulationPhase>) {
+        subscribers.addSubscriber(SubscriberOptions(scanInterval, scanPhase), this::scan)
+    }
+
+    private fun scan(dt: Double, phase: SimulationPhase) {
+        var activity = supplier.get()
+
+        if(activity < tolerance) {
+            activity = 0.0
+        }
+
+        if(activity.approxEq(tracked, tolerance)) {
+            return
+        }
+
+        tracked = activity
+        consumer.onDistillationActivityChange(activity)
+    }
+
+    class ActivityPacket(val activity: Double) {
+        companion object {
+            fun serialize(packet: ActivityPacket, writer: FriendlyByteBuf) {
+                writer.writeDouble(packet.activity)
+            }
+
+            fun deserialize(reader: FriendlyByteBuf) = ActivityPacket(
+                reader.readDouble()
+            )
+        }
     }
 }

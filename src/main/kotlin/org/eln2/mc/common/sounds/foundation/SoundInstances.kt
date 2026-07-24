@@ -157,7 +157,7 @@ data class SoundInfo(val pitch: Double, val volume: Double) {
 
             return SoundInfo(
                 pitch = (0.7 + clamped * 0.3).coerceIn(0.5, 1.5),
-                volume = (clamped * 0.8 + 0.2).coerceIn(0.0, 2.0)
+                volume = (clamped * 0.6).coerceIn(0.0, 1.0)
             )
         }
     }
