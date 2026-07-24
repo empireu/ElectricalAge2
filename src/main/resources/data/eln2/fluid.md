@@ -83,3 +83,13 @@ We use different naming conventions for liquids at STP and gases at STP:
       * *Example:* Liquid Hydrogen (`eln2:liquid_hydrogen`)
     * Gas Form - simply the usual name:
       * *Example:* Hydrogen (`eln2:hydrogen`)
+
+### 5. Game-Energy Scaling
+Real-world fluid energy values are enormous compared to the thermal mass of in-game machines. A single distillation module is 50 kg of copper (19,250 J/K), while water's enthalpy of vaporization is 2.26 MJ/kg. At real-world values, condensing a small amount of steam would spike a module's temperature beyond playability.
+
+To bring the ratio of fluid energy to machine thermal mass into a playable range, all fluid-specific energy properties are scaled by a constant `PROPERTY_SCALAR` ($1/10$) at load time:
+
+* **Applied to:** `specificHeatCapacity` and `enthalpy` (in both boiling and condensation transformations).
+* **Not applied to:** `density`, `gasExpansionFactor`, fuel energy density (e.g. coal at 24 MJ/kg), or machine thermal mass. These are material/structural properties, not fluid properties.
+* **JSON files keep real-world values.** The scaling is applied in the loaders (`PhysicalFluidManager.apply` and `FluidTransformationManager.apply`), so the DTOs and all downstream code see scaled values. Tooltips display the scaled (game-internal) values, since those are what the simulation actually uses.
+* **Effect:** Per gas mB energy drops 10x, giving the player time to react to heating and making passive cooling feasible. Total fuel energy is conserved: the same coal boils more water per mB, but the total energy released is unchanged.

@@ -20,6 +20,7 @@ import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.utils.putUnique
 import org.eln2.mc.*
 import org.eln2.mc.extensions.*
+private const val PROPERTY_SCALAR = 1.0 / 10.0
 
 /**
  * Extra properties attached to a Forge Fluid.
@@ -81,7 +82,7 @@ object PhysicalFluidManager : SimpleJsonResourceReloadListener(GsonBuilder().cre
 
             val forgeFluidId = json.getResourceLocation("forgeFluid")
             val forgeFluid = resolveForgeFluid(forgeFluidId)
-            val specificHeatCapacity = Quantity(json.getDouble("specificHeatCapacity"), JOULE_PER_MILLIBUCKET_KELVIN)
+            val specificHeatCapacity = Quantity(json.getDouble("specificHeatCapacity") * PROPERTY_SCALAR, JOULE_PER_MILLIBUCKET_KELVIN)
             val density = Quantity(json.getDouble("density"), KILOGRAM_PER_MILLIBUCKET)
             val isGaseous = json.getBool("isGaseous")
             val gasExpansionFactor = if(json.has("gasExpansionFactor")) json.get("gasExpansionFactor").asDouble else 1.0
@@ -236,7 +237,7 @@ object FluidTransformationManager : SimpleJsonResourceReloadListener(GsonBuilder
 
             val boilingTransformation = json.mapNullable("boiling") {
                 val temperature = Quantity(it.getDouble("temperature"), KELVIN)
-                val enthalpy = Quantity(it.getDouble("enthalpy"), JOULE_PER_MILLIBUCKET)
+                val enthalpy = Quantity(it.getDouble("enthalpy") * PROPERTY_SCALAR, JOULE_PER_MILLIBUCKET)
                 val resultGas = resolveForgeFluid(it.getResourceLocation("resultGas"))
                 val resultGasProportion = it.getInt("resultGasProportion", 1000)
                 val resultLiquidResidue = it.getNullable("resultLiquidResidue") { _ ->
@@ -248,7 +249,7 @@ object FluidTransformationManager : SimpleJsonResourceReloadListener(GsonBuilder
 
             val condensationTransformation = json.mapNullable("condensation") {
                 val temperature = Quantity(it.getDouble("temperature"), KELVIN)
-                val enthalpy = Quantity(it.getDouble("enthalpy"), JOULE_PER_MILLIBUCKET)
+                val enthalpy = Quantity(it.getDouble("enthalpy") * PROPERTY_SCALAR, JOULE_PER_MILLIBUCKET)
                 val resultLiquid = resolveForgeFluid(it.getResourceLocation("resultLiquid"))
                 val resultLiquidProportion = it.getInt("resultLiquidProportion", 1000)
                 val resultGasResidue = it.getNullable("resultGasResidue") { _ ->
