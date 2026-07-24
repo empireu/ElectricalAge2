@@ -150,6 +150,8 @@
     "item.eln2.drill.mode.Area3x3.name": "Drill 3x3 Area",
     "item.eln2.drill.mode.Area5x5.name": "Drill 5x5 Area",
     "item.eln2.flashlight": "Flashlight",
+    "item.eln2.creosote_brush": "Creosote Brush",
+    "item.eln2.enamel_brush": "Enamel Brush",
 
     // Valves:
     "item.eln2.fluid_pipe_extraction_valve": "Fluid Pipe Extraction Valve",

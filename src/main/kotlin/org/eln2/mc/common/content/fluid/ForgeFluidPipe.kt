@@ -44,6 +44,7 @@ import net.minecraftforge.common.capabilities.Capability
 import net.minecraftforge.common.capabilities.ForgeCapabilities
 import net.minecraftforge.common.util.LazyOptional
 import net.minecraftforge.fluids.FluidStack
+import net.minecraft.world.level.material.Fluid
 import net.minecraftforge.fluids.capability.IFluidHandler
 import net.minecraftforge.registries.RegistryObject
 import org.ageseries.libage.data.OptionalDouble
@@ -56,6 +57,7 @@ import org.eln2.mc.common.content.WrenchItem
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
 import org.eln2.mc.common.fluids.foundation.FractionalFluidStack
 import org.eln2.mc.common.fluids.foundation.IFractionalFluidHandler
+import org.eln2.mc.common.fluids.foundation.PhysicalFluidManager
 import org.eln2.mc.common.fluids.foundation.IThermalFluidHandler
 import org.eln2.mc.common.fluids.foundation.fractional
 import org.eln2.mc.extensions.*
@@ -76,6 +78,14 @@ import kotlin.math.min
  * I could add a config option that disables it, and add a pump block which needs energy.
  * */
 private const val PUMP_RATE = 1
+/**
+ * Scales [PUMP_RATE] by the fluid's [org.eln2.mc.common.fluids.foundation.PhysicalFluid.gasExpansionFactor], so that gases transfer at an equal liquid-equivalent mass rate to liquids.
+ * Falls back to [PUMP_RATE] for non-physical (non-thermal) fluids.
+ * */
+private fun pumpRateFor(fluid: Fluid): Double {
+    val properties = PhysicalFluidManager.getProperties(fluid) ?: return PUMP_RATE.toDouble()
+    return PUMP_RATE * properties.gasExpansionFactor
+}
 
 /**
  * Gets (ready) the neighbors of [pipe].
@@ -793,12 +803,14 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
              * Fused logic for both dumb sources and thermal sources.
              * */
             if(fluidSource is IFractionalFluidHandler) {
+                val pumpRate = pumpRateFor(fluidSource.getFractionalFluidInTank(0).fluid)
+
                 val drainSimulation: FractionalFluidStack
                 val drainSimulationTemperature: OptionalDouble
 
                 if(fluidSource is IThermalFluidHandler) {
                     val thermalStack = fluidSource.drainThermal(
-                        PUMP_RATE.toDouble(),
+                        pumpRate,
                         IFluidHandler.FluidAction.SIMULATE
                     ) ?: continue
 
@@ -806,7 +818,7 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
                     drainSimulationTemperature = OptionalDouble.wrap(thermalStack.temperature)
                 }
                 else {
-                    drainSimulation = fluidSource.drainFractional(PUMP_RATE.toDouble(), IFluidHandler.FluidAction.SIMULATE)
+                    drainSimulation = fluidSource.drainFractional(pumpRate, IFluidHandler.FluidAction.SIMULATE)
                     drainSimulationTemperature = OptionalDouble.EMPTY
                 }
 
@@ -881,7 +893,13 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
              * Non-thermal source (thermal handlers are, by definition, fractional):
              * */
             else {
-                val drainSimulation = fluidSource.drain(PUMP_RATE, IFluidHandler.FluidAction.SIMULATE)
+                val pumpRate = pumpRateFor(fluidSource.getFluidInTank(0).fluid).toInt()
+
+                if(pumpRate <= 0) {
+                    continue
+                }
+
+                val drainSimulation = fluidSource.drain(pumpRate, IFluidHandler.FluidAction.SIMULATE)
 
                 if(drainSimulation.isEmpty) {
                     continue
@@ -1081,6 +1099,7 @@ class FluidPipeBlock : Block(eln2StandardBlockProperties().noOcclusion().dynamic
         }
     }
 
+    @Suppress("DEPRECATION")
     @Deprecated("Deprecated in Java")
     override fun onRemove(pState: BlockState, pLevel: Level, pPos: BlockPos, pNewState: BlockState, pIsMoving: Boolean) {
         if (!pState.`is`(pNewState.block)) {
@@ -1377,7 +1396,7 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
         LazyOptional.of { handlers[it] }
     }
 
-    override fun <T : Any?> getCapability(cap: Capability<T?>, side: Direction?): LazyOptional<T?> {
+    override fun <T> getCapability(cap: Capability<T?>, side: Direction?): LazyOptional<T?> {
         if(side != null) {
             return handlersLazy[side.get3DDataValue()].cast()
         }
@@ -1419,7 +1438,7 @@ class FluidPipeBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(Eln
 
         val objects = pipeObjects.plus(centerObjects)
 
-        val pick = clipScene(player, { (dir, aabb) -> aabb }, objects)
+        val pick = clipScene(player, { (_, aabb) -> aabb }, objects)
             ?: return null
 
         return PickResult(pick.first)

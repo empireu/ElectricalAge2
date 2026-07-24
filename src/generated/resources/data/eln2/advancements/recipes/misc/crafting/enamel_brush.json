@@ -1,12 +1,12 @@
 {
   "parent": "minecraft:recipes/root",
   "criteria": {
-    "has_enamel_brush": {
+    "has_insulating_varnish_bottle": {
       "conditions": {
         "items": [
           {
             "items": [
-              "eln2:enamel_brush"
+              "eln2:insulating_varnish_bottle"
             ]
           }
         ]
@@ -15,20 +15,20 @@
     },
     "has_the_recipe": {
       "conditions": {
-        "recipe": "eln2:crafting/enameled_copper_wire"
+        "recipe": "eln2:crafting/enamel_brush"
       },
       "trigger": "minecraft:recipe_unlocked"
     }
   },
   "requirements": [
     [
-      "has_enamel_brush",
+      "has_insulating_varnish_bottle",
       "has_the_recipe"
     ]
   ],
   "rewards": {
     "recipes": [
-      "eln2:crafting/enameled_copper_wire"
+      "eln2:crafting/enamel_brush"
     ]
   },
   "sends_telemetry_event": false

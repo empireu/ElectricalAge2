@@ -34,12 +34,12 @@ object Eln2SteamTurbine : ContentModule() {
 
     val STEAM_TURBINE_MODEL = SteamTurbineGeneratorModel(
         etaFactor = 0.5,
-        maxFlowRate = 4.31,
+        maxFlowRate = 35.0,
         maxTorque = Quantity(2400.0, NEWTON_METER),
         maxPower = Quantity(50000.0, WATT),
         coldSideMass = Quantity(50.0, KILOGRAM),
         coldSideMaterial = ChemicalElement.Copper.asMaterial,
-        coldSideLeakage = ConnectionParameters.DEFAULT,
+        coldSideLeakage = ConnectionParameters(conductance = Quantity(100.0, WATT_PER_KELVIN)),
         referenceAngularVelocity = Quantity(104.72, RADIAN_PER_SECOND),
         breakdownAngularVelocity = Quantity(500.0, RADIAN_PER_SECOND),
         breakdownTemperature = Quantity(200.0, CELSIUS),

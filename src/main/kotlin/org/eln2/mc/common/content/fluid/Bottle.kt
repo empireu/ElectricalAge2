@@ -60,7 +60,7 @@ class ChemicalBottleItem(val eln2Fluid: ForgeFluidRegistry.ForgeFluidRegistryIte
                 ?: return
 
             event.isCanceled = true
-            event.cancellationResult = net.minecraft.world.InteractionResult.SUCCESS
+            event.cancellationResult = InteractionResult.SUCCESS
 
             if (level.isClientSide){
                 return
@@ -165,5 +165,29 @@ class ChemicalBottleItem(val eln2Fluid: ForgeFluidRegistry.ForgeFluidRegistryIte
         }
 
         return InteractionResult.SUCCESS
+    }
+}
+/**
+ * Durability-based crafting tool that applies a fluid coating (e.g. creosote, enamel) without consuming a full bottle.
+ * Crafting with this item consumes 1 durability instead of the fluid. When durability reaches 0, the brush is destroyed.
+ * @param maxUses The number of crafting operations before the brush breaks.
+ * */
+class BrushItem(val maxUses: Int) : Item(Properties().stacksTo(1).durability(maxUses)) {
+    override fun isEnchantable(stack: ItemStack): Boolean {
+        return false
+    }
+
+    override fun hasCraftingRemainingItem(stack: ItemStack): Boolean {
+        return stack.damageValue < stack.maxDamage - 1
+    }
+
+    override fun getCraftingRemainingItem(stack: ItemStack): ItemStack {
+        val remaining = stack.copy()
+        remaining.damageValue = stack.damageValue + 1
+        return remaining
+    }
+
+    override fun isBarVisible(stack: ItemStack): Boolean {
+        return true
     }
 }

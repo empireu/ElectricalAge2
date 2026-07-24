@@ -13,6 +13,7 @@ import org.eln2.mc.common.content.modules.ContentManager.withItemTagDatagen
 import org.eln2.mc.common.content.modules.world.Eln2Ores
 import org.eln2.mc.common.items.ItemRegistry.item
 import org.eln2.mc.common.items.ItemRegistry.itemDefault
+import org.eln2.mc.common.content.fluid.BrushItem
 import java.util.function.Supplier
 
 object Eln2Ingredients : ContentModule() {
@@ -438,6 +439,13 @@ object Eln2Ingredients : ContentModule() {
     val BEARING_ASSEMBLY = itemDefault("bearing_assembly")
     val TURBINE_CASING = itemDefault("turbine_casing")
     val TURBINE_CONTROLLER = itemDefault("turbine_controller")
+
+    //#endregion
+
+    //#region Brushes
+
+    val CREOSOTE_BRUSH = item("creosote_brush") { BrushItem(32) }
+    val ENAMEL_BRUSH = item("enamel_brush") { BrushItem(32) }
 
     //#endregion
 }

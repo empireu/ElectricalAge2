@@ -139,6 +139,7 @@ object Eln2Wires : ContentModule() {
             replicatesExternalTemperature = true,
             null, // TODO maybe it does radiate?
             leakageParameters = ConnectionParameters(
+                conductance = Quantity(25.0, WATT_PER_KELVIN),
                 area = 5.0
             )
         )
