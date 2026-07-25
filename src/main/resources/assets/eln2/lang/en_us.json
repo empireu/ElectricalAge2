@@ -524,6 +524,7 @@
     "recipe.eln2.hydrogen_reduction": "Hydrogen Reduction",
     "recipe.eln2.electrolysis": "Electrolysis",
     "recipe.eln2.vacuum_sealing": "Vacuum Sealing",
+    "recipe.eln2.phase_change": "Phase Change",
 
     "jei.eln2.vulcanizing.temperature_range": "Temperature: %s\u00B0C - %s\u00B0C",
     "jei.eln2.vulcanizing.burnt": "Result when overheated",
