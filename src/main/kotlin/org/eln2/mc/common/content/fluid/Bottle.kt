@@ -2,6 +2,7 @@ package org.eln2.mc.common.content.fluid
 
 import net.minecraft.sounds.SoundEvents
 import net.minecraft.sounds.SoundSource
+import net.minecraft.ChatFormatting
 import net.minecraft.network.chat.Component
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.Item
@@ -189,5 +190,20 @@ class BrushItem(val maxUses: Int) : Item(Properties().stacksTo(1).durability(max
 
     override fun isBarVisible(stack: ItemStack): Boolean {
         return true
+    }
+
+    override fun appendHoverText(
+        pStack: ItemStack,
+        pLevel: Level?,
+        pTooltipComponents: MutableList<Component>,
+        pIsAdvanced: TooltipFlag,
+    ) {
+        super.appendHoverText(pStack, pLevel, pTooltipComponents, pIsAdvanced)
+        pTooltipComponents.add(
+            Component.translatable("tooltip.eln2.brush.uses_remaining")
+                .append(": ")
+                .append(Component.literal((maxUses - pStack.damageValue).toString()).withStyle(ChatFormatting.GRAY))
+                .withStyle(ChatFormatting.YELLOW)
+        )
     }
 }

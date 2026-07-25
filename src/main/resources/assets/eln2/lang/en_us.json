@@ -152,6 +152,7 @@
     "item.eln2.flashlight": "Flashlight",
     "item.eln2.creosote_brush": "Creosote Brush",
     "item.eln2.enamel_brush": "Enamel Brush",
+    "tooltip.eln2.brush.uses_remaining": "Uses Remaining",
 
     // Valves:
     "item.eln2.fluid_pipe_extraction_valve": "Fluid Pipe Extraction Valve",
