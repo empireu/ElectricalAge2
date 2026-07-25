@@ -525,6 +525,7 @@
     "recipe.eln2.electrolysis": "Electrolysis",
     "recipe.eln2.vacuum_sealing": "Vacuum Sealing",
     "recipe.eln2.phase_change": "Phase Change",
+    "recipe.eln2.tree_extraction": "Tree Extraction",
 
     "jei.eln2.vulcanizing.temperature_range": "Temperature: %s\u00B0C - %s\u00B0C",
     "jei.eln2.vulcanizing.burnt": "Result when overheated",
