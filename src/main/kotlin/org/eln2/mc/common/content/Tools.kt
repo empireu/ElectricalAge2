@@ -40,10 +40,7 @@ import org.eln2.mc.common.content.modules.Eln2Tools
 import org.eln2.mc.client.screens.ScrewdriverConfigScreen
 import org.eln2.mc.common.network.Networking
 import org.eln2.mc.Eln2Config
-import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.extensions.plus
-import org.eln2.mc.extensions.toVector3d
-import org.eln2.mc.getPlayerPOVHitResult
 import java.util.*
 import java.util.function.Supplier
 import kotlin.random.Random
@@ -306,48 +303,8 @@ class ScrewdriverItem : Item(Properties().stacksTo(1)) {
             stack.tag?.remove(CONFIG_VALUE)
         }
         private inline fun<reified T> pickGameObject(player: Player?) : Pair<T, Vector3d>? {
-            if(player == null) {
-                return null
-            }
-
-            val level = player.level()
-                ?: return null
-
-            val hit = getPlayerPOVHitResult(level, player)
-
-            if (hit.type != HitResult.Type.BLOCK) {
-                return null
-            }
-
-            val targetBlockEntity = level.getBlockEntity(hit.blockPos)
-                ?: return null
-
-            if(targetBlockEntity is T) {
-                return Pair(targetBlockEntity, targetBlockEntity.blockPos.toVector3d() + Vector3d.one * 0.5)
-            }
-
-            val multipart = targetBlockEntity as? MultipartBlockEntity
-                ?: return null
-
-            val part = multipart.pickPart(player)
-                ?: return null
-
-            if(part is T) {
-                val c = part.worldBoundingBox.center
-                return Pair(part, Vector3d(c.x, c.y, c.z))
-            }
-
-            val specContainer = part as? SpecContainerPart
-                ?: return null
-
-            val spec = specContainer.pickSpec(player)?.second
-                ?: return null
-
-            if(spec is T) {
-                return Pair(spec, spec.placement.orientedBoundingBoxWorld.center)
-            }
-
-            return null
+            val pick = org.eln2.mc.pickGameObject<T>(player) ?: return null
+            return Pair(pick.target, pick.position)
         }
 
         fun onScroll(event: InputEvent.MouseScrollingEvent) {

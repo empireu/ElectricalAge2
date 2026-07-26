@@ -17,6 +17,7 @@ import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
+import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.fluids.FluidStack
@@ -24,8 +25,12 @@ import net.minecraftforge.registries.ForgeRegistries
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.*
+import org.ageseries.libage.mathematics.geometry.Vector3d
 import org.eln2.mc.common.ForgeEvents
+import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
+import org.eln2.mc.common.specs.foundation.SpecContainerPart
 import org.eln2.mc.extensions.minus
+import org.eln2.mc.extensions.toVector3d
 import org.eln2.mc.extensions.viewClip
 import org.eln2.mc.mathematics.FacingDirection
 import org.joml.Vector3f
@@ -246,6 +251,59 @@ fun getPlayerPOVHitResult(pLevel: Level, pPlayer: Player): BlockHitResult {
             pPlayer
         )
     )
+}
+
+/**
+ * Result of picking a game object under the player's crosshair.
+ * @param target The picked object (block entity, part, or spec).
+ * @param position A representative world position for the object (used for sound playback, etc).
+ * @param side The world-space face the crosshair hit, or null if the pick didn't resolve to a face (e.g. a spec picked by its oriented bounding box rather than a block face).
+ * */
+data class GameObjectPick<T>(val target: T, val position: Vector3d, val side: Direction?)
+
+/**
+ * Picks the game object under the player's crosshair, resolving through block entities, multipart parts, and specs.
+ * Generic so callers can request a specific type (e.g. [org.eln2.mc.client.overlays.HoverDetailSupplier]).
+ * Returns null if nothing under the crosshair matches [T].
+ * */
+inline fun <reified T> pickGameObject(player: Player?): GameObjectPick<T>? {
+    if(player == null) {
+        return null
+    }
+
+    val level = player.level() ?: return null
+
+    val hit = getPlayerPOVHitResult(level, player)
+
+    if(hit.type != HitResult.Type.BLOCK) {
+        return null
+    }
+
+    val side = hit.direction
+    val targetBlockEntity = level.getBlockEntity(hit.blockPos) ?: return null
+
+    if(targetBlockEntity is T) {
+        return GameObjectPick(targetBlockEntity, targetBlockEntity.blockPos.toVector3d() + Vector3d.one * 0.5, side)
+    }
+
+    val multipart = targetBlockEntity as? MultipartBlockEntity ?: return null
+
+    val part = multipart.pickPart(player) ?: return null
+
+    if(part is T) {
+        val center = part.worldBoundingBox.center
+        return GameObjectPick(part, Vector3d(center.x, center.y, center.z), side)
+    }
+
+    val specContainer = part as? SpecContainerPart ?: return null
+
+    val spec = specContainer.pickSpec(player)?.second ?: return null
+
+    if(spec is T) {
+        return GameObjectPick(spec, spec.placement.orientedBoundingBoxWorld.center, side)
+    }
+
+    return null
 }
 
 class PIDController(var kP: Double, var kI: Double, var kD: Double) {

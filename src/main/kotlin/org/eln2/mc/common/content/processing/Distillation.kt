@@ -13,6 +13,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.chat.Component
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.context.UseOnContext
 import net.minecraft.world.level.Level
@@ -63,6 +64,7 @@ import org.eln2.mc.Locators
 import org.eln2.mc.extensions.*
 import org.eln2.mc.integration.ComponentDisplay
 import org.eln2.mc.integration.ComponentDisplayList
+import org.eln2.mc.client.overlays.HoverDetailSupplier
 import org.eln2.mc.mathematics.Base6Direction3dMask
 import java.util.function.Consumer
 import java.util.function.Supplier
@@ -1232,7 +1234,8 @@ class PhaseChangeModuleBlockEntity(pos: BlockPos, state: BlockState) :
     WrenchInteractable,
     InternalTemperatureConsumer,
     DistillationActivityConsumer,
-    BulkPacketHandlerBlockEntity
+    BulkPacketHandlerBlockEntity,
+    HoverDetailSupplier
 {
     //#region Capability
 
@@ -1404,6 +1407,17 @@ class PhaseChangeModuleBlockEntity(pos: BlockPos, state: BlockState) :
         bottomFaceHandlerLazy.invalidate()
         topFaceHandlerLazy.invalidate()
         sideHandlerLazy.invalidate()
+    }
+
+    override fun getHoverDetail(side: Direction?): Component? {
+        val key = when(side) {
+            Direction.DOWN -> "hover.eln2.phase_change.bottom"
+            Direction.UP -> "hover.eln2.phase_change.top"
+            null -> return null
+            else -> "hover.eln2.phase_change.side"
+        }
+
+        return Component.translatable(key)
     }
 
     //#endregion

@@ -567,5 +567,9 @@
     "tooltip.eln2.fluid.boiling_point": "Boiling point",
     "tooltip.eln2.fluid.vaporization_enthalpy": "Heat of vaporization",
     "tooltip.eln2.fluid.condensation_point": "Condensation point",
-    "tooltip.eln2.fluid.condensation_enthalpy": "Heat of condensation"
+    "tooltip.eln2.fluid.condensation_enthalpy": "Heat of condensation",
+
+    "hover.eln2.phase_change.bottom": "Bottom: drains the densest fluid, accepts gas and liquid",
+    "hover.eln2.phase_change.top": "Top: drains gas, accepts liquid",
+    "hover.eln2.phase_change.side": "Side: drains liquid, accepts gas and liquid"
 }
