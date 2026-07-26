@@ -24,6 +24,7 @@ import net.minecraftforge.event.entity.player.PlayerInteractEvent
 import net.minecraftforge.event.level.BlockEvent
 import net.minecraftforge.event.level.ChunkWatchEvent
 import net.minecraftforge.event.level.LevelEvent
+import net.minecraftforge.event.furnace.FurnaceFuelBurnTimeEvent
 import net.minecraftforge.event.server.ServerStartingEvent
 import net.minecraftforge.event.server.ServerStoppingEvent
 import net.minecraftforge.eventbus.api.EventPriority
@@ -50,6 +51,7 @@ import org.eln2.mc.common.content.*
 import org.eln2.mc.common.content.fluid.BucketFluidInteraction
 import org.eln2.mc.common.content.fluid.FluidPipeNetworkManager
 import org.eln2.mc.common.content.modules.ContentManager
+import org.eln2.mc.common.content.modules.Eln2Ingredients
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
 import org.eln2.mc.common.content.processing.LeadChamberExecutionManager
 import org.eln2.mc.common.content.processing.TreeExtractionManager
@@ -264,6 +266,14 @@ object ForgeEvents {
         event.addListener(PhysicalFluidManager)
         event.addListener(FluidTransformationManager)
         event.addListener(TreeExtractionManager)
+    }
+
+    @SubscribeEvent @JvmStatic
+    fun onFurnaceFuelBurnTime(event: FurnaceFuelBurnTimeEvent) {
+        when (event.itemStack.item) {
+            Eln2Ingredients.COKE.get() -> event.burnTime = 3200
+            Eln2Ingredients.COKE_DUST.get() -> event.burnTime = 3200
+        }
     }
 
     @SubscribeEvent @JvmStatic
