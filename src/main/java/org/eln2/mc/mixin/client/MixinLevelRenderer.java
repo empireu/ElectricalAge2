@@ -20,7 +20,7 @@ import java.util.SortedSet;
 @Mixin(LevelRenderer.class)
 public abstract class MixinLevelRenderer {
     @Final
-    @Shadow
+    @Shadow(aliases = {"f_109409_"})
     private Long2ObjectMap<SortedSet<BlockDestructionProgress>> destructionProgress;
 
     @Inject(
