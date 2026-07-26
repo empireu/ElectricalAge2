@@ -884,9 +884,9 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
                     IFluidHandler.FluidAction.EXECUTE
                 )
 
-                if(!filled.approxEq(fillSimulation, FractionalFluidStack.EPSILON)) {
+                if(!filled.approxEq(drain.amount, FractionalFluidStack.EPSILON)) {
                     // Can't really get much information in the logs, it concerns the entire network
-                    LOG.error(DEBUGGER_BREAK("Fused fill simulation yielded different results ($fluidSource): $fillSimulation, $filled"))
+                    LOG.error(DEBUGGER_BREAK("Fused fill did not match drained amount (from $fluidSource): ${drain.amount}, $filled"))
                 }
             }
             /**
@@ -933,9 +933,9 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
                     IFluidHandler.FluidAction.EXECUTE
                 )
 
-                if(filled != fillSimulation) {
+                if(filled != drain.amount) {
                     // Can't really get much information in the logs, it concerns the entire network
-                    LOG.error(DEBUGGER_BREAK("Discrete fill simulation yielded different results ($fluidSource): $fillSimulation, $filled"))
+                    LOG.error(DEBUGGER_BREAK("Discrete fill did not match drained amount ($fluidSource): ${drain.amount}, $filled"))
                 }
             }
         }
