@@ -26,6 +26,7 @@ import net.minecraftforge.event.level.ChunkWatchEvent
 import net.minecraftforge.event.level.LevelEvent
 import net.minecraftforge.event.server.ServerStartingEvent
 import net.minecraftforge.event.server.ServerStoppingEvent
+import net.minecraftforge.eventbus.api.EventPriority
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.event.lifecycle.FMLLoadCompleteEvent
@@ -46,6 +47,7 @@ import org.eln2.mc.common.cells.foundation.CellGraphManager
 import org.eln2.mc.common.cells.foundation.ServerPhase
 import org.eln2.mc.common.cells.foundation.SimulationExecutionSubgraph
 import org.eln2.mc.common.content.*
+import org.eln2.mc.common.content.fluid.BucketFluidInteraction
 import org.eln2.mc.common.content.fluid.FluidPipeNetworkManager
 import org.eln2.mc.common.content.modules.ContentManager
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
@@ -272,6 +274,13 @@ object ForgeEvents {
             appendThermalFluidTooltip(item.fluid, event.toolTip)
         }
     }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    @JvmStatic
+    fun onBucketRightClickBlock(event: PlayerInteractEvent.RightClickBlock) {
+        BucketFluidInteraction.onRightClickBlock(event)
+    }
+
     @SubscribeEvent @JvmStatic
     fun onServerStarting(event: ServerStartingEvent) {
         LOG.info("Making ELN2 thread pool")
