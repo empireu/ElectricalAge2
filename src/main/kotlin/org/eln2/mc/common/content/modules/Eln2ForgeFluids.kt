@@ -42,6 +42,7 @@ import org.eln2.mc.common.fluids.ForgeFluidRegistry
 import org.eln2.mc.common.fluids.ForgeFluidRegistry.basicForgeFluid
 import org.eln2.mc.common.items.ItemRegistry
 import org.eln2.mc.common.items.ItemRegistry.item
+import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
 import java.util.function.Supplier
 
 object Eln2ForgeFluids : ContentModule() {
@@ -625,6 +626,8 @@ object Eln2ForgeFluids : ContentModule() {
         GAS_RELEASE_BLOCK.block,
         ::GasReleaseBlockEntity
     )
+
+    val GAS_RELEASE_SOUND = soundEventVariableRange("gas_release")
 
     //#endregion
 }

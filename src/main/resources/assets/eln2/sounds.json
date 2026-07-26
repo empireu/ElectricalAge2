@@ -158,5 +158,13 @@
                 "stream": false
             }
         ]
+    },
+    "gas_release": {
+        "sounds": [
+            {
+                "name": "eln2:continuous_pressure_release/continuous_pressure_release",
+                "stream": false
+            }
+        ]
     }
 }

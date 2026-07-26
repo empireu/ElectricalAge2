@@ -251,6 +251,26 @@ fun AABB.transformed(quaternion: Quaternionfc): AABB {
     return AABB(min.toVec3(), max.toVec3())
 }
 
+/**
+ * Rotates an [AABB] around [pivot] by [rotation], returning the new axis-aligned bounding box.
+ * */
+fun AABB.rotatedAround(pivot: Vector3f, rotation: Quaternionf): AABB {
+    var min = Vector3f(Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE)
+    var max = Vector3f(Float.MIN_VALUE, Float.MIN_VALUE, Float.MIN_VALUE)
+
+    this.corners().forEach { corner ->
+        val point = corner.toJoml()
+        point.sub(pivot)
+        rotation.transform(point)
+        point.add(pivot)
+
+        min = componentMin(min, point)
+        max = componentMax(max, point)
+    }
+
+    return AABB(min.toVec3(), max.toVec3())
+}
+
 fun AABB.size3d() = Vector3d(this.maxX - this.minX, this.maxY - this.minY, this.maxZ - this.minZ)
 fun BlockState.facing(): Direction = this.getValue(HorizontalDirectionalBlock.FACING)
 operator fun BlockPos.plus(displacement: Vec3i): BlockPos {

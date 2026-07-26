@@ -23,9 +23,9 @@ import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.registries.ForgeRegistries
 import net.minecraftforge.server.ServerLifecycleHooks
-import org.ageseries.libage.data.*
-import org.ageseries.libage.mathematics.*
+import org.ageseries.libage.data.classify
 import org.ageseries.libage.mathematics.geometry.Vector3d
+import org.ageseries.libage.mathematics.map
 import org.eln2.mc.common.ForgeEvents
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.specs.foundation.SpecContainerPart
@@ -36,11 +36,7 @@ import org.eln2.mc.mathematics.FacingDirection
 import org.joml.Vector3f
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.sin
+import kotlin.math.*
 import kotlin.random.Random
 
 fun randomFloat(min: Float, max: Float) = map(Random.nextFloat(), 0f, 1f, min, max)
