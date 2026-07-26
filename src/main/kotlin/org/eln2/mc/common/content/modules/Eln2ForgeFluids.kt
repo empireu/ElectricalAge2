@@ -31,6 +31,8 @@ import org.eln2.mc.common.cells.CellRegistry
 import org.eln2.mc.common.cells.foundation.CellProvider
 import org.eln2.mc.common.content.fluid.*
 import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
+import org.eln2.mc.common.content.fluid.GasReleaseBlock
+import org.eln2.mc.common.content.fluid.GasReleaseBlockEntity
 import org.eln2.mc.common.content.processing.PhaseChangeModuleBlock
 import org.eln2.mc.common.content.processing.PhaseChangeModuleBlockEntity
 import org.eln2.mc.common.content.processing.PhaseChangeModuleBlockEntityVisual
@@ -612,4 +614,17 @@ object Eln2ForgeFluids : ContentModule() {
 
         withRenderLayer(RenderType.translucent())
     }
+
+    //#region Gas Release Vent
+
+    val GAS_RELEASE_BLOCK = blockAndItem("gas_release", ::GasReleaseBlock)
+        .withSelfDrop()
+
+    val GAS_RELEASE_BLOCK_ENTITY = blockEntityOnly(
+        "gas_release",
+        GAS_RELEASE_BLOCK.block,
+        ::GasReleaseBlockEntity
+    )
+
+    //#endregion
 }

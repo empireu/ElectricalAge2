@@ -375,6 +375,7 @@
     "block.eln2.steam_turbine": "Steam Turbine",
     "block.eln2.grid_pass_pole": "Grid Pass Pole",
     "block.eln2.iron_tank": "Iron Fluid Tank",
+    "block.eln2.gas_release": "Gas Vent",
 
     // Parts:
     "item.eln2.tree_tap": "Tree Tap",
