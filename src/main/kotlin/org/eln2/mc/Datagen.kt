@@ -305,6 +305,13 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_iron_plate", has(Eln2Ingredients.IRON_PLATE.get()))
             .save(pWriter, resource("crafting/fluid_pipe"))
 
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2ForgeFluids.GAS_RELEASE_BLOCK.item.get())
+            .pattern("PG")
+            .define('P', Eln2ForgeFluids.FLUID_PIPE_BLOCK.item.get())
+            .define('G', Items.IRON_TRAPDOOR)
+            .unlockedBy("has_fluid_pipe", has(Eln2ForgeFluids.FLUID_PIPE_BLOCK.item.get()))
+            .save(pWriter, resource("crafting/gas_release"))
+
         ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2ForgeFluids.FLUID_PIPE_INSERTION_VALVE.get())
             .pattern("IGI")
             .define('I', taggedIngredient(Eln2Ingredients.IRON_PLATE.get()))
