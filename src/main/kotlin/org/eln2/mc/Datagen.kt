@@ -632,7 +632,7 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
 
         //#region Simple Plate Recipes
 
-        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.LEAD_PLATE.get())
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.LEAD_PLATE.get(), 2)
             .pattern("I  ")
             .pattern("I  ")
             .pattern("   ")
@@ -640,7 +640,7 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_lead_ingot", has(Eln2ConventionTags.INGOT_LEAD))
             .save(pWriter, resource("crafting/lead_plate_from_ingots"))
 
-        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.TIN_PLATE.get())
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.TIN_PLATE.get(), 2)
             .pattern("I  ")
             .pattern("I  ")
             .pattern("   ")
@@ -648,7 +648,7 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_tin_ingot", has(Eln2ConventionTags.INGOT_TIN))
             .save(pWriter, resource("crafting/tin_plate_from_ingots"))
 
-        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.IRON_PLATE.get())
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.IRON_PLATE.get(), 2)
             .pattern("I  ")
             .pattern("I  ")
             .pattern("   ")
@@ -656,7 +656,7 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_iron_ingot", has(Eln2ConventionTags.INGOT_IRON))
             .save(pWriter, resource("crafting/iron_plate_from_ingots"))
 
-        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.COPPER_PLATE.get())
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.COPPER_PLATE.get(), 2)
             .pattern("I  ")
             .pattern("I  ")
             .pattern("   ")
@@ -664,7 +664,7 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_copper_ingot", has(Eln2ConventionTags.INGOT_COPPER))
             .save(pWriter, resource("crafting/copper_plate_from_ingots"))
 
-        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.BRONZE_PLATE.get())
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Ingredients.BRONZE_PLATE.get(), 2)
             .pattern("I  ")
             .pattern("I  ")
             .pattern("   ")
@@ -1736,7 +1736,7 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             if(rollingItem != null) {
                 DirectSimpleProcessingRecipeBuilder(Eln2Processing.ROLLING_RECIPE)
                     .withInput(taggedIngredient(rollingItem))
-                    .withOutput(plateItem)
+                    .withOutput(plateItem, 3)
                     .withDuration(obj.rollingDuration)
                     .unlockedBy("has_item_to_roll", has(rollingItem))
                     .save(pWriter, resource("rolling/${rollingItem.itemID.path}_to_${plateItem.itemID.path}"))
