@@ -30,6 +30,7 @@ import org.eln2.mc.common.content.*
 import org.eln2.mc.common.content.modules.ContentManager.withSelfDrop
 import org.eln2.mc.common.sounds.SoundRegistry.soundEventVariableRange
 import org.eln2.mc.mathematics.Base6Direction3d
+import org.eln2.mc.mathematics.Base6Direction3dMask
 import org.eln2.mc.monopolarMapPlanar
 import org.eln2.mc.resource
 
@@ -128,7 +129,7 @@ object Eln2HeatGenerators : ContentModule() {
             )
         )
 
-        val map = monopolarMapPlanar(Base6Direction3d.Back)
+        val map = monopolarMapPlanar(Base6Direction3dMask.HORIZONTALS)
 
         val pidGains = PIDGains(
             kP = 0.002,
