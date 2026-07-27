@@ -581,6 +581,9 @@
     "tooltip.eln2.fluid.condensation_point": "Condensation point",
     "tooltip.eln2.fluid.condensation_enthalpy": "Heat of condensation",
 
+    "tooltip.eln2.fluid_container.load": "Right-click a tank to load fluid",
+    "tooltip.eln2.fluid_container.deposit": "Right-click a tank to deposit fluid",
+
     "hover.eln2.phase_change.bottom": "Bottom: drains the densest fluid, accepts gas and liquid",
     "hover.eln2.phase_change.top": "Top: drains gas, accepts liquid",
     "hover.eln2.phase_change.side": "Side: drains liquid, accepts gas and liquid"

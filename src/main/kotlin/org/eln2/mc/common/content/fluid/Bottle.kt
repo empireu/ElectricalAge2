@@ -107,6 +107,7 @@ class ChemicalBottleItem(val eln2Fluid: ForgeFluidRegistry.ForgeFluidRegistryIte
     ) {
         super.appendHoverText(pStack, pLevel, pTooltipComponents, pIsAdvanced)
         appendThermalFluidTooltip(eln2Fluid.get(), pTooltipComponents)
+        pTooltipComponents.add(Component.translatable("tooltip.eln2.fluid_container.deposit").withStyle(ChatFormatting.GRAY))
     }
     override fun useOn(pContext: UseOnContext): InteractionResult {
         val player = pContext.player

@@ -4,12 +4,15 @@ package org.eln2.mc.common
 
 import it.unimi.dsi.fastutil.ints.Int2IntMap
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
+import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
 import net.minecraft.data.loot.LootTableProvider
+import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.item.BucketItem
 import net.minecraft.world.item.Item
+import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets
 import net.minecraftforge.client.event.EntityRenderersEvent
@@ -31,6 +34,7 @@ import net.minecraftforge.eventbus.api.EventPriority
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.event.lifecycle.FMLLoadCompleteEvent
+import net.minecraftforge.registries.ForgeRegistries
 import net.minecraftforge.server.ServerLifecycleHooks
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.SECOND
@@ -282,6 +286,14 @@ object ForgeEvents {
 
         if (item is BucketItem) {
             appendThermalFluidTooltip(item.fluid, event.toolTip)
+
+            if (ForgeRegistries.ITEMS.getKey(item)?.namespace == MODID) {
+                event.toolTip.add(Component.translatable("tooltip.eln2.fluid_container.deposit").withStyle(ChatFormatting.GRAY))
+        }
+    }
+
+        if (item == Items.BUCKET || item == Items.GLASS_BOTTLE) {
+            event.toolTip.add(Component.translatable("tooltip.eln2.fluid_container.load").withStyle(ChatFormatting.GRAY))
         }
     }
 
