@@ -316,7 +316,7 @@ class PIDController(var kP: Double, var kI: Double, var kD: Double) {
     /**
      * Gets or sets the minimum control signal returned by [update]
      * */
-    var minControl = Double.MIN_VALUE
+    var minControl = -Double.MAX_VALUE
 
     /**
      * Gets or sets the maximum control signal returned by [update]
@@ -325,14 +325,21 @@ class PIDController(var kP: Double, var kI: Double, var kD: Double) {
 
     fun update(value: Double, dt: Double): Double {
         val error = setPoint - value
-
-        errorSum += (error + lastError) * 0.5 * dt
-
         val derivative = (error - lastError) / dt
+
+        val prospectiveErrorSum = errorSum + (error + lastError) * 0.5 * dt
+        val output = kP * error + kI * prospectiveErrorSum + kD * derivative
+
+        val windup = (output > maxControl && error > 0.0) ||
+            (output < minControl && error < 0.0)
+
+        if (!windup) {
+            errorSum = prospectiveErrorSum
+        }
 
         lastError = error
 
-        return (kP * error + kI * errorSum + kD * derivative).coerceIn(minControl, maxControl)
+        return output.coerceIn(minControl, maxControl)
     }
 
     fun reset() {
