@@ -420,25 +420,25 @@ class LeadChamberBlockEntity(pPos: BlockPos, pState: BlockState) : BlockEntity(E
             /**
              * Base reaction rate (mB/tick). Zero means no reaction will occur without nitrogen dioxide.
              * */
-            private const val BASE_REACTION_RATE_MB_PER_TICK = 0.0
+            const val BASE_REACTION_RATE_MB_PER_TICK = 0.0
 
             /**
              * Max reaction rate at full catalyst saturation (mB/tick).
              * Calculated as: 1000 mB acid / 15-min cycle / 27-block chamber ≈ 0.00206 mB/tick/block.
              */
-            private const val MAX_REACTION_RATE_MB_PER_TICK = 1000.0 / (15.0 * 60.0 * 20.0 * 27.0)
+            const val MAX_REACTION_RATE_MB_PER_TICK = 1000.0 / (15.0 * 60.0 * 20.0 * 27.0)
 
             /**
              * Stoichiometric ratios: mB consumed per mB acid produced.
              * */
-            private const val STEAM_PER_ACID = 100.0
-            private const val SULFUR_DIOXIDE_PER_ACID = 100.0
+            const val STEAM_PER_ACID = 100.0
+            const val SULFUR_DIOXIDE_PER_ACID = 100.0
 
             /**
              * Nitrogen dioxide beyond this fraction of the capacity will not increase the reaction rate.
              * This is done to prevent the player spamming catalyst.
              * */
-            private const val MAX_CATALYST_FRACTION = 0.05
+            const val MAX_CATALYST_FRACTION = 0.05
             
             /**
              * Dampening for diffusion equalization. Based on the 6 neighbors for stability.

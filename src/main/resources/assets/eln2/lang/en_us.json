@@ -31,6 +31,14 @@
     "fluid_type.eln2.acetylene": "Acetylene",
     "fluid_type.eln2.sodium_tungstate_solution": "Sodium Tungstate Solution",
     "fluid_type.eln2.sodium_hydroxide_solution": "Sodium Hydroxide Solution",
+    "fluid_type.eln2.insulating_varnish": "Insulating Varnish",
+    "fluid_type.eln2.sulfur_dioxide": "Sulfur Dioxide",
+    "fluid_type.eln2.dilute_sulfuric_acid": "Dilute Sulfuric Acid",
+    "fluid_type.eln2.nitrogen_dioxide": "Nitrogen Dioxide",
+    "fluid_type.eln2.liquid_oxygen": "Liquid Oxygen",
+    "fluid_type.eln2.oxygen": "Oxygen",
+    "fluid_type.eln2.hho_gas": "HHO Gas",
+
 
     // Buckets:
     "item.eln2.steam_bucket": "Steam",
@@ -527,9 +535,12 @@
     "recipe.eln2.vacuum_sealing": "Vacuum Sealing",
     "recipe.eln2.phase_change": "Phase Change",
     "recipe.eln2.tree_extraction": "Tree Extraction",
+    "recipe.eln2.lead_chamber": "Lead Chamber",
 
     "jei.eln2.vulcanizing.temperature_range": "Temperature: %s\u00B0C - %s\u00B0C",
     "jei.eln2.vulcanizing.burnt": "Result when overheated",
+    "jei.eln2.lead_chamber.catalyst_not_consumed": "Catalyst - not consumed",
+    "jei.eln2.lead_chamber.max_rate": "Max rate at %s%% of capacity",
 
     "tooltip.eln2.power_cell.charge": "Charge",
     "tooltip.eln2.power_cell.capacity": "Capacity",

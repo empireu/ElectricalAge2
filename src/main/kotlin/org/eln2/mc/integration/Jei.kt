@@ -61,6 +61,7 @@ class Eln2Jei : IModPlugin {
     private lateinit var vacuumSealingCategory: VacuumSealingCategory
     private lateinit var phaseChangeCategory: PhaseChangeCategory
     private lateinit var treeExtractionCategory: TreeExtractionCategory
+    private lateinit var leadChamberCategory: LeadChamberCategory
 
     override fun getPluginUid(): ResourceLocation = resource("jei_plugin")
 
@@ -80,6 +81,7 @@ class Eln2Jei : IModPlugin {
         electrolysisCategory = ElectrolysisCategory(registration.jeiHelpers.guiHelper)
         phaseChangeCategory = PhaseChangeCategory()
         treeExtractionCategory = TreeExtractionCategory(registration.jeiHelpers.guiHelper)
+        leadChamberCategory = LeadChamberCategory(registration.jeiHelpers.guiHelper)
         registration.addRecipeCategories(
             crushingCategory,
             rollingCategory,
@@ -92,7 +94,8 @@ class Eln2Jei : IModPlugin {
             electrolysisCategory,
             vacuumSealingCategory,
             phaseChangeCategory,
-            treeExtractionCategory
+            treeExtractionCategory,
+            leadChamberCategory
         )
     }
 
@@ -126,6 +129,14 @@ class Eln2Jei : IModPlugin {
         // Tree extraction recipes are data-driven, not from the recipe manager:
         val treeExtractionRecipes = TreeExtractionManager.getEntries().map { TreeExtractionDisplay(it) }
         registration.addRecipes(treeExtractionCategory.jeiRecipeType, treeExtractionRecipes)
+        // Lead chamber process is data-driven, not from the recipe manager:
+        val leadChamberRecipe = LeadChamberDisplay(
+            Eln2ForgeFluids.SULFUR_DIOXIDE.get(),
+            Eln2ForgeFluids.STEAM.get(),
+            Eln2ForgeFluids.NITROGEN_DIOXIDE.get(),
+            Eln2ForgeFluids.DILUTE_SULFURIC_ACID.get()
+        )
+        registration.addRecipes(leadChamberCategory.jeiRecipeType, listOf(leadChamberRecipe))
     }
 
     /**
@@ -156,6 +167,7 @@ class Eln2Jei : IModPlugin {
         registration.addRecipeCatalyst(ItemStack(Eln2ForgeFluids.IRON_TANK.blockAndItem.item.get()), phaseChangeCategory.jeiRecipeType)
 
         registration.addRecipeCatalyst(ItemStack(Eln2Processing.TREE_TAP_PART.item.get()), treeExtractionCategory.jeiRecipeType)
+        registration.addRecipeCatalyst(ItemStack(Eln2Processing.LEAD_CHAMBER_BLOCK.item.get()), leadChamberCategory.jeiRecipeType)
     }
 
     private inline fun <reified T : Recipe<SimpleContainer>> registerCategory(
@@ -1137,5 +1149,101 @@ class TreeExtractionCategory(guiHelper: IGuiHelper) : IRecipeCategory<TreeExtrac
             0x808080,
             false
         )
+    }
+}
+
+
+/**
+ * Synthetic JEI display data for the lead chamber process.
+ * Wraps the four fluids involved in the chamber reaction; stoichiometric ratios and catalyst saturation are read from [LeadChamberBlockEntity.LeadChamberSimulation] so the display cannot drift from the simulation.
+ * */
+class LeadChamberDisplay(
+    val sulfurDioxide: Fluid,
+    val steam: Fluid,
+    val nitrogenDioxide: Fluid,
+    val diluteSulfuricAcid: Fluid
+)
+
+class LeadChamberCategory(guiHelper: IGuiHelper) : IRecipeCategory<LeadChamberDisplay> {
+    val jeiRecipeType = RecipeType(resource("lead_chamber"), LeadChamberDisplay::class.java)
+
+    private val slot = SlotBackground()
+    private val arrowTimer = guiHelper.createTickTimer(40, 24, false)
+
+    override fun getRecipeType(): RecipeType<LeadChamberDisplay> = jeiRecipeType
+
+    override fun getTitle(): Component = Component.translatable("recipe.eln2.lead_chamber")
+
+    override fun getWidth(): Int = 177
+
+    override fun getHeight(): Int = 85
+
+    override fun getIcon(): IDrawable = ItemIcon(ItemStack(Eln2Processing.LEAD_CHAMBER_BLOCK.item.get()))
+
+    override fun setRecipe(builder: IRecipeLayoutBuilder, recipe: LeadChamberDisplay, focuses: IFocusGroup) {
+        val sulfurDioxideAmount = LeadChamberBlockEntity.LeadChamberSimulation.SULFUR_DIOXIDE_PER_ACID.toLong()
+        val steamAmount = LeadChamberBlockEntity.LeadChamberSimulation.STEAM_PER_ACID.toLong()
+        val acidAmount = 1L
+
+        builder.addSlot(RecipeIngredientRole.INPUT, 21, 10)
+            .setBackground(slot, -1, -1)
+            .addFluidStack(recipe.sulfurDioxide, sulfurDioxideAmount)
+            .setFluidRenderer(sulfurDioxideAmount, false, 16, 16)
+
+        builder.addSlot(RecipeIngredientRole.INPUT, 48, 10)
+            .setBackground(slot, -1, -1)
+            .addFluidStack(recipe.steam, steamAmount)
+            .setFluidRenderer(steamAmount, false, 16, 16)
+
+        builder.addSlot(RecipeIngredientRole.OUTPUT, 110, 10)
+            .setBackground(slot, -1, -1)
+            .addFluidStack(recipe.diluteSulfuricAcid, acidAmount)
+            .setFluidRenderer(acidAmount, false, 16, 16)
+
+        builder.addSlot(RecipeIngredientRole.CATALYST, 21, 50)
+            .setBackground(slot, -1, -1)
+            .addFluidStack(recipe.nitrogenDioxide, FluidType.BUCKET_VOLUME.toLong())
+            .setFluidRenderer(FluidType.BUCKET_VOLUME.toLong(), false, 16, 16)
+            .addRichTooltipCallback { view, tooltip ->
+                tooltip.add(Component.translatable("jei.eln2.lead_chamber.catalyst_not_consumed"))
+            }
+    }
+
+    override fun draw(
+        recipe: LeadChamberDisplay,
+        recipeSlotsView: IRecipeSlotsView,
+        graphics: GuiGraphics,
+        mouseX: Double,
+        mouseY: Double
+    ) {
+        val texture = resource("textures/gui/container/progress_arrows.png")
+
+        graphics.blit(
+            texture,
+            75, 12,
+            0.0f, 0.0f,
+            22, 15,
+            32, 32
+        )
+
+        val progress = arrowTimer.value * 22.0f / 24.0f
+
+        if (progress > 0) {
+            graphics.blit(
+                texture,
+                75, 12,
+                0.0f, 16.0f,
+                progress.toInt(), 16,
+                32, 32
+            )
+        }
+
+        val font = Minecraft.getInstance().font
+        val maxCatalystPercent = (LeadChamberBlockEntity.LeadChamberSimulation.MAX_CATALYST_FRACTION * 100).toInt()
+        val catalystNote = Component.translatable("jei.eln2.lead_chamber.catalyst_not_consumed")
+        graphics.drawString(font, catalystNote, 42, 54, 0x5555FF, false)
+
+        val maxRateNote = Component.translatable("jei.eln2.lead_chamber.max_rate", maxCatalystPercent)
+        graphics.drawString(font, maxRateNote, 42, 66, 0x808080, false)
     }
 }
