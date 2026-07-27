@@ -522,6 +522,7 @@
 
     "key.eln2.category": "ELN2",
     "key.eln2.cycle_spec_orientation": "Cycle Spec Orientation",
+    "key.eln2.cycle_snap_mode": "Cycle Snap Mode",
 
     "recipe.eln2.crushing": "Crushing",
     "recipe.eln2.rolling": "Rolling",
