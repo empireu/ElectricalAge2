@@ -22,7 +22,6 @@ import dev.engine_room.flywheel.lib.task.PlanMap
 import dev.engine_room.flywheel.lib.transform.Affine
 import dev.engine_room.flywheel.lib.util.ExtraMemoryOps
 import dev.engine_room.flywheel.lib.util.RendererReloadCache
-import dev.engine_room.flywheel.lib.util.ResourceUtil
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
@@ -125,8 +124,9 @@ object FlwInstanceTypes {
      * appends color1/color2 after the matrix.
      */
     val TRANSFORMED_POLAR: SimpleInstanceType<TransformedPolarInstance> = SimpleInstanceType.builder(::TransformedPolarInstance)
-        // Must include .glsl — Flywheel stock path is instance/cull/transformed.glsl
-        .cullShader(ResourceUtil.rl("instance/cull/transformed.glsl"))
+        // Use inflated eln2 cull (not stock transformed.glsl) — thin open tubes
+        // get falsely Hi-Z culled on flywheel:indirect.
+        .cullShader(resource("instance/cull/default.glsl"))
         .vertexShader(resource("instance/transformed_polar.vert"))
         .layout(LayoutBuilder.create()
             .vector("color", FloatRepr.NORMALIZED_UNSIGNED_BYTE, 4)
@@ -151,7 +151,7 @@ object FlwInstanceTypes {
         .build()
 
     val TRANSFORMED_LIGHT_OVERRIDE: InstanceType<TransformedLightOverrideInstance> = SimpleInstanceType.builder(::TransformedLightOverrideInstance)
-        .cullShader(ResourceUtil.rl("instance/cull/transformed.glsl"))
+        .cullShader(resource("instance/cull/default.glsl"))
         .vertexShader(resource("instance/transformed_light_override.vert"))
         .layout(
             LayoutBuilder.create()
