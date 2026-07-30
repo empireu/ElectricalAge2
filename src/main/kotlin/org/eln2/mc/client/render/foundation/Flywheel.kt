@@ -117,16 +117,22 @@ object FlwVisualizerRegistry {
 }
 
 object FlwInstanceTypes {
+    /**
+     * Polar connections need two tip colors for light blending. Layout matches stock
+     * [InstanceTypes.TRANSFORMED] for the shared prefix (pose @ 12) so indirect
+     * cull/draw see the same posed sphere as working TRANSFORMED instances, then
+     * appends color1/color2 after the matrix.
+     */
     val TRANSFORMED_POLAR: SimpleInstanceType<TransformedPolarInstance> = SimpleInstanceType.builder(::TransformedPolarInstance)
-        .cullShader(resource("instance/cull/default.glsl"))
+        .cullShader(ResourceLocation("flywheel", "instance/cull/transformed"))
         .vertexShader(resource("instance/transformed_polar.vert"))
         .layout(LayoutBuilder.create()
             .vector("color", FloatRepr.NORMALIZED_UNSIGNED_BYTE, 4)
-            .vector("light", IntegerRepr.SHORT, 2)
             .vector("overlay", IntegerRepr.SHORT, 2)
+            .vector("light", FloatRepr.UNSIGNED_SHORT, 2)
+            .matrix("pose", FloatRepr.FLOAT, 4)
             .vector("color1", FloatRepr.NORMALIZED_UNSIGNED_BYTE, 4)
             .vector("color2", FloatRepr.NORMALIZED_UNSIGNED_BYTE, 4)
-            .matrix("pose", FloatRepr.FLOAT, 4)
             .build()
         )
         .writer { ptr, instance ->
@@ -134,16 +140,16 @@ object FlwInstanceTypes {
             MemoryUtil.memPutByte(ptr + 1, instance.green)
             MemoryUtil.memPutByte(ptr + 2, instance.blue)
             MemoryUtil.memPutByte(ptr + 3, instance.alpha)
-            ExtraMemoryOps.put2x16(ptr + 4, instance.light)
-            ExtraMemoryOps.put2x16(ptr + 8, instance.overlay)
-            instance.color1.blit(ptr + 12)
-            instance.color2.blit(ptr + 16)
-            ExtraMemoryOps.putMatrix4f(ptr + 20, instance.pose)
+            ExtraMemoryOps.put2x16(ptr + 4, instance.overlay)
+            ExtraMemoryOps.put2x16(ptr + 8, instance.light)
+            ExtraMemoryOps.putMatrix4f(ptr + 12, instance.pose)
+            instance.color1.blit(ptr + 76)
+            instance.color2.blit(ptr + 80)
         }
         .build()
 
     val TRANSFORMED_LIGHT_OVERRIDE: InstanceType<TransformedLightOverrideInstance> = SimpleInstanceType.builder(::TransformedLightOverrideInstance)
-        .cullShader(resource("instance/cull/default.glsl"))
+        .cullShader(ResourceLocation("flywheel", "instance/cull/transformed"))
         .vertexShader(resource("instance/transformed_light_override.vert"))
         .layout(
             LayoutBuilder.create()
@@ -175,8 +181,10 @@ class TransformedPolarInstance(
     type: InstanceType<TransformedPolarInstance>,
     handle: InstanceHandle,
 ) : TransformedInstance(type, handle) {
-    var color1 = MyColor(0)
-    var color2 = MyColor(0)
+    // Must not default to MyColor(0): polar.vert used to replace mesh color with these,
+    // which made brand-new instances fully black until upload ran.
+    var color1 = MyColor.WHITE
+    var color2 = MyColor.WHITE
 }
 
 class TransformedLightOverrideInstance(
