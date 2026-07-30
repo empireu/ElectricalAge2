@@ -1,4 +1,5 @@
 package org.eln2.mc.common.content.fluid
+import org.eln2.mc.client.render.foundation.PartialModelHelper
 
 import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.visual.DynamicVisual
@@ -1748,7 +1749,7 @@ class FluidPipeBlockEntityVisual(ctx: VisualizationContext, blockEntity: FluidPi
             renderedModule.instance?.delete()
             renderedModule.instance = if (targetModule.modelSupplier != null) {
                 val result = visualizationContext.instancerProvider()
-                    .instancer(InstanceTypes.TRANSFORMED, Models.partial(targetModule.modelSupplier.get()))
+                    .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.partial(targetModule.modelSupplier.get()))
                     .createInstance()
                     .also {
                         it.translate(visualPosition)

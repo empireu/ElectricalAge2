@@ -10,7 +10,7 @@ import dev.engine_room.flywheel.api.visual.TickableVisual
 import dev.engine_room.flywheel.api.visual.Visual
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
 import dev.engine_room.flywheel.lib.instance.InstanceTypes.TRANSFORMED
-import dev.engine_room.flywheel.lib.model.Models.partial
+import org.eln2.mc.client.render.foundation.PartialModelHelper
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import dev.engine_room.flywheel.lib.task.RunnablePlan
 import net.minecraft.client.KeyMapping
@@ -1042,7 +1042,7 @@ class SpecContainerPartVisual(
 
     private var frameInstance = if(DEBUG) {
         ctx.instancerProvider()
-            .instancer(TRANSFORMED, partial(FlwModels.SPEC_PART_FRAME))
+            .instancer(TRANSFORMED, PartialModelHelper.partial(FlwModels.SPEC_PART_FRAME))
             .createInstance()
             .partTransformation(ctx.parent, part)
     } else null
