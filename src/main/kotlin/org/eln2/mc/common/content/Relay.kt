@@ -1,6 +1,7 @@
 @file:Suppress("unused")
 
 package org.eln2.mc.common.content
+import org.eln2.mc.client.render.foundation.PartialModelHelper
 
 import dev.engine_room.flywheel.api.visual.DynamicVisual
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
@@ -392,7 +393,7 @@ class RelayPartVisual(
 ) : ConnectedPartWithKnobsVisual<RelayPart>(ctx, part, body, connectionModels) {
 
     private val contact: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(contactModel))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.partial(contactModel))
         .createInstance()
 
     private var trackedIsClosed = part.isClosed

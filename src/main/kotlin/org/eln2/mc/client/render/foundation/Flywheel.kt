@@ -22,6 +22,7 @@ import dev.engine_room.flywheel.lib.task.PlanMap
 import dev.engine_room.flywheel.lib.transform.Affine
 import dev.engine_room.flywheel.lib.util.ExtraMemoryOps
 import dev.engine_room.flywheel.lib.util.RendererReloadCache
+import dev.engine_room.flywheel.lib.util.ResourceUtil
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
@@ -66,6 +67,8 @@ import org.eln2.mc.mathematics.Axis3d
 import org.eln2.mc.mathematics.Base6Direction3d
 import org.eln2.mc.mathematics.maskXY
 import org.joml.Quaternionf
+import org.joml.Vector4f
+import org.joml.Vector4fc
 import org.lwjgl.system.MemoryUtil
 import java.nio.ByteBuffer
 import java.nio.IntBuffer
@@ -74,6 +77,7 @@ import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
 import kotlin.math.PI
+import kotlin.math.max
 
 fun interface PartVisualizerSupplier<P : Part> {
     fun get() : PartVisualizer<P>
@@ -117,16 +121,23 @@ object FlwVisualizerRegistry {
 }
 
 object FlwInstanceTypes {
+    /**
+     * Polar connections need two tip colors for light blending. Layout matches stock
+     * [InstanceTypes.TRANSFORMED] for the shared prefix (pose @ 12) so indirect
+     * cull/draw see the same posed sphere as working TRANSFORMED instances, then
+     * appends color1/color2 after the matrix.
+     */
     val TRANSFORMED_POLAR: SimpleInstanceType<TransformedPolarInstance> = SimpleInstanceType.builder(::TransformedPolarInstance)
-        .cullShader(resource("instance/cull/default.glsl"))
+        // Must include .glsl — Flywheel stock path is instance/cull/transformed.glsl
+        .cullShader(ResourceUtil.rl("instance/cull/transformed.glsl"))
         .vertexShader(resource("instance/transformed_polar.vert"))
         .layout(LayoutBuilder.create()
             .vector("color", FloatRepr.NORMALIZED_UNSIGNED_BYTE, 4)
-            .vector("light", IntegerRepr.SHORT, 2)
             .vector("overlay", IntegerRepr.SHORT, 2)
+            .vector("light", FloatRepr.UNSIGNED_SHORT, 2)
+            .matrix("pose", FloatRepr.FLOAT, 4)
             .vector("color1", FloatRepr.NORMALIZED_UNSIGNED_BYTE, 4)
             .vector("color2", FloatRepr.NORMALIZED_UNSIGNED_BYTE, 4)
-            .matrix("pose", FloatRepr.FLOAT, 4)
             .build()
         )
         .writer { ptr, instance ->
@@ -134,16 +145,16 @@ object FlwInstanceTypes {
             MemoryUtil.memPutByte(ptr + 1, instance.green)
             MemoryUtil.memPutByte(ptr + 2, instance.blue)
             MemoryUtil.memPutByte(ptr + 3, instance.alpha)
-            ExtraMemoryOps.put2x16(ptr + 4, instance.light)
-            ExtraMemoryOps.put2x16(ptr + 8, instance.overlay)
-            instance.color1.blit(ptr + 12)
-            instance.color2.blit(ptr + 16)
-            ExtraMemoryOps.putMatrix4f(ptr + 20, instance.pose)
+            ExtraMemoryOps.put2x16(ptr + 4, instance.overlay)
+            ExtraMemoryOps.put2x16(ptr + 8, instance.light)
+            ExtraMemoryOps.putMatrix4f(ptr + 12, instance.pose)
+            instance.color1.blit(ptr + 76)
+            instance.color2.blit(ptr + 80)
         }
         .build()
 
     val TRANSFORMED_LIGHT_OVERRIDE: InstanceType<TransformedLightOverrideInstance> = SimpleInstanceType.builder(::TransformedLightOverrideInstance)
-        .cullShader(resource("instance/cull/default.glsl"))
+        .cullShader(ResourceUtil.rl("instance/cull/transformed.glsl"))
         .vertexShader(resource("instance/transformed_light_override.vert"))
         .layout(
             LayoutBuilder.create()
@@ -175,8 +186,10 @@ class TransformedPolarInstance(
     type: InstanceType<TransformedPolarInstance>,
     handle: InstanceHandle,
 ) : TransformedInstance(type, handle) {
-    var color1 = MyColor(0)
-    var color2 = MyColor(0)
+    // Must not default to MyColor(0): polar.vert used to replace mesh color with these,
+    // which made brand-new instances fully black until upload ran.
+    var color1 = MyColor.WHITE
+    var color2 = MyColor.WHITE
 }
 
 class TransformedLightOverrideInstance(
@@ -234,10 +247,30 @@ class SpecialVisualStorage<V : Visual> {
 }
 
 object PartialModelHelper {
+    /**
+     * Indirect Hi-Z (and tight frustum tests) are harsh on thin/open eln2 meshes.
+     * Inflate the model sphere used for cull so frustum stays reliable; Hi-Z itself
+     * is disabled via [MixinShaderSourcesSourceFinder].
+     */
+    private const val CULL_SPHERE_SCALE = 8.0f
+    private const val CULL_SPHERE_MIN_RADIUS = 1.5f
+
+    fun forIndirectCull(model: Model): Model {
+        val src = model.boundingSphere()
+        val radius = max(src.w() * CULL_SPHERE_SCALE, CULL_SPHERE_MIN_RADIUS)
+        val sphere: Vector4fc = Vector4f(src.x(), src.y(), src.z(), radius)
+        return object : Model {
+            override fun meshes() = model.meshes()
+            override fun boundingSphere() = sphere
+        }
+    }
+
     private val PARTIAL_WITH_MATERIAL = RendererReloadCache<PartialWithMaterial, Model> { (partial, material) ->
-        BakedModelBuilder.create(partial.get())
-            .materialFunc { _, _ -> material }
-            .build()
+        forIndirectCull(
+            BakedModelBuilder.create(partial.get())
+                .materialFunc { _, _ -> material }
+                .build()
+        )
     }
 
     private data class PartialWithMaterial(val partialModel: PartialModel, val material: Material)
@@ -245,6 +278,8 @@ object PartialModelHelper {
     fun applyMaterial(model: PartialModel, material: Material): Model = PARTIAL_WITH_MATERIAL.get(
         PartialWithMaterial(model, material)
     )
+
+    fun partial(model: PartialModel): Model = forIndirectCull(Models.partial(model))
 }
 
 /**
@@ -255,17 +290,21 @@ abstract class ProcessedModel(modelLocation: ResourceLocation) {
     companion object {
         private val CACHE: RendererReloadCache<ProcessedModel, Model> =
             RendererReloadCache<ProcessedModel, Model> { it: ProcessedModel ->
-                BakedModelBuilder.create(it.model ?: error("Partial model was null ${it.partialModel.modelLocation()}")).build()
+                PartialModelHelper.forIndirectCull(
+                    BakedModelBuilder.create(it.model ?: error("Partial model was null ${it.partialModel.modelLocation()}")).build()
+                )
             }
 
         private data class Key(val p: ProcessedModel, val material: Material)
 
         private val CACHE_WITH_MATERIAL: RendererReloadCache<Key, Model> =
             RendererReloadCache<Key, Model> { key: Key ->
-                BakedModelBuilder
-                    .create(key.p.model ?: error("Processed model was null ${key.p.partialModel.modelLocation()}"))
-                    .materialFunc { _, _ -> key.material }
-                    .build()
+                PartialModelHelper.forIndirectCull(
+                    BakedModelBuilder
+                        .create(key.p.model ?: error("Processed model was null ${key.p.partialModel.modelLocation()}"))
+                        .materialFunc { _, _ -> key.material }
+                        .build()
+                )
             }
     }
 
@@ -570,7 +609,7 @@ open class BasicPartVisual<P : Part>(
     smoothLighting: Boolean = false
 ) : AbstractPartVisual<P>(ctx, part) {
     private val instance = ctx.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, if(smoothLighting) PartialModelHelper.applyMaterial(model, FlwMaterials.SMOOTH_LIT) else Models.partial(model))
+        .instancer(InstanceTypes.TRANSFORMED, if(smoothLighting) PartialModelHelper.applyMaterial(model, FlwMaterials.SMOOTH_LIT) else PartialModelHelper.partial(model))
         .createInstance()
         .also { it.partTransformation(ctx.parent, part, scale, rotation) }
 
@@ -591,7 +630,7 @@ open class BasicSpecVisual<S : Spec>(
     rotation: Double = 0.0
 ) : AbstractSpecVisual<S>(ctx, spec) {
     private val instance = ctx.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.partial(model))
         .createInstance()
         .also { it.specTransformation(ctx.parent, spec, scale, rotation) }
 
@@ -696,7 +735,7 @@ open class ConnectedPartVisual<P>(
     )
 
     val bodyInstance: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(body))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.partial(body))
         .createInstance()
         .also { it.partTransformation(visualizationContext.parent, part) }
 
@@ -809,7 +848,7 @@ class BasicKineticPartVisual<P>(
     shaft: PartialModel
 ) : AbstractPartVisual<P>(visualizationContext, part), SimpleDynamicVisual, ShaderLightVisual where P : Part, P : BasicKineticPart {
     val body: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(body))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.partial(body))
         .createInstance()
         .also { it.partTransformation(visualizationContext.parent, part) }
 
@@ -890,7 +929,7 @@ class SingleNodeMultiShaftKineticPartVisual<P>(
     )
 
     val body: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(body))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.partial(body))
         .createInstance()
         .also { it.partTransformation(visualizationContext.parent, part) }
 
@@ -1411,7 +1450,7 @@ class PartWithKnobsVisual<T>(
 
             part.knobMap.knobs.forEach { knob ->
                 val instance = ctx.instancerProvider()
-                    .instancer(InstanceTypes.TRANSFORMED, Models.partial(knob.model))
+                    .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.partial(knob.model))
                     .createInstance()
 
                 val (offsetX, offsetY, offsetZ) = FlwModels
@@ -1444,7 +1483,7 @@ class PartWithKnobsVisual<T>(
     }
 
     private val body = ctx.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(bodyModel))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.partial(bodyModel))
         .createInstance()
         .also { it.partTransformation(ctx.parent, part, Vector3d.one, 0.0) }
 

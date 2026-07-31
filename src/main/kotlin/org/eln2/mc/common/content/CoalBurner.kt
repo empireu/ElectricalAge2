@@ -1,6 +1,7 @@
 @file:Suppress("unused")
 
 package org.eln2.mc.common.content
+import org.eln2.mc.client.render.foundation.PartialModelHelper
 
 import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.visual.DynamicVisual
@@ -1206,19 +1207,19 @@ class PrimitiveBurnerBlockEntityVisual(ctx: VisualizationContext, blockEntity: P
     }
 
     val body: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(FlwModels.PRIMITIVE_COAL_BURNER_BODY))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.partial(FlwModels.PRIMITIVE_COAL_BURNER_BODY))
         .createInstance()
         .transformFacingBlock(visualPos, blockEntity)
 
     val hull: TransformedLightOverrideInstance = visualizationContext.instancerProvider()
-        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, Models.partial(FlwModels.PRIMITIVE_COAL_BURNER_HULL))
+        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, PartialModelHelper.partial(FlwModels.PRIMITIVE_COAL_BURNER_HULL))
         .createInstance()
         .transformFacingBlock(visualPos, blockEntity)
 
     var conduit = ThermalConduitConnection(level, blockEntity.blockPos, ctx, FlwModels.PRIMITIVE_COAL_BURNER_CONDUIT)
 
     val door: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(FlwModels.PRIMITIVE_COAL_BURNER_DOOR))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.partial(FlwModels.PRIMITIVE_COAL_BURNER_DOOR))
         .createInstance()
 
     var hullTemperature = 0.0

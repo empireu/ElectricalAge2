@@ -1,6 +1,7 @@
 @file:Suppress("UNUSED_VARIABLE", "LocalVariableName", "NonAsciiCharacters")
 
 package org.eln2.mc.common.content
+import org.eln2.mc.client.render.foundation.PartialModelHelper
 
 import dev.engine_room.flywheel.api.visual.DynamicVisual
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
@@ -466,7 +467,7 @@ class ElectricalHeatEnginePartVisual(
         }
 
     val coldSide: TransformedLightOverrideInstance = visualizationContext.instancerProvider()
-        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, Models.partial(FlwModels.SMALL_THERMAL_ELECTRIC_GENERATOR_COLD_SIDE))
+        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, PartialModelHelper.partial(FlwModels.SMALL_THERMAL_ELECTRIC_GENERATOR_COLD_SIDE))
         .createInstance()
         .also {
             it.partTransformation(visualizationContext.parent, part)
@@ -474,7 +475,7 @@ class ElectricalHeatEnginePartVisual(
         }
 
     val hotSide: TransformedLightOverrideInstance = visualizationContext.instancerProvider()
-        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, Models.partial(FlwModels.SMALL_THERMAL_ELECTRIC_GENERATOR_HOT_SIDE))
+        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, PartialModelHelper.partial(FlwModels.SMALL_THERMAL_ELECTRIC_GENERATOR_HOT_SIDE))
         .createInstance()
         .also {
             it.partTransformation(visualizationContext.parent, part)
@@ -482,7 +483,7 @@ class ElectricalHeatEnginePartVisual(
         }
 
     val flywheels: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(FlwModels.SMALL_THERMAL_ELECTRIC_GENERATOR_FLYWHEELS))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.partial(FlwModels.SMALL_THERMAL_ELECTRIC_GENERATOR_FLYWHEELS))
         .createInstance()
 
     var temperatureCold = Quantity(-1.0, KELVIN)

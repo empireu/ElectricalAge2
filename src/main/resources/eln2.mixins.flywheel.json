@@ -5,7 +5,8 @@
     "refmap": "eln2.refmap.json",
     "mixins": [],
     "client": [
-        "MixinLightDataCollector"
+        "MixinLightDataCollector",
+        "MixinShaderSourcesSourceFinder"
     ],
     "minVersion": "0.8"
 }

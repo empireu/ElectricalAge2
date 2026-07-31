@@ -588,7 +588,7 @@ class LightFixturePartVisual<P>(
     private fun create(model: PartialModel): TransformedInstance {
         return visualizationContext
             .instancerProvider()
-            .instancer(InstanceTypes.TRANSFORMED, Models.partial(model))
+            .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.partial(model))
             .createInstance()
             .partTransformation(visualizationContext.parent, part, yRotation = rotation)
     }
