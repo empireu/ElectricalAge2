@@ -6,11 +6,9 @@ import com.mojang.brigadier.Command
 import net.minecraft.SharedConstants
 import net.minecraft.client.Minecraft
 import net.minecraft.commands.Commands
-import net.minecraft.core.RegistryAccess
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.packs.resources.Resource
-import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.crafting.Recipe
 import net.minecraftforge.api.distmarker.Dist
@@ -218,6 +216,16 @@ fun getMaterialKey(material: String) : String = "material.$MODID.$material"
 fun getChemicalElementKey(element: ChemicalElement) = getMaterialKey(element.label)
 
 fun registerClientCommands(event: RegisterClientCommandsEvent) {
+    /**
+     * Items that are intentionally not craftable and should be excluded from the missing-recipe check.
+     * */
+    val missingRecipeBlacklist = setOf(
+        resource("spec_container"),
+        resource("voltage_source"),
+        resource("burnt_fuse"),
+        resource("burnt_heating_element")
+    )
+
     val eln2 = Commands.literal("eln2").then(
         Commands.literal("units").then(
             Commands.literal("set").also { pSet ->
@@ -366,7 +374,7 @@ fun registerClientCommands(event: RegisterClientCommandsEvent) {
                             !path.endsWith("_ore") &&
                             !path.startsWith("raw_")
                     }
-                    .filter { it !in MISSING_RECIPE_BLACKLIST }
+                    .filter { it !in missingRecipeBlacklist }
                     .toMutableSet()
 
                 for(recipe in recipeManager.recipes) {
@@ -407,16 +415,6 @@ fun registerClientCommands(event: RegisterClientCommandsEvent) {
 
     event.dispatcher.register(eln2)
 }
-
-/**
- * Items that are intentionally not craftable and should be excluded from the missing-recipe check.
- * */
-private val MISSING_RECIPE_BLACKLIST = setOf(
-    resource("spec_container"),
-    resource("voltage_source"),
-    resource("burnt_fuse"),
-    resource("burnt_heating_element")
-)
 
 /**
  * Extracts output [ItemStack]s from non-standard recipes that return [ItemStack.EMPTY] from [Recipe.getResultItem].
