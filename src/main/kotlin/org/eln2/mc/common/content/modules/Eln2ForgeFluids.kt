@@ -51,16 +51,16 @@ object Eln2ForgeFluids : ContentModule() {
     /**
      * Deferred information for setting render layers in [setRenderLayers].
      * */
-    private val renderLayerSetups = ArrayList<Pair<ForgeFluidRegistry.ForgeFluidRegistryItem, RenderType>>()
+    private val renderLayerSetups = ArrayList<ForgeFluidRegistry.ForgeFluidRegistryItem>()
 
     /**
-     * Sets the render layer for the source and the flowing blocks of the fluid.
+     * Sets the translucent render layer for the source and the flowing blocks of the fluid.
      * */
-    fun ForgeFluidRegistry.BasicForgeFluidBuilder.withRenderLayer(layer: RenderType) {
+    fun ForgeFluidRegistry.BasicForgeFluidBuilder.withTranslucentLayer() {
         ContentManager.requireInit()
 
         this.onRegister {
-            renderLayerSetups.add(Pair(it, layer))
+            renderLayerSetups.add(it)
         }
     }
 
@@ -189,9 +189,9 @@ object Eln2ForgeFluids : ContentModule() {
      * Registers the render layers from [renderLayerSetups].
      * */
     override fun setRenderLayers() {
-        renderLayerSetups.forEach { (fluid, renderLayer) ->
-            ItemBlockRenderTypes.setRenderLayer(fluid.source.get(), renderLayer)
-            ItemBlockRenderTypes.setRenderLayer(fluid.flowing.get(), renderLayer)
+        renderLayerSetups.forEach { fluid ->
+            ItemBlockRenderTypes.setRenderLayer(fluid.source.get(), RenderType.translucent())
+            ItemBlockRenderTypes.setRenderLayer(fluid.flowing.get(), RenderType.translucent())
         }
     }
 
@@ -227,7 +227,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(100)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
     }
 
     val FUEL_GAS = basicForgeFluid("fuel_gas") {
@@ -247,7 +247,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(800)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
         withChemicalBottle()
     }
 
@@ -259,7 +259,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(100)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
     }
 
     val CREOSOTE = basicForgeFluid("creosote") {
@@ -270,7 +270,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(400)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
         withChemicalBottle()
     }
 
@@ -289,7 +289,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(100)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
     }
 
     val COAL_TAR = basicForgeFluid("coal_tar") {
@@ -349,7 +349,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(1500)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
         withChemicalBottle()
     }
 
@@ -361,7 +361,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(200)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
     }
 
     val BITUMEN = basicForgeFluid("bitumen") {
@@ -383,7 +383,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(500)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
         withChemicalBottle()
     }
 
@@ -395,7 +395,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(100)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
     }
 
     val LIQUID_PROPANE = basicForgeFluid("liquid_propane") {
@@ -406,7 +406,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(600)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
         withChemicalBottle()
     }
 
@@ -418,7 +418,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(100)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
     }
 
     val LIQUID_BUTANE = basicForgeFluid("liquid_butane") {
@@ -429,7 +429,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(700)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
         withChemicalBottle()
     }
 
@@ -441,7 +441,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(100)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
     }
 
     val LIQUID_HYDROGEN = basicForgeFluid("liquid_hydrogen") {
@@ -452,7 +452,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(200)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
         withChemicalBottle()
     }
 
@@ -464,7 +464,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(50)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
     }
 
     val LIQUID_NITROGEN = basicForgeFluid("liquid_nitrogen") {
@@ -475,7 +475,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(400)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
         withChemicalBottle()
     }
 
@@ -487,7 +487,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(100)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
     }
 
     val LIQUID_ACETYLENE = basicForgeFluid("liquid_acetylene") {
@@ -498,7 +498,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(500)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
     }
 
     val ACETYLENE = basicForgeFluid("acetylene") {
@@ -509,7 +509,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(100)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
     }
 
     val INSULATING_VARNISH = basicForgeFluid("insulating_varnish") {
@@ -520,7 +520,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(4000)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
         withChemicalBottle()
     }
 
@@ -532,7 +532,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(50)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
     }
 
     val DILUTE_SULFURIC_ACID = basicForgeFluid("dilute_sulfuric_acid") {
@@ -543,7 +543,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(600)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
         withChemicalBottle()
     }
 
@@ -555,7 +555,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(60)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
     }
 
     val LIQUID_OXYGEN = basicForgeFluid("liquid_oxygen") {
@@ -566,7 +566,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(300)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
         withChemicalBottle()
     }
 
@@ -578,7 +578,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(50)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
     }
 
     val SODIUM_TUNGSTATE_SOLUTION = basicForgeFluid("sodium_tungstate_solution") {
@@ -589,7 +589,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(1200)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
         withChemicalBottle()
     }
 
@@ -601,7 +601,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(800)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
         withChemicalBottle()
     }
 
@@ -613,7 +613,7 @@ object Eln2ForgeFluids : ContentModule() {
                 .viscosity(80)
         }
 
-        withRenderLayer(RenderType.translucent())
+        withTranslucentLayer()
     }
 
     //#region Gas Release Vent
