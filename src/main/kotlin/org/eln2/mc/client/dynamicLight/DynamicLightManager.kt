@@ -3,12 +3,13 @@
 /**
  * Dynamic light rendering system with shadow map support.
  *
- * Multiple [DynamicLightSource]s can be registered. Each frame, the nearest [DynamicLightManager.MAX_LIGHTS] sources to the camera
- * are selected. For each, a shadow map is rendered from the light's point of view by [ShadowMapRenderer],
- * then a fullscreen additive lighting pass is run using `dynamic_light` shader.
- *
- * The system fires at [RenderLevelStageEvent.Stage.AFTER_LEVEL], after the full scene is composited but before the hand.
- * It reads the main render target's depth and color buffers (copied to a temporary target to avoid the OpenGL feedback loop).
+ * Multiple [DynamicLightSource]s can be registered. Each frame, the nearest [DynamicLightManager.MAX_LIGHTS] visible sources to the camera are selected.
+ * The camera's view matrix, projection matrix and fog are captured at [RenderLevelStageEvent.Stage.AFTER_ENTITIES].
+ * At [RenderLevelStageEvent.Stage.AFTER_LEVEL], the scene is lit as follows:
+ * - The main render target's color and depth are copied, because the passes below are not allowed to read from the target they write to.
+ * - [SceneAlbedoRenderer] renders the unlit surface colors of the scene, so lit surfaces keep their texture even in complete darkness.
+ * - For each light, [ShadowMapRenderer] renders a shadow map and the `dynamic_light` shader accumulates the light into an offscreen target.
+ * - The main render target is restored from the copy and the accumulated light is composited onto it with the `dynamic_light_composite` shader.
  *
  * Light source providers (e.g. [org.eln2.mc.common.content.FlashlightItem]) register update callbacks via [DynamicLightManager.addUpdateCallback]
  * to manage their sources each frame. The manager is light-source-agnostic: it only iterates whatever is registered.
@@ -24,12 +25,13 @@ import com.mojang.blaze3d.vertex.BufferUploader
 import com.mojang.blaze3d.vertex.DefaultVertexFormat
 import com.mojang.blaze3d.vertex.Tesselator
 import com.mojang.blaze3d.vertex.VertexFormat
-import com.mojang.blaze3d.vertex.VertexSorting
 import net.minecraft.client.Camera
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
-import net.minecraft.client.renderer.GameRenderer
 import net.minecraft.client.renderer.ShaderInstance
+import net.minecraft.client.renderer.culling.Frustum
+import net.minecraft.world.entity.Entity
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.minecraftforge.client.event.RegisterShadersEvent
 import net.minecraftforge.client.event.RenderLevelStageEvent
@@ -40,33 +42,48 @@ import org.joml.Vector3f
 import org.lwjgl.opengl.GL11
 import org.lwjgl.opengl.GL14
 import org.lwjgl.opengl.GL30
-import kotlin.math.PI
-import kotlin.math.cos
 
 object DynamicLightManager {
     private const val MAX_LIGHTS = 4
 
-    private var shader: ShaderInstance? = null
-    private var depthCopyTarget: TextureTarget? = null
-    private var depthCopyWidth = 0
-    private var depthCopyHeight = 0
+    private var lightShader: ShaderInstance? = null
+    private var compositeShader: ShaderInstance? = null
+
+    private var sceneTarget: TextureTarget? = null
+    private var albedoTarget: TextureTarget? = null
+    private var accumulationTarget: TextureTarget? = null
 
     private val lightSources = mutableListOf<DynamicLightSource>()
     private val updateCallbacks = mutableListOf<(ClientLevel, Float) -> Unit>()
 
-    fun register(event: RegisterShadersEvent) {
-        val src = ShaderInstance(
-            Minecraft.getInstance().resourceManager,
-            resource("dynamic_light"),
-            DefaultVertexFormat.POSITION
-        )
+    private val capturedViewMatrix = Matrix4f()
+    private val capturedProjectionMatrix = Matrix4f()
+    private var capturedFogStart = Float.MAX_VALUE
+    private var capturedFogEnd = Float.MAX_VALUE
+    private var capturedFogAlpha = 0.0f
+    private var capturedFogShape = 0
+    private var hasCapturedFrameState = false
+    private var hasLoggedRenderFailure = false
 
-        event.registerShader(src) {
-            shader = it
+    var frameIndex = 0L
+        private set
+
+    var isRenderingLevelEntities = false
+        private set
+
+    fun register(event: RegisterShadersEvent) {
+        val resourceManager = Minecraft.getInstance().resourceManager
+        val format = DefaultVertexFormat.POSITION
+
+        event.registerShader(ShaderInstance(resourceManager, resource("dynamic_light"), format)) {
+            lightShader = it
             LOG.info("Loaded dynamic light shader.")
         }
 
-        ShadowMapRenderer.registerShader(event)
+        event.registerShader(ShaderInstance(resourceManager, resource("dynamic_light_composite"), format)) {
+            compositeShader = it
+            LOG.info("Loaded dynamic light composite shader.")
+        }
     }
 
     /**
@@ -79,8 +96,20 @@ object DynamicLightManager {
         intensity: Float = 0.6f,
         range: Float = 24.0f,
         halfAngleDeg: Float = 30.0f,
+        sourceRadius: Float = 0.04f,
+        scattering: Float = 0.004f,
+        ownerEntity: Entity? = null,
     ): DynamicLightSource {
-        val source = DynamicLightSourceImpl(poseUpdater, color, intensity, range, halfAngleDeg)
+        val source = DynamicLightSourceImpl(
+            poseUpdater,
+            color,
+            intensity,
+            range,
+            halfAngleDeg,
+            sourceRadius,
+            scattering,
+            ownerEntity
+        )
         lightSources.add(source)
         return source
     }
@@ -109,16 +138,29 @@ object DynamicLightManager {
     }
 
     /**
-     * Renders all active light sources at [RenderLevelStageEvent.Stage.AFTER_LEVEL].
+     * Captures the frame state at [RenderLevelStageEvent.Stage.AFTER_ENTITIES] and renders all active light sources at [RenderLevelStageEvent.Stage.AFTER_LEVEL].
      * */
     fun render(event: RenderLevelStageEvent) {
+        if (event.stage == RenderLevelStageEvent.Stage.AFTER_SKY) {
+            frameIndex++
+            isRenderingLevelEntities = true
+            return
+        }
+
+        if (event.stage == RenderLevelStageEvent.Stage.AFTER_ENTITIES) {
+            isRenderingLevelEntities = false
+            captureFrameState(event)
+            return
+        }
+
         if (event.stage != RenderLevelStageEvent.Stage.AFTER_LEVEL) {
             return
         }
 
+        isRenderingLevelEntities = false
+
         val minecraft = Minecraft.getInstance()
         val level = minecraft.level ?: return
-        val shader = this.shader ?: return
         val camera = event.camera
         val partialTick = event.partialTick
 
@@ -132,8 +174,18 @@ object DynamicLightManager {
             source.updatePose(partialTick)
         }
 
+        if (!hasCapturedFrameState) {
+            return
+        }
+
+        hasCapturedFrameState = false
+
+        val lightShader = this.lightShader ?: return
+        val compositeShader = this.compositeShader ?: return
+        val frustum = event.frustum
+
         val activeSources = lightSources
-            .filter { it.intensity > 0.0f }
+            .filter { isActive(it, frustum) }
             .sortedBy { it.position.distanceToSqr(camera.position) }
             .take(MAX_LIGHTS)
 
@@ -141,181 +193,291 @@ object DynamicLightManager {
             return
         }
 
-        val savedBlendSrcRgb = GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB)
-        val savedBlendDstRgb = GL11.glGetInteger(GL14.GL_BLEND_DST_RGB)
-        val savedBlendSrcAlpha = GL11.glGetInteger(GL14.GL_BLEND_SRC_ALPHA)
-        val savedBlendDstAlpha = GL11.glGetInteger(GL14.GL_BLEND_DST_ALPHA)
+        val savedBlendSourceRgb = GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB)
+        val savedBlendDestinationRgb = GL11.glGetInteger(GL14.GL_BLEND_DST_RGB)
+        val savedBlendSourceAlpha = GL11.glGetInteger(GL14.GL_BLEND_SRC_ALPHA)
+        val savedBlendDestinationAlpha = GL11.glGetInteger(GL14.GL_BLEND_DST_ALPHA)
         val savedBlendEnabled = GL11.glGetBoolean(GL11.GL_BLEND)
         val savedDepthTestEnabled = GL11.glGetBoolean(GL11.GL_DEPTH_TEST)
         val savedDepthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK)
         val savedShader = RenderSystem.getShader()
 
         val mainTarget = minecraft.mainRenderTarget
-        val depthCopy = ensureDepthCopyTarget(mainTarget.width, mainTarget.height)
-        copyDepthAndColor(mainTarget, depthCopy)
-        mainTarget.bindWrite(true)
-
-        for (source in activeSources) {
-            val lightViewProj = ShadowMapRenderer.renderShadowMap(
-                source.position,
-                source.direction,
-                source.halfAngleDeg,
-                source.range
-            )
-
-            renderLightPass(
-                shader,
-                event.projectionMatrix,
-                camera,
-                source,
-                lightViewProj,
-                depthCopy
-            )
-        }
-
-        if (savedDepthTestEnabled) {
-            RenderSystem.enableDepthTest()
-        } else {
-            RenderSystem.disableDepthTest()
-        }
-        if (savedDepthMask) {
-            RenderSystem.depthMask(true)
-        } else {
-            RenderSystem.depthMask(false)
-        }
-
-        BlendMode.lastApplied = null
-        val positionShader = GameRenderer.getPositionShader()
-        if (positionShader != null) {
-            positionShader.apply()
-            positionShader.clear()
-        }
-
-        if (savedBlendEnabled) {
-            RenderSystem.enableBlend()
-        } else {
-            RenderSystem.disableBlend()
-        }
-        GlStateManager._blendFuncSeparate(
-            savedBlendSrcRgb, savedBlendDstRgb,
-            savedBlendSrcAlpha, savedBlendDstAlpha
-        )
-
-        BufferUploader.invalidate()
-        savedShader?.let { RenderSystem.setShader { it } }
-    }
-
-    private fun ensureDepthCopyTarget(width: Int, height: Int): TextureTarget {
-        val current = depthCopyTarget
-        if (current != null && depthCopyWidth == width && depthCopyHeight == height) {
-            return current
-        }
-
-        current?.destroyBuffers()
-
-        val target = TextureTarget(width, height, true, false)
-        target.setClearColor(0f, 0f, 0f, 0f)
-        depthCopyTarget = target
-        depthCopyWidth = width
-        depthCopyHeight = height
-        LOG.info("Resized depth copy target to ${width}x${height}")
-        return target
-    }
-
-    private fun copyDepthAndColor(source: RenderTarget, destination: TextureTarget) {
-        GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, source.frameBufferId)
-        GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, destination.frameBufferId)
-        GlStateManager._glBlitFrameBuffer(
-            0, 0, source.width, source.height,
-            0, 0, destination.width, destination.height,
-            16384 or 256, 9728
-        )
-        GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0)
-    }
-
-    private fun renderLightPass(
-        shader: ShaderInstance,
-        projectionMatrix: Matrix4f,
-        camera: Camera,
-        source: DynamicLightSource,
-        lightViewProj: Matrix4f,
-        depthCopy: TextureTarget,
-    ) {
-        val mainTarget = Minecraft.getInstance().mainRenderTarget
-        mainTarget.bindWrite(true)
-
-        val deg2rad = PI.toFloat() / 180f
-
-        val viewMatrix = Matrix4f()
-            .rotateX(camera.xRot * deg2rad)
-            .rotateY((camera.yRot + 180f) * deg2rad)
-            .translate(
-                -camera.position.x.toFloat(),
-                -camera.position.y.toFloat(),
-                -camera.position.z.toFloat()
-            )
-
-        val viewProj = Matrix4f(projectionMatrix).mul(viewMatrix)
-        val invViewProj = viewProj.invert()
-
-        val direction = Vector3f(
-            source.direction.x.toFloat(),
-            source.direction.y.toFloat(),
-            source.direction.z.toFloat()
-        )
-        val position = Vector3f(
-            source.position.x.toFloat(),
-            source.position.y.toFloat(),
-            source.position.z.toFloat()
-        )
-
-        val cosHalfAngle = cos(source.halfAngleDeg.toDouble() * PI / 180.0).toFloat()
+        val sceneTarget = ensureScreenTarget(this.sceneTarget, mainTarget, true)
+        val albedoTarget = ensureScreenTarget(this.albedoTarget, mainTarget, true)
+        val accumulationTarget = ensureScreenTarget(this.accumulationTarget, mainTarget, false)
+        this.sceneTarget = sceneTarget
+        this.albedoTarget = albedoTarget
+        this.accumulationTarget = accumulationTarget
 
         RenderSystem.backupProjectionMatrix()
-        RenderSystem.setProjectionMatrix(Matrix4f(), VertexSorting.DISTANCE_TO_ORIGIN)
 
         val modelViewStack = RenderSystem.getModelViewStack()
         modelViewStack.pushPose()
         modelViewStack.setIdentity()
         RenderSystem.applyModelViewMatrix()
 
-        RenderSystem.enableBlend()
-        RenderSystem.blendFunc(GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ONE)
-        RenderSystem.disableDepthTest()
-        RenderSystem.depthMask(false)
+        blitFramebuffer(mainTarget, sceneTarget, GL11.GL_COLOR_BUFFER_BIT or GL11.GL_DEPTH_BUFFER_BIT)
 
+        try {
+            renderLights(
+                lightShader,
+                compositeShader,
+                activeSources,
+                level,
+                camera,
+                frustum,
+                partialTick,
+                mainTarget,
+                sceneTarget,
+                albedoTarget,
+                accumulationTarget
+            )
+        } catch (exception: Exception) {
+            if (!hasLoggedRenderFailure) {
+                hasLoggedRenderFailure = true
+                LOG.error("Dynamic light rendering failed, the scene is drawn without dynamic lights.", exception)
+            }
+
+            blitFramebuffer(sceneTarget, mainTarget, GL11.GL_COLOR_BUFFER_BIT or GL11.GL_DEPTH_BUFFER_BIT)
+        } finally {
+            mainTarget.bindWrite(true)
+            RenderSystem.colorMask(true, true, true, true)
+            RenderSystem.depthFunc(GL11.GL_LEQUAL)
+
+            if (savedDepthTestEnabled) {
+                RenderSystem.enableDepthTest()
+            } else {
+                RenderSystem.disableDepthTest()
+            }
+
+            RenderSystem.depthMask(savedDepthMask)
+
+            BlendMode.lastApplied = null
+            LightSceneRenderer.resetForeignRenderState()
+
+            if (savedBlendEnabled) {
+                RenderSystem.enableBlend()
+            } else {
+                RenderSystem.disableBlend()
+            }
+
+            GlStateManager._blendFuncSeparate(
+                savedBlendSourceRgb,
+                savedBlendDestinationRgb,
+                savedBlendSourceAlpha,
+                savedBlendDestinationAlpha
+            )
+
+            modelViewStack.popPose()
+            RenderSystem.applyModelViewMatrix()
+            RenderSystem.restoreProjectionMatrix()
+
+            savedShader?.let { RenderSystem.setShader { it } }
+        }
+    }
+
+    fun cameraRelativeFromView(viewPosition: Vector3f): Vector3f {
+        return Matrix4f(capturedViewMatrix).invert().transformPosition(Vector3f(viewPosition))
+    }
+
+    private fun captureFrameState(event: RenderLevelStageEvent) {
+        capturedViewMatrix.set(event.poseStack.last().pose())
+        capturedProjectionMatrix.set(event.projectionMatrix)
+        capturedFogStart = RenderSystem.getShaderFogStart()
+        capturedFogEnd = RenderSystem.getShaderFogEnd()
+        capturedFogAlpha = RenderSystem.getShaderFogColor()[3]
+        capturedFogShape = RenderSystem.getShaderFogShape().index
+        hasCapturedFrameState = true
+    }
+
+    private fun isActive(source: DynamicLightSource, frustum: Frustum): Boolean {
+        if (source.intensity <= 0.0f || source.range <= ShadowMapRenderer.NEAR_PLANE * 2.0f) {
+            return false
+        }
+
+        if (source.direction.lengthSqr() < 1.0e-8) {
+            return false
+        }
+
+        val position = source.position
+        val range = source.range.toDouble()
+
+        return frustum.isVisible(
+            AABB(
+                position.x - range,
+                position.y - range,
+                position.z - range,
+                position.x + range,
+                position.y + range,
+                position.z + range
+            )
+        )
+    }
+
+    private fun renderLights(
+        lightShader: ShaderInstance,
+        compositeShader: ShaderInstance,
+        activeSources: List<DynamicLightSource>,
+        level: ClientLevel,
+        camera: Camera,
+        frustum: Frustum,
+        partialTick: Float,
+        mainTarget: RenderTarget,
+        sceneTarget: TextureTarget,
+        albedoTarget: TextureTarget,
+        accumulationTarget: TextureTarget,
+    ) {
+        albedoTarget.copyDepthFrom(mainTarget)
+
+        val frames = activeSources.map { LightSceneRenderer.collectFrame(level, it, partialTick) }
+        val cameraView = SceneView(
+            camera.position,
+            Matrix4f(capturedViewMatrix),
+            Matrix4f(capturedProjectionMatrix),
+            camera
+        )
+
+        SceneAlbedoRenderer.render(albedoTarget, cameraView, frames, frustum, level, partialTick)
+
+        mainTarget.bindWrite(true)
+        RenderSystem.depthMask(true)
+        RenderSystem.clearDepth(1.0)
+        RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX)
+
+        accumulationTarget.bindWrite(true)
+        RenderSystem.colorMask(true, true, true, true)
+        RenderSystem.clearColor(0.0f, 0.0f, 0.0f, 0.0f)
+        RenderSystem.clear(GL11.GL_COLOR_BUFFER_BIT, Minecraft.ON_OSX)
+
+        val viewProjection = Matrix4f(capturedProjectionMatrix).mul(capturedViewMatrix)
+        val inverseViewProjection = Matrix4f(viewProjection).invert()
+
+        for (frame in frames) {
+            val shadowView = ShadowMapRenderer.render(frame, level, partialTick)
+
+            drawLightPass(
+                lightShader,
+                frame.source,
+                shadowView,
+                camera.position,
+                viewProjection,
+                inverseViewProjection,
+                sceneTarget,
+                albedoTarget,
+                accumulationTarget
+            )
+        }
+
+        blitFramebuffer(sceneTarget, mainTarget, GL11.GL_COLOR_BUFFER_BIT or GL11.GL_DEPTH_BUFFER_BIT)
+
+        mainTarget.bindWrite(true)
+        prepareFullscreenState()
+        RenderSystem.setShader { compositeShader }
+        compositeShader.setSampler("LightSampler", accumulationTarget.colorTextureId)
+        drawFullscreenQuad()
+        BlendMode.lastApplied = null
+    }
+
+    private fun drawLightPass(
+        shader: ShaderInstance,
+        source: DynamicLightSource,
+        shadowView: ShadowMapView,
+        cameraPosition: Vec3,
+        viewProjection: Matrix4f,
+        inverseViewProjection: Matrix4f,
+        sceneTarget: TextureTarget,
+        albedoTarget: TextureTarget,
+        accumulationTarget: TextureTarget,
+    ) {
+        val direction = source.direction.normalize()
+
+        accumulationTarget.bindWrite(true)
+        prepareFullscreenState()
         RenderSystem.setShader { shader }
-        shader.setSampler("DepthSampler", depthCopy.depthTextureId)
-        shader.setSampler("ShadowMap", ShadowMapRenderer.getDepthTextureId())
-        shader.setSampler("SceneColorSampler", depthCopy.colorTextureId)
 
-        shader.safeGetUniform("ModelViewMat").set(Matrix4f())
-        shader.safeGetUniform("ProjMat").set(Matrix4f())
-        shader.safeGetUniform("InvViewProjMat").set(invViewProj)
-        shader.safeGetUniform("u_lightViewProj").set(lightViewProj)
-        shader.safeGetUniform("u_lightPosition").set(position)
-        shader.safeGetUniform("u_lightDirection").set(direction)
-        shader.safeGetUniform("u_lightColor").set(source.color)
-        shader.safeGetUniform("u_cosHalfAngle").set(cosHalfAngle)
-        shader.safeGetUniform("u_range").set(source.range)
-        shader.safeGetUniform("u_shadowNear").set(0.5f)
-        shader.safeGetUniform("u_shadowFar").set(source.range)
-        shader.safeGetUniform("u_intensity").set(source.intensity)
-        shader.safeGetUniform("u_screenSize").set(
-            mainTarget.width.toFloat(),
-            mainTarget.height.toFloat()
+        shader.setSampler("SceneDepthSampler", sceneTarget.depthTextureId)
+        shader.setSampler("SceneColorSampler", sceneTarget.colorTextureId)
+        shader.setSampler("AlbedoSampler", albedoTarget.colorTextureId)
+        shader.setSampler("ShadowDepthSampler", ShadowMapRenderer.depthTextureId)
+        shader.setSampler("ShadowCompareSampler", ShadowMapRenderer.compareTextureId)
+
+        shader.safeGetUniform("InverseViewProjectionMatrix").set(inverseViewProjection)
+        shader.safeGetUniform("ViewProjectionMatrix").set(viewProjection)
+        shader.safeGetUniform("LightViewMatrix").set(shadowView.rotation)
+        shader.safeGetUniform("LightPosition").set(
+            (source.position.x - cameraPosition.x).toFloat(),
+            (source.position.y - cameraPosition.y).toFloat(),
+            (source.position.z - cameraPosition.z).toFloat()
+        )
+        shader.safeGetUniform("LightDirection").set(direction.x.toFloat(), direction.y.toFloat(), direction.z.toFloat())
+        shader.safeGetUniform("LightColor").set(source.color)
+        shader.safeGetUniform("LightIntensity").set(source.intensity)
+        shader.safeGetUniform("LightRange").set(source.range)
+        shader.safeGetUniform("LightHalfAngle").set(Math.toRadians(source.halfAngleDeg.toDouble()).toFloat())
+        shader.safeGetUniform("LightSourceRadius").set(source.sourceRadius)
+        shader.safeGetUniform("LightScattering").set(source.scattering)
+        shader.safeGetUniform("ShadowTanHalfFieldOfView").set(shadowView.tanHalfFieldOfView)
+        shader.safeGetUniform("ShadowNear").set(shadowView.near)
+        shader.safeGetUniform("ShadowFar").set(shadowView.far)
+        shader.safeGetUniform("ShadowMapSize").set(ShadowMapRenderer.SHADOW_MAP_SIZE.toFloat())
+        shader.safeGetUniform("ScreenSize").set(accumulationTarget.width.toFloat(), accumulationTarget.height.toFloat())
+        shader.safeGetUniform("FogParameters").set(
+            capturedFogStart,
+            capturedFogEnd,
+            capturedFogAlpha,
+            capturedFogShape.toFloat()
         )
 
         drawFullscreenQuad()
+        BlendMode.lastApplied = null
+    }
 
-        RenderSystem.depthMask(true)
-        RenderSystem.enableDepthTest()
-        RenderSystem.disableBlend()
-        RenderSystem.defaultBlendFunc()
+    private fun prepareFullscreenState() {
+        RenderSystem.disableDepthTest()
+        RenderSystem.depthMask(false)
+        RenderSystem.colorMask(true, true, true, true)
+        BlendMode.lastApplied = null
+        LightSceneRenderer.resetForeignRenderState()
+    }
 
-        modelViewStack.popPose()
-        RenderSystem.applyModelViewMatrix()
-        RenderSystem.restoreProjectionMatrix()
+    private fun ensureScreenTarget(
+        current: TextureTarget?,
+        mainTarget: RenderTarget,
+        useDepth: Boolean,
+    ): TextureTarget {
+        val needsStencil = useDepth && mainTarget.isStencilEnabled
+
+        if (
+            current != null &&
+            current.width == mainTarget.width &&
+            current.height == mainTarget.height &&
+            current.isStencilEnabled == needsStencil
+        ) {
+            return current
+        }
+
+        current?.destroyBuffers()
+
+        val target = TextureTarget(mainTarget.width, mainTarget.height, useDepth, Minecraft.ON_OSX)
+
+        if (needsStencil) {
+            target.enableStencil()
+        }
+
+        target.setClearColor(0.0f, 0.0f, 0.0f, 0.0f)
+        return target
+    }
+
+    private fun blitFramebuffer(source: RenderTarget, destination: RenderTarget, mask: Int) {
+        GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, source.frameBufferId)
+        GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, destination.frameBufferId)
+        GlStateManager._glBlitFrameBuffer(
+            0, 0, source.width, source.height,
+            0, 0, destination.width, destination.height,
+            mask, GL11.GL_NEAREST
+        )
+        GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0)
     }
 
     /**

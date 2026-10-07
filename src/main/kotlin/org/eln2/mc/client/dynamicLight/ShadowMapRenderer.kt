@@ -2,605 +2,119 @@
 
 package org.eln2.mc.client.dynamicLight
 
-import com.mojang.blaze3d.pipeline.RenderTarget
 import com.mojang.blaze3d.pipeline.TextureTarget
 import com.mojang.blaze3d.platform.GlStateManager
 import com.mojang.blaze3d.systems.RenderSystem
-import com.mojang.blaze3d.vertex.*
-import dev.engine_room.flywheel.api.visualization.VisualizationManager
-import dev.engine_room.flywheel.impl.event.RenderContextImpl
-import dev.engine_room.flywheel.lib.visualization.VisualizationHelper
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
-import net.minecraft.client.renderer.ShaderInstance
-import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher
-import net.minecraft.client.renderer.entity.EntityRenderDispatcher
-import net.minecraft.core.BlockPos
-import net.minecraft.world.entity.Entity
-import net.minecraft.world.level.block.entity.BlockEntity
-import net.minecraft.world.level.block.state.BlockState
-import net.minecraft.world.level.chunk.LevelChunk
-import net.minecraft.world.phys.Vec3
-import org.ageseries.libage.mathematics.lerp
 import org.eln2.mc.LOG
-import org.eln2.mc.client.dynamicLight.ShadowMapRenderer.renderFlywheelShadows
-import org.eln2.mc.integration.sodium.EmbeddiumShadowRenderer
-import org.eln2.mc.resource
 import org.joml.Matrix4f
-import org.joml.Vector3f
 import org.lwjgl.opengl.GL11
+import org.lwjgl.opengl.GL14
 import org.lwjgl.opengl.GL30
-import kotlin.math.PI
-import kotlin.math.abs
+import kotlin.math.tan
+
+class ShadowMapView(
+    val rotation: Matrix4f,
+    val tanHalfFieldOfView: Float,
+    val near: Float,
+    val far: Float,
+)
 
 /**
  * Renders a shadow map from the light's point of view.
  *
- * Terrain is rendered by embeddium (real block geometry) or unit cubes (fallback).
+ * Terrain is rendered by embeddium if it is loaded, or by the vanilla chunk renderer otherwise.
+ * Flywheel visuals, vanilla block entities and vanilla entities within the light's cone are rendered as well.
+ * The light's owner entity is skipped so the holder does not shadow their own light.
  *
- * Block entities and entities within the light's range are also rendered into the shadow map:
- * - Flywheel-managed block entities and entities are rendered by calling [VisualizationManager.RenderDispatcher.afterEntities]
- *   with a [dev.engine_room.flywheel.api.backend.RenderContext] using the light's view-projection matrices. This renders actual flywheel instance geometry
- *   from the light's perspective without advancing animation state.
- * - Vanilla (non-flywheel) block entities are rendered through [BlockEntityRenderDispatcher.render] with the light's matrices.
- * - Vanilla entities (mobs, items, etc.) are rendered through [EntityRenderDispatcher.render] with the light's matrices.
- *
- * The shadow map is a depth texture sampled by the flashlight shader to determine occlusion.
+ * Two depth textures are produced: [depthTextureId] holds raw depth for the blocker search,
+ * and [compareTextureId] is a copy with hardware depth comparison and linear filtering enabled for percentage-closer filtering.
  */
 object ShadowMapRenderer {
-    private const val SHADOW_MAP_SIZE = 1024
-    private const val NEAR_PLANE = 0.5f
+    const val SHADOW_MAP_SIZE = 2048
+    const val NEAR_PLANE = 0.1f
+    private const val FIELD_OF_VIEW_MARGIN_DEGREES = 2.0f
 
-    private var shader: ShaderInstance? = null
-    private var shadowTarget: TextureTarget? = null
-    private var scratchTarget: TextureTarget? = null
-    private var scratchWidth = 0
-    private var scratchHeight = 0
+    private var renderTarget: TextureTarget? = null
+    private var compareTarget: TextureTarget? = null
 
-    fun registerShader(event: net.minecraftforge.client.event.RegisterShadersEvent) {
-        val src = ShaderInstance(
-            Minecraft.getInstance().resourceManager,
-            resource("shadow_depth"),
-            DefaultVertexFormat.POSITION
-        )
+    val depthTextureId: Int
+        get() = renderTarget?.depthTextureId ?: 0
 
-        event.registerShader(src) {
-            shader = it
-            LOG.info("Loaded shadow depth shader.")
-        }
-    }
+    val compareTextureId: Int
+        get() = compareTarget?.depthTextureId ?: 0
 
-    private fun ensureShadowTarget(): TextureTarget {
-        shadowTarget?.let { return it }
-        val target = TextureTarget(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, true, false)
-        target.setClearColor(1f, 1f, 1f, 1f)
-        shadowTarget = target
-        LOG.info("Created shadow map target ${SHADOW_MAP_SIZE}x${SHADOW_MAP_SIZE}")
-        return target
-    }
+    private fun ensureTargets(): TextureTarget {
+        val existing = renderTarget
 
-    private fun ensureScratchTarget(width: Int, height: Int): TextureTarget {
-        val current = scratchTarget
-        if (current != null && scratchWidth == width && scratchHeight == height) {
-            return current
+        if (existing != null && compareTarget != null) {
+            return existing
         }
 
-        current?.destroyBuffers()
+        val target = TextureTarget(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, true, Minecraft.ON_OSX)
+        target.setClearColor(1.0f, 1.0f, 1.0f, 1.0f)
 
-        val target = TextureTarget(width, height, true, false)
-        target.setClearColor(0f, 0f, 0f, 0f)
-        scratchTarget = target
-        scratchWidth = width
-        scratchHeight = height
+        val comparison = TextureTarget(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, true, Minecraft.ON_OSX)
+        GlStateManager._bindTexture(comparison.depthTextureId)
+        GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR)
+        GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR)
+        GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL14.GL_TEXTURE_COMPARE_MODE, GL30.GL_COMPARE_REF_TO_TEXTURE)
+        GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL14.GL_TEXTURE_COMPARE_FUNC, GL11.GL_LEQUAL)
+        GlStateManager._bindTexture(0)
+
+        renderTarget = target
+        compareTarget = comparison
+        LOG.info("Created dynamic light shadow map targets ${SHADOW_MAP_SIZE}x${SHADOW_MAP_SIZE}")
+
         return target
-    }
-
-    private fun blitFramebuffer(source: RenderTarget, destination: RenderTarget, mask: Int) {
-        GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, source.frameBufferId)
-        GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, destination.frameBufferId)
-        GlStateManager._glBlitFrameBuffer(
-            0, 0, source.width, source.height,
-            0, 0, destination.width, destination.height,
-            mask, 9728
-        )
-        GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0)
     }
 
     /**
-     * Renders the shadow map from [lightPosition] looking in [lightDirection] with a cone half-angle of [halfAngleDeg] and [range].
-     * Returns the light's view-projection matrix (world-to-light-clip), which the flashlight shader uses to sample the shadow map.
+     * Renders the shadow map for the light of [frame] and returns the view the shader needs to sample it.
      */
-    fun renderShadowMap(
-        lightPosition: Vec3,
-        lightDirection: Vec3,
-        halfAngleDeg: Float,
-        range: Float
-    ): Matrix4f {
+    fun render(frame: DynamicLightFrame, level: ClientLevel, partialTick: Float): ShadowMapView {
         RenderSystem.assertOnRenderThread()
 
-        val (lightView, lightProj) = computeLightViewAndProjection(lightPosition, lightDirection, halfAngleDeg, range)
-        val lightViewProj = Matrix4f(lightProj).mul(lightView)
+        val source = frame.source
+        val target = ensureTargets()
+        val comparison = compareTarget!!
 
-        val target = ensureShadowTarget()
-        target.bindWrite(true)
+        val halfFieldOfView = Math.toRadians((source.halfAngleDeg + FIELD_OF_VIEW_MARGIN_DEGREES).toDouble()).toFloat()
+        val projection = Matrix4f().setPerspective(halfFieldOfView * 2.0f, 1.0f, NEAR_PLANE, source.range)
+        val (yaw, pitch) = LightSceneRenderer.yawPitchOf(source.direction)
+        val rotation = LightSceneRenderer.viewRotation(yaw, pitch)
+        val view = SceneView(source.position, rotation, projection, LightCamera(source.position, yaw, pitch))
+
+        RenderSystem.depthMask(true)
+        RenderSystem.colorMask(true, true, true, true)
         target.clear(Minecraft.ON_OSX)
-        target.bindWrite(true)
 
-        RenderSystem.backupProjectionMatrix()
+        prepareState(target)
+        LightSceneRenderer.drawTerrain(view)
 
-        val modelViewStack = RenderSystem.getModelViewStack()
-        modelViewStack.pushPose()
-        modelViewStack.setIdentity()
-        RenderSystem.applyModelViewMatrix()
+        prepareState(target)
+        LightSceneRenderer.drawFlywheel(view, level, partialTick)
 
-        RenderSystem.enableDepthTest()
-        RenderSystem.depthMask(true)
-        RenderSystem.disableBlend()
-        RenderSystem.colorMask(false, false, false, false)
+        prepareState(target)
+        LightSceneRenderer.drawBlockEntities(view, frame.blockEntities, level, partialTick, target, null)
 
-        GL11.glEnable(GL11.GL_POLYGON_OFFSET_FILL)
-        GL11.glPolygonOffset(4.0f, 4.0f)
-        if (EmbeddiumShadowRenderer.isAvailable()) {
-            renderEmbeddiumShadow(lightPosition, lightView, lightProj)
-        } else {
-            drawOccluderCubes(lightPosition, range, lightViewProj)
-        }
-
-        drawBlockEntityShadows(lightPosition, lightDirection, lightView, lightProj, range, halfAngleDeg)
-        drawEntityShadows(lightPosition, lightDirection, lightView, lightProj, range, halfAngleDeg)
-        GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL)
+        prepareState(target)
+        val occludingEntities = frame.entities.filter { it !== source.ownerEntity }
+        LightSceneRenderer.drawEntities(view, occludingEntities, level, partialTick, target, true)
 
         RenderSystem.colorMask(true, true, true, true)
-        RenderSystem.disableDepthTest()
+        comparison.copyDepthFrom(target)
 
-        modelViewStack.popPose()
-        RenderSystem.applyModelViewMatrix()
-        RenderSystem.restoreProjectionMatrix()
-
-        Minecraft.getInstance().mainRenderTarget.bindWrite(true)
-
-        return lightViewProj
+        return ShadowMapView(rotation, tan(halfFieldOfView), NEAR_PLANE, source.range)
     }
 
-    fun getDepthTextureId(): Int {
-        return shadowTarget?.depthTextureId ?: 0
-    }
-
-    private fun renderEmbeddiumShadow(
-        lightPosition: Vec3,
-        lightView: Matrix4f,
-        lightProj: Matrix4f
-    ) {
-        EmbeddiumShadowRenderer.renderTerrainShadow(lightPosition, lightView, lightProj)
-    }
-
-    /**
-     * Renders block entities within [range] of [lightPosition] into the shadow map.
-     *
-     * Flywheel-managed block entities are rendered by calling [VisualizationManager.RenderDispatcher.afterEntities]
-     * with a [dev.engine_room.flywheel.api.backend.RenderContext] using the light's view-projection matrices. This draws the existing flywheel instances
-     * (which were already prepared during the vanilla frame) from the light's perspective, without advancing
-     * animation state.
-     *
-     * Vanilla (non-flywheel) block entities are rendered through [BlockEntityRenderDispatcher.render] with the
-     * light's view matrices.
-     */
-    private fun drawBlockEntityShadows(
-        lightPosition: Vec3,
-        lightDirection: Vec3,
-        lightView: Matrix4f,
-        lightProj: Matrix4f,
-        range: Float,
-        halfAngleDeg: Float
-    ) {
-        val minecraft = Minecraft.getInstance()
-        val level = minecraft.level ?: return
-
-        renderFlywheelShadows(minecraft, level, lightPosition, lightView, lightProj)
-
-        val vanillaBlockEntities = collectBlockEntitiesInCone(level, lightPosition, lightDirection, range, halfAngleDeg)
-            .filter { !VisualizationHelper.skipVanillaRender(it) }
-
-        if (vanillaBlockEntities.isNotEmpty()) {
-            drawVanillaBlockEntityShadows(vanillaBlockEntities, lightPosition, lightView, lightProj, minecraft)
-        }
-    }
-
-    /**
-     * Renders entities (mobs, items, etc.) within [range] of [lightPosition] into the shadow map.
-     *
-     * Flywheel-managed entities are skipped because they were already rendered by [renderFlywheelShadows].
-     * The local player is skipped to avoid self-shadowing.
-     *
-     * Vanilla entities are rendered through [EntityRenderDispatcher.render] with the light's view matrices.
-     * Vanilla blob shadows and hitboxes are disabled during the shadow pass.
-     */
-    private fun drawEntityShadows(
-        lightPosition: Vec3,
-        lightDirection: Vec3,
-        lightView: Matrix4f,
-        lightProj: Matrix4f,
-        range: Float,
-        halfAngleDeg: Float
-    ) {
-        val minecraft = Minecraft.getInstance()
-        val level = minecraft.level ?: return
-        val entityDispatcher = minecraft.entityRenderDispatcher
-        val cosHalfAngle = kotlin.math.cos(halfAngleDeg.toDouble() * PI / 180.0).toFloat()
-        val partialTick = minecraft.partialTick
-        val dirLen = lightDirection.length()
-
-        val player = minecraft.player
-
-        val entities = ArrayList<Entity>()
-        for (entity in level.entitiesForRendering()) {
-            if (entity === player) {
-                continue
-            }
-
-            if (VisualizationHelper.skipVanillaRender(entity)) {
-                continue
-            }
-
-            val interpolatedPos = Vec3(
-                lerp(entity.xOld, entity.x, partialTick.toDouble()),
-                lerp(entity.yOld, entity.y, partialTick.toDouble()),
-                lerp(entity.zOld, entity.z, partialTick.toDouble())
-            )
-
-            val toEntity = interpolatedPos.subtract(lightPosition)
-            val dist = toEntity.length()
-            if (dist !in 0.01f..range) {
-                continue
-            }
-            val cosTheta = toEntity.dot(lightDirection) / (dist * dirLen)
-            if (cosTheta < cosHalfAngle - 0.15) {
-                continue
-            }
-
-            entities.add(entity)
-        }
-        if (entities.isEmpty()) {
-            return
-        }
-
-        val target = shadowTarget ?: return
-        target.bindWrite(true)
-
-        RenderSystem.setProjectionMatrix(lightProj, VertexSorting.DISTANCE_TO_ORIGIN)
-
-        val modelViewStack = RenderSystem.getModelViewStack()
-        modelViewStack.pushPose()
-        modelViewStack.setIdentity()
-        RenderSystem.applyModelViewMatrix()
-
-        val rotationOnly = Matrix4f(lightView)
-        rotationOnly.m30(0f)
-        rotationOnly.m31(0f)
-        rotationOnly.m32(0f)
-
-        val poseStack = PoseStack()
-        poseStack.mulPoseMatrix(rotationOnly)
-
-        val lightCamera = LightCamera(lightPosition)
-
-        val savedShouldRenderHitBoxes = entityDispatcher.shouldRenderHitBoxes()
-        entityDispatcher.setRenderShadow(false)
-        entityDispatcher.setRenderHitBoxes(false)
-        entityDispatcher.prepare(level, lightCamera, minecraft.crosshairPickEntity)
-
-        val bufferSource = minecraft.renderBuffers().bufferSource()
-
-        for (entity in entities) {
-            val x = lerp(entity.xOld, entity.x, partialTick.toDouble()) - lightPosition.x
-            val y = lerp(entity.yOld, entity.y, partialTick.toDouble()) - lightPosition.y
-            val z = lerp(entity.zOld, entity.z, partialTick.toDouble()) - lightPosition.z
-            val yaw = lerp(entity.yRotO, entity.yRot, partialTick)
-
-            val packedLight = entityDispatcher.getPackedLightCoords(entity, partialTick)
-
-            entityDispatcher.render(entity, x, y, z, yaw, partialTick, poseStack, bufferSource, packedLight)
-        }
-
-        bufferSource.endBatch()
-
-        entityDispatcher.setRenderShadow(true)
-        entityDispatcher.setRenderHitBoxes(savedShouldRenderHitBoxes)
-        val playerCamera = minecraft.gameRenderer.mainCamera
-        entityDispatcher.prepare(level, playerCamera, minecraft.crosshairPickEntity)
-
-        modelViewStack.popPose()
-        RenderSystem.applyModelViewMatrix()
-    }
-
-    /**
-     * Renders flywheel-managed block entities and entities from the light's perspective by calling
-     * [VisualizationManager.RenderDispatcher.afterEntities] with a [dev.engine_room.flywheel.api.backend.RenderContext] constructed from the light's
-     * view-projection matrices.
-     *
-     * This only draws — it does not call [VisualizationManager.RenderDispatcher.onStartLevelRender] or the frame plan, so animation
-     * state is not advanced. The instances were already prepared during the vanilla [net.minecraft.client.renderer.LevelRenderer.renderLevel] call.
-     *
-     * Flywheel's internal OIT (Order-Independent Transparency) pipeline, triggered when any managed instance uses a
-     * material with [dev.engine_room.flywheel.api.material.Transparency.ORDER_INDEPENDENT], composites its accumulated
-     * color directly onto the main render target and attaches the main render target's depth texture to its own FBO.
-     * This corrupts the main framebuffer during the shadow pass. To prevent this, the main render target's color and
-     * depth are blitted to a scratch target before the call and restored after.
-     */
-    private fun renderFlywheelShadows(
-        minecraft: Minecraft,
-        level: ClientLevel,
-        lightPosition: Vec3,
-        lightView: Matrix4f,
-        lightProj: Matrix4f
-    ) {
-        val vizManager = VisualizationManager.get(level) ?: return
-        val levelRenderer = minecraft.levelRenderer
-
-        val rotationOnly = Matrix4f(lightView)
-        rotationOnly.m30(0f)
-        rotationOnly.m31(0f)
-        rotationOnly.m32(0f)
-
-        val poseStack = PoseStack()
-        poseStack.mulPoseMatrix(rotationOnly)
-
-        val lightCamera = LightCamera(lightPosition)
-
-        val partialTick = minecraft.partialTick
-
-        val lightContext = RenderContextImpl.create(
-            levelRenderer,
-            level,
-            minecraft.renderBuffers(),
-            poseStack,
-            lightProj,
-            lightCamera,
-            partialTick
-        )
-
-        val target = shadowTarget ?: return
-
-        val mainTarget = minecraft.mainRenderTarget
-        val scratch = ensureScratchTarget(mainTarget.width, mainTarget.height)
-
-        blitFramebuffer(mainTarget, scratch, GL30.GL_COLOR_BUFFER_BIT or GL30.GL_DEPTH_BUFFER_BIT)
-
+    private fun prepareState(target: TextureTarget) {
         target.bindWrite(true)
         RenderSystem.enableDepthTest()
+        RenderSystem.depthFunc(GL11.GL_LEQUAL)
         RenderSystem.depthMask(true)
-        RenderSystem.disableBlend()
         RenderSystem.colorMask(false, false, false, false)
-
-        vizManager.renderDispatcher().afterEntities(lightContext)
-
-        RenderSystem.colorMask(true, true, true, true)
-
-        blitFramebuffer(scratch, mainTarget, GL30.GL_COLOR_BUFFER_BIT or GL30.GL_DEPTH_BUFFER_BIT)
-
-        target.bindWrite(true)
-        RenderSystem.enableDepthTest()
-        RenderSystem.depthMask(true)
         RenderSystem.disableBlend()
-        RenderSystem.colorMask(false, false, false, false)
     }
-
-    /**
-     * Collects block entities within the flashlight's cone and range using chunk-level iteration.
-     */
-    private fun collectBlockEntitiesInCone(
-        level: ClientLevel,
-        lightPosition: Vec3,
-        lightDirection: Vec3,
-        range: Float,
-        halfAngleDeg: Float
-    ): List<BlockEntity> {
-        val r = range.toInt()
-        val minChunkX = (lightPosition.x - r).toInt() shr 4
-        val maxChunkX = (lightPosition.x + r).toInt() shr 4
-        val minChunkZ = (lightPosition.z - r).toInt() shr 4
-        val maxChunkZ = (lightPosition.z + r).toInt() shr 4
-
-        val cosHalfAngle = kotlin.math.cos(halfAngleDeg.toDouble() * PI / 180.0).toFloat()
-        val dirLen = lightDirection.length()
-        val result = ArrayList<BlockEntity>()
-
-        for (chunkX in minChunkX..maxChunkX) {
-            for (chunkZ in minChunkZ..maxChunkZ) {
-                val chunk = level.getChunk(chunkX, chunkZ) as LevelChunk
-                for (be in chunk.blockEntities.values) {
-                    val pos = be.blockPos
-                    val toEntity = Vec3(
-                        pos.x + 0.5 - lightPosition.x,
-                        pos.y + 0.5 - lightPosition.y,
-                        pos.z + 0.5 - lightPosition.z
-                    )
-                    val dist = toEntity.length()
-                    if (dist > range) {
-                        continue
-                    }
-                    val cosTheta = toEntity.dot(lightDirection) / (dist * dirLen)
-                    if (cosTheta < cosHalfAngle - 0.15) {
-                        continue
-                    }
-                    result.add(be)
-                }
-            }
-        }
-
-        return result
-    }
-
-    /**
-     * Renders vanilla (non-flywheel) block entities through [BlockEntityRenderDispatcher.render] with the light's
-     * view matrices.
-     */
-    private fun drawVanillaBlockEntityShadows(
-        blockEntities: List<BlockEntity>,
-        lightPosition: Vec3,
-        lightView: Matrix4f,
-        lightProj: Matrix4f,
-        minecraft: Minecraft
-    ) {
-        val dispatcher = minecraft.blockEntityRenderDispatcher
-
-        RenderSystem.setProjectionMatrix(lightProj, VertexSorting.DISTANCE_TO_ORIGIN)
-
-        val modelViewStack = RenderSystem.getModelViewStack()
-        modelViewStack.pushPose()
-        modelViewStack.setIdentity()
-        RenderSystem.applyModelViewMatrix()
-
-        val rotationOnly = Matrix4f(lightView)
-        rotationOnly.m30(0f)
-        rotationOnly.m31(0f)
-        rotationOnly.m32(0f)
-
-        val poseStack = PoseStack()
-        poseStack.mulPoseMatrix(rotationOnly)
-
-        val lightCamera = LightCamera(lightPosition)
-        dispatcher.prepare(minecraft.level!!, lightCamera, minecraft.hitResult!!)
-
-        val bufferSource = minecraft.renderBuffers().bufferSource()
-        val partialTick = minecraft.partialTick
-
-        for (be in blockEntities) {
-            val pos = be.blockPos
-            poseStack.pushPose()
-            poseStack.translate(
-                pos.x.toDouble() - lightPosition.x,
-                pos.y.toDouble() - lightPosition.y,
-                pos.z.toDouble() - lightPosition.z
-            )
-            dispatcher.render(be, partialTick, poseStack, bufferSource)
-            poseStack.popPose()
-        }
-
-        bufferSource.endBatch()
-
-        modelViewStack.popPose()
-        RenderSystem.applyModelViewMatrix()
-
-        val playerCamera = minecraft.gameRenderer.mainCamera
-        dispatcher.prepare(minecraft.level!!, playerCamera, minecraft.hitResult!!)
-    }
-
-    private fun computeLightViewAndProjection(
-        lightPosition: Vec3,
-        lightDirection: Vec3,
-        halfAngleDeg: Float,
-        range: Float
-    ): Pair<Matrix4f, Matrix4f> {
-        val fovY = halfAngleDeg.toDouble() * 2.0 * PI / 180.0
-        val proj = Matrix4f().setPerspective(fovY.toFloat(), 1.0f, NEAR_PLANE, range)
-
-        val eye = Vector3f(lightPosition.x.toFloat(), lightPosition.y.toFloat(), lightPosition.z.toFloat())
-        val dir = Vector3f(lightDirection.x.toFloat(), lightDirection.y.toFloat(), lightDirection.z.toFloat())
-
-        val center = Vector3f(eye).add(dir)
-
-        val up = if (abs(dir.y) > 0.99f) {
-            Vector3f(0f, 0f, 1f)
-        } else {
-            Vector3f(0f, 1f, 0f)
-        }
-
-        val view = Matrix4f().setLookAt(eye, center, up)
-
-        return Pair(view, proj)
-    }
-
-    /**
-     * Iterates solid blocks within [range] of [lightPosition] and renders them as cubes.
-     */
-    private fun drawOccluderCubes(lightPosition: Vec3, range: Float, lightViewProj: Matrix4f) {
-        val shader = this.shader ?: return
-        val level = Minecraft.getInstance().level ?: return
-        val tesselator = Tesselator.getInstance()
-        val buffer = tesselator.builder
-        buffer.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION)
-
-        val origin = BlockPos.containing(lightPosition.x, lightPosition.y, lightPosition.z)
-        val r = range.toInt()
-        var count = 0
-
-        for (x in -r..r) {
-            for (y in -r..r) {
-                for (z in -r..r) {
-                    val pos = origin.offset(x, y, z)
-                    val state = level.getBlockState(pos)
-                    if (isOccluder(state, level, pos)) {
-                        submitCube(buffer, pos)
-                        count++
-                    }
-                }
-            }
-        }
-
-        if (count == 0) {
-            LOG.warn("Shadow map: no occluders found in range {} around {}", r, origin)
-        } else {
-            LOG.info("Shadow map: submitted {} occluder cubes", count)
-        }
-
-        shader.safeGetUniform("u_lightViewProj").set(lightViewProj)
-        RenderSystem.setShader { shader }
-        BufferUploader.drawWithShader(buffer.end())
-    }
-
-    private fun isOccluder(state: BlockState, level: net.minecraft.world.level.BlockGetter, pos: BlockPos): Boolean {
-        return state.isSolidRender(level, pos)
-    }
-
-    /**
-     * Submits a unit cube at [pos] as 6 quads (one per face) into [buffer].
-     */
-    private fun submitCube(buffer: BufferBuilder, pos: BlockPos) {
-        val x0 = pos.x.toDouble()
-        val y0 = pos.y.toDouble()
-        val z0 = pos.z.toDouble()
-        val x1 = x0 + 1.0
-        val y1 = y0 + 1.0
-        val z1 = z0 + 1.0
-
-        buffer.vertex(x0, y0, z0).endVertex()
-        buffer.vertex(x1, y0, z0).endVertex()
-        buffer.vertex(x1, y0, z1).endVertex()
-        buffer.vertex(x0, y0, z1).endVertex()
-
-        buffer.vertex(x0, y1, z1).endVertex()
-        buffer.vertex(x1, y1, z1).endVertex()
-        buffer.vertex(x1, y1, z0).endVertex()
-        buffer.vertex(x0, y1, z0).endVertex()
-
-        buffer.vertex(x0, y0, z0).endVertex()
-        buffer.vertex(x0, y1, z0).endVertex()
-        buffer.vertex(x1, y1, z0).endVertex()
-        buffer.vertex(x1, y0, z0).endVertex()
-
-        buffer.vertex(x1, y0, z1).endVertex()
-        buffer.vertex(x1, y1, z1).endVertex()
-        buffer.vertex(x0, y1, z1).endVertex()
-        buffer.vertex(x0, y0, z1).endVertex()
-
-        buffer.vertex(x0, y0, z0).endVertex()
-        buffer.vertex(x0, y0, z1).endVertex()
-        buffer.vertex(x0, y1, z1).endVertex()
-        buffer.vertex(x0, y1, z0).endVertex()
-
-        buffer.vertex(x1, y0, z1).endVertex()
-        buffer.vertex(x1, y0, z0).endVertex()
-        buffer.vertex(x1, y1, z0).endVertex()
-        buffer.vertex(x1, y1, z1).endVertex()
-    }
-
-}
-
-/**
- * A minimal [net.minecraft.client.Camera] positioned at the light source, used to prepare dispatchers and construct
- * flywheel's [dev.engine_room.flywheel.api.backend.RenderContext] so that distance/frustum checks pass against the light position.
- */
-private class LightCamera(private val position: Vec3) : net.minecraft.client.Camera() {
-    override fun getPosition(): Vec3 = position
 }

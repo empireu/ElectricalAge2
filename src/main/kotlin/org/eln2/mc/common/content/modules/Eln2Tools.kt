@@ -30,7 +30,7 @@ object Eln2Tools : ContentModule() {
 
     val FLASHLIGHT_MODEL = FlashlightModel(
         powerDemand = Quantity(50.0, WATT),
-        nominalIntensity = 0.6f,
+        nominalIntensity = 1.0f,
         nominalRange = 24.0f,
         halfAngleDeg = 30.0f,
         color = Vector3f(1.0f, 0.95f, 0.8f),

@@ -2,6 +2,7 @@
 
 package org.eln2.mc.client.dynamicLight
 
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 
@@ -18,6 +19,9 @@ interface DynamicLightSource {
     var intensity: Float
     var range: Float
     var halfAngleDeg: Float
+    var sourceRadius: Float
+    var scattering: Float
+    var ownerEntity: Entity?
 
     /**
      * Called by [DynamicLightManager] each render frame with the current partial tick.
@@ -40,6 +44,9 @@ class DynamicLightSourceImpl(
     intensity: Float,
     range: Float,
     halfAngleDeg: Float,
+    sourceRadius: Float,
+    scattering: Float,
+    ownerEntity: Entity?,
 ) : DynamicLightSource {
     override var position: Vec3 = Vec3.ZERO
     override var direction: Vec3 = Vec3(0.0, 0.0, -1.0)
@@ -47,6 +54,9 @@ class DynamicLightSourceImpl(
     override var intensity: Float = intensity
     override var range: Float = range
     override var halfAngleDeg: Float = halfAngleDeg
+    override var sourceRadius: Float = sourceRadius
+    override var scattering: Float = scattering
+    override var ownerEntity: Entity? = ownerEntity
 
     override fun updatePose(partialTick: Float) {
         val (pos, dir) = poseUpdater(partialTick)

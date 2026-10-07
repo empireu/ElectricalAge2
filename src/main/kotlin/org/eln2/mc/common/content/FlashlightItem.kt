@@ -26,9 +26,21 @@ import org.eln2.mc.common.network.Networking
 import org.eln2.mc.client.dynamicLight.DynamicLightSource
 import org.joml.Vector3f
 import net.minecraft.world.phys.Vec3
+import com.mojang.blaze3d.vertex.PoseStack
+import net.minecraft.Util
+import net.minecraft.util.Mth
+import net.minecraft.world.InteractionHand
+import net.minecraft.world.entity.Entity
+import net.minecraft.world.entity.HumanoidArm
+import net.minecraft.world.item.ItemDisplayContext
+import net.minecraft.world.level.ClipContext
+import net.minecraft.world.phys.HitResult
+import net.minecraftforge.client.ForgeHooksClient
 import java.util.*
 import java.util.function.Supplier
-import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.exp
+import kotlin.math.sin
 
 /**
  * Specification for the [FlashlightItem].
@@ -209,6 +221,7 @@ class FlashlightItem(val flashlightModel: FlashlightModel) : Item(Properties().s
             }
             clientLightSources.clear()
             FlashlightPowerMessage.clearClient()
+            FlashlightHandAnchors.clear()
         }
 
         /**
@@ -259,26 +272,15 @@ class FlashlightItem(val flashlightModel: FlashlightModel) : Item(Properties().s
             flashlight: FlashlightItem,
         ): DynamicLightSource {
             val model = flashlight.flashlightModel
+            val pose = FlashlightClientPose(player, model.nominalRange.toDouble())
             return DynamicLightManager.createLightSource(
-                poseUpdater = { partialTick -> computeFlashlightPose(player, partialTick) },
+                poseUpdater = pose::compute,
                 color = model.color,
                 intensity = 0.0f,
                 range = model.nominalRange,
                 halfAngleDeg = model.halfAngleDeg,
+                ownerEntity = player,
             )
-        }
-
-        private fun computeFlashlightPose(player: LivingEntity, partialTick: Float): Pair<Vec3, Vec3> {
-            val eyePosition = player.getEyePosition(partialTick)
-            val lookDirection = player.getViewVector(partialTick)
-
-            val forwardOffset = lookDirection.scale(0.3)
-            val right = lookDirection.cross(Vec3(0.0, 1.0, 0.0)).normalize()
-                .scale(if (abs(lookDirection.y) > 0.99) 0.0 else 0.3)
-            val downOffset = Vec3(0.0, -0.2, 0.0)
-            val position = eyePosition.add(forwardOffset).add(right).add(downOffset)
-
-            return Pair(position, lookDirection)
         }
 
         private fun applyFraction(source: DynamicLightSource, flashlight: FlashlightItem, fraction: Float) {
@@ -287,6 +289,184 @@ class FlashlightItem(val flashlightModel: FlashlightModel) : Item(Properties().s
             source.intensity = model.nominalIntensity * smoothFraction
             source.range = model.nominalRange * (0.3f + 0.7f * smoothFraction)
         }
+    }
+}
+
+object FlashlightHandAnchors {
+    private const val MAXIMUM_ANCHOR_AGE_FRAMES = 2L
+    private const val PRUNE_THRESHOLD = 64
+
+    private val lensModelPosition = Vector3f(0.85f, 0.85f, 0.5f)
+    private val anchors = HashMap<Long, HandAnchor>()
+
+    private class HandAnchor(val viewPosition: Vector3f, val frameIndex: Long)
+
+    fun capture(
+        entity: LivingEntity,
+        stack: ItemStack,
+        context: ItemDisplayContext,
+        leftHand: Boolean,
+        poseStack: PoseStack,
+    ) {
+        if (stack.item !is FlashlightItem) {
+            return
+        }
+
+        val isThirdPersonHand = context == ItemDisplayContext.THIRD_PERSON_LEFT_HAND ||
+            context == ItemDisplayContext.THIRD_PERSON_RIGHT_HAND
+
+        if (!context.firstPerson() && !(isThirdPersonHand && DynamicLightManager.isRenderingLevelEntities)) {
+            return
+        }
+
+        val modelSeed = entity.id + context.ordinal
+        val model = Minecraft.getInstance().itemRenderer.getModel(stack, entity.level(), entity, modelSeed)
+        val lensTransform = PoseStack()
+        lensTransform.mulPoseMatrix(poseStack.last().pose())
+        ForgeHooksClient.handleCameraTransforms(lensTransform, model, context, leftHand)
+        lensTransform.translate(-0.5f, -0.5f, -0.5f)
+
+        val arm = if (leftHand) HumanoidArm.LEFT else HumanoidArm.RIGHT
+        val hand = if (arm == entity.mainArm) InteractionHand.MAIN_HAND else InteractionHand.OFF_HAND
+        val viewPosition = lensTransform.last().pose().transformPosition(Vector3f(lensModelPosition))
+
+        if (anchors.size > PRUNE_THRESHOLD) {
+            anchors.values.removeIf { isStale(it) }
+        }
+
+        anchors[anchorKey(entity, hand)] = HandAnchor(viewPosition, DynamicLightManager.frameIndex)
+    }
+
+    fun cameraRelativePosition(entity: Entity, hand: InteractionHand): Vector3f? {
+        val anchor = anchors[anchorKey(entity, hand)] ?: return null
+
+        if (isStale(anchor)) {
+            return null
+        }
+
+        return DynamicLightManager.cameraRelativeFromView(anchor.viewPosition)
+    }
+
+    fun clear() {
+        anchors.clear()
+    }
+
+    private fun isStale(anchor: HandAnchor): Boolean {
+        return DynamicLightManager.frameIndex - anchor.frameIndex > MAXIMUM_ANCHOR_AGE_FRAMES
+    }
+
+    private fun anchorKey(entity: Entity, hand: InteractionHand): Long {
+        val handIndex = if (hand == InteractionHand.MAIN_HAND) 0L else 1L
+        return (entity.id.toLong() shl 1) or handIndex
+    }
+}
+
+private class FlashlightClientPose(private val player: AbstractClientPlayer, private val maximumDistance: Double) {
+    private var convergenceDistance = Double.NaN
+    private var lastUpdateNanos = 0L
+
+    fun compute(partialTick: Float): Pair<Vec3, Vec3> {
+        val eyePosition = player.getEyePosition(partialTick)
+        val lookDirection = player.getViewVector(partialTick)
+        val isInMainHand = player.mainHandItem.item is FlashlightItem
+        val hand = if (isInMainHand) InteractionHand.MAIN_HAND else InteractionHand.OFF_HAND
+        val handPosition = keepOutOfBlocks(eyePosition, findHandPosition(hand, eyePosition, lookDirection, partialTick))
+        val target = eyePosition.add(lookDirection.scale(updateConvergenceDistance(eyePosition, partialTick)))
+        val direction = target.subtract(handPosition)
+
+        if (direction.lengthSqr() < 1.0e-6) {
+            return Pair(handPosition, lookDirection)
+        }
+
+        return Pair(handPosition, direction.normalize())
+    }
+
+    private fun findHandPosition(
+        hand: InteractionHand,
+        eyePosition: Vec3,
+        lookDirection: Vec3,
+        partialTick: Float,
+    ): Vec3 {
+        val anchor = FlashlightHandAnchors.cameraRelativePosition(player, hand)
+
+        if (anchor != null) {
+            val cameraPosition = Minecraft.getInstance().gameRenderer.mainCamera.position
+            return cameraPosition.add(anchor.x.toDouble(), anchor.y.toDouble(), anchor.z.toDouble())
+        }
+
+        val arm = if (hand == InteractionHand.MAIN_HAND) player.mainArm else player.mainArm.opposite
+        val side = if (arm == HumanoidArm.RIGHT) 1.0 else -1.0
+        val minecraft = Minecraft.getInstance()
+
+        if (player === minecraft.cameraEntity && minecraft.options.cameraType.isFirstPerson) {
+            val yaw = Math.toRadians(player.getViewYRot(partialTick).toDouble())
+            val right = Vec3(-cos(yaw), 0.0, -sin(yaw))
+            val up = right.cross(lookDirection)
+
+            return eyePosition
+                .add(lookDirection.scale(FIRST_PERSON_FORWARD_OFFSET))
+                .add(right.scale(FIRST_PERSON_SIDE_OFFSET * side))
+                .add(up.scale(-FIRST_PERSON_DOWN_OFFSET))
+        }
+
+        val bodyYaw = Math.toRadians(Mth.lerp(partialTick, player.yBodyRotO, player.yBodyRot).toDouble())
+        val bodyRight = Vec3(-cos(bodyYaw), 0.0, -sin(bodyYaw))
+        val bodyForward = Vec3(-sin(bodyYaw), 0.0, cos(bodyYaw))
+        val handHeight = if (player.isCrouching) CROUCHING_HAND_HEIGHT else STANDING_HAND_HEIGHT
+
+        return player.getPosition(partialTick)
+            .add(0.0, handHeight, 0.0)
+            .add(bodyRight.scale(THIRD_PERSON_SIDE_OFFSET * side))
+            .add(bodyForward.scale(THIRD_PERSON_FORWARD_OFFSET))
+    }
+
+    private fun keepOutOfBlocks(eyePosition: Vec3, handPosition: Vec3): Vec3 {
+        val context = ClipContext(eyePosition, handPosition, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player)
+        val hit = player.level().clip(context)
+
+        if (hit.type == HitResult.Type.MISS) {
+            return handPosition
+        }
+
+        val offset = handPosition.subtract(eyePosition)
+        val length = offset.length()
+
+        if (length < WALL_CLEARANCE) {
+            return eyePosition
+        }
+
+        return hit.location.subtract(offset.scale(WALL_CLEARANCE / length))
+    }
+
+    private fun updateConvergenceDistance(eyePosition: Vec3, partialTick: Float): Double {
+        val hit = player.pick(maximumDistance, partialTick, false)
+        val hitDistance = if (hit.type == HitResult.Type.MISS) maximumDistance else hit.location.distanceTo(eyePosition)
+        val targetDistance = hitDistance.coerceIn(MINIMUM_CONVERGENCE_DISTANCE, maximumDistance)
+        val now = Util.getNanos()
+
+        convergenceDistance = if (convergenceDistance.isNaN()) {
+            targetDistance
+        } else {
+            val elapsedSeconds = (now - lastUpdateNanos) * 1.0e-9
+            val blend = 1.0 - exp(-elapsedSeconds * CONVERGENCE_RATE)
+            convergenceDistance + (targetDistance - convergenceDistance) * blend
+        }
+
+        lastUpdateNanos = now
+        return convergenceDistance
+    }
+
+    companion object {
+        private const val FIRST_PERSON_FORWARD_OFFSET = 0.7
+        private const val FIRST_PERSON_SIDE_OFFSET = 0.5
+        private const val FIRST_PERSON_DOWN_OFFSET = 0.45
+        private const val THIRD_PERSON_FORWARD_OFFSET = 0.2
+        private const val THIRD_PERSON_SIDE_OFFSET = 0.37
+        private const val STANDING_HAND_HEIGHT = 0.75
+        private const val CROUCHING_HAND_HEIGHT = 0.55
+        private const val WALL_CLEARANCE = 0.05
+        private const val MINIMUM_CONVERGENCE_DISTANCE = 1.5
+        private const val CONVERGENCE_RATE = 12.0
     }
 }
 
