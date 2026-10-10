@@ -1,4 +1,5 @@
 package org.eln2.mc.common.content.processing
+import org.eln2.mc.client.render.foundation.PartialModelHelper
 
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonElement
@@ -348,7 +349,7 @@ class TreeTapPart(ci: PartCreateInfo) : Part(ci), TickablePart, ComponentDisplay
 class TreeTapPartVisual(visualizationContext: MultipartVisualizationContext, part: TreeTapPart) : AbstractPartVisual<TreeTapPart>(visualizationContext, part),
     SimpleDynamicVisual {
     private val body = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(FlwModels.RUBBER_TAP))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.partial(FlwModels.RUBBER_TAP))
         .createInstance()
         .also {
             it.translateY(-0.4f)
@@ -358,7 +359,7 @@ class TreeTapPartVisual(visualizationContext: MultipartVisualizationContext, par
         }
 
     private val latex = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(FlwModels.RUBBER_TAP_LATEX))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.partial(FlwModels.RUBBER_TAP_LATEX))
         .createInstance()
 
     private var progress = -1.0

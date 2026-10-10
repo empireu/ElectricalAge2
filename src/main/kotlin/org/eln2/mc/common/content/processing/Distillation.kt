@@ -1,6 +1,7 @@
 @file:Suppress("unused")
 
 package org.eln2.mc.common.content.processing
+import org.eln2.mc.client.render.foundation.PartialModelHelper
 
 import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.visual.DynamicVisual
@@ -1592,7 +1593,7 @@ class PhaseChangeModuleBlockEntityVisual(ctx: VisualizationContext, blockEntity:
     val model = (blockState.block as PhaseChangeModuleBlock).model
 
     val instance: TransformedLightOverrideInstance = visualizationContext.instancerProvider()
-        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, Models.partial(model.modelSupplier.get()))
+        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, PartialModelHelper.partial(model.modelSupplier.get()))
         .createInstance()
         .also {
             it.translate(visualPosition)

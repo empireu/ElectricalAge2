@@ -1,4 +1,5 @@
 package org.eln2.mc.common.content
+import org.eln2.mc.client.render.foundation.PartialModelHelper
 
 import dev.engine_room.flywheel.api.visual.DynamicVisual
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
@@ -83,7 +84,7 @@ class RadiantBodyPartVisual<P>(
     val rotation: Double = 0.0
 ) : AbstractPartVisual<P>(ctx, part), SimpleDynamicVisual where P : Part, P : RadiantMonopoleGameObject {
     private val instance = ctx.instancerProvider()
-        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, Models.partial(model))
+        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, PartialModelHelper.partial(model))
         .createInstance()
         .also { it.partTransformation(visualizationContext.parent, part, yRotation = rotation) }
 
@@ -132,17 +133,17 @@ class RadiantBipolePartVisual<P>(
     val tint2: ThermalTint = ThermalTint.DEFAULT_LIGHT_OVERRIDE
 ) : AbstractPartVisual<P>(ctx, part), SimpleDynamicVisual where P : Part, P : RadiantBipoleGameObject {
     private var bodyInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(body))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.partial(body))
         .createInstance()
         .also { it.partTransformation(ctx.parent, part) }
 
     private var instance1 = visualizationContext.instancerProvider()
-        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, Models.partial(model1))
+        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, PartialModelHelper.partial(model1))
         .createInstance()
         .also { it.partTransformation(ctx.parent, part) }
 
     private var instance2 = visualizationContext.instancerProvider()
-        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, Models.partial(model2))
+        .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, PartialModelHelper.partial(model2))
         .createInstance()
         .also { it.partTransformation(ctx.parent, part) }
 

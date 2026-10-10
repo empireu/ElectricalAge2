@@ -1,6 +1,7 @@
 @file:Suppress("unused")
 
 package org.eln2.mc.common.content
+import org.eln2.mc.client.render.foundation.PartialModelHelper
 
 import dev.engine_room.flywheel.api.visual.DynamicVisual
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
@@ -209,14 +210,14 @@ class SwitchPartVisual(
     }
 
     val base: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(FlwModels.SWITCH_BASE))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.partial(FlwModels.SWITCH_BASE))
         .createInstance()
         .also {
             it.partTransformation(visualizationContext.parent, part)
         }
 
     val lever: TransformedInstance = visualizationContext.instancerProvider()
-        .instancer(InstanceTypes.TRANSFORMED, Models.partial(FlwModels.SWITCH_LEVER))
+        .instancer(InstanceTypes.TRANSFORMED, PartialModelHelper.partial(FlwModels.SWITCH_LEVER))
         .createInstance()
 
     private var targetClosed = part.isClosed

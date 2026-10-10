@@ -1133,9 +1133,13 @@ abstract class WirePartVisual<H : TransformedInstance, C : TransformedInstance>(
         }
     }
 
-    protected fun<T : Affine<T>> T.poseHub(): T = this.partTransformation(visualizationContext.parent, part)
+    protected fun<T : Affine<T>> T.poseHub(): T {
+        this.partTransformation(visualizationContext.parent, part)
+        (this as TransformedInstance).setChanged()
+        return this
+    }
 
-    protected fun<T : Affine<T>> T.poseConnection(info: PartConnectionDirection): T =
+    protected fun<T : Affine<T>> T.poseConnection(info: PartConnectionDirection): T {
         this.partTransformation(
             visualizationContext.parent,
             part,
@@ -1147,14 +1151,17 @@ abstract class WirePartVisual<H : TransformedInstance, C : TransformedInstance>(
                 else -> error("Invalid wire direction ${info.directionSpecificFrame}")
             }
         )
+        (this as TransformedInstance).setChanged()
+        return this
+    }
 }
 
 /**
  * Wire renderer without any temperature visualization.
  * To be used for insulated wires or non-thermal wires.
- * We need to apply [PolarModel]'s light override in order to get a smooth transition across the wire.
- * Flywheel's GPU lights won't help us with these discrete instances.
- * The methods are pretty much copied over from [IncandescentWirePartVisual], but with the temperature bits stripped.
+ *
+ * Connections use [FlwInstanceTypes.TRANSFORMED_POLAR] (stock TRANSFORMED layout
+ * prefix + tip colors) so pole-to-pole light blending works on Flywheel indirect.
  * */
 class InsulatedWirePartVisual(
     ctx: MultipartVisualizationContext,
@@ -1170,9 +1177,13 @@ class InsulatedWirePartVisual(
         .also { it.poseHub() }
 
     private fun createConnectionInstance(info: PartConnectionDirection, model: PolarModel) = visualizationContext.instancerProvider()
-        .instancer(FlwInstanceTypes.TRANSFORMED_POLAR, model.get())
+        .instancer(FlwInstanceTypes.TRANSFORMED_POLAR, model.get(FlwMaterials.SMOOTH_LIT))
         .createInstance()
-        .also { it.poseConnection(info) }
+        .also {
+            it.color1 = MyColor.WHITE
+            it.color2 = MyColor.WHITE
+            it.poseConnection(info)
+        }
 
     private fun convertToLightOverride(block: Int) = MyColor(
         map(
@@ -1299,17 +1310,20 @@ class IncandescentWirePartVisual(
 
     private fun createHubInstance() =
         visualizationContext.instancerProvider()
-            .instancer(FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE, Models.partial(model.hub))
+            .instancer(
+                FlwInstanceTypes.TRANSFORMED_LIGHT_OVERRIDE,
+                PartialModelHelper.applyMaterial(model.hub, FlwMaterials.SMOOTH_LIT)
+            )
             .createInstance()
             .also { it.poseHub() }
 
     private fun createConnectionInstance(info: PartConnectionDirection, model: PolarModel) =
         visualizationContext.instancerProvider()
-            .instancer(FlwInstanceTypes.TRANSFORMED_POLAR, model.get())
+            .instancer(FlwInstanceTypes.TRANSFORMED_POLAR, model.get(FlwMaterials.SMOOTH_LIT))
             .createInstance()
             .also {
-                it.color1 = MyColor(0.0f, 1.0f, 1.0f, 1.0f)
-                it.color2 = MyColor(0.0f, 1.0f, 1.0f, 1.0f)
+                it.color1 = MyColor.WHITE
+                it.color2 = MyColor.WHITE
                 it.poseConnection(info)
             }
 
