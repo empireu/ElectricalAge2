@@ -31,7 +31,7 @@ data class Material(
             1e13,
             0.134,
             1130.0,
-            0.92
+            920.0
         )
 
         val GLASS = def(
@@ -39,7 +39,7 @@ data class Material(
             1e13,
             1.11,
             840.0,
-            2.5
+            2500.0
         )
     }
 }

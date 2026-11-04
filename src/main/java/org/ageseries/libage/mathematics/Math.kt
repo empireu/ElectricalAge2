@@ -22,6 +22,10 @@ const val LN_10 = 2.302585092994046
 fun Int.pow(exponent: Int): Int {
     require(exponent >= 0)
 
+    if (exponent == 0) {
+        return 1
+    }
+
     var base = this
 
     if(base == 1 || base == 0 || exponent == 1) {

@@ -1,7 +1,6 @@
 import org.ageseries.libage.sim.ChemicalElement
 import org.ageseries.libage.sim.Material
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 
 class MaterialTests {
@@ -46,13 +45,11 @@ class MaterialTests {
         assertElement(ChemicalElement.Lead, 11340.0, 129.0, 35.0, 2.08e-7)
     }
 
-    @Disabled("Bug: the density of LATEX_RUBBER is written in g/cm3, so it reads 0.92 kg/m3 instead of about 920.")
     @Test
     fun latexRubberDensityIsInSiUnits() {
         assertWithinFactorOfTwo(920.0, !Material.LATEX_RUBBER.density, "Latex rubber density")
     }
 
-    @Disabled("Bug: the density of GLASS is written in g/cm3, so it reads 2.5 kg/m3 instead of about 2500.")
     @Test
     fun glassDensityIsInSiUnits() {
         assertWithinFactorOfTwo(2500.0, !Material.GLASS.density, "Glass density")
