@@ -2,7 +2,6 @@ package org.ageseries.libage.sim.kinetic
 
 import org.ageseries.libage.mathematics.SYMFORCE_EPS
 import kotlin.math.abs
-import kotlin.math.sign
 
 /**
  * A one-ended node.
@@ -72,20 +71,10 @@ class LineShaft(val lineGraph: Array<KineticDouble>) : KineticNode(false), Kinet
 
         var totalFriction = 0.0
         val lineOmega = this.angularVelocity
+        val dt = simulation.dt
         for (i in lineGraph.indices) {
             val shaft = lineGraph[i]
-            val viscous = -shaft.viscousDamping * lineOmega
-
-            val frictionForShaft = if (abs(lineOmega) > shaft.velocityEps) {
-                -shaft.coulombFriction * sign(lineOmega) + viscous
-            } else {
-                val t = originalExternalTorque[i]
-                if (abs(t) <= shaft.staticFriction) {
-                    -t
-                } else {
-                    -shaft.coulombFriction * sign(t) + viscous
-                }
-            }
+            val frictionForShaft = shaft.frictionTorqueAt(lineOmega, originalExternalTorque[i], dt)
 
             shaft.frictionTorque = frictionForShaft
             totalFriction += frictionForShaft
@@ -134,11 +123,11 @@ class LineShaft(val lineGraph: Array<KineticDouble>) : KineticNode(false), Kinet
 
         fun impulseOnExtensionFromConstraint(constraint: RigidExtensionConstraint, extension: RigidKineticExtension): Double {
             if (constraint.a === extension) {
-                return constraint.lambda
+                return constraint.impulseA
             }
 
             if (constraint.b === extension) {
-                return constraint.lambda * (-constraint.b.ratio / constraint.a.ratio)
+                return constraint.impulseB
             }
 
             error("Constraint does not reference extension")
@@ -146,7 +135,7 @@ class LineShaft(val lineGraph: Array<KineticDouble>) : KineticNode(false), Kinet
 
         fun coefficientForExtension(constraint: RigidExtensionConstraint, extension: RigidKineticExtension): Double {
             return if (constraint.a !== extension) {
-                -constraint.b.ratio / constraint.a.ratio
+                constraint.jacobian
             }
             else 1.0
         }

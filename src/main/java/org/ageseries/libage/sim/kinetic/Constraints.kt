@@ -153,8 +153,10 @@ abstract class ExtensionConstraint<A : KineticExtension, B : KineticExtension>(v
  * Rigid constraint that applies a gear ratio as well.
  * */
 class RigidExtensionConstraint(a: RigidKineticExtension, b: RigidKineticExtension) : ExtensionConstraint<RigidKineticExtension, RigidKineticExtension>(a, b) {
+    val jacobian get() = -b.ratio / a.ratio * (-a.pole * b.pole)
+
     override val impulseA get() = lambda
-    override val impulseB get() = lambda * (-b.ratio / a.ratio)
+    override val impulseB get() = lambda * jacobian
 
     fun getOther(x: RigidKineticExtension) : RigidKineticExtension {
         if(x === a) {

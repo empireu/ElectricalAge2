@@ -6,6 +6,7 @@ import org.ageseries.libage.data.RADIAN
 import org.ageseries.libage.data.RADIAN_PER_SECOND
 import org.ageseries.libage.mathematics.SYMFORCE_EPS
 import org.ageseries.libage.mathematics.approxEq
+import kotlin.math.IEEErem
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.max
@@ -164,21 +165,34 @@ abstract class FrictionKineticNode(allowOptimization: Boolean) : KineticNode(all
      * Calculates [frictionTorque] based on the parameters and the current angular velocity and external torque.
      * */
     fun calculateFrictionTorque() {
-        val viscous = -viscousDamping * angularVelocity
+        frictionTorque = frictionTorqueAt(angularVelocity, externalTorque, simulation.dt)
+    }
 
-        frictionTorque = if (abs(angularVelocity) > velocityEps) {
-            // Node is moving: kinetic friction opposes velocity:
-            -coulombFriction * sign(angularVelocity) + viscous
-        } else {
+    fun frictionTorqueAt(omega: Double, drivingTorque: Double, dt: Double): Double {
+        val viscous = -viscousDamping * omega
+        val holdingLimit = max(staticFriction, coulombFriction)
+        val torqueToStop = -(inertia * omega / dt + drivingTorque)
+
+        if (abs(omega) <= velocityEps) {
             // Node is (nearly) stationary - consider static friction:
-            if (abs(externalTorque) <= staticFriction) {
-                // Static friction holds: cancel external torque:
-                -externalTorque
-            } else {
-                // Static friction broken, friction opposes the direction of the driving torque:
-                -coulombFriction * sign(externalTorque) + viscous
+            if (abs(torqueToStop) <= holdingLimit) {
+                // Static friction holds: cancel external torque and the remaining velocity:
+                return torqueToStop
             }
+
+            // Static friction broken, friction opposes the direction of the driving torque:
+            return -coulombFriction * sign(drivingTorque) + viscous
         }
+
+        // Node is moving: kinetic friction opposes velocity:
+        val sliding = -coulombFriction * sign(omega) + viscous
+        val omegaAfter = omega + (drivingTorque + sliding) * dt / inertia
+
+        if (omegaAfter * omega < 0.0 && abs(drivingTorque) <= holdingLimit) {
+            return torqueToStop
+        }
+
+        return sliding
     }
 }
 
@@ -337,6 +351,7 @@ class KineticSimulation(
         // Set clutch indices:
         clutchConstraints.forEach { clutch ->
             clutchConstraintData.setIndices(clutch.id, clutch.a.idInOwner, clutch.b.idInOwner)
+            clutchConstraintData.setJacobian(clutch.id, -1.0)
             // maxLambda is calculated at solve time
         }
     }
@@ -370,6 +385,50 @@ class KineticSimulation(
 
             constraintId++
         }
+    }
+
+    private fun coldStart(constraints: ConstraintArray, lambdas: LambdaArray) {
+        val omegaStar = this.omegaStar
+        val inverseI = this.inverseI
+
+        val count = constraints.count
+        var constraintId = 0
+        while (constraintId < count) {
+            val nodeA = constraints.getIndexA(constraintId)
+            val nodeB = constraints.getIndexB(constraintId)
+            val jacobian = constraints.getJacobian(constraintId)
+            val lambda = lambdas.getLambda(constraintId)
+
+            omegaStar[nodeA] -= inverseI[nodeA] * lambda
+            omegaStar[nodeB] -= inverseI[nodeB] * jacobian * lambda
+            lambdas.setLambda(constraintId, 0.0)
+
+            constraintId++
+        }
+    }
+
+    private fun maxResidual(constraints: ConstraintArray, lambdas: LambdaArray): Double {
+        val omegaStar = this.omegaStar
+
+        var result = 0.0
+        val count = constraints.count
+        var constraintId = 0
+        while (constraintId < count) {
+            if (lambdas.getMaxLambda(constraintId) > 0.0) {
+                val nodeA = constraints.getIndexA(constraintId)
+                val nodeB = constraints.getIndexB(constraintId)
+                val jacobian = constraints.getJacobian(constraintId)
+                val residual = abs(omegaStar[nodeA] + jacobian * omegaStar[nodeB] + constraints.getBias(constraintId))
+
+                if (residual > result) {
+                    result = residual
+                }
+            }
+
+            constraintId++
+        }
+
+        return result
     }
 
     /**
@@ -541,7 +600,7 @@ class KineticSimulation(
             // 1 when "positive" connected to "negative", and -1 when "positive" connected to "positive" or "negative" connected to "negative"
             val sign = -a.pole * b.pole
 
-            val j = -b.ratio / a.ratio * sign
+            val j = rigid.jacobian
             val posError = a.ratio * a.node.angle - b.ratio * b.node.angle * sign
             val bias = biasFactor / dt * (posError / a.ratio)
 
@@ -583,13 +642,12 @@ class KineticSimulation(
 
             // If we are about to become candidate-locked (and previously unlocked), set the reference angle,
             // so positional bias is zero for this timestep (no instantaneous snap).
-            if (candidateLocked && !p.locked) {
+            if (candidateLocked && (!p.locked || firstStep)) {
                 p.referenceAngle = dTheta
             }
 
             val posErrorForSolver = if (p.locked) {
-                val raw = dTheta - p.referenceAngle
-                (raw + PI) % (2.0 * PI) - PI
+                (dTheta - p.referenceAngle).IEEErem(2.0 * PI)
             } else {
                 0.0
             }
@@ -614,9 +672,24 @@ class KineticSimulation(
             }
         }
 
+        val coldResidual = max(
+            maxResidual(rigidConstraintData, rigidConstraintLambda),
+            maxResidual(clutchConstraintData, clutchConstraintLambda)
+        )
+
         // Applies warm start with previous impulses:
         warmStart(rigidConstraintData, rigidConstraintLambda)
         warmStart(clutchConstraintData, clutchConstraintLambda)
+
+        val warmResidual = max(
+            maxResidual(rigidConstraintData, rigidConstraintLambda),
+            maxResidual(clutchConstraintData, clutchConstraintLambda)
+        )
+
+        if (warmResidual > coldResidual) {
+            coldStart(rigidConstraintData, rigidConstraintLambda)
+            coldStart(clutchConstraintData, clutchConstraintLambda)
+        }
 
         lastIterationCount = 0
         val error = StepErrorImpl()
