@@ -147,7 +147,7 @@ class BoundingBoxTreeTests {
     }
 
     @Test
-    @Disabled("Bug: a rejected duplicate insert already replaced the leaf registered for the key, corrupting the tree.")
+    @Disabled("Bug: a rejected duplicate insert already replaced the registered leaf, corrupting the tree.")
     fun duplicateInsertLeavesTreeUntouched() {
         val tree = BoundingBoxTree3d<Int>()
         val firstBox = BoundingBox3d.fromCenterSize(Vector3d.zero, 1.0)

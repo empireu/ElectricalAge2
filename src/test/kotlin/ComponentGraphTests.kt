@@ -317,7 +317,7 @@ class ComponentGraphTests {
     }
 
     @Test
-    @Disabled("Bug: connecting an already connected pair adds a second Edge to edges but incident keeps only the last.")
+    @Disabled("Bug: connecting a connected pair adds a second Edge to edges but incident keeps only the last.")
     fun connectingTheSamePairTwiceKeepsEdgeSetConsistentWithIncidenceMaps() {
         val graph = ComponentGraph()
         val (first, second) = graph.mutate { List(2) { newVertex() } }

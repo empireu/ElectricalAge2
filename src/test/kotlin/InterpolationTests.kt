@@ -410,7 +410,7 @@ class InterpolationTests {
     }
 
     @Test
-    @Disabled("Bug: Spline1d.evaluateDual differentiates by segment abscissa, so dy/dt is scaled by the segment width.")
+    @Disabled("Bug: Spline1d.evaluateDual differentiates by segment abscissa, so dy/dt scales by segment width.")
     fun splineDualDerivativeIsWithRespectToParameterForWideSegments() {
         val spline = InterpolatorBuilder().with(0.0, 0.0).with(2.0, 4.0).buildLinear()
 

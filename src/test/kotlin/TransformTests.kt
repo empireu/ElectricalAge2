@@ -334,7 +334,7 @@ class TransformTests {
     }
 
     @Test
-    @Disabled("Bug: createFromTwoVectors returns a non-unit quaternion for opposite vectors that are not axis-aligned.")
+    @Disabled("Bug: createFromTwoVectors returns a non-unit quaternion for opposite vectors off the axes.")
     fun rotationFromTwoVectorsHandlesGenericOppositeVectors() {
         val from = Vector3d(1.0, 1.0, 1.0).normalized()
         val rotation = Rotation3d.createFromTwoVectors(from, -from)
@@ -435,7 +435,7 @@ class TransformTests {
     }
 
     @Test
-    @Disabled("Bug: Pose3d.minus(Rotation3d) does not invert plus(Rotation3d), so (pose + r) - r changes the rotation.")
+    @Disabled("Bug: Pose3d.minus(Rotation3d) does not invert plus(Rotation3d), (pose + r) - r changes rotation.")
     fun pose3dMinusRotationUndoesPlusRotation() {
         val pose = Pose3d(Vector3d(1.0, 2.0, 3.0), Rotation3d.fromAxisAngle(Vector3d.unitX, 0.3))
         val extra = Rotation3d.fromAxisAngle(Vector3d.unitZ, 0.9)

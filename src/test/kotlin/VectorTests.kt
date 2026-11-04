@@ -188,7 +188,7 @@ class VectorTests {
     }
 
     @Test
-    @Disabled("Bug: onb uses z.sign, which is 0.0 for z == 0, so the Pixar construction divides by zero and gives NaN.")
+    @Disabled("Bug: onb uses z.sign, which is 0.0 for z == 0, so the construction divides by zero and gives NaN.")
     fun orthonormalBasisExistsForVectorsInXyPlane() {
         listOf(Vector3d.unitX, Vector3d.unitY, Vector3d(0.6, 0.8, 0.0)).forEach {
             val (first, second) = it.onb()

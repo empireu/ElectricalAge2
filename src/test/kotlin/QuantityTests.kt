@@ -309,7 +309,7 @@ class QuantityTests {
     fun classifyIntoMultipleUsesEveryStandardPrefixAcrossMagnitudes() {
         val multiples = ScaleMultiples.Base1000Standard.multiples
         val expected = listOf(
-            1e-9 to "1.0 nW", 1e-6 to "1.0 µW", 1e-3 to "1.0 mW", 1.0 to "1.0 W", 1e3 to "1.0 kW",
+            1e-9 to "1.0 nW", 1e-6 to "1.0 ${Char(0xB5)}W", 1e-3 to "1.0 mW", 1.0 to "1.0 W", 1e3 to "1.0 kW",
             1e6 to "1.0 MW", 1e9 to "1.0 GW", 1e12 to "1.0 TW"
         )
 
