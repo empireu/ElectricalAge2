@@ -305,10 +305,17 @@ class KineticNetworkOptimizer(val originalNodes: Set<KineticNode>, val originalR
                 // otherExtension can be the extension of a node that was optimized away:
                 val correspondingOwnerExtension = eliminatedNodeExtensionToNewNodeExtension[otherExtension]
 
+                fun constraintWith(newOtherExtension: RigidKineticExtension) = if(constraint.a === formerExtension) {
+                    RigidExtensionConstraint(physicalExtension, newOtherExtension)
+                }
+                else {
+                    RigidExtensionConstraint(newOtherExtension, physicalExtension)
+                }
+
                 val newConstraint = if(correspondingOwnerExtension == null) {
                     // Maps to a former, unoptimized node:
                     otherExtension.removeConstraint(constraint)
-                    RigidExtensionConstraint(physicalExtension, otherExtension)
+                    constraintWith(otherExtension)
                 }
                 else {
                     val isAlreadyRealized =
@@ -322,7 +329,7 @@ class KineticNetworkOptimizer(val originalNodes: Set<KineticNode>, val originalR
                     }
 
                     // Maps to another line:
-                    RigidExtensionConstraint(physicalExtension, correspondingOwnerExtension)
+                    constraintWith(correspondingOwnerExtension)
                 }
 
                 newRigidConstraints.add(newConstraint)
