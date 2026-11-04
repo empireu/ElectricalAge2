@@ -2,6 +2,8 @@ package org.eln2.mc.common.cells.foundation
 
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
+import net.minecraft.nbt.StringTag
+import net.minecraft.nbt.Tag
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.saveddata.SavedData
@@ -29,6 +31,7 @@ import org.eln2.mc.DEBUGGER_BREAK
 import org.eln2.mc.ELN2_DEBUG
 import org.eln2.mc.Eln2Config
 import org.eln2.mc.LOG
+import org.eln2.mc.MODID
 import org.eln2.mc.OnServerThread
 import org.eln2.mc.OnSimulationThread
 import org.eln2.mc.common.cells.CellRegistry
@@ -1169,30 +1172,34 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         }
     }
 
-    // TODO revamp the schema
-
     fun toNbt(): CompoundTag {
-        val circuitCompound = CompoundTag()
-
         require(executionGraph.isNotRunning)
 
-        circuitCompound.putUUID(NBT_ID, id)
+        val graphTag = CompoundTag()
 
+        graphTag.putUUID(NBT_ID, id)
+
+        val cellIndices = HashMap<Cell, Int>(cells.size)
+
+        cells.forEach { cell ->
+            cellIndices.putUnique(cell, cellIndices.size)
+        }
+
+        val cellTypeIndices = LinkedHashMap<ResourceLocation, Int>()
         val cellListTag = ListTag()
 
         cells.forEach { cell ->
             val cellTag = CompoundTag()
-            val connectionsTag = ListTag()
 
-            cell.connections.forEach { conn ->
-                val connectionCompound = CompoundTag()
-                connectionCompound.putLocator(NBT_POSITION, conn.locator)
-                connectionsTag.add(connectionCompound)
+            val connectionIndices = cell.connections.map { connection ->
+                checkNotNull(cellIndices[connection]) {
+                    "Cell ${cell.locator} is connected to ${connection.locator}, which is not in graph $id"
+                }
             }
 
+            cellTag.putInt(NBT_CELL_TYPE, cellTypeIndices.getOrPut(cell.id) { cellTypeIndices.size })
             cellTag.putLocator(NBT_POSITION, cell.locator)
-            cellTag.putString(NBT_ID, cell.id.toString())
-            cellTag.put(NBT_CONNECTIONS, connectionsTag)
+            cellTag.putIntArray(NBT_CONNECTIONS, connectionIndices)
 
             try {
                 cellTag.put(NBT_CELL_DATA, cell.createTag())
@@ -1203,9 +1210,16 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
             cellListTag.add(cellTag)
         }
 
-        circuitCompound.put(NBT_CELLS, cellListTag)
+        val cellTypesTag = ListTag()
 
-        return circuitCompound
+        cellTypeIndices.keys.forEach { cellType ->
+            cellTypesTag.add(StringTag.valueOf(cellType.toString()))
+        }
+
+        graphTag.put(NBT_CELL_TYPES, cellTypesTag)
+        graphTag.put(NBT_CELLS, cellListTag)
+
+        return graphTag
     }
 
     fun serverStop() {
@@ -1219,63 +1233,44 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         private const val NBT_CELL_DATA = "data"
         private const val NBT_ID = "id"
         private const val NBT_CELLS = "cells"
+        private const val NBT_CELL_TYPES = "cellTypes"
+        private const val NBT_CELL_TYPE = "type"
         private const val NBT_POSITION = "pos"
         private const val NBT_CONNECTIONS = "connections"
 
-        fun fromNbt(graphCompound: CompoundTag, manager: CellGraphManager, level: ServerLevel): CellGraph {
-            val graphId = graphCompound.getUUID(NBT_ID)
-            val result = CellGraph(graphId, manager, level)
+        fun fromNbt(graphTag: CompoundTag, manager: CellGraphManager, level: ServerLevel): CellGraph {
+            val result = CellGraph(graphTag.getUUID(NBT_ID), manager, level)
 
             result.isLoadingData = true
 
-            val cellListTag = graphCompound.get(NBT_CELLS) as ListTag?
-                ?: // No cells are available
-                return result
+            val cellTypes = graphTag.getList(NBT_CELL_TYPES, Tag.TAG_STRING.toInt()).map { cellType ->
+                ResourceLocation(cellType.asString)
+            }
 
-            // Used to assign the connections after all cells have been loaded:
-            val cellConnections = HashMap<Cell, ArrayList<Locator>>()
+            val cellTags = graphTag.getList(NBT_CELLS, Tag.TAG_COMPOUND.toInt()).map { it as CompoundTag }
+            val loadedCells = ArrayList<Cell>(cellTags.size)
 
-            // Used to load cell custom data:
-            val cellData = HashMap<Cell, CompoundTag>()
-
-            cellListTag.forEach { cellNbt ->
-                val cellCompound = cellNbt as CompoundTag
-                val pos = cellCompound.getLocator(NBT_POSITION)
-                val cellId = ResourceLocation.tryParse(cellCompound.getString(NBT_ID))!!
-
-                val connectionPositions = ArrayList<Locator>()
-                val connectionsTag = cellCompound.get(NBT_CONNECTIONS) as ListTag
-
-                connectionsTag.forEach {
-                    val connectionCompound = it as CompoundTag
-                    val connectionPos = connectionCompound.getLocator(NBT_POSITION)
-                    connectionPositions.add(connectionPos)
-                }
+            cellTags.forEach { cellTag ->
+                val locator = cellTag.getLocator(NBT_POSITION)
 
                 val cell = CellRegistry
-                    .getCellProvider(cellId)
-                    .create(pos, CellEnvironment.evaluate(level, pos))
-
-                cellConnections[cell] = connectionPositions
+                    .getCellProvider(cellTypes[cellTag.getInt(NBT_CELL_TYPE)])
+                    .create(locator, CellEnvironment.evaluate(level, locator))
 
                 result.addCell(cell)
-
-                cellData[cell] = cellCompound.getCompound(NBT_CELL_DATA)
+                loadedCells.add(cell)
             }
 
             // Now assign all connections and the graph to the cells:
-            cellConnections.forEach { (cell, connectionPositions) ->
-                val connections = ArrayList<Cell>(connectionPositions.size)
+            cellTags.forEachIndexed { index, cellTag ->
+                val cell = loadedCells[index]
 
-                connectionPositions.forEach { connections.add(result.getCellByLocator(it)) }
-
-                // Now set graph and connection
                 cell.graph = result
-                cell.connections = connections
+                cell.connections = cellTag.getIntArray(NBT_CONNECTIONS).mapTo(ArrayList()) { loadedCells[it] }
                 cell.onUpdate(connectionsChanged = true, graphChanged = true)
 
                 try {
-                    cell.loadTag(cellData[cell]!!)
+                    cell.loadTag(cellTag.getCompound(NBT_CELL_DATA))
                 } catch (t: Throwable) {
                     LOG.error(DEBUGGER_BREAK("Cell loading exception: $t"))
                 }
@@ -1290,6 +1285,12 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         }
     }
 }
+
+/**
+ * Thrown when the saved cell graphs of a dimension cannot be loaded.
+ * This is an [Error] because the vanilla saved data loader catches every [Exception] and replaces the data with a fresh instance, which would erase the saved graphs on the next save.
+ * */
+class CellGraphLoadError(message: String, cause: Throwable? = null) : Error(message, cause)
 
 /**
  * The Cell Graph Manager tracks the cell graphs for a single dimension.
@@ -1364,7 +1365,8 @@ class CellGraphManager(val level: ServerLevel) : SavedData() {
             }
         }
 
-        tag.put("Graphs", graphListTag)
+        tag.putInt(NBT_SAVE_VERSION, SAVE_VERSION)
+        tag.put(NBT_GRAPHS, graphListTag)
         LOG.info("Saved ${graphs.size} graphs to disk.")
         return tag
     }
@@ -1380,19 +1382,40 @@ class CellGraphManager(val level: ServerLevel) : SavedData() {
     }
 
     companion object {
-        private fun load(tag: CompoundTag, level: ServerLevel): CellGraphManager {
-            val manager = CellGraphManager(level)
+        /**
+         * The version of the saved cell graph format. Bump this when the format changes.
+         * Saves with any other version are rejected with a [CellGraphLoadError], there is no migration.
+         * */
+        const val SAVE_VERSION = 1
 
-            val graphListTag = tag.get("Graphs") as ListTag?
+        const val NBT_SAVE_VERSION = "saveVersion"
+        private const val NBT_GRAPHS = "graphs"
 
-            if (graphListTag == null) {
-                LOG.info("No nodes to be loaded!")
-                return manager
+        /**
+         * Loads the graphs saved in the [tag] by [save].
+         * @throws CellGraphLoadError If the [tag] has a different version than [SAVE_VERSION], or if loading fails for any other reason.
+         * */
+        fun load(tag: CompoundTag, level: ServerLevel): CellGraphManager {
+            val saveVersion = tag.getInt(NBT_SAVE_VERSION)
+
+            if (saveVersion != SAVE_VERSION) {
+                throw CellGraphLoadError(
+                    "The cell graphs of ${level.dimension().location()} were saved with format version $saveVersion, but this version of $MODID only reads format version $SAVE_VERSION."
+                )
             }
 
-            graphListTag.forEach { circuitNbt ->
-                val graphCompound = circuitNbt as CompoundTag
-                val graph = CellGraph.fromNbt(graphCompound, manager, level)
+            try {
+                return loadGraphs(tag, level)
+            } catch (exception: Exception) {
+                throw CellGraphLoadError("Failed to load the cell graphs of ${level.dimension().location()}: $exception", exception)
+            }
+        }
+
+        private fun loadGraphs(tag: CompoundTag, level: ServerLevel): CellGraphManager {
+            val manager = CellGraphManager(level)
+
+            tag.getList(NBT_GRAPHS, Tag.TAG_COMPOUND.toInt()).forEach { graphTag ->
+                val graph = CellGraph.fromNbt(graphTag as CompoundTag, manager, level)
 
                 if (graph.isEmpty()) {
                     LOG.error("Loaded circuit with no cells!")

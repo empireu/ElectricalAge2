@@ -312,6 +312,17 @@ object ForgeEvents {
         SimulationExecutionSubgraph.makePool()
     }
 
+    /**
+     * Loads the cell graphs before any chunks are loaded, so a [org.eln2.mc.common.cells.foundation.CellGraphLoadError] stops the server cleanly instead of being thrown from a chunk load.
+     * */
+    @SubscribeEvent @JvmStatic
+    fun onLevelLoad(event: LevelEvent.Load) {
+        val level = event.level as? ServerLevel
+            ?: return
+
+        CellGraphManager.getFor(level)
+    }
+
     private fun simulationStats() {
         var tickRate = 0.0
         var tickTime = 0.0
