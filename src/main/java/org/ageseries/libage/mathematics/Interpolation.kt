@@ -141,8 +141,8 @@ inline fun bilinear(m00: Double, m10: Double, m01: Double, m11: Double, x: Doubl
 
 inline fun trilinear(m000: Double, m100: Double, m010: Double, m110: Double, m001: Double, m101: Double, m011: Double, m111: Double, x: Double, y: Double, z: Double) : Double {
     return lerp(
-        bilinear(m000, m001, m010, m011, y, z),
-        bilinear(m100, m101, m110, m111, y, z),
+        bilinear(m000, m010, m001, m011, y, z),
+        bilinear(m100, m110, m101, m111, y, z),
         x
     )
 }
@@ -604,7 +604,7 @@ fun <P, V0, VD0, V, VD> InterpolationFunctionDual<P, V0, VD0>.reordU(f: (V0) -> 
     this.let { original ->
         object : InterpolationFunctionDual<P, V, VD> {
             override fun evaluate(t: P) = f(original.evaluate(t))
-            override fun evaluateDual(t: P, n: Int) = fd(original.evaluateDual(t))
+            override fun evaluateDual(t: P, n: Int) = fd(original.evaluateDual(t, n))
         }
     }
 
@@ -990,7 +990,12 @@ fun computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
 
     val dv = abs(targetVel - sourceVel)
     val accelEstimate = abs(accelerationEstimate).coerceAtLeast(abs(dv) / maxTransitionTime)
-    val duration = if(!accelEstimate.approxEq(0.0)) dv / accelEstimate else maxTransitionTime
+    val duration = if(!accelEstimate.approxEq(0.0) && !dv.approxEq(0.0)) {
+        dv / accelEstimate
+    }
+    else {
+        maxTransitionTime
+    }
 
     return computeRotationUpdateAccelerationProfile(
         targetPos, targetVel,
