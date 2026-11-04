@@ -423,7 +423,7 @@ data class Rotation3d(val x: Double, val y: Double, val z: Double, val w: Double
                     z = -from.y
                 }
 
-                return Rotation3d(x, y, z, 0.0)
+                return createNormalized(x, y, z, 0.0)
             }
 
             val (x, y, z) = from x to
@@ -614,7 +614,7 @@ data class Pose3d(val translation: Vector3d, val rotation: Rotation3d) {
     operator fun plus(displacement: Vector3d) = Pose3d(translation + displacement, rotation)
     operator fun plus(rotation: Rotation3d) = Pose3d(translation, rotation * this.rotation)
     operator fun minus(displacement: Vector3d) = Pose3d(translation - displacement, rotation)
-    operator fun minus(rotation: Rotation3d) = Pose3d(translation, rotation.inverse / this.rotation)
+    operator fun minus(rotation: Rotation3d) = Pose3d(translation, rotation.inverse * this.rotation)
     operator fun minus(other: Pose3d) = (this / other).ln()
     operator fun times(other: Pose3d) =
         Pose3d(this.translation + this.rotation * other.translation, this.rotation * other.rotation)
