@@ -1,7 +1,9 @@
 package org.eln2.mc
 
+import net.minecraftforge.fml.ModList
 import org.ageseries.libage.mathematics.*
 import org.eln2.mc.common.ModEvents
+import java.nio.file.Files
 
 private fun readPairs(name: String): List<Pair<String, String>> = readDatasetString(name)
     .lines().filter { it.isNotBlank() }.map { line ->
@@ -63,7 +65,14 @@ private fun loadPairInterpolator(
     sb.buildCubic(t, b, c)
 }
 
-private fun readDatasetString(name: String) = getResourceString(resource("datasets/$name"))
+private fun readDatasetString(name: String): String {
+    val path = ModList.get()
+        .getModFileById(MODID)
+        .file
+        .findResource("assets", MODID, "datasets", *name.split('/').toTypedArray())
+
+    return Files.readString(path)
+}
 
 private fun readCsvNumbers(name: String) = NumericCsvFile.parse(readDatasetString(name))
 

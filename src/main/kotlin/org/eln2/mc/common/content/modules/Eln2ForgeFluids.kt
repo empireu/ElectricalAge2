@@ -65,7 +65,7 @@ object Eln2ForgeFluids : ContentModule() {
     }
 
     /**
-     * Read by [org.eln2.mc.Eln2ItemModelProviderDatagen] and [org.eln2.mc.common.ModEvents.registerItemColors].
+     * Read by [org.eln2.mc.Eln2ItemModelProviderDatagen] and [org.eln2.mc.common.ClientModEvents.registerItemColors].
      * */
     val CHEMICAL_BOTTLES_FOR_RESOLVE_AND_DATAGEN = LinkedHashMap<ForgeFluidRegistry.ForgeFluidRegistryItem, ChemicalBottleRegistryItem>()
 

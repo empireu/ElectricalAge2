@@ -15,6 +15,7 @@ import net.minecraft.world.item.Item
 import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets
+import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.client.event.EntityRenderersEvent
 import net.minecraftforge.event.entity.player.ItemTooltipEvent
 import net.minecraftforge.client.event.RegisterColorHandlersEvent
@@ -45,7 +46,6 @@ import org.eln2.mc.*
 import org.eln2.mc.client.render.DebugVisualizer
 import org.eln2.mc.client.dynamicLight.DynamicLightManager
 import org.eln2.mc.client.render.foundation.MyColor
-import org.eln2.mc.common.ModEvents.registerItemColors
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntityLevelRendererProvider
 import org.eln2.mc.common.cells.foundation.CellGraphManager
@@ -80,6 +80,80 @@ object ModEvents {
     var isFullyLoaded = false
         private set
 
+    /**
+     * Used by [ClientModEvents.registerItemColors].
+     * */
+    interface ItemAndTint : Supplier<Item> {
+        val tint: MyColor
+    }
+
+    @SubscribeEvent @JvmStatic
+    fun loadCompletedEvent(event: FMLLoadCompleteEvent) {
+        event.enqueueWork {
+            isFullyLoaded = true
+            BlockRegistry.finalize()
+            PartRegistry.finalize()
+
+            if(ELN2_DEBUG) {
+                LOG.warn("ELN2 is running in debug mode, simulation performance will be affected!")
+            }
+        }
+    }
+
+    @SubscribeEvent @JvmStatic
+    fun onGatherData(event: GatherDataEvent) {
+        val generator = event.generator
+        val output = generator.packOutput
+        val existingFileHelper = event.existingFileHelper
+        val lookupProvider = event.lookupProvider
+
+        generator.addProvider(
+            event.includeServer(),
+            LootTableProvider(
+                output,
+                emptySet(), // What?
+                listOf(
+                    LootTableProvider.SubProviderEntry(
+                        ::Eln2BlockSelfDropLootDatagen,
+                        LootContextParamSets.BLOCK
+                    ),
+                    LootTableProvider.SubProviderEntry(
+                        ::Eln2BlockOreDropLootDatagen,
+                        LootContextParamSets.BLOCK
+                    )
+                )
+            )
+        )
+
+        generator.addProvider(
+            event.includeServer(),
+            Eln2BlockTagsDatagen(output, lookupProvider, existingFileHelper)
+        )
+
+        generator.addProvider(
+            event.includeServer(),
+            Eln2ItemTagsDatagen(output, lookupProvider, existingFileHelper)
+        )
+
+        generator.addProvider(
+            event.includeClient(),
+            Eln2BlockStateProviderDatagen(output, existingFileHelper)
+        )
+
+        generator.addProvider(
+            event.includeServer(),
+            Eln2RecipeProviderDatagen(output)
+        )
+
+        generator.addProvider(
+            event.includeClient(),
+            Eln2ItemModelProviderDatagen(output, existingFileHelper)
+        )
+    }
+}
+
+@Mod.EventBusSubscriber(value = [Dist.CLIENT], bus = Mod.EventBusSubscriber.Bus.MOD)
+object ClientModEvents {
     @SubscribeEvent @JvmStatic
     fun registerBlockEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
         event.registerBlockEntityRenderer(
@@ -104,13 +178,6 @@ object ModEvents {
         lookupTable.trim()
 
         return lookupTable
-    }
-
-    /**
-     * Used by [registerItemColors].
-     * */
-    interface ItemAndTint : Supplier<Item> {
-        val tint: MyColor
     }
 
     @SubscribeEvent @JvmStatic
@@ -179,70 +246,6 @@ object ModEvents {
                 lookupTable.get(pTintIndex)
             }, block)
         }
-    }
-
-    @SubscribeEvent @JvmStatic
-    fun loadCompletedEvent(event: FMLLoadCompleteEvent) {
-        event.enqueueWork {
-            isFullyLoaded = true
-            BlockRegistry.finalize()
-            PartRegistry.finalize()
-
-            if(ELN2_DEBUG) {
-                LOG.warn("ELN2 is running in debug mode, simulation performance will be affected!")
-            }
-        }
-    }
-
-    @SubscribeEvent @JvmStatic
-    fun onGatherData(event: GatherDataEvent) {
-        val generator = event.generator
-        val output = generator.packOutput
-        val existingFileHelper = event.existingFileHelper
-        val lookupProvider = event.lookupProvider
-
-        generator.addProvider(
-            event.includeServer(),
-            LootTableProvider(
-                output,
-                emptySet(), // What?
-                listOf(
-                    LootTableProvider.SubProviderEntry(
-                        ::Eln2BlockSelfDropLootDatagen,
-                        LootContextParamSets.BLOCK
-                    ),
-                    LootTableProvider.SubProviderEntry(
-                        ::Eln2BlockOreDropLootDatagen,
-                        LootContextParamSets.BLOCK
-                    )
-                )
-            )
-        )
-
-        generator.addProvider(
-            event.includeServer(),
-            Eln2BlockTagsDatagen(output, lookupProvider, existingFileHelper)
-        )
-
-        generator.addProvider(
-            event.includeServer(),
-            Eln2ItemTagsDatagen(output, lookupProvider, existingFileHelper)
-        )
-
-        generator.addProvider(
-            event.includeClient(),
-            Eln2BlockStateProviderDatagen(output, existingFileHelper)
-        )
-
-        generator.addProvider(
-            event.includeServer(),
-            Eln2RecipeProviderDatagen(output)
-        )
-
-        generator.addProvider(
-            event.includeClient(),
-            Eln2ItemModelProviderDatagen(output, existingFileHelper)
-        )
     }
 }
 

@@ -289,7 +289,7 @@ object ContentManager {
     }
 
     /**
-     * Registered by [org.eln2.mc.common.ModEvents.registerItemColors].
+     * Registered by [org.eln2.mc.common.ClientModEvents.registerItemColors].
      * */
     val ITEM_TINT_FOR_REGISTRATION = MutableSetMapMultiMap<Supplier<Item>, Pair<Int, MyColor>>()
 
@@ -305,7 +305,7 @@ object ContentManager {
     }
 
     /**
-     * Registered by [org.eln2.mc.common.ModEvents.registerBlockColors].
+     * Registered by [org.eln2.mc.common.ClientModEvents.registerBlockColors].
      * */
     val BLOCK_TINT_FOR_REGISTRATION = MutableSetMapMultiMap<Supplier<Block>, Pair<Int, MyColor>>()
 
@@ -397,7 +397,7 @@ object ContentManager {
     }
 
     /**
-     * Tint registered in [ModEvents.registerItemColors], on texture index 0.
+     * Tint registered in [org.eln2.mc.common.ClientModEvents.registerItemColors], on texture index 0.
      * */
     val ITEMS_FOR_TINT_ON_LAYER0 = LinkedHashSet<ModEvents.ItemAndTint>()
 
