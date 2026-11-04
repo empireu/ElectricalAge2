@@ -63,7 +63,6 @@ import org.ageseries.libage.data.sourceReduce
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import kotlin.math.PI
@@ -154,7 +153,6 @@ class QuantityTests {
     }
 
     @Test
-    @Disabled("Bug: ATMOSPHERE uses sourceAmplify with 9.86923e-6, so 1 atm is 9.87e-6 Pa instead of 101325 Pa.")
     fun atmosphereIsAbout101325Pascals() {
         assertRelative(101325.0, !Quantity(1.0, ATMOSPHERE), 1e-4)
     }
@@ -298,7 +296,6 @@ class QuantityTests {
     }
 
     @Test
-    @Disabled("Bug: negative values recurse without forwarding decimals and inferFirst, so decimals is ignored.")
     fun classifyIntoMultipleKeepsDecimalsForNegativeValues() {
         val multiples = ScaleMultiples.Base1000Standard.multiples
 
@@ -319,7 +316,6 @@ class QuantityTests {
     }
 
     @Test
-    @Disabled("Bug: zero has log magnitude -infinity, so it is classified with the smallest prefix, giving 0.0 mW.")
     fun classifyIntoMultipleOfZeroHasNoPrefix() {
         val multiples = ScaleMultiples.Base1000Standard.multiples
 

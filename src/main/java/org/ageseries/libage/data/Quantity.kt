@@ -314,10 +314,15 @@ class QuantityArray<Unit>(val backing: DoubleArray) {
  * */
 fun classifyIntoMultiple(value: Double, base: Double, map: List<Pair<Double, String>>, symbol: String, decimals: Int = 2, inferFirst: Boolean = true) : String {
     if(value < 0.0) {
-        return "-${classifyIntoMultiple(-value, base, map, symbol)}"
+        return "-${classifyIntoMultiple(-value, base, map, symbol, decimals, inferFirst)}"
     }
 
-    val magnitude = log(value, base)
+    val magnitude = if(value == 0.0) {
+        0.0
+    }
+    else {
+        log(value, base)
+    }
 
     var (targetMagnitude, prefix) = map
         .filter { it.first <= magnitude }
@@ -615,7 +620,7 @@ val KILOGRAM_PER_MOLE = standardScale<MolecularWeight>()
 
 @DimensionClassifier("Pa") interface Pressure
 val PASCAL = standardScale<Pressure>()
-@ScaleClassifier("Atm") val ATMOSPHERE = PASCAL sourceAmplify 9.86923e-6
+@ScaleClassifier("Atm") val ATMOSPHERE = PASCAL sourceAmplify 101325.0
 
 @DimensionClassifier("W/m²") interface Intensity
 val WATT_PER_METER2 = standardScale<Intensity>()

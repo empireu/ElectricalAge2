@@ -31,7 +31,6 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import kotlin.math.PI
@@ -60,7 +59,6 @@ class MathTests {
     }
 
     @Test
-    @Disabled("Bug: Int.pow returns 0 for 0.pow(0), but 0^0 is 1 by the usual convention (Math.pow(0.0, 0.0) is 1.0).")
     fun integerPowerOfZeroToZeroIsOne() {
         assertEquals(1, 0.pow(0))
     }
