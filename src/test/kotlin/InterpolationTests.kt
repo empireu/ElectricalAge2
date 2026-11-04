@@ -116,7 +116,6 @@ class InterpolationTests {
     }
 
     @Test
-    @Disabled("Bug: trilinear passes its corners to the inner bilinear in the wrong order, swapping the y and z axes.")
     fun trilinearReturnsCornerValuesAtEachCorner() {
         val corners = listOf(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0)
 
@@ -449,7 +448,6 @@ class InterpolationTests {
     }
 
     @Test
-    @Disabled("Bug: reordU drops the requested dual size n and always evaluates with the default of 1.")
     fun outputReorderingForwardsDualSize() {
         val spline = InterpolatorBuilder().with(0.0, 0.0).with(1.0, 1.0).buildCubic()
         val reordered = spline.reordU({ value: Double -> value * 2.0 }, { dual: Dual -> dual * 2.0 })
@@ -882,7 +880,6 @@ class InterpolationTests {
     }
 
     @Test
-    @Disabled("Bug: equal velocities with a non-zero acceleration estimate give duration 0 and NaN accelerations.")
     fun rotationUpdateProfileWithEqualVelocitiesIsFinite() {
         val profile = computeRotationUpdateAccelerationProfileWithAccelerationEstimate(
             5.0,
