@@ -69,9 +69,12 @@ minecraft {
         // This run config launches GameTestServer and runs all registered gametests, then exits.
         // By default, the server will crash when no gametests are provided.
         // The gametest system is also enabled by default for other run configs under the /test command.
+        // The persistence test needs a restart, so it runs in two phases, on the same world:
+        // gradlew runGameTestServer -PgameTestPhase=save
+        // gradlew runGameTestServer -PgameTestPhase=load
         gameTestServer {
             workingDirectory project.file('run-gametest')
-            property 'forge.enabledGameTestNamespaces', mod_id
+            property 'forge.enabledGameTestNamespaces', project.hasProperty('gameTestPhase') ? "${mod_id}_${project.property('gameTestPhase')}" : mod_id
         }
 
         data {
@@ -381,7 +384,10 @@ tasks.matching { it.name == 'runGameTestServer' }.configureEach {
     dependsOn tasks.named('gametestClasses')
 
     doFirst {
-        delete(file('run-gametest/world'))
+        if (project.findProperty('gameTestPhase') != 'load') {
+            delete(file('run-gametest/world'))
+        }
+
         delete(file('run-gametest/logs/latest.log'))
     }
 
