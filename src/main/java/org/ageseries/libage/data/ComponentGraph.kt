@@ -274,7 +274,13 @@ open class ComponentGraph {
 	internal fun connect(a: Vertex, b: Vertex): Edge {
 		assert(a.graph == this) { "CG.c: vertex a=$a not in graph $this" }
 		assert(b.graph == this) { "CG.c: vertex b=$b not in graph $this" }
-		
+
+		val existingEdge = a.incident[b]
+
+		if(existingEdge != null) {
+			return existingEdge
+		}
+
 		val edge = constructEdge(a, b)
 		edges.add(edge)
 		a.incident[b] = edge
@@ -310,7 +316,7 @@ open class ComponentGraph {
      * Disconnect a [Vertex] from all incident edges. This is intended to be used by the [MutationGuard] via [mutate].
      */
 	internal fun disconnect(v: Vertex) {
-		v.incident.keys.forEach {
+		v.incident.keys.toList().forEach {
 			disconnect(v, it)
 		}
 		assert(v.incident.isEmpty())
@@ -353,10 +359,17 @@ open class ComponentGraph {
 		var depth = 0
 		val stack = Stack<Visitation>()
 
-		while(unvisited.isNotEmpty()) {
+		while(unvisited.isNotEmpty() || stack.isNotEmpty()) {
 			if(stack.isEmpty()) {
 				dprintln("adding a new root")
-				stack.push(Visitation(start ?: unvisited.first(), Visitation.Phase.Down, true))
+
+				val root = if(start != null && start in unvisited) {
+					start
+				} else {
+					unvisited.first()
+				}
+
+				stack.push(Visitation(root, Visitation.Phase.Down, true))
 			}
 
 			val visitation = stack.pop()
@@ -365,7 +378,10 @@ open class ComponentGraph {
 
 			when(visitation.phase) {
 				Visitation.Phase.Down -> {
-					unvisited.remove(vertex)
+					if(!unvisited.remove(vertex)) {
+						continue
+					}
+
 					stack.push(Visitation(vertex, Visitation.Phase.Up))
 
 					val neighbors = vertex.incident.keys

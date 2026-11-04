@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Assertions.assertNotSame
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTimeoutPreemptively
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import java.time.Duration
 import kotlin.random.Random
@@ -278,7 +277,6 @@ class ComponentGraphTests {
     }
 
     @Test
-    @Disabled("Bug: removeVertex calls disconnect(v), which throws ConcurrentModificationException for 2+ edges.")
     fun removingVertexWithSeveralEdgesDisconnectsThemAll() {
         val graph = ComponentGraph()
         val listener = RecordingListener()
@@ -300,7 +298,6 @@ class ComponentGraphTests {
     }
 
     @Test
-    @Disabled("Bug: disconnect(v) removes from v.incident while iterating its keys, throwing for two or more edges.")
     fun disconnectingVertexWithSeveralEdgesRemovesAllIncidentEdges() {
         val graph = ComponentGraph()
         val (hub, first, second) = graph.mutate { List(3) { newVertex() } }
@@ -317,7 +314,6 @@ class ComponentGraphTests {
     }
 
     @Test
-    @Disabled("Bug: connecting a connected pair adds a second Edge to edges but incident keeps only the last.")
     fun connectingTheSamePairTwiceKeepsEdgeSetConsistentWithIncidenceMaps() {
         val graph = ComponentGraph()
         val (first, second) = graph.mutate { List(2) { newVertex() } }
@@ -502,7 +498,6 @@ class ComponentGraphTests {
     }
 
     @Test
-    @Disabled("Bug: visitDepthFirst stops once all vertices are down-visited, so pending up phases never run.")
     fun depthFirstVisitCallsUpPhaseForEveryVertex() {
         val graph = ComponentGraph()
         val vertices = graph.mutate { List(3) { newVertex() } }
@@ -520,7 +515,6 @@ class ComponentGraphTests {
     }
 
     @Test
-    @Disabled("Bug: with a visit root set, visitDepthFirst pushes the root again for every new root and never ends.")
     fun visitRootHintDoesNotPreventRealizingOtherComponents() {
         val graph = ComponentGraph()
         val (first, second, third) = graph.mutate { List(3) { newVertex() } }
