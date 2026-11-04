@@ -41,7 +41,7 @@ fun Part.installBulb() {
 
 class LoadCircuit(val load: Part, val loadCell: PolarLightCell)
 
-fun GameTestHelper.placeBulbLoad(x: Int, z: Int): LoadCircuit {
+fun GameTestHelper.placeBulbLoad(x: Int, z: Int, withBulb: Boolean = true): LoadCircuit {
     val load = placePart(x, z, Eln2Lights.LIGHT_PART, FacingDirection.EAST)
     val wire = placePart(x, z + 1, ELECTRICAL_WIRE_ITEM)
     val ground = placePart(x, z - 1, GROUND_ITEM)
@@ -49,7 +49,9 @@ fun GameTestHelper.placeBulbLoad(x: Int, z: Int): LoadCircuit {
     checkConnected(wire, load)
     checkConnected(load, ground)
 
-    load.installBulb()
+    if (withBulb) {
+        load.installBulb()
+    }
 
     return LoadCircuit(load, load.cellAs())
 }
