@@ -115,14 +115,15 @@ class MutableMapMultiSet<K>(val map: MutableMap<K, Int>) : MutableMultiSet<K>, M
     }
 
     override fun putAll(from: Map<out K, Int>) {
-        // TODO is this faster than putting them one-by-one?
         from.forEach { (k, n) ->
             require(n >= 0) {
                 "Tried to put $k with $n"
             }
         }
 
-        map.putAll(from)
+        from.forEach { (k, n) ->
+            this[k] = n
+        }
     }
 
     override fun get(key: K) = map[key] ?: 0

@@ -438,7 +438,6 @@ abstract class Part(ci: PartCreateInfo) {
             placement.position
         )
 
-    // TODO store these?
     /**
      * Gets the model bounding box of the part, based on the provider's collision size,
      * */

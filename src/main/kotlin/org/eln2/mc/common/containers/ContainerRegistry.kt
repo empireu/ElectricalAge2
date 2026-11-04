@@ -35,7 +35,7 @@ object ContainerRegistry {
         registerMenuType(name) {
             MenuType(
                 supplier,
-                FeatureFlagSet.of() // TODO the frak is this?
+                FeatureFlagSet.of()
             )
         }
 

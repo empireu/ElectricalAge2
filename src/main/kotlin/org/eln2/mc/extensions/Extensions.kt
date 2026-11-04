@@ -25,19 +25,6 @@ import org.eln2.mc.PIDController
 import org.eln2.mc.integration.ComponentDisplayList
 import org.joml.Vector3f
 
-/*
-//FIXME where is multiblock manager? what is it?
-inline fun <reified T : Cell> Level.getCellOrNull(mb: MultiblockManager, cellPosId: BlockPos): T? {
-    val entity = this.getBlockEntity(mb.txIdWorld(cellPosId)) as? CellBlockEntity
-        ?: return null
-
-    return entity.cell as? T
-}
-
-inline fun <reified T : Cell> Level.getCell(mb: MultiblockManager, cellPosId: BlockPos): T =
-    getCellOrNull(mb, cellPosId) ?: error("Cell was not present")
-*/
-
 fun FriendlyByteBuf.writeDoubleArray(values: DoubleArray) {
     this.writeVarInt(values.size)
 

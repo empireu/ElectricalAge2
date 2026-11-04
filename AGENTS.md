@@ -193,7 +193,8 @@ Never run commands without being asked to (exception: you can build to make sure
 ./gradlew test               # JUnit 5 unit tests
 ./gradlew runClient          # Launch Minecraft client with the mod
 ./gradlew runServer          # Launch dedicated server (writes ./run/eula.txt first)
-./gradlew runGameTestServer  # Run GameTest server (crashes if no gametests registered)
+./gradlew runGameTestServer  # Run the GameTest suite on a headless server, in ./run-gametest with a fresh world
+./gradlew runGameTestServer -PgameTestPhase=save  # Then -PgameTestPhase=load, tests saving a world and reloading it after a restart
 ./gradlew runData            # Generate data → src/generated/resources/
 ```
 
@@ -204,6 +205,16 @@ Never run commands without being asked to (exception: you can build to make sure
 - **Framework**: JUnit 5. Run via `./gradlew test`.
 - **Test location**: `src/test/kotlin/`. Pure-JVM tests (no Minecraft runtime) test libage directly.
 - For simulation tests, use the `ElectricalCircuitForestBuilder` → `testBuild()` pattern from `ElectricalTests.kt`.
+
+### GameTests
+
+- **Location**: `src/gametest/kotlin/`, a separate source set that is loaded in every run configuration (so `/test` works in `runClient`) but is not included in the built jar.
+- They run on a dedicated server, so they also catch client-only code being reached from the server.
+- A test is a method in an `object` annotated with `@GameTestHolder(MODID)` and `@PrefixGameTestTemplate(false)`, with `@GameTest(template = ARENA)` and `@JvmStatic`. Helpers such as `placePart` are in `GameTestSupport.kt`.
+- `@GameTest` times out after 100 ticks by default, set `timeoutTicks` for anything longer. Each tick simulates `SECONDS_PER_TICK` seconds.
+- The simulation runs on other threads during the tick that runs the tests, so read and write simulation state inside `graph.runSuspended { }`.
+- `required = false` marks a test that documents a known bug. It is reported without failing the run.
+- Results are in `run-gametest/logs/latest.log`. Search for `GAME TEST FAILED` to find stack traces.
 
 ## Runtime Notes
 
