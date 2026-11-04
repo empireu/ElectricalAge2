@@ -23,6 +23,13 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(17)
 // Enable the Jar-in-Jar system for your mod
 jarJar.enable()
 
+sourceSets {
+    gametest {
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+    }
+}
+
 println "Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}"
 minecraft {
     mappings channel: mapping_channel, version: mapping_version
@@ -44,6 +51,7 @@ minecraft {
             mods {
                 "${mod_id}" {
                     source sourceSets.main
+                    source sourceSets.gametest
                 }
             }
         }
@@ -62,6 +70,7 @@ minecraft {
         // By default, the server will crash when no gametests are provided.
         // The gametest system is also enabled by default for other run configs under the /test command.
         gameTestServer {
+            workingDirectory project.file('run-gametest')
             property 'forge.enabledGameTestNamespaces', mod_id
         }
 
@@ -365,6 +374,29 @@ publishing {
 afterEvaluate {
     tasks.configureReobfTaskForReobfJar.mustRunAfter(tasks.compileJava)
     tasks.configureReobfTaskForReobfJarJar.mustRunAfter(tasks.compileJava)
+}
+
+// Each run starts from a fresh world, so graphs left over from the previous run are not reloaded.
+tasks.matching { it.name == 'runGameTestServer' }.configureEach {
+    dependsOn tasks.named('gametestClasses')
+
+    doFirst {
+        delete(file('run-gametest/world'))
+        delete(file('run-gametest/logs/latest.log'))
+    }
+
+    // A failure during mod loading exits with code 0, so the exit code alone does not prove that the tests ran.
+    doLast {
+        def serverLog = file('run-gametest/logs/latest.log')
+
+        if (!serverLog.exists() || !serverLog.text.contains('GAME TESTS COMPLETE')) {
+            throw new GradleException("The game tests did not run, see ${serverLog}")
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('gametestClasses')
 }
 
 compileJava {

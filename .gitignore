@@ -14,6 +14,7 @@ build
 */config
 */saves
 options.txt
+run-gametest/
 */out
 */classes
 */obj/
