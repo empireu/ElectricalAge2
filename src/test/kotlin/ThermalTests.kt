@@ -21,11 +21,11 @@ import org.ageseries.libage.sim.emissionPower
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.pow
+import kotlin.random.Random
 
 class ThermalTests {
     private fun testMaterial(thermalConductivity: Double = 100.0, specificHeat: Double = 1000.0) = Material(
@@ -77,43 +77,72 @@ class ThermalTests {
     }
 
     @Test
-    fun massConnectionPowerIsSeriesResistanceOfBothHalvesAndContact() {
-        val cold = testMass(300.0, mass = 1000.0, material = testMaterial(thermalConductivity = 100.0))
-        val hot = testMass(400.0, mass = 1000.0, material = testMaterial(thermalConductivity = 50.0))
+    fun massConductanceIsSeriesResistanceOfBothHalvesAndContact() {
+        val first = testMass(300.0, material = testMaterial(thermalConductivity = 100.0))
+        val second = testMass(400.0, material = testMaterial(thermalConductivity = 50.0))
 
         val connection = MassConnection(
-            cold,
-            hot,
+            first,
+            second,
             lossless(contactConductance = 10.0, distance = 2.0, area = 0.5, contactPoint = 0.25)
         )
 
-        val resistanceCold = (0.25 * 2.0) / (100.0 * 0.5)
-        val resistanceHot = (0.75 * 2.0) / (50.0 * 0.5)
+        val resistanceFirst = (0.25 * 2.0) / (100.0 * 0.5)
+        val resistanceSecond = (0.75 * 2.0) / (50.0 * 0.5)
         val resistanceContact = 1.0 / 10.0
-        val expectedPower = 100.0 / (resistanceCold + resistanceHot + resistanceContact)
-        val deltaTime = 0.001
 
-        val (toCold, toHot) = connection.transfer(deltaTime)
-
-        assertEquals(expectedPower * deltaTime, !toCold, 1e-9)
-        assertEquals(-expectedPower * deltaTime, !toHot, 1e-9)
+        assertEquals(1.0 / (resistanceFirst + resistanceSecond + resistanceContact), connection.conductance, 1e-9)
     }
 
     @Test
-    fun zeroDistanceWithInfiniteContactReachesEquilibriumInOneStep() {
+    fun massTransferOverOneStepIsConductanceTimesDifferenceTimesTime() {
+        val cold = testMass(300.0, mass = 1000.0)
+        val hot = testMass(400.0, mass = 1000.0)
+        val simulator = Simulator()
+        val connection = simulator.connect(cold, hot, lossless())
+        val deltaTime = 0.001
+        val coldEnergy = !cold.energy
+        val hotEnergy = !hot.energy
+
+        simulator.step(deltaTime)
+
+        val expected = connection.conductance * 100.0 * deltaTime
+
+        assertEquals(expected, !cold.energy - coldEnergy, 1e-6)
+        assertEquals(-expected, !hot.energy - hotEnergy, 1e-6)
+    }
+
+    @Test
+    fun zeroDistanceWithInfiniteContactSettlesAtTheWeightedAverage() {
         val first = testMass(300.0, mass = 1.0)
         val second = testMass(600.0, mass = 2.0)
         val simulator = Simulator()
 
         simulator.connect(first, second, lossless(distance = 0.0))
-        simulator.step(0.01)
+
+        repeat(50) {
+            simulator.step(0.01)
+        }
 
         assertEquals(500.0, !first.temperature, 1e-6)
         assertEquals(500.0, !second.temperature, 1e-6)
     }
 
     @Test
-    fun clampedTransferDoesNotOvershootEquilibrium() {
+    fun equalBodiesWithInfiniteContactSettleInOneStep() {
+        val first = testMass(300.0)
+        val second = testMass(500.0)
+        val simulator = Simulator()
+
+        simulator.connect(first, second, lossless(distance = 0.0))
+        simulator.step(0.01)
+
+        assertEquals(400.0, !first.temperature, 1e-6)
+        assertEquals(400.0, !second.temperature, 1e-6)
+    }
+
+    @Test
+    fun stiffTransferDoesNotOvershootEquilibrium() {
         val first = testMass(300.0)
         val second = testMass(600.0)
         val simulator = Simulator()
@@ -275,8 +304,8 @@ class ThermalTests {
     }
 
     @Test
-    fun environmentConductanceAddsInSeriesWithHalfOfTheBody() {
-        val body = testMass(400.0, mass = 1000.0, material = testMaterial(thermalConductivity = 100.0))
+    fun environmentConductanceAddsInSeriesWithTheBody() {
+        val body = testMass(400.0, material = testMaterial(thermalConductivity = 100.0))
 
         val connection = EnvironmentConnection(
             body,
@@ -284,11 +313,29 @@ class ThermalTests {
             lossless(conductance = 10.0, distance = 2.0, area = 0.5)
         )
 
-        val expectedConductance = 1.0 / (2.0 / (100.0 * 0.5) + 1.0 / 10.0)
-        val (toBody, toEnvironment) = connection.transfer(0.001)
+        assertEquals(1.0 / (2.0 / (100.0 * 0.5) + 1.0 / 10.0), connection.conductance, 1e-9)
+    }
 
-        assertEquals(-100.0 * expectedConductance * 0.001, !toBody, 1e-9)
-        assertEquals(0.0, !toEnvironment, 0.0)
+    @Test
+    fun environmentTemperatureCanChangeBetweenSteps() {
+        val body = testMass(300.0, mass = 1000.0)
+        val simulator = Simulator()
+        val connection = EnvironmentConnection(
+            body,
+            Quantity(300.0, KELVIN),
+            lossless(conductance = 10.0, distance = 0.0)
+        )
+
+        simulator.add(connection)
+        simulator.step(0.01)
+
+        assertEquals(300.0, !body.temperature, 1e-9)
+
+        connection.temperature = Quantity(400.0, KELVIN)
+        val before = !body.energy
+        simulator.step(0.01)
+
+        assertEquals(10.0 * 100.0 * 0.01, !body.energy - before, 1e-6)
     }
 
     @Test
@@ -320,16 +367,18 @@ class ThermalTests {
         body.emissiveSurfaceArea = Quantity(2.0, METER2)
         body.emissivity = 0.5
 
-        val connection = EnvironmentConnection(
-            body,
-            Quantity(300.0, KELVIN),
-            lossless(conductance = 1e-30, distance = 0.0)
-        )
+        val simulator = Simulator()
+
+        simulator.connect(body, Quantity(300.0, KELVIN), lossless(conductance = 0.0, distance = 0.0))
+
+        val before = !body.energy
+        val deltaTime = 0.001
+
+        simulator.step(deltaTime)
 
         val expectedPower = 0.5 * STEFAN_BOLTZMANN_CONSTANT * 2.0 * (300.0.pow(4) - 1000.0.pow(4))
-        val (toBody, _) = connection.transfer(0.001)
 
-        assertEquals(expectedPower * 0.001, !toBody, 1e-6)
+        assertEquals(expectedPower * deltaTime, !body.energy - before, 1e-3)
     }
 
     @Test
@@ -343,32 +392,41 @@ class ThermalTests {
     fun zeroConductivityBlocksConduction() {
         val cold = testMass(300.0, material = testMaterial(thermalConductivity = 0.0))
         val hot = testMass(400.0, material = testMaterial(thermalConductivity = 0.0))
-        val (toCold, toHot) = MassConnection(cold, hot, lossless()).transfer(0.01)
+        val simulator = Simulator()
 
-        assertEquals(0.0, !toCold, 0.0)
-        assertEquals(0.0, !toHot, 0.0)
+        simulator.connect(cold, hot, lossless())
+        simulator.step(0.01)
+
+        assertEquals(300.0, !cold.temperature, 0.0)
+        assertEquals(400.0, !hot.temperature, 0.0)
     }
 
     @Test
-    fun invalidTimeStepsAndGeometryTransferNothing() {
+    fun invalidTimeStepsTransferNothing() {
         val cold = testMass(300.0)
         val hot = testMass(400.0)
+        val simulator = Simulator()
+
+        simulator.connect(cold, hot, lossless())
 
         listOf(0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY).forEach { deltaTime ->
-            val (toCold, _) = MassConnection(cold, hot, lossless()).transfer(deltaTime)
+            simulator.step(deltaTime)
 
-            assertEquals(0.0, !toCold, 0.0)
+            assertEquals(300.0, !cold.temperature, 0.0)
         }
+    }
+
+    @Test
+    fun invalidGeometryHasNoConductance() {
+        val first = testMass(300.0)
+        val second = testMass(400.0)
 
         listOf(0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY).forEach { area ->
-            val (toCold, _) = MassConnection(cold, hot, lossless(area = area)).transfer(0.01)
-
-            assertEquals(0.0, !toCold, 0.0)
+            assertEquals(0.0, MassConnection(first, second, lossless(area = area)).conductance, 0.0)
+            assertEquals(0.0, EnvironmentConnection(first, Quantity(300.0, KELVIN), lossless(area = area)).conductance, 0.0)
         }
 
-        val (toCold, _) = MassConnection(cold, hot, lossless(distance = Double.POSITIVE_INFINITY)).transfer(0.01)
-
-        assertEquals(0.0, !toCold, 0.0)
+        assertEquals(0.0, MassConnection(first, second, lossless(distance = Double.POSITIVE_INFINITY)).conductance, 0.0)
     }
 
     @Test
@@ -378,10 +436,24 @@ class ThermalTests {
         val simulator = Simulator()
 
         simulator.connect(empty, hot, lossless())
+        simulator.connect(empty, Quantity(300.0, KELVIN), lossless())
         simulator.step(0.01)
 
         assertFalse((!hot.energy).isNaN())
         assertFalse((!empty.energy).isNaN())
+    }
+
+    @Test
+    fun nonFiniteTemperatureDoesNotSpreadToNeighbors() {
+        val broken = testMass(300.0)
+        val healthy = testMass(300.0)
+        val simulator = Simulator()
+
+        simulator.connect(broken, healthy, lossless())
+        broken.energy = Quantity(Double.NaN, JOULE)
+        simulator.step(0.01)
+
+        assertEquals(300.0, !healthy.temperature, 0.0)
     }
 
     @Test
@@ -413,6 +485,7 @@ class ThermalTests {
         val simulator = Simulator()
         val connection = simulator.connect(first, second, lossless())
 
+        simulator.step(0.01)
         simulator.remove(connection)
 
         assertTrue(simulator.masses.containsAll(listOf(first, second)))
@@ -423,6 +496,62 @@ class ThermalTests {
         simulator.step(0.01)
 
         assertEquals(firstEnergy, !first.energy, 0.0)
+    }
+
+    @Test
+    fun connectionsAddedAfterSteppingTakeEffect() {
+        val first = testMass(300.0, mass = 1000.0)
+        val second = testMass(400.0, mass = 1000.0)
+        val simulator = Simulator()
+
+        simulator.add(first)
+        simulator.add(second)
+        simulator.step(0.01)
+
+        assertEquals(300.0, !first.temperature, 0.0)
+
+        simulator.connect(first, second, lossless())
+        simulator.step(0.01)
+
+        assertTrue(!first.temperature > 300.0)
+    }
+
+    @Test
+    fun changingMassAndMaterialBetweenStepsIsPickedUp() {
+        val body = testMass(400.0, mass = 1.0)
+        val neighbor = testMass(300.0, mass = 1.0)
+        val simulator = Simulator()
+
+        simulator.connect(body, neighbor, lossless(contactConductance = 10.0, distance = 0.0))
+        simulator.step(0.01)
+
+        val temperature = !body.temperature
+        val energy = !body.energy
+
+        body.mass = Quantity(2.0, KILOGRAM)
+        body.energy = Quantity(energy * 2.0)
+
+        assertEquals(temperature, !body.temperature, 1e-9)
+
+        val neighborTemperature = !neighbor.temperature
+
+        simulator.step(0.01)
+
+        val expectedTransfer = 10.0 * (temperature - neighborTemperature) * 0.01
+
+        assertEquals(expectedTransfer / 2000.0, temperature - !body.temperature, 1e-9)
+        assertEquals(expectedTransfer / 1000.0, !neighbor.temperature - neighborTemperature, 1e-9)
+
+        body.material = testMaterial(specificHeat = 500.0)
+
+        assertEquals(temperature * 2.0, !body.temperature, 1.0)
+
+        val before = !body.temperature
+
+        simulator.step(0.01)
+
+        assertTrue(!body.temperature < before)
+        assertFalse((!body.temperature).isNaN())
     }
 
     private fun runHub(neighborCount: Int, steps: Int): List<Double> {
@@ -445,60 +574,46 @@ class ThermalTests {
     }
 
     @Test
-    fun lightHubOnOneStiffConnectionSettlesImmediately() {
-        val history = runHub(1, 10)
+    fun lightHubOnStiffConnectionsSettlesWithoutOvershoot() {
+        listOf(1, 2, 3, 6, 50).forEach { neighborCount ->
+            val history = runHub(neighborCount, 50)
 
-        assertTrue(abs(history.last() - 300.0) < 1.0)
-    }
+            assertTrue(history.all { it.isFinite() && it >= 300.0 - 1e-6 && it <= 400.0 + 1e-6 }) {
+                "The hub with $neighborCount neighbors overshot: ${history.take(6)}"
+            }
 
-    @Disabled("Bug: the equilibrium clamp is per connection, so the hub overshoots by the sum of its connections and oscillates between 200 K and 400 K forever.")
-    @Test
-    fun lightHubOnTwoStiffConnectionsSettles() {
-        val history = runHub(2, 50)
-
-        assertTrue(abs(history.last() - 300.0) < 1.0)
-    }
-
-    @Disabled("Bug: the equilibrium clamp is per connection, so the hub diverges by a factor of 1 - N each step, reaching negative absolute temperatures.")
-    @Test
-    fun lightHubOnThreeStiffConnectionsStaysBounded() {
-        val history = runHub(3, 50)
-
-        assertTrue(history.all { it.isFinite() && abs(it - 300.0) <= 100.0 + 1e-6 })
-    }
-
-    @Disabled("Bug: the equilibrium clamp is per connection, so the hub diverges by a factor of 1 - N each step, reaching negative absolute temperatures.")
-    @Test
-    fun lightHubOnSixStiffConnectionsStaysBounded() {
-        val history = runHub(6, 50)
-
-        assertTrue(history.all { it.isFinite() && abs(it - 300.0) <= 100.0 + 1e-6 })
+            assertEquals(300.0, history.last(), 0.01)
+        }
     }
 
     @Test
-    fun unclampedExplicitStepIsStableBelowTheForwardEulerLimit() {
-        val hub = testMass(400.0)
-        val neighbors = List(4) { testMass(300.0, mass = 1e6) }
+    fun stiffChainOfEqualBodiesDoesNotRing() {
+        val bodies = List(9) { index -> testMass(if (index % 2 == 0) 400.0 else 300.0) }
         val simulator = Simulator()
-        val capacity = 1000.0
-        val deltaTime = 0.01
-        val conductance = 1.9 * capacity / (4.0 * deltaTime)
 
-        neighbors.forEach {
-            simulator.connect(hub, it, lossless(contactConductance = conductance, distance = 0.0))
+        for (index in 1 until bodies.size) {
+            simulator.connect(bodies[index - 1], bodies[index], lossless(contactConductance = 1e9, distance = 0.0))
         }
 
-        repeat(2000) {
-            simulator.step(deltaTime)
+        var previousSpread = Double.POSITIVE_INFINITY
 
-            assertTrue(abs(!hub.temperature - 300.0) <= 100.0 + 1e-3)
+        repeat(200) {
+            simulator.step(0.01)
+
+            val spread = bodies.maxOf { !it.temperature } - bodies.minOf { !it.temperature }
+
+            assertTrue(spread <= previousSpread + 1e-9) {
+                "The spread of temperatures grew from $previousSpread to $spread"
+            }
+
+            previousSpread = spread
         }
 
-        assertEquals(300.0, !hub.temperature, 1e-1)
+        assertTrue(previousSpread < 1.0)
     }
 
     @Test
-    fun explicitStepPastTheForwardEulerLimitDiverges() {
+    fun conductancePastTheForwardEulerLimitStaysBounded() {
         val hub = testMass(400.0)
         val neighbors = List(4) { testMass(300.0, mass = 1e6) }
         val simulator = Simulator()
@@ -512,8 +627,62 @@ class ThermalTests {
 
         repeat(50) {
             simulator.step(deltaTime)
+
+            assertTrue(!hub.temperature in 300.0 - 1e-3..400.0 + 1e-3)
         }
 
-        assertTrue(abs(!hub.temperature - 300.0) > 100.0)
+        assertEquals(300.0, !hub.temperature, 1e-1)
+    }
+
+    @Test
+    fun randomStiffNetworksObeyTheMaximumPrincipleAndConserveEnergy() {
+        repeat(200) { seed ->
+            val random = Random(seed)
+            val bodyCount = random.nextInt(2, 30)
+            val bodies = List(bodyCount) {
+                testMass(random.nextDouble(200.0, 2000.0), mass = 10.0.pow(random.nextDouble(-4.0, 4.0)))
+            }
+
+            val simulator = Simulator()
+
+            repeat(random.nextInt(bodyCount, bodyCount * 4)) {
+                val first = random.nextInt(bodyCount)
+                val second = random.nextInt(bodyCount)
+
+                if (first != second) {
+                    val contactConductance = 10.0.pow(random.nextDouble(-2.0, 9.0))
+
+                    simulator.connect(bodies[first], bodies[second], lossless(contactConductance = contactConductance, distance = 0.0))
+                }
+            }
+
+            val initialEnergy = bodies.sumOf { !it.energy }
+            var highest = bodies.maxOf { !it.temperature }
+            var lowest = bodies.minOf { !it.temperature }
+
+            repeat(200) {
+                simulator.step(0.01)
+
+                val newHighest = bodies.maxOf { !it.temperature }
+                val newLowest = bodies.minOf { !it.temperature }
+
+                assertTrue(newHighest <= highest + 1e-6) {
+                    "Seed $seed: the highest temperature grew from $highest to $newHighest"
+                }
+
+                assertTrue(newLowest >= lowest - 1e-6) {
+                    "Seed $seed: the lowest temperature fell from $lowest to $newLowest"
+                }
+
+                highest = newHighest
+                lowest = newLowest
+            }
+
+            val energyError = abs(bodies.sumOf { !it.energy } - initialEnergy)
+
+            assertTrue(energyError <= abs(initialEnergy) * 1e-9) {
+                "Seed $seed: energy changed by $energyError"
+            }
+        }
     }
 }
