@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.nio.BufferUnderflowException
@@ -233,7 +232,6 @@ class LocatorTests {
     }
 
     @Test
-    @Disabled("Bug: Locator.equals ignores the archetype, so different shards holding equal data compare equal.")
     fun locatorsWithDifferentShardsButEqualDataAreNotEqual() {
         val first = dispatcher.builder().put(dispatcher.tag, TestTag(5)).build()
         val second = dispatcher.builder().put(dispatcher.secondTag, TestTag(5)).build()
