@@ -91,7 +91,7 @@ class ArrayKDVectorI(val values: IntArray) : MutableKDVectorI {
 
     fun clamp(min: Int, max: Int) {
         for (i in 0 until size) {
-            this[i] -= this[i].coerceIn(min, max)
+            this[i] = this[i].coerceIn(min, max)
         }
     }
 
@@ -225,7 +225,7 @@ class ArrayKDVectorD(val values: DoubleArray) : MutableKDVectorD {
      * */
     fun clamp(min: Double, max: Double) {
         for (i in 0 until size) {
-            this[i] -= this[i].coerceIn(min, max)
+            this[i] = this[i].coerceIn(min, max)
         }
     }
 
@@ -293,7 +293,7 @@ class ArrayKDGrid<T>(val sizes: KDVectorIImmutable, val grid: Array<T>) : Mutabl
     }
 
     private fun computeIndex(coordinates: KDVectorI): Int {
-        return computeIndex(coordinates)
+        return computeIndex(coordinates, sizes, strides)
     }
 
     override operator fun get(coordinates: KDVectorI): T {
@@ -305,7 +305,7 @@ class ArrayKDGrid<T>(val sizes: KDVectorIImmutable, val grid: Array<T>) : Mutabl
     }
 
     companion object {
-        fun computeIndex(coordinates: KDVectorI, strides: IntArray): Int {
+        fun computeIndex(coordinates: KDVectorI, sizes: KDVectorI, strides: IntArray): Int {
             if (coordinates.size != strides.size) {
                 error("Cannot index ${strides.size}D grid with ${coordinates.size} coordinates")
             }
@@ -313,7 +313,13 @@ class ArrayKDGrid<T>(val sizes: KDVectorIImmutable, val grid: Array<T>) : Mutabl
             var index = 0
 
             for (i in strides.indices) {
-                index += strides[i] * coordinates[i]
+                val coordinate = coordinates[i]
+
+                if (coordinate < 0 || coordinate >= sizes[i]) {
+                    error("Coordinate $coordinate is outside dimension $i of size ${sizes[i]}")
+                }
+
+                index += strides[i] * coordinate
             }
 
             return index
@@ -384,7 +390,7 @@ class ArrayKDGridD(val sizes: KDVectorIImmutable, val grid: DoubleArray) : Mutab
     }
 
     private fun computeIndex(coordinates: KDVectorI): Int {
-        return ArrayKDGrid.computeIndex(coordinates, strides)
+        return ArrayKDGrid.computeIndex(coordinates, sizes, strides)
     }
 
     override operator fun get(coordinates: KDVectorI): Double {

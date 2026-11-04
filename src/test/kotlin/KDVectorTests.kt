@@ -16,7 +16,6 @@ import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotSame
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
@@ -116,7 +115,6 @@ class KDVectorTests {
     }
 
     @Test
-    @Disabled("Bug: clamp subtracts the clamped value from the component, so 5.clamp(0, 2) becomes 3 instead of 2.")
     fun intVectorClampActuallyClamps() {
         val vector = arrayKDVectorIOf(5, -3, 1)
 
@@ -127,7 +125,6 @@ class KDVectorTests {
     }
 
     @Test
-    @Disabled("Bug: clamp subtracts the clamped value from the component, so 5.0 clamped to 0..2 becomes 3.0.")
     fun doubleVectorClampActuallyClamps() {
         val vector = ArrayKDVectorD(doubleArrayOf(5.0, -3.0, 1.0))
 
@@ -189,7 +186,6 @@ class KDVectorTests {
     }
 
     @Test
-    @Disabled("Bug: ArrayKDGridD does not bounds check each coordinate, so (2, 0) in a 2x2 grid reads cell (0, 1).")
     fun gridAccessOutsideTheGridThrows() {
         val grid = arrayKDGridDOf(2, 2)
 
@@ -232,7 +228,6 @@ class KDVectorTests {
     }
 
     @Test
-    @Disabled("Bug: ArrayKDGrid.computeIndex calls itself instead of the companion overload, overflowing the stack.")
     fun genericGridGetAndSetWork() {
         val grid: ArrayKDGrid<String> = arrayKDGridOf("x", 2, 3)
 
