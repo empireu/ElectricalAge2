@@ -3,9 +3,10 @@
 package org.ageseries.libage.sim
 
 import org.ageseries.libage.data.*
-import java.util.*
 import java.util.function.Supplier
 import kotlin.math.PI
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.pow
 
 /**
@@ -151,8 +152,6 @@ data class ConnectionParameters(
     }
 }
 
-private val ZERO_TRANSFER: Pair<Quantity<Energy>, Quantity<Energy>> = Quantity(0.0, JOULE) to Quantity(0.0, JOULE)
-
 private fun thermalResistance(length: Double, conductivity: Double, area: Double): Double = when {
     length <= 0.0 -> 0.0
     conductivity > 0.0 -> length / (conductivity * area)
@@ -177,32 +176,21 @@ private fun heatCapacity(mass: ThermalMass): Double {
     return if(capacity.isFinite() && capacity > 0.0) capacity else 0.0
 }
 
-private fun clampEnergyToEquilibrium(unrestrictedEnergy: Double, maxEnergy: Double): Double = when {
-    !maxEnergy.isFinite() -> 0.0
-    !unrestrictedEnergy.isFinite() -> maxEnergy
-    maxEnergy > 0.0 -> unrestrictedEnergy.coerceIn(0.0, maxEnergy)
-    maxEnergy < 0.0 -> unrestrictedEnergy.coerceIn(maxEnergy, 0.0)
-    else -> 0.0
-}
-
 /**
  * Represents a connection between a [ThermalMass] and something else.
  *
  * The current implementations involve another ThermalMass and the environment.
  */
-interface Connection {
-    /**
-     * Compute the heat transfer, in Joules, to do to each side of the connection over [dt] seconds.
-     *
-     * By convention, the returned energy transfers are in argument order; whereas the first is usually the
-     * [ThermalMass], the second may or may not be relevant depending on whether there is a heat sink.
-     */
-    fun transfer(dt: Double): Pair<Quantity<Energy>, Quantity<Energy>>
-
+sealed interface Connection {
     /**
      * [ThermalMass]es owned by this connection, so the [Simulator] can manage them.
      */
     val masses: List<ThermalMass>
+
+    /**
+     * The conductance of this connection, in W/K. It is 0 if the [ConnectionParameters] do not describe a valid path for heat.
+     */
+    val conductance: Double
 }
 
 class MassConnection(
@@ -215,68 +203,31 @@ class MassConnection(
 ): Connection {
     override fun toString() = "<MassConn $a $b $params>"
 
-    /**
-     * Returns the energies to add to [a] and [b] (in that order), which would attempt to equilibriate the connected thermal masses over the given period of time [dt] (in s).
-     *
-     * For this to be stable, [dt] must be held relatively small, since this is a linear approximation to an exponential curve--otherwise, overshoot may be observed.
-     */
-    override fun transfer(dt: Double): Pair<Quantity<Energy>, Quantity<Energy>> {
-        if(dt <= 0.0 || !dt.isFinite() || params.area <= 0.0 || !params.area.isFinite()) {
-            return ZERO_TRANSFER
+    override val conductance: Double
+        get() {
+            if(params.area <= 0.0 || !params.area.isFinite()) {
+                return 0.0
+            }
+
+            val distance = !params.distance
+
+            if(!distance.isFinite()) {
+                return 0.0
+            }
+
+            val clampedContactPoint = params.contactPoint.coerceIn(0.0, 1.0)
+            val clampedDistance = distance.coerceAtLeast(0.0)
+            val lengthA = clampedContactPoint * clampedDistance
+            val lengthB = (1.0 - clampedContactPoint) * clampedDistance
+
+            val resistanceA = thermalResistance(lengthA, !a.material.thermalConductivity, params.area)
+            val resistanceB = thermalResistance(lengthB, !b.material.thermalConductivity, params.area)
+            val resistanceContact = contactResistance(!params.contactConductance)
+
+            return conductanceFromResistance(resistanceA + resistanceB + resistanceContact)
         }
 
-        val distance = !params.distance
-        if(!distance.isFinite()) {
-            return ZERO_TRANSFER
-        }
-
-        val clampedContactPoint = params.contactPoint.coerceIn(0.0, 1.0)
-        val clampedDistance = distance.coerceAtLeast(0.0)
-        val lengthA = clampedContactPoint * clampedDistance
-        val lengthB = (1.0 - clampedContactPoint) * clampedDistance
-
-        val resistanceA = thermalResistance(lengthA, !a.material.thermalConductivity, params.area)
-        val resistanceB = thermalResistance(lengthB, !b.material.thermalConductivity, params.area)
-        val resistanceContact = contactResistance(!params.contactConductance)
-        val totalResistance = resistanceA + resistanceB + resistanceContact
-        val overallCond = conductanceFromResistance(totalResistance)
-
-        if(overallCond <= 0.0 || !overallCond.isFinite()) {
-            return ZERO_TRANSFER
-        }
-
-        val deltaT = !b.temperature - !a.temperature
-        if(!deltaT.isFinite()) {
-            return ZERO_TRANSFER
-        }
-
-        val power = deltaT * overallCond
-        val unrestrictedEnergy = power * dt
-
-        val capacityA = heatCapacity(a)
-        val capacityB = heatCapacity(b)
-        if(capacityA <= 0.0 || capacityB <= 0.0) {
-            return ZERO_TRANSFER
-        }
-
-        val maxEnergy = deltaT * (capacityA * capacityB) / (capacityA + capacityB)
-        val energy = clampEnergyToEquilibrium(unrestrictedEnergy, maxEnergy)
-        var toA = energy
-        var toB = -energy
-
-        if(toA > 0.0) {
-            toA *= params.efficiency
-        }
-
-        if(toB > 0.0) {
-            toB *= params.efficiency
-        }
-
-        return Quantity(toA, JOULE) to Quantity(toB, JOULE)
-    }
-
-    override val masses: List<ThermalMass>
-        get() = listOf(a, b)
+    override val masses: List<ThermalMass> = listOf(a, b)
 }
 
 class EnvironmentConnection(
@@ -289,55 +240,245 @@ class EnvironmentConnection(
 ): Connection {
     override fun toString() = "<EnvConn $a $temperature $params>"
 
-    override fun transfer(dt: Double): Pair<Quantity<Energy>, Quantity<Energy>> {
-        if(dt <= 0.0 || !dt.isFinite() || params.area <= 0.0 || !params.area.isFinite()) {
-            return ZERO_TRANSFER
+    override val conductance: Double
+        get() {
+            if(params.area <= 0.0 || !params.area.isFinite()) {
+                return 0.0
+            }
+
+            val distance = !params.distance
+
+            if(!distance.isFinite()) {
+                return 0.0
+            }
+
+            val resistanceA = thermalResistance(distance.coerceAtLeast(0.0), !a.material.thermalConductivity, params.area)
+            val resistanceLeak = contactResistance(!params.conductance)
+
+            return conductanceFromResistance(resistanceA + resistanceLeak)
         }
 
-        val distance = !params.distance
-        if(!distance.isFinite()) {
-            return ZERO_TRANSFER
-        }
+    override val masses: List<ThermalMass> = listOf(a)
+}
 
-        val lengthA = distance.coerceAtLeast(0.0)
-        val resistanceA = thermalResistance(lengthA, !a.material.thermalConductivity, params.area)
-        val resistanceLeak = contactResistance(!params.conductance)
-        val totalResistance = resistanceA + resistanceLeak
-        val overallCond = conductanceFromResistance(totalResistance)
+/**
+ * The largest fraction of its heat capacity, in J/K, that a body can exchange with all of its connections in one step.
+ * Each new temperature is then a weighted average of the old temperatures with non-negative weights, so no step can overshoot.
+ * At or below 0.5, the fastest mode decays without changing sign, so stiff networks settle instead of ringing.
+ */
+private const val MAX_STEP_EXCHANGE = 0.5
 
-        if(overallCond <= 0.0 || !overallCond.isFinite()) {
-            return ZERO_TRANSFER
-        }
-
-        val deltaT = !temperature - !a.temperature
-        if(!deltaT.isFinite()) {
-            return ZERO_TRANSFER
-        }
-
-        val radiativePower = if (a.emissiveSurfaceArea > 0.0 && a.emissivity > 0.0) {
-            val tEnv = !temperature
-            val tMass = !a.temperature
-            a.emissivity * STEFAN_BOLTZMANN_CONSTANT * !a.emissiveSurfaceArea * ((tEnv * tEnv) * (tEnv * tEnv) - (tMass * tMass) * (tMass * tMass))
-        } else {
-            0.0
-        }
-
-        val power = deltaT * overallCond + radiativePower
-        val unrestrictedEnergy = power * dt
-
-        val capacityA = heatCapacity(a)
-        if(capacityA <= 0.0) {
-            return ZERO_TRANSFER
-        }
-
-        val maxEnergy = deltaT * capacityA
-        var energy = clampEnergyToEquilibrium(unrestrictedEnergy, maxEnergy)
-        if(energy > 0.0) { energy *= params.efficiency }
-        return Quantity(energy, JOULE) to Quantity(0.0, JOULE)
+/**
+ * Compiled form of a [Simulator], with the state of the bodies and connections in flat arrays.
+ * The state in [ThermalMass] stays authoritative, because game code mutates it between steps, so it is read at the start of [step] and written back at the end.
+ */
+private class ThermalNetwork(masses: Collection<ThermalMass>, connections: Collection<Connection>) {
+    private val bodies = masses.toTypedArray()
+    private val bodyIndices = HashMap<ThermalMass, Int>(bodies.size * 2).also { indices ->
+        bodies.forEachIndexed { index, body -> indices[body] = index }
     }
 
-    override val masses: List<ThermalMass>
-        get() = listOf(a)
+    private val knownMaterials = arrayOfNulls<Material>(bodies.size)
+    private val knownMasses = DoubleArray(bodies.size)
+    private var knownTimeStep = Double.NaN
+
+    private val capacities = DoubleArray(bodies.size)
+    private val temperatures = DoubleArray(bodies.size)
+    private val energyDeltas = DoubleArray(bodies.size)
+    private val stepExchanges = DoubleArray(bodies.size)
+
+    private val massConnections = connections.filterIsInstance<MassConnection>().toTypedArray()
+    private val massBodyA = IntArray(massConnections.size) { bodyIndices.getValue(massConnections[it].a) }
+    private val massBodyB = IntArray(massConnections.size) { bodyIndices.getValue(massConnections[it].b) }
+    private val massEfficiencies = DoubleArray(massConnections.size) { massConnections[it].params.efficiency }
+    private val massTransfers = DoubleArray(massConnections.size)
+
+    private val environmentConnections = connections.filterIsInstance<EnvironmentConnection>().toTypedArray()
+    private val environmentBody = IntArray(environmentConnections.size) { bodyIndices.getValue(environmentConnections[it].a) }
+    private val environmentEfficiencies = DoubleArray(environmentConnections.size) { environmentConnections[it].params.efficiency }
+    private val environmentTransfers = DoubleArray(environmentConnections.size)
+
+    /**
+     * Detects changes to the mass and material of the bodies, because game code mutates them, for example when a tank is filled.
+     * @return True if the bodies changed, so the transfers need to be calculated again.
+     */
+    private fun refreshCapacities(): Boolean {
+        var changed = false
+        var index = 0
+
+        while (index < bodies.size) {
+            val body = bodies[index]
+            val material = body.material
+            val mass = !body.mass
+
+            if (material !== knownMaterials[index] || mass != knownMasses[index]) {
+                knownMaterials[index] = material
+                knownMasses[index] = mass
+                capacities[index] = heatCapacity(body)
+                changed = true
+            }
+
+            index++
+        }
+
+        return changed
+    }
+
+    /**
+     * Calculates the energy transferred per kelvin of difference in one step, for every connection.
+     * Each transfer is first limited to what brings its own two bodies to equilibrium, and then scaled down so no body exchanges more than [MAX_STEP_EXCHANGE] of its capacity.
+     */
+    private fun calculateTransfers(dt: Double) {
+        stepExchanges.fill(0.0)
+
+        for (index in massConnections.indices) {
+            val bodyA = massBodyA[index]
+            val bodyB = massBodyB[index]
+            val capacityA = capacities[bodyA]
+            val capacityB = capacities[bodyB]
+
+            if (capacityA <= 0.0 || capacityB <= 0.0) {
+                massTransfers[index] = 0.0
+                continue
+            }
+
+            val transfer = min(massConnections[index].conductance * dt, capacityA * capacityB / (capacityA + capacityB))
+
+            massTransfers[index] = transfer
+            stepExchanges[bodyA] += transfer / capacityA
+            stepExchanges[bodyB] += transfer / capacityB
+        }
+
+        for (index in environmentConnections.indices) {
+            val body = environmentBody[index]
+            val capacity = capacities[body]
+
+            if (capacity <= 0.0) {
+                environmentTransfers[index] = 0.0
+                continue
+            }
+
+            val transfer = min(environmentConnections[index].conductance * dt, capacity)
+
+            environmentTransfers[index] = transfer
+            stepExchanges[body] += transfer / capacity
+        }
+
+        for (index in massConnections.indices) {
+            val largestExchange = max(stepExchanges[massBodyA[index]], stepExchanges[massBodyB[index]])
+
+            if (largestExchange > MAX_STEP_EXCHANGE) {
+                massTransfers[index] *= MAX_STEP_EXCHANGE / largestExchange
+            }
+        }
+
+        for (index in environmentConnections.indices) {
+            val exchange = stepExchanges[environmentBody[index]]
+
+            if (exchange > MAX_STEP_EXCHANGE) {
+                environmentTransfers[index] *= MAX_STEP_EXCHANGE / exchange
+            }
+        }
+    }
+
+    private fun radiativeTransfer(body: ThermalMass, capacity: Double, temperature: Double, ambient: Double, dt: Double): Double {
+        val emissivity = body.emissivity
+        val area = !body.emissiveSurfaceArea
+
+        if (emissivity <= 0.0 || area <= 0.0) {
+            return 0.0
+        }
+
+        val linearizedConductance = emissivity * STEFAN_BOLTZMANN_CONSTANT * area *
+            (ambient * ambient + temperature * temperature) * (ambient + temperature)
+
+        return min(linearizedConductance * dt, capacity * MAX_STEP_EXCHANGE)
+    }
+
+    fun step(dt: Double) {
+        if (refreshCapacities() || dt != knownTimeStep) {
+            knownTimeStep = dt
+            calculateTransfers(dt)
+        }
+
+        val bodies = bodies
+        val capacities = capacities
+        val temperatures = temperatures
+        val energyDeltas = energyDeltas
+
+        var bodyIndex = 0
+
+        while (bodyIndex < bodies.size) {
+            val capacity = capacities[bodyIndex]
+
+            temperatures[bodyIndex] = if (capacity > 0.0) {
+                !bodies[bodyIndex].energy / capacity
+            } else {
+                0.0
+            }
+
+            bodyIndex++
+        }
+
+        var connectionIndex = 0
+
+        while (connectionIndex < massConnections.size) {
+            val bodyA = massBodyA[connectionIndex]
+            val bodyB = massBodyB[connectionIndex]
+            val energyToA = massTransfers[connectionIndex] * (temperatures[bodyB] - temperatures[bodyA])
+
+            if (energyToA.isFinite()) {
+                if (energyToA > 0.0) {
+                    energyDeltas[bodyA] += energyToA * massEfficiencies[connectionIndex]
+                    energyDeltas[bodyB] -= energyToA
+                } else {
+                    energyDeltas[bodyA] += energyToA
+                    energyDeltas[bodyB] -= energyToA * massEfficiencies[connectionIndex]
+                }
+            }
+
+            connectionIndex++
+        }
+
+        connectionIndex = 0
+
+        while (connectionIndex < environmentConnections.size) {
+            val body = environmentBody[connectionIndex]
+            val connection = environmentConnections[connectionIndex]
+            val temperature = temperatures[body]
+            val ambient = !connection.temperature
+
+            val transfer = environmentTransfers[connectionIndex] +
+                radiativeTransfer(bodies[body], capacities[body], temperature, ambient, dt)
+
+            val energyToBody = transfer * (ambient - temperature)
+
+            if (energyToBody.isFinite()) {
+                energyDeltas[body] += if (energyToBody > 0.0) {
+                    energyToBody * environmentEfficiencies[connectionIndex]
+                } else {
+                    energyToBody
+                }
+            }
+
+            connectionIndex++
+        }
+
+        bodyIndex = 0
+
+        while (bodyIndex < bodies.size) {
+            val delta = energyDeltas[bodyIndex]
+
+            if (delta != 0.0) {
+                val body = bodies[bodyIndex]
+
+                body.energy = Quantity(!body.energy + delta)
+                energyDeltas[bodyIndex] = 0.0
+            }
+
+            bodyIndex++
+        }
+    }
 }
 
 class Simulator {
@@ -346,12 +487,18 @@ class Simulator {
     val connectionMap = mutableMultiMapOf<ThermalMass, Connection>()
 
     /**
+     * The compiled network, created on the next [step] after a change.
+     */
+    private var network: ThermalNetwork? = null
+
+    /**
      * Add a body to the simulation.
      *
      * Without connection, this body will still conduct from/to the environment.
      */
     fun add(mass: ThermalMass) {
         masses.add(mass)
+        network = null
     }
 
     /**
@@ -365,6 +512,7 @@ class Simulator {
             add(it)
             connectionMap[it] = connection
         }
+        network = null
     }
 
     /**
@@ -405,6 +553,7 @@ class Simulator {
         connectionMap[mass].toList().forEach {
             remove(it)
         }
+        network = null
     }
 
     /**
@@ -417,42 +566,24 @@ class Simulator {
         connection.masses.forEach {
             connectionMap[it].remove(connection)
         }
+        network = null
     }
-
-    /**
-     * The "delta E" cache, a "double buffer" for the thermal step.
-     *
-     * This is held because the simulation can be run repeatedly in a given game loop, and it is best to keep it warm for that reason. Furthermore, while this could be stored on the [Body] itself, that would constitute an unnecessary implementation detail, subject to change.
-     *
-     * Keep this weak, so its persistence does not hold alive any ThermalMasses that have been removed.
-     */
-    private val deltaE = WeakHashMap<ThermalMass, Double>()
 
     /**
      * Run the simulation for a step.
      *
-     * This does a discrete step of [dt] seconds on all bodies and connections in the simulation. Due to the approximations involved in the model (and the primitive integration used here), smaller step sizes are generally more stable.
+     * This does a discrete step of [dt] seconds on all bodies and connections in the simulation. Connections that are too conductive for [dt] are limited, so heat moves at most as fast as one step allows.
      *
      * Flux between bodies (via [Connection]s) and with the environment are considered "simultaneously"--energy updates are deferred until the end.
      */
     fun step(dt: Double) {
-        connections.forEach { connection ->
-            val (toA, toB) = connection.transfer(dt)
-            val masses = connection.masses
-
-            masses.getOrNull(0)?.let { a ->
-                deltaE[a] = deltaE.getOrDefault(a, 0.0) + !toA
-            }
-
-            masses.getOrNull(1)?.let { b ->
-                deltaE[b] = deltaE.getOrDefault(b, 0.0) + !toB
-            }
+        if (dt <= 0.0 || !dt.isFinite()) {
+            return
         }
 
-        deltaE.entries.forEach { (mass, delta) ->
-            mass.energy += Quantity(delta, JOULE)
-        }
+        val network = this.network
+            ?: ThermalNetwork(masses, connections).also { this.network = it }
 
-        deltaE.clear()
+        network.step(dt)
     }
 }
