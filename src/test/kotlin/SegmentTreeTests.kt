@@ -116,7 +116,9 @@ class SegmentTreeTests {
 
             repeat(500) {
                 val point = random.nextDouble(boundaries.first() - 1.0, boundaries.last() + 1.0)
-                val expected = (0 until segmentCount).firstOrNull { point >= boundaries[it] && point <= boundaries[it + 1] }
+                val expected = (0 until segmentCount).firstOrNull {
+                    point >= boundaries[it] && point <= boundaries[it + 1]
+                }
 
                 assertEquals(expected, tree.queryOrNull(point))
             }
