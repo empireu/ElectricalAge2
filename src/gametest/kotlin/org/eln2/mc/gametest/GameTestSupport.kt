@@ -6,7 +6,6 @@ import net.minecraft.gametest.framework.GameTestAssertException
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.level.block.Blocks
-import org.eln2.mc.LOG
 import org.eln2.mc.common.blocks.BlockRegistry
 import org.eln2.mc.common.blocks.foundation.MultipartBlockEntity
 import org.eln2.mc.common.cells.foundation.Cell
@@ -19,6 +18,11 @@ import kotlin.math.abs
 
 const val ARENA = "arena"
 const val PART_LAYER = 2
+
+/**
+ * Simulated seconds that pass per server tick: 5 substeps of 0.01 seconds.
+ * */
+const val SECONDS_PER_TICK = CellGraph.SUBSTEPS * CellGraph.DT
 
 fun gameTestFail(message: String): Nothing {
     throw GameTestAssertException(message)
@@ -36,73 +40,75 @@ fun checkClose(expected: Double, actual: Double, tolerance: Double, label: Strin
     }
 }
 
+fun arenaPosition(x: Int, z: Int) = BlockPos(x, PART_LAYER, z)
+
 /**
- * Places a part on top of a fresh stone block, at [x], [z] in the arena.
+ * Places a part in the multipart at [position] on the [face], creating a stone substrate behind it if there is none.
+ * */
+fun GameTestHelper.placePart(
+    position: BlockPos,
+    partItem: PartRegistry.PartRegistryItem,
+    face: Direction = Direction.UP,
+    facing: FacingDirection = FacingDirection.NORTH,
+    player: Player = makeMockPlayer()
+): Part {
+    val substrate = position.relative(face.opposite)
+
+    if (getBlockState(substrate).isAir) {
+        setBlock(substrate, Blocks.STONE)
+    }
+
+    if (getBlockEntity(position) == null) {
+        setBlock(position, BlockRegistry.MULTIPART_BLOCK.get())
+    }
+
+    val multipart = multipartAt(position)
+
+    val isPlaced = multipart.place(
+        player,
+        absolutePos(position),
+        face,
+        partItem.part.get(),
+        null,
+        facing
+    )
+
+    checkThat(isPlaced) {
+        "Could not place ${partItem.name} at $position on $face"
+    }
+
+    return multipart.getPart(face)
+        ?: gameTestFail("Part ${partItem.name} missing after placement")
+}
+
+/**
+ * Places a part on top of a stone block, at [x], [z] in the arena.
  * */
 fun GameTestHelper.placePart(
     x: Int,
     z: Int,
     partItem: PartRegistry.PartRegistryItem,
-    facing: FacingDirection = FacingDirection.NORTH,
-    player: Player = makeMockPlayer()
-): Part {
-    try {
-        setBlock(BlockPos(x, PART_LAYER - 1, z), Blocks.STONE)
+    facing: FacingDirection = FacingDirection.NORTH
+) = placePart(arenaPosition(x, z), partItem, Direction.UP, facing)
 
-        val relativePos = BlockPos(x, PART_LAYER, z)
+fun GameTestHelper.multipartAt(position: BlockPos): MultipartBlockEntity =
+    getBlockEntity(position) as? MultipartBlockEntity
+        ?: gameTestFail("No multipart at $position")
 
-        if (getBlockEntity(relativePos) == null) {
-            setBlock(relativePos, BlockRegistry.MULTIPART_BLOCK.get())
-        }
+fun GameTestHelper.partOrNullAt(position: BlockPos, face: Direction = Direction.UP): Part? =
+    (getBlockEntity(position) as? MultipartBlockEntity)?.getPart(face)
 
-        val multipart = getBlockEntity(relativePos) as? MultipartBlockEntity
-            ?: gameTestFail("No multipart at $relativePos")
+fun GameTestHelper.partAt(position: BlockPos, face: Direction = Direction.UP): Part =
+    partOrNullAt(position, face)
+        ?: gameTestFail("No part at $position on $face")
 
-        val isPlaced = multipart.place(
-            player,
-            absolutePos(relativePos),
-            Direction.UP,
-            partItem.part.get(),
-            null,
-            facing
-        )
+fun GameTestHelper.partAt(x: Int, z: Int): Part = partAt(arenaPosition(x, z))
 
-        checkThat(isPlaced) {
-            "Could not place ${partItem.name} at $relativePos"
-        }
-
-        return multipart.getPart(Direction.UP)
-            ?: gameTestFail("Part ${partItem.name} missing after placement")
-    } catch (exception: RuntimeException) {
-        LOG.error("Placing ${partItem.name} failed", exception)
-        throw exception
-    }
+fun GameTestHelper.breakPartAt(position: BlockPos, face: Direction = Direction.UP) {
+    multipartAt(position).breakPart(partAt(position, face))
 }
 
-/**
- * Gets the part at [x], [z] in the arena.
- * */
-fun GameTestHelper.partAt(x: Int, z: Int): Part {
-    val relativePos = BlockPos(x, PART_LAYER, z)
-
-    val multipart = getBlockEntity(relativePos) as? MultipartBlockEntity
-        ?: gameTestFail("No multipart at $relativePos")
-
-    return multipart.getPart(Direction.UP)
-        ?: gameTestFail("No part at $relativePos")
-}
-
-/**
- * Breaks the part at [x], [z] in the arena.
- * */
-fun GameTestHelper.breakPartAt(x: Int, z: Int) {
-    val relativePos = BlockPos(x, PART_LAYER, z)
-
-    val multipart = getBlockEntity(relativePos) as? MultipartBlockEntity
-        ?: gameTestFail("No multipart at $relativePos")
-
-    multipart.breakPart(partAt(x, z))
-}
+fun GameTestHelper.breakPartAt(x: Int, z: Int) = breakPartAt(arenaPosition(x, z))
 
 @Suppress("UNCHECKED_CAST")
 fun <C : Cell> Part.cellAs(): C {
@@ -115,3 +121,27 @@ fun <C : Cell> Part.cellAs(): C {
 fun Part.cell(): Cell = cellAs()
 
 fun Part.graph(): CellGraph = cell().graph
+
+fun Part.isConnectedTo(other: Part) = cell().connections.contains(other.cell())
+
+/**
+ * Checks that the connection between the parts is present on both sides.
+ * */
+fun checkConnected(first: Part, second: Part) {
+    checkThat(first.isConnectedTo(second) && second.isConnectedTo(first)) {
+        "Expected ${first.cell().id} and ${second.cell().id} to be connected"
+    }
+
+    checkThat(first.graph() == second.graph()) {
+        "Connected cells ${first.cell().id} and ${second.cell().id} are in different graphs"
+    }
+}
+
+/**
+ * Checks that there is no connection between the parts on either side.
+ * */
+fun checkNotConnected(first: Part, second: Part) {
+    checkThat(!first.isConnectedTo(second) && !second.isConnectedTo(first)) {
+        "Expected ${first.cell().id} and ${second.cell().id} not to be connected"
+    }
+}
