@@ -242,7 +242,7 @@ data class Vector3d(val x: Double, val y: Double, val z: Double) {
 
     // pixar
     fun onb() : Pair<Vector3d, Vector3d> {
-        val sign = z.sign
+        val sign = 1.0.withSign(z)
         val a = -1.0 / (sign + z)
         val b = x * y * a
 

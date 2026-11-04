@@ -20,7 +20,6 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import kotlin.math.PI
 import kotlin.math.abs
@@ -372,7 +371,6 @@ class VolumetricTests {
     }
 
     @Test
-    @Disabled("Bug: OrientedBoundingBox3d.inflated subtracts amountZ from halfSize.z instead of adding it.")
     fun orientedBoxInflationGrowsEveryAxis() {
         val box = OrientedBoundingBox3d(Vector3d.zero, Rotation3d.identity, Vector3d(1.0, 1.0, 1.0))
         val inflated = box.inflated(0.5)

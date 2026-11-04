@@ -482,7 +482,7 @@ data class OrientedBoundingBox3d(val transform: Pose3d, val halfSize: Vector3d) 
 
     fun inflated(amountX: Double, amountY: Double, amountZ: Double) = OrientedBoundingBox3d(
         transform,
-        Vector3d(this.halfSize.x + amountX, this.halfSize.y + amountY, this.halfSize.z - amountZ),
+        Vector3d(this.halfSize.x + amountX, this.halfSize.y + amountY, this.halfSize.z + amountZ),
     )
 
     fun inflated(amount: Vector3d) = inflated(amount.x, amount.y, amount.z)
