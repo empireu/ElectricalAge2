@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import kotlin.math.abs
@@ -147,7 +146,6 @@ class BoundingBoxTreeTests {
     }
 
     @Test
-    @Disabled("Bug: a rejected duplicate insert already replaced the registered leaf, corrupting the tree.")
     fun duplicateInsertLeavesTreeUntouched() {
         val tree = BoundingBoxTree3d<Int>()
         val firstBox = BoundingBox3d.fromCenterSize(Vector3d.zero, 1.0)

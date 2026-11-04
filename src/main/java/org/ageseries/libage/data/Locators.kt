@@ -363,7 +363,9 @@ class Locator internal constructor(val dispatcher: LocatorDispatcher<*>, interna
 
         other as Locator
 
-        return dispatcher === other.dispatcher && shardData.contentEquals(other.shardData)
+        return dispatcher === other.dispatcher &&
+            archetype.contentEquals(other.archetype) &&
+            shardData.contentEquals(other.shardData)
     }
 
     private val cachedHashCode = run {

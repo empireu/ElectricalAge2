@@ -203,7 +203,7 @@ class BoundingBoxTree3d<T> {
         leaf.data = data
         leaf.box = boundingBox
 
-        require(leavesInternal.put(data, leaf) == null) {
+        require(leavesInternal.putIfAbsent(data, leaf) == null) {
             "Duplicate insert $data"
         }
 
