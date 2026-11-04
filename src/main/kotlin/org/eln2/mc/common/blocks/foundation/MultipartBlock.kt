@@ -800,7 +800,10 @@ class MultipartBlockEntity(var pos: BlockPos, state: BlockState) :
         }
 
         removePart(part.placement.face)
-        placementUpdates.add(PartUpdate(part, PartUpdateType.Remove))
+
+        if (!placementUpdates.removeIf { it.part === part }) {
+            placementUpdates.add(PartUpdate(part, PartUpdateType.Remove))
+        }
 
         part.onBroken()
 
