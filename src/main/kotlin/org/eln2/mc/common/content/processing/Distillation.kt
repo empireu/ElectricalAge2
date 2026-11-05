@@ -611,7 +611,7 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
                     liquidTank.fillFractional(residueStack, IFluidHandler.FluidAction.EXECUTE)
                 }
 
-                val sensibleCorrection = ((gasCapacity + residueCapacity) - liquidCapacity) * !temperature
+                val sensibleCorrection = ((gasCapacity + residueCapacity) - liquidCapacity) * !boiling.temperature
                 val latentHeat = !boiling.enthalpy * amountToBoil
 
                 body.energy += Quantity(sensibleCorrection - latentHeat, JOULE)
@@ -741,7 +741,7 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
                     gasTank.fillFractional(residueStack, IFluidHandler.FluidAction.EXECUTE)
                 }
 
-                val sensibleCorrection = ((liquidCapacity + residueCapacity) - gasCapacity) * !temperature
+                val sensibleCorrection = ((liquidCapacity + residueCapacity) - gasCapacity) * !condensation.temperature
                 val latentHeat = !condensation.enthalpy * (amountToCondense / gasExpansionFactor)
                 body.energy += Quantity(sensibleCorrection + latentHeat, JOULE)
                 remainingCondensation -= amountToCondense / gasExpansionFactor

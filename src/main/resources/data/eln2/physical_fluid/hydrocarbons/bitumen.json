@@ -1,6 +1,6 @@
 {
     "forgeFluid": "eln2:bitumen",
-    "specificHeatCapacity": 920.0,
+    "specificHeatCapacity": 1012.0,
     "density": 1.10,
     "isGaseous": false,
     "mixabilityTags": ["bitumen_miscible"]

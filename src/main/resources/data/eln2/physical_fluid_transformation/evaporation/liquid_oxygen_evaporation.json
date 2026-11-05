@@ -1,0 +1,9 @@
+{
+    "fluid": "eln2:liquid_oxygen",
+    "boiling": {
+        "temperature": 90.19,
+        "enthalpy": 243000.0,
+        "resultGas": "eln2:oxygen",
+        "resultGasProportion": 1000
+    }
+}
