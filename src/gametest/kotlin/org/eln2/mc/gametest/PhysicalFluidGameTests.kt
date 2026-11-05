@@ -27,7 +27,7 @@ object PhysicalFluidGameTests {
     private const val LATENT_HEAT = 226000.0
     private const val BOILING_POINT = 373.15
     private const val EXPANSION_FACTOR = 100.0
-    private const val MASS_TOLERANCE = 0.15
+    private const val MASS_TOLERANCE = 0.05
 
     private val STEAM get() = Eln2ForgeFluids.STEAM.get()
 

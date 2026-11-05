@@ -419,6 +419,14 @@ class ThermalBreakdownBehavior private constructor(
             cell: Cell, temperatureAccessor: () -> Quantity<Temperature>
         ) = create(TemperatureExplosionBehaviorOptions(
             addToleranceQ(temperature, 0, cell.locator)), cell, temperatureAccessor)
+
+        fun create(
+            temperature: Quantity<Temperature>,
+            cell: Cell,
+            consumer: ExplosionConsumer,
+            temperatureAccessor: () -> Quantity<Temperature>
+        ) = create(TemperatureExplosionBehaviorOptions(
+            addToleranceQ(temperature, 0, cell.locator)), consumer, temperatureAccessor)
     }
 }
 
@@ -631,6 +639,9 @@ class KineticBreakdownBehavior private constructor(
             omegaAccessor,
             KineticBreakdownBehaviorOptions(velocity)
         ) { defaultNotifier(cell) }
+
+        fun create(velocity: Quantity<AngularVelocity>, consumer: ExplosionConsumer, omegaAccessor: () -> Double) =
+            KineticBreakdownBehavior(omegaAccessor, KineticBreakdownBehaviorOptions(velocity), consumer)
 
         fun create(velocity: Quantity<AngularVelocity>, cell: Cell, node: KineticNode) = create(
             addToleranceQ(velocity, 0, cell.locator),
