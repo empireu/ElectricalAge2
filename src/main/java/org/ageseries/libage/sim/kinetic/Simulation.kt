@@ -229,7 +229,7 @@ class KineticSimulation(
     /**
      * Adaptive successive relaxation max factor.
      * */
-    var maxOmega = 2.0
+    var maxOmega = 1.9
 
     /**
      * When the sign of the step is consistent, the new relaxation factor becomes `omega * [omegaIncreaseFactor]`, at most [maxOmega].
@@ -342,10 +342,9 @@ class KineticSimulation(
             nodeIndex++
         }
 
-        // Set rigid constraint indices and max lambda:
+        // Set rigid constraint indices:
         rigidConstraints.forEach { rigid ->
             rigidConstraintData.setIndices(rigid.id, rigid.a.node.idInOwner, rigid.b.node.idInOwner)
-            rigidConstraintLambda.setMaxLambda(rigid.id, min(rigid.a.maxLambda, rigid.b.maxLambda))
         }
 
         // Set clutch indices:
@@ -407,24 +406,26 @@ class KineticSimulation(
         }
     }
 
-    private fun maxResidual(constraints: ConstraintArray, lambdas: LambdaArray): Double {
+    private fun predictedKineticEnergy(): Double {
         val omegaStar = this.omegaStar
+        val inverseI = this.inverseI
 
+        var result = 0.0
+        var nodeId = 0
+        while (nodeId < omegaStar.size) {
+            result += 0.5 * omegaStar[nodeId] * omegaStar[nodeId] / inverseI[nodeId]
+            nodeId++
+        }
+
+        return result
+    }
+
+    private fun biasWork(constraints: ConstraintArray, lambdas: LambdaArray): Double {
         var result = 0.0
         val count = constraints.count
         var constraintId = 0
         while (constraintId < count) {
-            if (lambdas.getMaxLambda(constraintId) > 0.0) {
-                val nodeA = constraints.getIndexA(constraintId)
-                val nodeB = constraints.getIndexB(constraintId)
-                val jacobian = constraints.getJacobian(constraintId)
-                val residual = abs(omegaStar[nodeA] + jacobian * omegaStar[nodeB] + constraints.getBias(constraintId))
-
-                if (residual > result) {
-                    result = residual
-                }
-            }
-
+            result += constraints.getBias(constraintId) * lambdas.getLambda(constraintId)
             constraintId++
         }
 
@@ -589,7 +590,7 @@ class KineticSimulation(
         }
 
         // Sets up rigid constraints.
-        // Only calculates the jacobian and the bias. The max lambda is constant.
+        // Calculates the jacobian, the bias and the max lambda.
         rigidConstraints.forEach { rigid ->
             val a = rigid.a
             val b = rigid.b
@@ -606,6 +607,7 @@ class KineticSimulation(
 
             rigidConstraintData.setJacobian(rigid.id, j)
             rigidConstraintData.setBias(rigid.id, bias)
+            rigidConstraintLambda.setMaxLambda(rigid.id, min(a.maxLambda, b.maxLambda / abs(j)))
         }
 
         // Sets up clutch constraints.
@@ -630,7 +632,8 @@ class KineticSimulation(
             val lambdaNeededOmega = if (abs(k) < SYMFORCE_EPS) 0.0 else -dv / k
 
             val engageDv = p.dvLock * p.pressure
-            val canLockVel = abs(lambdaNeededOmega) <= lambdaLimit + SYMFORCE_EPS && abs(dv) <= engageDv + SYMFORCE_EPS
+            val canLockVel = abs(lambdaNeededOmega) <= lambdaLimit * p.slipTorqueLimitLockFactor + SYMFORCE_EPS &&
+                abs(dv) <= engageDv + SYMFORCE_EPS
 
             val candidateLocked = when {
                 p.locked -> true
@@ -672,21 +675,17 @@ class KineticSimulation(
             }
         }
 
-        val coldResidual = max(
-            maxResidual(rigidConstraintData, rigidConstraintLambda),
-            maxResidual(clutchConstraintData, clutchConstraintLambda)
-        )
+        val coldObjective = predictedKineticEnergy()
 
         // Applies warm start with previous impulses:
         warmStart(rigidConstraintData, rigidConstraintLambda)
         warmStart(clutchConstraintData, clutchConstraintLambda)
 
-        val warmResidual = max(
-            maxResidual(rigidConstraintData, rigidConstraintLambda),
-            maxResidual(clutchConstraintData, clutchConstraintLambda)
-        )
+        val warmObjective = predictedKineticEnergy() +
+            biasWork(rigidConstraintData, rigidConstraintLambda) +
+            biasWork(clutchConstraintData, clutchConstraintLambda)
 
-        if (warmResidual > coldResidual) {
+        if (warmObjective > coldObjective) {
             coldStart(rigidConstraintData, rigidConstraintLambda)
             coldStart(clutchConstraintData, clutchConstraintLambda)
         }
@@ -778,12 +777,12 @@ class KineticSimulation(
 
             val lambdaLimit = p.slipTorqueLimit * p.pressure * dt
 
-            // Computes dv after solve to decide velocity unlock:
+            // Computes the velocity error after solve to decide velocity unlock:
             val j = clutchConstraintData.getJacobian(clutch.id)
-            val dvAfter = omegaStar[nodeA] + j * omegaStar[nodeB]
+            val velocityErrorAfter = omegaStar[nodeA] + j * omegaStar[nodeB] + clutchConstraintData.getBias(clutch.id)
 
             val saturated = (p.pressure > 0.0) && (abs(p.lambda) >= (lambdaLimit - SYMFORCE_EPS))
-            val velocityUnlock = abs(dvAfter) > (p.dvUnlock * p.pressure) + SYMFORCE_EPS
+            val velocityUnlock = abs(velocityErrorAfter) > (p.dvUnlock * p.pressure) + SYMFORCE_EPS
 
             if (p.locked && (saturated || velocityUnlock)) {
                 // Slipping or too fast. Unlock for next timestep:

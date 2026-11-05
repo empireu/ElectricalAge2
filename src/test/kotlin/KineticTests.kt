@@ -975,4 +975,276 @@ class KineticTests {
             "An error of -4 rad is closer to the next turn, so the first node should move back to it"
         }
     }
+
+    @Test
+    fun lockedClutchStaysLockedWhileItCorrectsASmallAngleError() {
+        val first = mono()
+        val second = mono()
+        val clutch = ClutchPrototype(first, second)
+        val simulation = simulate {
+            add(first)
+            add(second)
+            createClutch(clutch)
+        }
+
+        repeat(3) {
+            simulation.step()
+        }
+
+        assertTrue(clutch.locked)
+
+        first.setExternalAngle(first.angle + 0.02)
+
+        repeat(50) {
+            simulation.step()
+
+            assertTrue(clutch.locked) {
+                "A small angle error is not a reason to unlock"
+            }
+        }
+
+        assertEquals(clutch.referenceAngle, first.angle - second.angle, 1e-3)
+    }
+
+    private fun clutchUnderTorque(
+        torque: Double,
+        steps: Int,
+        clutch: ClutchPrototype,
+        first: KineticMono,
+        simulation: KineticSimulation
+    ): Int {
+        var transitions = 0
+        var previous = clutch.locked
+
+        repeat(steps) {
+            first.externalTorque = torque
+            simulation.step()
+
+            if (clutch.locked != previous) {
+                transitions++
+                previous = clutch.locked
+            }
+        }
+
+        return transitions
+    }
+
+    @Test
+    fun clutchAtItsTorqueLimitDoesNotChatter() {
+        val first = mono()
+        val second = mono()
+        val clutch = ClutchPrototype(first, second)
+        val simulation = simulate {
+            add(first)
+            add(second)
+            createClutch(clutch)
+        }
+
+        assertEquals(0, clutchUnderTorque(200.0, 200, clutch, first, simulation))
+        assertFalse(clutch.locked)
+    }
+
+    @Test
+    fun clutchLocksOnlyBelowTheLockFactorButHoldsUpToTheLimit() {
+        fun build(): Triple<ClutchPrototype, KineticMono, KineticSimulation> {
+            val first = mono()
+            val second = mono()
+            val clutch = ClutchPrototype(first, second)
+
+            return Triple(clutch, first, simulate {
+                add(first)
+                add(second)
+                createClutch(clutch)
+            })
+        }
+
+        val (aboveFactor, aboveFactorDriver, aboveFactorSimulation) = build()
+        clutchUnderTorque(190.0, 50, aboveFactor, aboveFactorDriver, aboveFactorSimulation)
+        assertFalse(aboveFactor.locked)
+
+        val (belowFactor, belowFactorDriver, belowFactorSimulation) = build()
+        clutchUnderTorque(170.0, 50, belowFactor, belowFactorDriver, belowFactorSimulation)
+        assertTrue(belowFactor.locked)
+
+        assertEquals(0, clutchUnderTorque(190.0, 50, belowFactor, belowFactorDriver, belowFactorSimulation))
+        assertTrue(belowFactor.locked)
+    }
+
+    @Test
+    fun impulseLimitHoldsOnBothSidesOfAGearWhicheverWayItIsJoined() {
+        listOf(false, true).forEach { flipped ->
+            val slow = shaft(angularVelocity = 100.0)
+            val fast = shaft()
+
+            slow.e2.ratio = 10.0
+            slow.e2.maxLambda = 1.0
+            fast.e1.maxLambda = 1.0
+
+            val simulation = simulate {
+                add(slow)
+                add(fast)
+
+                if (flipped) {
+                    join(fast.e1, slow.e2)
+                } else {
+                    join(slow.e2, fast.e1)
+                }
+            }
+
+            simulation.step()
+
+            assertEquals(1.0, abs(slow.e2.impulse), 1e-9)
+            assertEquals(0.1, abs(fast.e1.impulse), 1e-9)
+        }
+    }
+
+    @Test
+    fun optimizedLineKeepsTheImpulseLimitOfItsShafts() {
+        val line = buildLine(optimize = true) {
+            it.e1.maxLambda = 1.0
+            it.e2.maxLambda = 1.0
+            it.angularVelocity = 100.0
+        }
+
+        line.simulation.step()
+
+        assertEquals(1, line.simulation.optimizedShafts.size)
+        assertEquals(0.5, line.load.angularVelocity, 1e-9)
+    }
+
+    private fun stressChain(count: Int, symmetric: Boolean): Pair<List<KineticDouble>, KineticSimulation> {
+        val random = Random(5)
+        val chain = List(count) {
+            shaft(inertia = 10.0.pow(random.nextDouble(-2.0, 2.0)), angularVelocity = random.nextDouble(-50.0, 50.0))
+        }
+
+        val simulation = simulate {
+            chain.forEach { add(it) }
+
+            for (index in 1 until count) {
+                join(chain[index - 1].e2, chain[index].e1)
+            }
+        }
+
+        simulation.useSymmetricGaussSeidel = symmetric
+        simulation.maxIterationsFirstStep = 1 shl 24
+
+        return Pair(chain, simulation)
+    }
+
+    @Test
+    fun chainWithALargeInertiaRangeReachesTheExactVelocityGivenEnoughSweeps() {
+        listOf(true, false).forEach { symmetric ->
+            val (chain, simulation) = stressChain(30, symmetric)
+            val expected = chain.sumOf { it.inertia * it.angularVelocity } / chain.sumOf { it.inertia }
+
+            simulation.step()
+
+            assertTrue(simulation.lastIterationCount < simulation.maxIterationsFirstStep)
+
+            chain.forEach {
+                assertEquals(expected, it.angularVelocity, 1e-2)
+            }
+        }
+    }
+
+    @Test
+    fun flywheelsJoinedByShaftsStayTogetherUnderAVaryingTorque() {
+        val chain = List(10) { index ->
+            shaft(inertia = if (index % 2 == 0) 12.5 else 0.03365, angularVelocity = 100.0)
+        }
+
+        val simulation = simulate {
+            chain.forEach { add(it) }
+
+            for (index in 1 until chain.size) {
+                join(chain[index - 1].e2, chain[index].e1)
+            }
+        }
+
+        repeat(300) { step ->
+            chain.first().externalTorque = 200.0 + 100.0 * kotlin.math.sin(step * 0.0628)
+            simulation.step()
+
+            val velocities = chain.map { it.angularVelocity }
+
+            assertTrue(velocities.max() - velocities.min() < 0.01) {
+                "Step $step: the rigid chain spread over ${velocities.max() - velocities.min()} rad/s"
+            }
+        }
+    }
+
+    private fun randomGearTree(seed: Int, count: Int): Pair<List<KineticNode>, KineticSimulation> {
+        val inertias = doubleArrayOf(0.001, 0.03365, 0.03365, 0.03365, 0.1, 1.0, 3.1278, 10.0, 12.5)
+        val ratios = doubleArrayOf(1.0, 1.0, 1.0, 1.0, 2.0, 0.5, 4.0, 0.25)
+        val random = Random(seed)
+        val nodes = ArrayList<KineticNode>()
+        val builder = KineticSimulationForestBuilder()
+
+        val root = KineticTriple()
+        root.inertia = inertias[random.nextInt(inertias.size)]
+        root.angularVelocity = random.nextDouble(-50.0, 50.0)
+        nodes.add(root)
+        builder.add(root)
+
+        val open = arrayListOf(root.e1, root.e2, root.e3)
+
+        for (index in 1 until count) {
+            val extension = open.removeAt(random.nextInt(open.size))
+            val inertia = inertias[random.nextInt(inertias.size)]
+            val velocity = random.nextDouble(-50.0, 50.0)
+
+            if (random.nextInt(5) == 0) {
+                val node = KineticTriple()
+                node.inertia = inertia
+                node.angularVelocity = velocity
+                nodes.add(node)
+                builder.add(node)
+                builder.join(extension, node.e1)
+                open.add(node.e2)
+                open.add(node.e3)
+            } else {
+                val node = KineticDouble(false)
+                node.inertia = inertia
+                node.angularVelocity = velocity
+                node.e1.ratio = ratios[random.nextInt(ratios.size)]
+                nodes.add(node)
+                builder.add(node)
+                builder.join(extension, node.e1)
+                open.add(node.e2)
+            }
+        }
+
+        return Pair(nodes, builder.build(deltaTime, false).solvers.single())
+    }
+
+    @Test
+    fun solvesThatAreCutShortNeverAddEnergy() {
+        listOf(true, false).forEach { symmetric ->
+            repeat(60) { seed ->
+                val (nodes, simulation) = randomGearTree(seed, 3 + seed % 30)
+
+                simulation.useSymmetricGaussSeidel = symmetric
+                simulation.biasFactor = 0.0
+                simulation.maxIterations = 512
+                simulation.maxIterationsFirstStep = 512
+                simulation.step()
+
+                var previousEnergy = nodes.sumOf { it.kineticEnergy }
+
+                repeat(200) { step ->
+                    simulation.step()
+
+                    val currentEnergy = nodes.sumOf { it.kineticEnergy }
+
+                    assertTrue(currentEnergy <= previousEnergy * (1.0 + 1e-9) + 1e-9) {
+                        "Symmetric $symmetric, seed $seed, step $step: " +
+                            "the energy grew from $previousEnergy to $currentEnergy"
+                    }
+
+                    previousEnergy = currentEnergy
+                }
+            }
+        }
+    }
 }

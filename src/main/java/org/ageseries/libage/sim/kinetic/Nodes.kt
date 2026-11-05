@@ -38,8 +38,8 @@ class KineticDouble(allowOptimization: Boolean = true) : FrictionKineticNode(all
  * Represents a rigid line of shafts connected end-to-end. They have the same inertia, same max lambdas, gear ratio of 1.
  * */
 class LineShaft(val lineGraph: Array<KineticDouble>) : KineticNode(false), KineticNodeProxy {
-    val e1 = RigidKineticExtension(this, 1)
-    val e2 = RigidKineticExtension(this, -1)
+    val e1 = RigidKineticExtension(this, 1, lineGraph.first().e1.maxLambda)
+    val e2 = RigidKineticExtension(this, -1, lineGraph.last().e2.maxLambda)
 
     private var previousLineOmega = 0.0
     private val originalExternalTorque = DoubleArray(lineGraph.size)
