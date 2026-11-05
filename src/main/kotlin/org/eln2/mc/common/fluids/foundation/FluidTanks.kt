@@ -8,6 +8,7 @@ import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.fluids.capability.IFluidHandler
 import org.ageseries.libage.data.JOULE
 import org.ageseries.libage.data.JOULE_PER_KILOGRAM_KELVIN
+import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.KILOGRAM
 import org.ageseries.libage.data.Mass
 import org.ageseries.libage.data.OptionalDouble
@@ -1047,7 +1048,8 @@ open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalF
             return FluidStack.EMPTY
         }
 
-        for (stack in fluids) {
+        for (index in fluids.indices) {
+            val stack = fluids[index]
             val roundedAmount = stack.roundedAmount
 
             if(roundedAmount == 0) {
@@ -1057,7 +1059,7 @@ open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalF
             val result = FluidStack(stack.fluid, min(roundedAmount, maxDrain))
 
             if(action != IFluidHandler.FluidAction.SIMULATE) {
-                removeAmount(0, result.amount.toDouble())
+                removeAmount(index, result.amount.toDouble())
             }
 
             return result
@@ -1108,13 +1110,14 @@ open class MultipleFractionalFluidTank(var capacity: Double, val requireThermalF
         }
 
         if(action == IFluidHandler.FluidAction.EXECUTE) {
-            val amountToVoidPerStack = (amountToFill - remainingCapacity) / fluids.size
+            val amountToVoid = amountToFill - remainingCapacity
+            val totalAmount = amount
 
             val iterator = fluids.iterator()
             while (iterator.hasNext()) {
                 val stack = iterator.next()
 
-                stack.amount -= amountToVoidPerStack
+                stack.amount -= amountToVoid * (stack.amount / totalAmount)
                 if(stack.amount < FractionalFluidStack.EPSILON) {
                     iterator.remove()
                 }
@@ -2095,14 +2098,12 @@ interface ThermalObjectBasedFractionalFluidHandlerThermalExpansion : FractionalF
 
         if (action == IFluidHandler.FluidAction.EXECUTE) {
             val (newMaterial, newMass) = calculateDerivativeMaterialAndMass()
-            val properties = PhysicalFluidManager.getPropertiesWithFallback(drained.fluid)
-            val amount = drained.amount
 
             val body = handle.acquire()
             exportTemperature = !body.temperature
-            body.energy -= Quantity(amount * !properties.specificHeatCapacity * exportTemperature / properties.gasExpansionFactor, JOULE)
             body.material = newMaterial
             body.mass = newMass
+            body.temperature = Quantity(exportTemperature, KELVIN)
             onMutated()
             handle.release()
         }
@@ -2124,14 +2125,12 @@ interface ThermalObjectBasedFractionalFluidHandlerThermalExpansion : FractionalF
 
         if (action == IFluidHandler.FluidAction.EXECUTE) {
             val (newMaterial, newMass) = calculateDerivativeMaterialAndMass()
-            val properties = PhysicalFluidManager.getPropertiesWithFallback(drained.fluid)
-            val amount = drained.amount
 
             val body = handle.acquire()
             exportTemperature = !body.temperature
-            body.energy -= Quantity( amount * !properties.specificHeatCapacity * exportTemperature / properties.gasExpansionFactor, JOULE)
             body.material = newMaterial
             body.mass = newMass
+            body.temperature = Quantity(exportTemperature, KELVIN)
             onMutated()
             handle.release()
         }
