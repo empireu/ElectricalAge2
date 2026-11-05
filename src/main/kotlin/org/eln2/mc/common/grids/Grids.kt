@@ -221,7 +221,8 @@ class GridConnectionThermalObject(cell: GridConnectionCell) : ThermalObject<Grid
         this.massInternal = mass
     }
 
-    override fun offerComponent(remote: ThermalObject<*>) = ThermalComponentInfo(mass)
+    override fun offerComponent(remote: ThermalObject<*>) =
+        ThermalComponentInfo(mass, cell.state.connection.cable.crossSectionArea)
 
     override fun addComponents(simulator: Simulator) {
         simulator.add(mass)
@@ -234,8 +235,6 @@ class GridConnectionThermalObject(cell: GridConnectionCell) : ThermalObject<Grid
             mass
         )
     }
-
-    override fun getParameters(remote: ThermalObject<*>) = ConnectionParameters(area = cell.state.connection.cable.crossSectionArea)
 }
 
 /**

@@ -11,6 +11,7 @@ import org.ageseries.libage.sim.SubSolverSet
 import org.ageseries.libage.sim.ThermalMass
 import org.ageseries.libage.sim.electrical.*
 import org.ageseries.libage.sim.kinetic.*
+import org.ageseries.libage.utils.addUnique
 import org.eln2.mc.MINUS
 import org.eln2.mc.PLUS
 import org.eln2.mc.common.grids.GridConnectionCell
@@ -23,6 +24,7 @@ import org.eln2.mc.offerInternal
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
+import kotlin.math.min
 
 /**
  * Represents a discrete simulation unit that participates in one simulation type.
@@ -69,7 +71,25 @@ abstract class SimulationObject<C : Cell>(val cell: C) {
     abstract fun destroy()
 }
 
-data class ThermalComponentInfo(val body: ThermalMass)
+data class ThermalComponentInfo(val body: ThermalMass, val contactArea: Double = 1.0)
+
+class ThermalConnectionMap(private val simulator: Simulator) {
+    private val joined = HashSet<Pair<ThermalMass, ThermalMass>>()
+
+    fun join(local: ThermalComponentInfo, remote: ThermalComponentInfo) {
+        if (joined.contains(Pair(remote.body, local.body))) {
+            return
+        }
+
+        joined.addUnique(Pair(local.body, remote.body))
+
+        simulator.connect(
+            local.body,
+            remote.body,
+            ConnectionParameters(area = min(local.contactArea, remote.contactArea))
+        )
+    }
+}
 
 interface ThermalContactInfo {
     fun getContactTemperature(other: Cell) : Quantity<Temperature>?
@@ -149,9 +169,7 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
         return cell.thermalObjectPredicate(remote)
     }
 
-    protected open fun getParameters(remote: ThermalObject<*>) = ConnectionParameters.DEFAULT
-
-    open fun build() {
+    open fun build(map: ThermalConnectionMap) {
         if (simulation == null) {
             error("Tried to build thermal obj with null simulation")
         }
@@ -159,11 +177,7 @@ abstract class ThermalObject<C : Cell>(cell: C) : SimulationObject<C>(cell) {
         connections.forEach { remote ->
             assert(remote.simulation == simulation)
 
-            simulation!!.connect(
-                this.offerComponent(remote).body,
-                remote.offerComponent(this).body,
-                getParameters(remote)
-            )
+            map.join(this.offerComponent(remote), remote.offerComponent(this))
         }
     }
 }

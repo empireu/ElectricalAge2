@@ -15,6 +15,7 @@ import net.minecraftforge.gametest.GameTestHolder
 import net.minecraftforge.gametest.PrefixGameTestTemplate
 import org.ageseries.libage.data.Quantity
 import org.ageseries.libage.data.VOLT
+import org.ageseries.libage.sim.MassConnection
 import org.eln2.mc.MODID
 import org.eln2.mc.common.content.GridInterfacePart
 import org.eln2.mc.common.content.PrimitivePowerConverterBlockEntity
@@ -163,6 +164,34 @@ object PowerConverterGameTests {
         }
 
         return Pair(circuit, load)
+    }
+
+    @GameTest(template = ARENA)
+    @JvmStatic
+    fun cableJointsConductThroughTheCrossSectionOfTheCable(helper: GameTestHelper) {
+        val circuit = helper.placeConverterWithInput()
+        val body = circuit.cell.thermalWire.thermalBody
+        val simulation = circuit.cell.thermalWire.simulation ?: gameTestFail("The thermal object has no simulation")
+        val joints = simulation.connections.filterIsInstance<MassConnection>().filter { it.a === body || it.b === body }
+        val cables = circuit.cell.connections.filterIsInstance<GridConnectionCell>()
+
+        checkThat(cables.size == 2) {
+            "Expected 2 cables on the converter input, got ${cables.size}"
+        }
+
+        checkThat(joints.size == cables.size) {
+            "Expected ${cables.size} thermal joints for ${cables.size} cables, got ${joints.size}"
+        }
+
+        cables.forEach { cableCell ->
+            val mass = cableCell.thermal.mass
+            val joint = joints.singleOrNull { it.a === mass || it.b === mass }
+                ?: gameTestFail("Expected one thermal joint on the cable")
+
+            checkClose(cableCell.state.connection.cable.crossSectionArea, joint.params.area, 1e-12, "Contact area")
+        }
+
+        helper.succeed()
     }
 
     @GameTest(template = ARENA, timeoutTicks = 200)

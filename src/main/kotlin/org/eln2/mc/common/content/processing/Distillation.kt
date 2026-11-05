@@ -319,14 +319,12 @@ class PhaseChangeModuleCell(ci: CellCreateInfo, leakage: ConnectionParameters, v
         /**
          * Increases conduction between distillation modules (to emulate the liquid transferring heat).
          * */
-        override fun getParameters(remote: ThermalObject<*>): ConnectionParameters {
+        override fun offerComponent(remote: ThermalObject<*>): ThermalComponentInfo {
             if(remote !is DistillationModuleThermalObject) {
-                return super.getParameters(remote)
+                return super.offerComponent(remote)
             }
 
-            return ConnectionParameters.DEFAULT.copy(
-                conductance = Quantity(100.0)
-            )
+            return ThermalComponentInfo(thermalBody, 2.0)
         }
     }
 

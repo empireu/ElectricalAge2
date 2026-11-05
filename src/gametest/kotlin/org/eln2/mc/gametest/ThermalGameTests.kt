@@ -86,7 +86,7 @@ object ThermalGameTests {
         helper.succeed()
     }
 
-    @GameTest(template = ARENA, required = false)
+    @GameTest(template = ARENA)
     @JvmStatic
     fun connectedWiresAreJoinedByOneMassConnection(helper: GameTestHelper) {
         val first = helper.placePart(5, 5, THERMAL_WIRE)
@@ -96,6 +96,23 @@ object ThermalGameTests {
 
         checkThat(count == 1) {
             "Expected 1 mass connection between 2 wires, got $count, which doubles the conductance"
+        }
+
+        helper.succeed()
+    }
+
+    @GameTest(template = ARENA)
+    @JvmStatic
+    fun wiresInARingAreJoinedByOneMassConnectionEach(helper: GameTestHelper) {
+        val first = helper.placePart(5, 5, THERMAL_WIRE)
+        helper.placePart(6, 5, THERMAL_WIRE)
+        helper.placePart(6, 6, THERMAL_WIRE)
+        helper.placePart(5, 6, THERMAL_WIRE)
+
+        val count = first.simulation().connections.count { it is MassConnection }
+
+        checkThat(count == 4) {
+            "Expected 4 mass connections in a ring of 4 wires, got $count"
         }
 
         helper.succeed()
