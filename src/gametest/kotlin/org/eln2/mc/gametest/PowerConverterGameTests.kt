@@ -233,29 +233,35 @@ object PowerConverterGameTests {
                 converter.inputSeriesResistor.power + converter.outputSeriesResistor.power
         }
 
+        fun TerminalDcToDcConverterCell.heatInTheNetwork(): Double {
+            val simulation = thermalWire.simulation ?: gameTestFail("The converter has no thermal simulation")
+
+            return simulation.masses.sumOf { !it.energy }
+        }
+
         val sequence = helper.startSequence()
             .thenExecuteAfter(10) {
                 circuit.read {
-                    initialHeat = !thermalWire.thermalBody.energy
+                    initialHeat = heatInTheNetwork()
                 }
             }
 
-        repeat(10) {
+        repeat(40) {
             sequence.thenExecuteAfter(1) {
                 integrated += sample() * SECONDS_PER_TICK
             }
         }
 
         sequence
-            .thenExecuteAfter(1) {
+            .thenExecute {
                 circuit.read {
-                    val gained = !thermalWire.thermalBody.energy - initialHeat
+                    val gained = heatInTheNetwork() - initialHeat
 
                     checkThat(integrated > 500.0) {
                         "A shorted converter should waste kilowatts, it wasted $integrated J"
                     }
 
-                    checkClose(integrated, gained, integrated * 0.1, "Waste heat")
+                    checkClose(integrated, gained, integrated * 0.05, "Waste heat")
                 }
             }
             .thenSucceed()
