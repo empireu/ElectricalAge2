@@ -957,7 +957,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
          * */
 
         val electrical = realizeElectrical()
-        realizeThermal()
+        val thermal = realizeThermal()
         val kinetic = realizeKinetic()
 
         /**
@@ -972,7 +972,7 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
                         (obj as ElectricalObject<*>).build(electrical.builderByObject[obj]!!)
                     }
                     SimulationObjectType.Thermal -> {
-                        (obj as ThermalObject<*>).build()
+                        (obj as ThermalObject<*>).build(thermal[obj]!!)
                     }
                     SimulationObjectType.Kinetic -> {
                         (obj as KineticObject<*>).build(kinetic.builderByObject[obj]!!)
@@ -1046,14 +1046,25 @@ class CellGraph(val id: UUID, val manager: CellGraphManager, val level: ServerLe
         return ElectricalRealizationData(builderByObject, objectsByBuilder)
     }
 
-    private fun realizeThermal() {
+    private fun realizeThermal() : Map<ThermalObject<*>, ThermalConnectionMap> {
         thermalSims.clear()
+
+        val mapByObject = HashMap<ThermalObject<*>, ThermalConnectionMap>()
 
         realizeComponents(SimulationObjectType.Thermal, factory = { set ->
             val simulation = Simulator()
-            set.forEach { it.objects.thermalObject.setNewSimulation(simulation) }
+            val map = ThermalConnectionMap(simulation)
+
+            set.forEach {
+                val obj = it.objects.thermalObject
+                obj.setNewSimulation(simulation)
+                mapByObject.putUnique(obj, map)
+            }
+
             thermalSims.add(simulation)
         })
+
+        return mapByObject
     }
 
     /**
