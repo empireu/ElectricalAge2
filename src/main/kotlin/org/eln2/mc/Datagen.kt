@@ -797,6 +797,17 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
             .unlockedBy("has_machine_frame", has(Eln2Ingredients.MACHINE_FRAME.get()))
             .save(pWriter, resource("crafting/rolling_machine_hull"))
 
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2Processing.VACUUM_SEALING_HULL.hullItem.get())
+            .pattern("MPB")
+            .pattern("G  ")
+            .pattern("   ")
+            .define('M', Eln2Ingredients.MACHINE_FRAME.get())
+            .define('P', Eln2Ingredients.EXTRUDING_PORT.get())
+            .define('G', Items.GLASS)
+            .define('B', Ingredient.of(Eln2ConventionTags.GLUE))
+            .unlockedBy("has_machine_frame", has(Eln2Ingredients.MACHINE_FRAME.get()))
+            .save(pWriter, resource("crafting/vacuum_sealing_hull"))
+
         ShapedRecipeBuilder.shaped(RecipeCategory.MISC, Eln2HeatGenerators.PRIMITIVE_BURNER_BLOCK.get())
             .pattern("SCS")
             .pattern("S S")
