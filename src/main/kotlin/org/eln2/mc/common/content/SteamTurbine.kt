@@ -6,6 +6,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.entity.BlockEntity
@@ -33,7 +34,9 @@ import org.eln2.mc.client.render.foundation.PartialModelHelper
 import org.ageseries.libage.data.*
 import org.ageseries.libage.mathematics.FramerateIndependentSmoother1d
 import org.ageseries.libage.mathematics.approxEq
+import org.ageseries.libage.mathematics.lerp
 import org.ageseries.libage.mathematics.rounded
+import org.ageseries.libage.mathematics.smoothstep
 import org.ageseries.libage.sim.ConnectionParameters
 import org.ageseries.libage.sim.Material
 import org.ageseries.libage.sim.ThermalMassDefinition
@@ -45,7 +48,6 @@ import org.eln2.mc.common.blocks.foundation.*
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
 import org.eln2.mc.common.content.modules.Eln2SteamTurbine
-import org.eln2.mc.common.events.schedulePre
 import org.eln2.mc.common.fluids.foundation.*
 import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
@@ -73,21 +75,51 @@ import kotlin.math.min
  * @param referenceAngularVelocity Reference shaft angular velocity for scaling. Used as the design-point speed at which the turbine produces its rated power.
  * @param breakdownAngularVelocity Shaft speed at which the turbine is destroyed by overspeed. Should be well above [referenceAngularVelocity] to allow normal operation but catch runaway conditions.
  * @param breakdownTemperature Cold-side temperature at which the turbine is destroyed by overheating. Triggers when the cooling system is inadequate and the cold side runs away.
- * @param overcapacityThreshold Ratio at which the output tanks trigger an explosion. If the water or the steam exceeds the capacity of its tank times [overcapacityThreshold], the turbine explodes.
  */
 data class SteamTurbineGeneratorModel(
     val etaFactor: Double,
     val maxFlowRate: Double,
     val maxTorque: Quantity<Torque>,
     val maxPower: Quantity<Power>,
+    val maxRejectedHeat: Quantity<Power>,
     val coldSideMass: Quantity<Mass>,
     val coldSideMaterial: Material,
     val coldSideLeakage: ConnectionParameters,
     val referenceAngularVelocity: Quantity<AngularVelocity>,
+    val governorOpenAngularVelocity: Quantity<AngularVelocity>,
+    val governorClosedAngularVelocity: Quantity<AngularVelocity>,
+    val regulatorOpenTemperature: Quantity<Temperature>,
+    val regulatorClosedTemperature: Quantity<Temperature>,
+    val condensationBand: Quantity<Temperature>,
     val breakdownAngularVelocity: Quantity<AngularVelocity>,
     val breakdownTemperature: Quantity<Temperature>,
-    val overcapacityThreshold: Double,
-)
+    val breakdownExplosionRadius: Float,
+) {
+    fun valveOpening(
+        properties: SteamProperties,
+        hotTemperature: Double,
+        coldTemperature: Double,
+        angularVelocity: Double,
+        outputWaterFill: Double,
+        outputSteamFill: Double
+    ): Double {
+        val band = !condensationBand
+        val dryness = risingRamp(hotTemperature, properties.boilingPoint - band, properties.boilingPoint)
+        val pressure = risingRamp(hotTemperature - coldTemperature, 0.0, band)
+        val governor = 1.0 - risingRamp(angularVelocity, !governorOpenAngularVelocity, !governorClosedAngularVelocity)
+        val coldSide = 1.0 - risingRamp(coldTemperature, !regulatorOpenTemperature, !regulatorClosedTemperature)
+        val outputWater = 1.0 - risingRamp(outputWaterFill, OUTPUT_THROTTLE_FILL, 1.0)
+        val outputSteam = 1.0 - risingRamp(outputSteamFill, OUTPUT_THROTTLE_FILL, 1.0)
+
+        return dryness * pressure * governor * coldSide * outputWater * outputSteam
+    }
+
+    companion object {
+        private const val OUTPUT_THROTTLE_FILL = 0.75
+    }
+}
+
+private fun risingRamp(value: Double, start: Double, end: Double) = smoothstep((value - start) / (end - start))
 
 class SteamProperties(
     val steamHeatCapacity: Double,
@@ -98,13 +130,13 @@ class SteamProperties(
     fun steamEnthalpy(temperature: Double) =
         waterHeatCapacity * boilingPoint + latentHeat + steamHeatCapacity * (temperature - boilingPoint)
 
-    fun condenses(temperature: Double) = temperature < boilingPoint
+    fun waterEnthalpy(temperature: Double) = waterHeatCapacity * temperature
 
-    fun exhaustEnthalpy(temperature: Double) = if (condenses(temperature)) {
-        waterHeatCapacity * temperature
-    } else {
-        steamEnthalpy(temperature)
-    }
+    fun condensedFraction(temperature: Double, band: Double) =
+        1.0 - risingRamp(temperature, boilingPoint - band, boilingPoint)
+
+    fun exhaustEnthalpy(temperature: Double, band: Double) =
+        lerp(steamEnthalpy(temperature), waterEnthalpy(temperature), condensedFraction(temperature, band))
 
     companion object {
         fun load(): SteamProperties? {
@@ -131,7 +163,7 @@ class SteamExpansion(
     val flow: Double,
     val thermalPower: Double,
     val mechanicalPower: Double,
-    val condenses: Boolean
+    val condensedFraction: Double
 ) {
     companion object {
         fun calculate(
@@ -140,27 +172,33 @@ class SteamExpansion(
             availableSteam: Double,
             hotTemperature: Double,
             coldTemperature: Double,
+            angularVelocity: Double,
+            valve: Double,
             dt: Double
         ): SteamExpansion? {
-            if (availableSteam < FractionalFluidStack.EPSILON || hotTemperature <= coldTemperature) {
+            if (availableSteam < FractionalFluidStack.EPSILON || valve <= 0.0 || hotTemperature <= coldTemperature) {
                 return null
             }
 
-            val enthalpyDrop = properties.steamEnthalpy(hotTemperature) - properties.exhaustEnthalpy(coldTemperature)
-
-            if (enthalpyDrop <= 0.0) {
-                return null
-            }
-
-            val flow = min(availableSteam / dt, model.maxFlowRate)
+            val band = !model.condensationBand
+            val exhaustEnthalpy = properties.exhaustEnthalpy(coldTemperature, band)
+            val enthalpyDrop = properties.steamEnthalpy(hotTemperature) - exhaustEnthalpy
             val efficiency = (1.0 - coldTemperature / hotTemperature) * model.etaFactor
+
+            val thermalLimit = minOf(
+                !model.maxPower / efficiency,
+                !model.maxRejectedHeat / (1.0 - efficiency),
+                !model.maxRejectedHeat + !model.maxTorque * abs(angularVelocity)
+            )
+
+            val flow = min(availableSteam / dt, valve * min(model.maxFlowRate, thermalLimit / enthalpyDrop))
             val thermalPower = flow * enthalpyDrop
 
             return SteamExpansion(
                 flow,
                 thermalPower,
-                min(efficiency * thermalPower, !model.maxPower),
-                properties.condenses(coldTemperature)
+                efficiency * thermalPower,
+                properties.condensedFraction(coldTemperature, band)
             )
         }
     }
@@ -227,7 +265,7 @@ class SteamTurbineCell(ci: CellCreateInfo, val model: SteamTurbineGeneratorModel
     @Behavior
     val kineticBreakdown = KineticBreakdownBehavior.create(
         model.breakdownAngularVelocity,
-        this,
+        ExplosionConsumer { explode() },
         kinetic.node::angularVelocity
     )
 
@@ -235,6 +273,7 @@ class SteamTurbineCell(ci: CellCreateInfo, val model: SteamTurbineGeneratorModel
     val thermalBreakdown = ThermalBreakdownBehavior.create(
         model.breakdownTemperature,
         this,
+        ExplosionConsumer { explode() },
         thermal.thermalBody::temperature
     )
 
@@ -282,6 +321,12 @@ class SteamTurbineCell(ci: CellCreateInfo, val model: SteamTurbineGeneratorModel
     var snapshotExhaustTemp = 0.0
         private set
 
+    var snapshotOutputWater = 0.0
+        private set
+
+    var snapshotOutputSteam = 0.0
+        private set
+
     var deltaSteamConsumed = 0.0
         internal set
 
@@ -319,6 +364,8 @@ class SteamTurbineCell(ci: CellCreateInfo, val model: SteamTurbineGeneratorModel
         snapshotInputSteam = handler.inputSteam
         snapshotInputTemp = handler.inputTemperature
         snapshotExhaustTemp = !thermal.thermalBody.temperature
+        snapshotOutputWater = handler.outputWater
+        snapshotOutputSteam = handler.outputSteam
 
         deltaSteamConsumed = 0.0
         deltaWaterProduced = 0.0
@@ -345,17 +392,6 @@ class SteamTurbineCell(ci: CellCreateInfo, val model: SteamTurbineGeneratorModel
             handler.outputFluidEnergy += deltaSteamProduced * handler.steamCp * tCold
         }
 
-        val waterLimit =
-            SteamTurbineBlockEntity.SteamTurbineFluidHandler.OUTPUT_WATER_CAPACITY * model.overcapacityThreshold
-
-        val steamLimit =
-            SteamTurbineBlockEntity.SteamTurbineFluidHandler.OUTPUT_STEAM_CAPACITY * model.overcapacityThreshold
-
-        if (handler.outputWater > waterLimit || handler.outputSteam > steamLimit) {
-            explode()
-            return
-        }
-
         if (deltaSteamConsumed > 0.0 || deltaWaterProduced > 0.0 || deltaSteamProduced > 0.0) {
             setChanged()
         }
@@ -373,10 +409,24 @@ class SteamTurbineCell(ci: CellCreateInfo, val model: SteamTurbineGeneratorModel
     }
 
     @OnServerThread
-    private fun explode() {
-        schedulePre(0) {
-            defaultNotifier(this)
+    private fun explode(): Boolean {
+        val blockEntity = container as? BlockEntity
+            ?: return false
+
+        val level = blockEntity.level as? ServerLevel
+            ?: return false
+
+        val center = blockEntity.blockPos.center
+
+        if (!defaultNotifier(this)) {
+            return false
         }
+
+        level.explode(
+            null, center.x, center.y, center.z, model.breakdownExplosionRadius, Level.ExplosionInteraction.BLOCK
+        )
+
+        return true
     }
 
     override fun saveCellData() = CompoundTag()
@@ -387,7 +437,7 @@ class SteamTurbineCell(ci: CellCreateInfo, val model: SteamTurbineGeneratorModel
  * Thermodynamic core for the steam turbine. Implements a simplified Rankine cycle:
  * - Steam expands from T_hot to T_cold, producing mechanical work
  * - Waste heat (including kinetic friction) is dumped into the cold-side thermal mass
- * - Exhaust fluid exits at T_cold (water if below boiling, steam otherwise)
+ * - Exhaust fluid exits at T_cold, as water below the condensation band, steam above it and a mix inside it
  */
 class SteamTurbineGenerator(val cell: SteamTurbineCell) {
     companion object {
@@ -403,41 +453,53 @@ class SteamTurbineGenerator(val cell: SteamTurbineCell) {
      */
     fun preTick(dt: Double) {
         val node = cell.kinetic.node
+        val angularVelocity = node.angularVelocity
 
         appliedTorque = 0.0
-        speedBeforeStep = node.angularVelocity
+        speedBeforeStep = angularVelocity
         node.externalTorque = 0.0
 
         val properties = SteamProperties.load()
             ?: return
 
+        val hotTemperature = cell.snapshotInputTemp
+        val coldTemperature = !cell.thermal.thermalBody.temperature
+
+        val valve = cell.model.valveOpening(
+            properties,
+            hotTemperature,
+            coldTemperature,
+            angularVelocity,
+            (cell.snapshotOutputWater + cell.deltaWaterProduced) /
+                SteamTurbineBlockEntity.SteamTurbineFluidHandler.OUTPUT_WATER_CAPACITY,
+            (cell.snapshotOutputSteam + cell.deltaSteamProduced) /
+                SteamTurbineBlockEntity.SteamTurbineFluidHandler.OUTPUT_STEAM_CAPACITY
+        )
+
         val expansion = SteamExpansion.calculate(
             cell.model,
             properties,
             cell.snapshotInputSteam - cell.deltaSteamConsumed,
-            cell.snapshotInputTemp,
-            !cell.thermal.thermalBody.temperature,
+            hotTemperature,
+            coldTemperature,
+            angularVelocity,
+            valve,
             dt
         ) ?: return
 
-        val speed = max(abs(node.angularVelocity), EPSILON_OMEGA)
+        val speed = max(abs(angularVelocity), EPSILON_OMEGA)
 
         appliedTorque = min(expansion.mechanicalPower / speed, !cell.model.maxTorque)
         node.externalTorque = appliedTorque
 
         val consumed = expansion.flow * dt
 
+        val steamExpansionFactor =
+            PhysicalFluidManager.requireProperties(Eln2ForgeFluids.STEAM.get()).gasExpansionFactor
+
         cell.deltaSteamConsumed += consumed
-
-        if (expansion.condenses) {
-            val steamExpansionFactor =
-                PhysicalFluidManager.requireProperties(Eln2ForgeFluids.STEAM.get()).gasExpansionFactor
-
-            cell.deltaWaterProduced += consumed / steamExpansionFactor
-        } else {
-            cell.deltaSteamProduced += consumed
-        }
-
+        cell.deltaWaterProduced += consumed * expansion.condensedFraction / steamExpansionFactor
+        cell.deltaSteamProduced += consumed * (1.0 - expansion.condensedFraction)
         cell.deltaColdSideHeat += expansion.thermalPower * dt
     }
 
@@ -603,8 +665,8 @@ class SteamTurbineBlockEntity(pos: BlockPos, state: BlockState) :
         if (hasCell) {
             sendBulkPacket(RotatingKineticState::serialize, RotatingKineticState(cell.kinetic.node.angle, cell.kinetic.node.angularVelocity))
 
-            val initialFlow = cell.deltaSteamConsumed
-            cell.lastSentSteamFlow = initialFlow
+            val initialFlow = cell.lastSentSteamFlow.takeUnless { it.isNaN() } ?: 0.0
+
             sendBulkPacket(SteamFlowPacket::serialize, SteamFlowPacket(initialFlow))
         }
 
@@ -748,7 +810,7 @@ class SteamTurbineBlockEntity(pos: BlockPos, state: BlockState) :
                 val incomingTemp = if (temperature.isPresent) {
                     temperature.unwrap()
                 } else {
-                    !parent.ambientTemperature()
+                    SteamProperties.load()?.boilingPoint ?: !parent.ambientTemperature()
                 }
 
                 parent.inputSteam += accepted

@@ -95,6 +95,11 @@ object SteamTurbineGameTests {
     private fun SteamTurbineCell.steamConsumedSoFar() =
         FULL_INPUT - (fluidHandler() ?: gameTestFail("The cell has no fluid handler")).inputSteam + deltaSteamConsumed
 
+    private fun fullExpansion(properties: SteamProperties, coldTemperature: Double, angularVelocity: Double) =
+        SteamExpansion.calculate(
+            MODEL, properties, FULL_INPUT, HOTTEST_TANK_STEAM, coldTemperature, angularVelocity, 1.0, CellGraph.DT
+        ) ?: gameTestFail("The steam did not expand")
+
     private fun GameTestHelper.checkEnergyIsAccountedFor(initialVelocity: Double) {
         val turbine = placeTurbine()
 
@@ -114,7 +119,8 @@ object SteamTurbineGameTests {
 
                 turbine.read {
                     val consumed = steamConsumedSoFar()
-                    val exhaust = properties.exhaustEnthalpy(0.5 * (coldBefore + !thermal.thermalBody.temperature))
+                    val cold = 0.5 * (coldBefore + !thermal.thermalBody.temperature)
+                    val exhaust = properties.exhaustEnthalpy(cold, !MODEL.condensationBand)
                     val released = consumed * (properties.steamEnthalpy(HOTTEST_TANK_STEAM) - exhaust)
                     val gained = thermalEnergy() + shaftEnergy() - energyBefore
 
@@ -144,10 +150,11 @@ object SteamTurbineGameTests {
     @JvmStatic
     fun hottestTankSteamReachesTheRating(helper: GameTestHelper) {
         val properties = SteamProperties.load() ?: gameTestFail("Steam has no properties")
-        val expansion = SteamExpansion.calculate(MODEL, properties, FULL_INPUT, HOTTEST_TANK_STEAM, 320.0, CellGraph.DT)
-            ?: gameTestFail("The steam did not expand")
+        val expansion = fullExpansion(properties, 320.0, !MODEL.referenceAngularVelocity)
+        val rejected = expansion.thermalPower - expansion.mechanicalPower
 
         checkClose(!MODEL.maxPower, expansion.mechanicalPower, !MODEL.maxPower * 0.05, "Power at the design point")
+        checkClose(!MODEL.maxRejectedHeat, rejected, !MODEL.maxRejectedHeat * 0.05, "Heat at the design point")
         helper.succeed()
     }
 
@@ -173,11 +180,7 @@ object SteamTurbineGameTests {
         val properties = SteamProperties.load() ?: gameTestFail("Steam has no properties")
         val ambient = !turbine.cell.environmentData.ambientTemperature
         val heatCapacity = turbine.read { !thermal.thermalBody.energy / !thermal.thermalBody.temperature }
-
-        val expansion = SteamExpansion.calculate(
-            MODEL, properties, FULL_INPUT, HOTTEST_TANK_STEAM, ambient, CellGraph.DT
-        ) ?: gameTestFail("The steam did not expand")
-
+        val expansion = fullExpansion(properties, ambient, !MODEL.referenceAngularVelocity)
         val wasteHeat = expansion.thermalPower - expansion.mechanicalPower
         val warmUpTime = heatCapacity * (properties.boilingPoint - ambient) / wasteHeat
 
@@ -203,7 +206,7 @@ object SteamTurbineGameTests {
 
     @GameTest(template = ARENA, timeoutTicks = 200)
     @JvmStatic
-    fun steamIsConsumedAtTheRatedFlowAndCondensesIntoWater(helper: GameTestHelper) {
+    fun steamIsConsumedAtTheExpectedFlowAndCondensesIntoWater(helper: GameTestHelper) {
         val turbine = helper.placeTurbine()
 
         turbine.fillSteam(FULL_INPUT, 600.0)
@@ -212,16 +215,30 @@ object SteamTurbineGameTests {
         var tickBefore = 0L
 
         helper.startSequence()
-            .thenExecuteAfter(20) {
+            .thenExecuteAfter(5) {
                 steamBefore = turbine.fluidHandler.inputSteam
                 tickBefore = helper.tick
             }
-            .thenExecuteAfter(40) {
+            .thenExecuteAfter(20) {
+                val properties = SteamProperties.load() ?: gameTestFail("Steam has no properties")
                 val handler = turbine.fluidHandler
                 val elapsed = (helper.tick - tickBefore) * SECONDS_PER_TICK
                 val consumedTotal = FULL_INPUT - handler.inputSteam
 
-                checkClose(MODEL.maxFlowRate * elapsed, steamBefore - handler.inputSteam, 3.0, "Steam consumed")
+                val expected = turbine.read {
+                    SteamExpansion.calculate(
+                        MODEL,
+                        properties,
+                        FULL_INPUT,
+                        600.0,
+                        !thermal.thermalBody.temperature,
+                        kinetic.node.angularVelocity,
+                        1.0,
+                        CellGraph.DT
+                    )
+                } ?: gameTestFail("The steam did not expand")
+
+                checkClose(expected.flow * elapsed, steamBefore - handler.inputSteam, 2.0, "Steam consumed")
                 checkClose(consumedTotal / EXPANSION_FACTOR, handler.outputWater, 1e-6, "Water produced")
                 checkClose(600.0, handler.inputTemperature, 1e-6, "Input temperature")
                 checkClose(0.0, handler.outputSteam, 1e-9, "Exhaust steam")
@@ -266,7 +283,7 @@ object SteamTurbineGameTests {
         fun SteamTurbineCell.frictionPower() = abs(kinetic.node.frictionTorque * kinetic.node.angularVelocity)
 
         helper.startSequence()
-            .thenExecuteAfter(20) {
+            .thenExecuteAfter(5) {
                 turbine.read {
                     energyBefore = shaftEnergy()
                     frictionBefore = frictionPower()
@@ -277,13 +294,11 @@ object SteamTurbineGameTests {
                 val properties = SteamProperties.load() ?: gameTestFail("Steam has no properties")
 
                 turbine.read {
-                    val elapsed = (steamConsumedSoFar() - steamBefore) / MODEL.maxFlowRate
+                    val cold = !thermal.thermalBody.temperature
+                    val expected = fullExpansion(properties, cold, kinetic.node.angularVelocity)
+                    val elapsed = (steamConsumedSoFar() - steamBefore) / expected.flow
                     val energyGain = shaftEnergy() - energyBefore
                     val friction = 0.5 * (frictionBefore + frictionPower())
-                    val cold = !thermal.thermalBody.temperature
-                    val expected = SteamExpansion.calculate(
-                        MODEL, properties, FULL_INPUT, HOTTEST_TANK_STEAM, cold, CellGraph.DT
-                    ) ?: gameTestFail("The steam did not expand")
 
                     checkClose(
                         expected.mechanicalPower,
@@ -379,12 +394,23 @@ object SteamTurbineGameTests {
     @JvmStatic
     fun turbineBreaksDownWhenSpunPastItsLimit(helper: GameTestHelper) {
         val turbine = helper.placeTurbine()
+        val floor = POSITION.below()
+
+        helper.setBlock(floor, Blocks.DIRT)
 
         turbine.read {
             kinetic.node.angularVelocity = !MODEL.breakdownAngularVelocity * 1.5
         }
 
-        helper.checkTurbineIsDestroyed()
+        helper.succeedWhen {
+            checkThat(helper.getBlockState(POSITION).isAir) {
+                "The turbine is still standing"
+            }
+
+            checkThat(helper.getBlockState(floor).isAir) {
+                "The breakdown did not blow up the floor"
+            }
+        }
     }
 
     @GameTest(template = ARENA, timeoutTicks = 300)
@@ -399,32 +425,100 @@ object SteamTurbineGameTests {
         helper.checkTurbineIsDestroyed()
     }
 
-    @GameTest(template = ARENA, timeoutTicks = 100)
+    @GameTest(template = ARENA, timeoutTicks = 200)
     @JvmStatic
-    fun turbineExplodesWhenTheWaterOutputIsOverfull(helper: GameTestHelper) {
+    fun turbineWaitsForItsFullOutputToBeDrained(helper: GameTestHelper) {
+        val turbine = helper.placeTurbine()
+        val handler = turbine.fluidHandler
+        val capacity = SteamTurbineBlockEntity.SteamTurbineFluidHandler.OUTPUT_WATER_CAPACITY
+
+        handler.outputWater = capacity
+        handler.outputFluidEnergy = capacity * handler.waterCp * 300.0
+
+        turbine.fillSteam(FULL_INPUT, HOTTEST_TANK_STEAM)
+
+        helper.startSequence()
+            .thenExecuteAfter(40) {
+                checkThat(!helper.getBlockState(POSITION).isAir) {
+                    "The turbine did not survive a full output"
+                }
+
+                checkClose(FULL_INPUT, handler.inputSteam, 1e-9, "Steam used while the output is full")
+                checkClose(capacity, handler.outputWater, 1e-9, "Water in the full output")
+
+                handler.outputHandler.drainThermal(capacity, IFluidHandler.FluidAction.EXECUTE)
+            }
+            .thenExecuteAfter(20) {
+                checkThat(handler.inputSteam < FULL_INPUT) {
+                    "The turbine did not resume once its output was drained"
+                }
+            }
+            .thenSucceed()
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = 500)
+    @JvmStatic
+    fun unloadedTurbineHoldsItsSpeedBelowTheGovernorLimit(helper: GameTestHelper) {
         val turbine = helper.placeTurbine()
 
-        turbine.fluidHandler.outputWater =
-            SteamTurbineBlockEntity.SteamTurbineFluidHandler.OUTPUT_WATER_CAPACITY * MODEL.overcapacityThreshold + 1.0
+        turbine.fillSteam(FULL_INPUT, HOTTEST_TANK_STEAM)
 
-        helper.checkTurbineIsDestroyed()
+        var previousSpeed = 0.0
+
+        val sequence = helper.startSequence().thenIdle(100)
+
+        repeat(30) {
+            sequence.thenExecuteAfter(10) {
+                val speed = turbine.read { kinetic.node.angularVelocity }
+
+                checkThat(speed >= previousSpeed - 1e-3) {
+                    "The governor oscillates, the shaft slowed from $previousSpeed to $speed rad/s"
+                }
+
+                checkThat(speed < !MODEL.governorClosedAngularVelocity) {
+                    "The shaft passed the governor limit at $speed rad/s"
+                }
+
+                previousSpeed = speed
+            }
+        }
+
+        sequence
+            .thenExecute {
+                checkThat(previousSpeed > !MODEL.governorOpenAngularVelocity) {
+                    "The unloaded shaft only reached $previousSpeed rad/s"
+                }
+            }
+            .thenSucceed()
     }
 
     @GameTest(template = ARENA)
     @JvmStatic
-    fun turbineSurvivesAWaterOutputBelowItsLimit(helper: GameTestHelper) {
+    fun steamBelowTheBoilingPointDoesNotRunTheTurbine(helper: GameTestHelper) {
         val turbine = helper.placeTurbine()
 
-        turbine.fluidHandler.outputWater =
-            SteamTurbineBlockEntity.SteamTurbineFluidHandler.OUTPUT_WATER_CAPACITY * MODEL.overcapacityThreshold - 1.0
+        turbine.fillSteam(FULL_INPUT, 320.0)
 
         helper.startSequence()
-            .thenExecuteAfter(10) {
-                checkThat(!helper.getBlockState(POSITION).isAir) {
-                    "The turbine exploded below its water limit"
-                }
+            .thenExecuteAfter(20) {
+                checkClose(FULL_INPUT, turbine.fluidHandler.inputSteam, 1e-9, "Steam used")
             }
             .thenSucceed()
+    }
+
+    @GameTest(template = ARENA)
+    @JvmStatic
+    fun steamWithoutATemperatureArrivesAtTheBoilingPoint(helper: GameTestHelper) {
+        val turbine = helper.placeTurbine()
+        val handler = turbine.fluidHandler
+        val properties = SteamProperties.load() ?: gameTestFail("Steam has no properties")
+
+        turbine.cell.graph.runSuspended {
+            handler.inputHandler.fill(FluidStack(STEAM, 1000), IFluidHandler.FluidAction.EXECUTE)
+        }
+
+        checkClose(properties.boilingPoint, handler.inputTemperature, 1e-9, "Temperature of the steam")
+        helper.succeed()
     }
 
     @GameTest(template = ARENA)

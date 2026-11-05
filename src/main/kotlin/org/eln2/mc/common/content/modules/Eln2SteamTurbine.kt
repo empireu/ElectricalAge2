@@ -33,17 +33,23 @@ object Eln2SteamTurbine : ContentModule() {
     val STEAM_TURBINE_FRICTION_SOUND = soundEventVariableRange("turbine.friction")
 
     val STEAM_TURBINE_MODEL = SteamTurbineGeneratorModel(
-        etaFactor = 0.5,
-        maxFlowRate = 52.0,
+        etaFactor = 0.85,
+        maxFlowRate = 32.0,
         maxTorque = Quantity(2400.0, NEWTON_METER),
         maxPower = Quantity(50000.0, WATT),
-        coldSideMass = Quantity(500.0, KILOGRAM),
+        maxRejectedHeat = Quantity(50000.0, WATT),
+        coldSideMass = Quantity(250.0, KILOGRAM),
         coldSideMaterial = ChemicalElement.Copper.asMaterial,
         coldSideLeakage = ConnectionParameters(conductance = Quantity(100.0, WATT_PER_KELVIN)),
         referenceAngularVelocity = Quantity(104.72, RADIAN_PER_SECOND),
+        governorOpenAngularVelocity = Quantity(125.66, RADIAN_PER_SECOND),
+        governorClosedAngularVelocity = Quantity(157.08, RADIAN_PER_SECOND),
+        regulatorOpenTemperature = Quantity(120.0, CELSIUS),
+        regulatorClosedTemperature = Quantity(160.0, CELSIUS),
+        condensationBand = Quantity(30.0, KELVIN),
         breakdownAngularVelocity = Quantity(500.0, RADIAN_PER_SECOND),
         breakdownTemperature = Quantity(200.0, CELSIUS),
-        overcapacityThreshold = 1.5,
+        breakdownExplosionRadius = 3.0f,
     )
 
     val SHAFT_FRICTION = FrictionNodeDescription(
