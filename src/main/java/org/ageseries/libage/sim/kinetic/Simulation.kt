@@ -222,31 +222,6 @@ class KineticSimulation(
     var residualEps = 1e-4
 
     /**
-     * If true, the constraints will also be iterated in reverse order.
-     * */
-    var useSymmetricGaussSeidel = true
-
-    /**
-     * Adaptive successive relaxation max factor.
-     * */
-    var maxOmega = 1.9
-
-    /**
-     * When the sign of the step is consistent, the new relaxation factor becomes `omega * [omegaIncreaseFactor]`, at most [maxOmega].
-     * */
-    var omegaIncreaseFactor = 1.02
-
-    /**
-     * Adaptive successive relaxation min factor.
-     * */
-    var minOmega = 0.9
-
-    /**
-     * When the sign of the step is flipping, the new relaxation factor becomes `omega * [omegaDecreaseFactor]`, at least [minOmega].
-     * */
-    var omegaDecreaseFactor = 0.7
-
-    /**
      * If the applied impulse is within [saturationLimit] of the max impulse, then the constraint is saturated (residual becomes 0).
      * */
     var saturationLimit = 1e-6
@@ -265,49 +240,43 @@ class KineticSimulation(
      * - first long is the 2 indices of the nodes
      * - second long is the second jacobian entry
      * - third long is the bias
-     * - fourth long is the relaxation coefficient (used for adaptive relaxation)
-     * - fifth long is the delta lambda (used for adaptive relaxation)
      * */
     @Suppress("NOTHING_TO_INLINE") @JvmInline
     private value class ConstraintArray(val backingStorage: LongArray) {
-        val count get() = backingStorage.size / 5
+        val count get() = backingStorage.size / 3
 
-        constructor(constraintCount: Int) : this(LongArray(constraintCount * 5))
+        constructor(constraintCount: Int) : this(LongArray(constraintCount * 3))
 
-        init {
-            for (i in 0 until count) {
-                setOmega(i, 1.0)
-            }
-        }
+        inline fun getIndexA(constraint: Int) = (backingStorage[constraint * 3] shr 32).toInt()
+        inline fun getIndexB(constraint: Int) = (backingStorage[constraint * 3] and 0xFFFFFFFF).toInt()
+        inline fun getJacobian(constraint: Int) = Double.fromBits(backingStorage[constraint * 3 + 1])
+        inline fun getBias(constraint: Int) = Double.fromBits(backingStorage[constraint * 3 + 2])
 
-        inline fun getIndexA(constraint: Int) = (backingStorage[constraint * 5] shr 32).toInt()
-        inline fun getIndexB(constraint: Int) = (backingStorage[constraint * 5] and 0xFFFFFFFF).toInt()
-        inline fun getJacobian(constraint: Int) = Double.fromBits(backingStorage[constraint * 5 + 1])
-        inline fun getBias(constraint: Int) = Double.fromBits(backingStorage[constraint * 5 + 2])
-        inline fun getOmega(constraint: Int) = Double.fromBits(backingStorage[constraint * 5 + 3])
-        inline fun getDl(constraint: Int) = Double.fromBits(backingStorage[constraint * 5 + 4])
-
-        inline fun setIndices(constraint: Int, indexA: Int, indexB: Int) { backingStorage[constraint * 5] = (indexA.toLong() shl 32) or indexB.toLong() }
-        inline fun setJacobian(constraint: Int, jacobian: Double) { backingStorage[constraint * 5 + 1] = jacobian.toBits() }
-        inline fun setBias(constraint: Int, bias: Double) { backingStorage[constraint * 5 + 2] = bias.toBits() }
-        inline fun setOmega(constraint: Int, omega: Double) { backingStorage[constraint * 5 + 3] = omega.toBits() }
-        inline fun setDl(constraint: Int, dL: Double) { backingStorage[constraint * 5 + 4] = dL.toBits() }
+        inline fun setIndices(constraint: Int, indexA: Int, indexB: Int) { backingStorage[constraint * 3] = (indexA.toLong() shl 32) or indexB.toLong() }
+        inline fun setJacobian(constraint: Int, jacobian: Double) { backingStorage[constraint * 3 + 1] = jacobian.toBits() }
+        inline fun setBias(constraint: Int, bias: Double) { backingStorage[constraint * 3 + 2] = bias.toBits() }
     }
 
     /**
-     * Packed storage for lambda and max lambda during solve.
+     * Packed storage for the impulses during solve.
      * - first double is the lambda
      * - second double is the maxLambda
+     * - third double is the lambda before the last pair of sweeps (used for conjugate gradient)
+     * - fourth double is the search direction (used for conjugate gradient)
      * */
     @Suppress("NOTHING_TO_INLINE") @JvmInline
     private value class LambdaArray(val backingStorage: DoubleArray) {
-        constructor(constraintCount: Int) : this(DoubleArray(constraintCount * 2))
+        constructor(constraintCount: Int) : this(DoubleArray(constraintCount * 4))
 
-        inline fun getLambda(constraint: Int) = backingStorage[constraint * 2]
-        inline fun getMaxLambda(constraint: Int) = backingStorage[constraint * 2 + 1]
+        inline fun getLambda(constraint: Int) = backingStorage[constraint * 4]
+        inline fun getMaxLambda(constraint: Int) = backingStorage[constraint * 4 + 1]
+        inline fun getPreviousLambda(constraint: Int) = backingStorage[constraint * 4 + 2]
+        inline fun getDirection(constraint: Int) = backingStorage[constraint * 4 + 3]
 
-        inline fun setLambda(constraint: Int, lambda: Double) { backingStorage[constraint * 2] = lambda }
-        inline fun setMaxLambda(constraint: Int, maxLambda: Double) { backingStorage[constraint * 2 + 1] = maxLambda }
+        inline fun setLambda(constraint: Int, lambda: Double) { backingStorage[constraint * 4] = lambda }
+        inline fun setMaxLambda(constraint: Int, maxLambda: Double) { backingStorage[constraint * 4 + 1] = maxLambda }
+        inline fun setPreviousLambda(constraint: Int, lambda: Double) { backingStorage[constraint * 4 + 2] = lambda }
+        inline fun setDirection(constraint: Int, direction: Double) { backingStorage[constraint * 4 + 3] = direction }
     }
 
     var destroyed = false
@@ -471,8 +440,6 @@ class KineticSimulation(
         val nodeB = constraints.getIndexB(constraintId)
         val jacobian = constraints.getJacobian(constraintId)
         val bias = constraints.getBias(constraintId)
-        val omega = constraints.getOmega(constraintId)
-        val prevDl = constraints.getDl(constraintId)
 
         val lambda = lambdas.getLambda(constraintId)
         val lambdaMax = lambdas.getMaxLambda(constraintId)
@@ -487,28 +454,13 @@ class KineticSimulation(
         val k = inverseIA + inverseIB * (jacobian * jacobian)
 
         // Solve for new lambda:
-        val lambdaStar = (lambda - (dv + bias) / k)
-        val lambdaNew = ((1.0 - omega) * lambda + omega * lambdaStar).coerceIn(-lambdaMax, lambdaMax)
+        val lambdaNew = (lambda - (dv + bias) / k).coerceIn(-lambdaMax, lambdaMax)
 
         lambdas.setLambda(constraintId, lambdaNew)
 
         val dL = lambdaNew - lambda
         omegaStar[nodeA] += inverseIA * dL
         omegaStar[nodeB] += inverseIB * jacobian * dL
-
-        // Adaptive relaxation:
-        constraints.setOmega(constraintId,
-            if (dL * prevDl < 0.0) {
-                // Sign flip. Reduce omega:
-                max(minOmega, omega * omegaDecreaseFactor)
-            }
-            else {
-                // Steady. Increase omega:
-                min(maxOmega, omega * omegaIncreaseFactor)
-            }
-        )
-
-        constraints.setDl(constraintId, dL)
 
         val residual = if(!(abs(lambdaNew).approxEq(lambdaMax, saturationLimit))) {
             dv + bias
@@ -542,6 +494,63 @@ class KineticSimulation(
                 projectedGaussSeidelConstraint(constraintId, constraints, lambdas, error)
                 constraintId++
             }
+        }
+    }
+
+    private fun saveLambdas(constraints: ConstraintArray, lambdas: LambdaArray) {
+        val count = constraints.count
+        var constraintId = 0
+        while (constraintId < count) {
+            lambdas.setPreviousLambda(constraintId, lambdas.getLambda(constraintId))
+            constraintId++
+        }
+    }
+
+    private fun clearDirections(constraints: ConstraintArray, lambdas: LambdaArray) {
+        val count = constraints.count
+        var constraintId = 0
+        while (constraintId < count) {
+            lambdas.setDirection(constraintId, 0.0)
+            constraintId++
+        }
+    }
+
+    private fun lambdaChangeNormSquared(constraints: ConstraintArray, lambdas: LambdaArray): Double {
+        var result = 0.0
+        val count = constraints.count
+        var constraintId = 0
+        while (constraintId < count) {
+            val change = lambdas.getLambda(constraintId) - lambdas.getPreviousLambda(constraintId)
+            result += change * change
+            constraintId++
+        }
+
+        return result
+    }
+
+    private fun conjugateGradientStep(constraints: ConstraintArray, lambdas: LambdaArray, beta: Double) {
+        val omegaStar = this.omegaStar
+        val inverseI = this.inverseI
+
+        val count = constraints.count
+        var constraintId = 0
+        while (constraintId < count) {
+            val lambda = lambdas.getLambda(constraintId)
+            val lambdaMax = lambdas.getMaxLambda(constraintId)
+            val change = lambda - lambdas.getPreviousLambda(constraintId)
+            val step = beta * lambdas.getDirection(constraintId)
+            val lambdaNew = (lambda + step).coerceIn(-lambdaMax, lambdaMax)
+            val dL = lambdaNew - lambda
+
+            val nodeA = constraints.getIndexA(constraintId)
+            val nodeB = constraints.getIndexB(constraintId)
+
+            lambdas.setLambda(constraintId, lambdaNew)
+            omegaStar[nodeA] += inverseI[nodeA] * dL
+            omegaStar[nodeB] += inverseI[nodeB] * constraints.getJacobian(constraintId) * dL
+            lambdas.setDirection(constraintId, step + change)
+
+            constraintId++
         }
     }
 
@@ -695,41 +704,69 @@ class KineticSimulation(
 
         val maxIterations = if(firstStep) maxIterationsFirstStep else maxIterations
 
-        var forward = false
-        for(iteration in 1..maxIterations) {
+        clearDirections(rigidConstraintData, rigidConstraintLambda)
+        clearDirections(clutchConstraintData, clutchConstraintLambda)
+
+        var previousNormSquared = 0.0
+
+        while (lastIterationCount < maxIterations) {
+            saveLambdas(rigidConstraintData, rigidConstraintLambda)
+            saveLambdas(clutchConstraintData, clutchConstraintLambda)
+
             error.begin()
 
-            if(forward) {
-                // Forward pass:
-                projectedGaussSeidelIteration(rigidConstraintData, rigidConstraintLambda, error, false)
-                projectedGaussSeidelIteration(clutchConstraintData, clutchConstraintLambda, error, false)
-            }
-            else {
-                // Backward pass:
-                projectedGaussSeidelIteration(clutchConstraintData, clutchConstraintLambda, error, true)
-                projectedGaussSeidelIteration(rigidConstraintData, rigidConstraintLambda, error, true)
-            }
+            // Backward pass:
+            projectedGaussSeidelIteration(clutchConstraintData, clutchConstraintLambda, error, true)
+            projectedGaussSeidelIteration(rigidConstraintData, rigidConstraintLambda, error, true)
 
-            if(useSymmetricGaussSeidel) {
-                forward = !forward
-            }
+            // Forward pass:
+            projectedGaussSeidelIteration(rigidConstraintData, rigidConstraintLambda, error, false)
+            projectedGaussSeidelIteration(clutchConstraintData, clutchConstraintLambda, error, false)
 
-            lastIterationCount = iteration
+            lastIterationCount += 2
 
-            if(iteration >= minIterations) {
+            if(lastIterationCount >= minIterations) {
                 // Exit condition:
                 if(error.maxDeltaL < dLEps && error.maxResidual < residualEps) {
                     break
                 }
             }
+
+            val normSquared = lambdaChangeNormSquared(rigidConstraintData, rigidConstraintLambda) +
+                lambdaChangeNormSquared(clutchConstraintData, clutchConstraintLambda)
+
+            val beta = if(previousNormSquared > 0.0) {
+                normSquared / previousNormSquared
+            }
+            else {
+                0.0
+            }
+
+            if(beta > 1.0) {
+                clearDirections(rigidConstraintData, rigidConstraintLambda)
+                clearDirections(clutchConstraintData, clutchConstraintLambda)
+            }
+            else {
+                conjugateGradientStep(rigidConstraintData, rigidConstraintLambda, beta)
+                conjugateGradientStep(clutchConstraintData, clutchConstraintLambda, beta)
+            }
+
+            previousNormSquared = normSquared
         }
 
         kineticEnergy = 0.0
 
         // Integrate for angle and copy back:
         nodes.forEach { node ->
-            node.angularVelocity = omegaStar[node.idInOwner]
-            node.angle += node.angularVelocity * dt
+            val angularVelocity = omegaStar[node.idInOwner]
+            val angle = node.angle + angularVelocity * dt
+
+            if(!angularVelocity.isFinite() || !angle.isFinite()) {
+                throw InvalidResultsException(this, node)
+            }
+
+            node.angularVelocity = angularVelocity
+            node.angle = angle
             kineticEnergy += node.kineticEnergy
         }
 
@@ -836,4 +873,6 @@ class KineticSimulation(
 
         destroyed = true
     }
+
+    class InvalidResultsException(val simulation: KineticSimulation, val node: KineticNode) : Exception()
 }

@@ -1112,7 +1112,7 @@ class KineticTests {
         assertEquals(0.5, line.load.angularVelocity, 1e-9)
     }
 
-    private fun stressChain(count: Int, symmetric: Boolean): Pair<List<KineticDouble>, KineticSimulation> {
+    private fun stressChain(count: Int): Pair<List<KineticDouble>, KineticSimulation> {
         val random = Random(5)
         val chain = List(count) {
             shaft(inertia = 10.0.pow(random.nextDouble(-2.0, 2.0)), angularVelocity = random.nextDouble(-50.0, 50.0))
@@ -1126,25 +1126,60 @@ class KineticTests {
             }
         }
 
-        simulation.useSymmetricGaussSeidel = symmetric
-        simulation.maxIterationsFirstStep = 1 shl 24
-
         return Pair(chain, simulation)
     }
 
     @Test
-    fun chainWithALargeInertiaRangeReachesTheExactVelocityGivenEnoughSweeps() {
-        listOf(true, false).forEach { symmetric ->
-            val (chain, simulation) = stressChain(30, symmetric)
+    fun chainWithALargeInertiaRangeConvergesWithinTheFirstStepBudget() {
+        listOf(30, 100).forEach { count ->
+            val (chain, simulation) = stressChain(count)
             val expected = chain.sumOf { it.inertia * it.angularVelocity } / chain.sumOf { it.inertia }
 
             simulation.step()
 
-            assertTrue(simulation.lastIterationCount < simulation.maxIterationsFirstStep)
+            assertTrue(simulation.lastIterationCount < simulation.maxIterationsFirstStep) {
+                "A chain of $count nodes took ${simulation.lastIterationCount} iterations"
+            }
 
             chain.forEach {
-                assertEquals(expected, it.angularVelocity, 1e-2)
+                assertEquals(expected, it.angularVelocity, count * simulation.residualEps)
             }
+        }
+    }
+
+    @Test
+    fun invalidResultsFailTheStep() {
+        listOf(Double.NaN, Double.POSITIVE_INFINITY).forEach { invalid ->
+            val first = shaft()
+            val second = shaft()
+
+            val simulation = simulate {
+                add(first)
+                add(second)
+                join(first.e2, second.e1)
+            }
+
+            first.externalTorque = invalid
+
+            val exception = assertThrows(KineticSimulation.InvalidResultsException::class.java) {
+                simulation.step()
+            }
+
+            assertTrue(exception.simulation === simulation)
+        }
+    }
+
+    @Test
+    fun invalidAngleOfANodeWithoutConstraintsFailsTheStep() {
+        val node = shaft()
+        val simulation = simulate {
+            add(node)
+        }
+
+        node.setExternalAngle(Double.NaN)
+
+        assertThrows(KineticSimulation.InvalidResultsException::class.java) {
+            simulation.step()
         }
     }
 
@@ -1220,30 +1255,26 @@ class KineticTests {
 
     @Test
     fun solvesThatAreCutShortNeverAddEnergy() {
-        listOf(true, false).forEach { symmetric ->
-            repeat(60) { seed ->
-                val (nodes, simulation) = randomGearTree(seed, 3 + seed % 30)
+        repeat(60) { seed ->
+            val (nodes, simulation) = randomGearTree(seed, 3 + seed % 30)
 
-                simulation.useSymmetricGaussSeidel = symmetric
-                simulation.biasFactor = 0.0
-                simulation.maxIterations = 512
-                simulation.maxIterationsFirstStep = 512
+            simulation.biasFactor = 0.0
+            simulation.maxIterations = 512
+            simulation.maxIterationsFirstStep = 512
+            simulation.step()
+
+            var previousEnergy = nodes.sumOf { it.kineticEnergy }
+
+            repeat(200) { step ->
                 simulation.step()
 
-                var previousEnergy = nodes.sumOf { it.kineticEnergy }
+                val currentEnergy = nodes.sumOf { it.kineticEnergy }
 
-                repeat(200) { step ->
-                    simulation.step()
-
-                    val currentEnergy = nodes.sumOf { it.kineticEnergy }
-
-                    assertTrue(currentEnergy <= previousEnergy * (1.0 + 1e-9) + 1e-9) {
-                        "Symmetric $symmetric, seed $seed, step $step: " +
-                            "the energy grew from $previousEnergy to $currentEnergy"
-                    }
-
-                    previousEnergy = currentEnergy
+                assertTrue(currentEnergy <= previousEnergy * (1.0 + 1e-9) + 1e-9) {
+                    "Seed $seed, step $step: the energy grew from $previousEnergy to $currentEnergy"
                 }
+
+                previousEnergy = currentEnergy
             }
         }
     }
