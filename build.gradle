@@ -389,6 +389,18 @@ tasks.matching { it.name == 'runGameTestServer' }.configureEach {
         }
 
         delete(file('run-gametest/logs/latest.log'))
+
+        def serverPropertiesFile = file('run-gametest/server.properties')
+        def serverProperties = new Properties()
+
+        if (serverPropertiesFile.exists()) {
+            serverPropertiesFile.withInputStream { serverProperties.load(it) }
+        }
+
+        serverProperties.setProperty('level-type', 'minecraft:flat')
+        serverProperties.setProperty('level-seed', '0')
+        serverPropertiesFile.parentFile.mkdirs()
+        serverPropertiesFile.withOutputStream { serverProperties.store(it, null) }
     }
 
     // A failure during mod loading exits with code 0, so the exit code alone does not prove that the tests ran.
