@@ -12,6 +12,7 @@ import net.minecraft.tags.ItemTags
 import net.minecraft.world.flag.FeatureFlags
 import net.minecraft.world.item.*
 import net.minecraft.world.item.crafting.Ingredient
+import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.material.Fluids
 import net.minecraftforge.client.model.generators.BlockStateProvider
 import net.minecraftforge.client.model.generators.ItemModelBuilder
@@ -68,18 +69,19 @@ class Eln2BlockOreDropLootDatagen : BlockLootSubProvider(emptySet(), FeatureFlag
     override fun generate() {
         Eln2Ores.ORE_DROP_BLOCKS_FOR_DATAGEN.forEach { obj ->
             val raw = obj.rawOreItem.get()
-            val block = obj.oreBlock.get()
 
-            this.add(block) {
-                createOreDrop(block, raw)
+            listOf(obj.oreBlock.get(), obj.deepslateOreBlock.get()).forEach { block ->
+                this.add(block) {
+                    createOreDrop(block, raw)
+                }
+
+                LOG.info("Registered ore drop for {} ({})", block, block.blockID)
             }
-
-            LOG.info("Registered ore drop for {} ({})", block, block.blockID)
         }
     }
 
-    override fun getKnownBlocks() = Eln2Ores.ORE_DROP_BLOCKS_FOR_DATAGEN.map {
-        it.oreBlock.get()
+    override fun getKnownBlocks() = Eln2Ores.ORE_DROP_BLOCKS_FOR_DATAGEN.flatMap {
+        listOf(it.oreBlock.get(), it.deepslateOreBlock.get())
     }
 }
 
@@ -125,41 +127,44 @@ class Eln2ItemTagsDatagen(output: PackOutput, lookupProvider: CompletableFuture<
 class Eln2BlockStateProviderDatagen(output: PackOutput, existingFileHelper: ExistingFileHelper) : BlockStateProvider(output, MODID, existingFileHelper) {
     override fun registerStatesAndModels() {
         Eln2Ores.ORE_FOR_MODEL_DATAGEN.forEach { obj ->
-            val oreBlock = obj.oreBlock.get()
-
-            /**
-             * Creates a model using two overlay textures:
-             * - Stone base
-             * - Overlay texture we prepared (see the markdown file), with tint index `1` (which we register into)
-             * */
-            val model = models().getBuilder(oreBlock.blockID.path)
-                .renderType("minecraft:cutout")
-                .parent(models().getExistingFile(mcLoc("block/block")))
-                .texture("particle", mcLoc("block/stone"))
-                .element()
-                    .from(0f, 0f, 0f)
-                    .to(16f, 16f, 16f)
-                    .allFaces { face, builder ->
-                        builder
-                            .texture("#base")
-                            .cullface(face)
-                    }
-                    .end()
-                .element()
-                    .from(0f, 0f, 0f)
-                    .to(16f, 16f, 16f)
-                    .allFaces { face, builder ->
-                        builder
-                            .texture("#overlay")
-                            .cullface(face)
-                            .tintindex(1)
-                    }
-                    .end()
-                .texture("base", mcLoc("block/stone"))
-                .texture("overlay", modLoc("block/ore_overlay"))
-
-            simpleBlock(oreBlock, model)
+            oreBlockModel(obj.oreBlock.get(), "block/stone")
+            oreBlockModel(obj.deepslateOreBlock.get(), "block/deepslate")
         }
+    }
+
+    private fun oreBlockModel(oreBlock: Block, baseTexture: String) {
+        /**
+         * Creates a model using two overlay textures:
+         * - Stone or deepslate base
+         * - Overlay texture we prepared (see the markdown file), with tint index `1` (which we register into)
+         * */
+        val model = models().getBuilder(oreBlock.blockID.path)
+            .renderType("minecraft:cutout")
+            .parent(models().getExistingFile(mcLoc("block/block")))
+            .texture("particle", mcLoc(baseTexture))
+            .element()
+                .from(0f, 0f, 0f)
+                .to(16f, 16f, 16f)
+                .allFaces { face, builder ->
+                    builder
+                        .texture("#base")
+                        .cullface(face)
+                }
+                .end()
+            .element()
+                .from(0f, 0f, 0f)
+                .to(16f, 16f, 16f)
+                .allFaces { face, builder ->
+                    builder
+                        .texture("#overlay")
+                        .cullface(face)
+                        .tintindex(1)
+                }
+                .end()
+            .texture("base", mcLoc(baseTexture))
+            .texture("overlay", modLoc("block/ore_overlay"))
+
+        simpleBlock(oreBlock, model)
     }
 }
 
@@ -1664,6 +1669,19 @@ class Eln2RecipeProviderDatagen(output: PackOutput) : RecipeProvider(output) {
                 save(pWriter, resource("smelting/${blockItem.itemID.path}_to_${result.itemID.path}_smelting"))
             }
 
+            val deepslateBlockItem = obj.deepslateOreBlockItem.get()
+
+            SimpleCookingRecipeBuilder.smelting(
+                Ingredient.of(deepslateBlockItem),
+                RecipeCategory.MISC,
+                result,
+                0.7f,
+                200
+            ).apply {
+                unlockedBy("has_${deepslateBlockItem.itemID.path}", has(deepslateBlockItem))
+                save(pWriter, resource("smelting/${deepslateBlockItem.itemID.path}_to_${result.itemID.path}_smelting"))
+            }
+
             /**
              * Blasts the raw ore item.
              * */
@@ -1910,11 +1928,13 @@ class Eln2ItemModelProviderDatagen(output: PackOutput, existingFileHelper: Exist
         Eln2Ores.ORE_FOR_MODEL_DATAGEN.forEach { obj ->
             val rawOreItem = obj.rawOreItem.get()
             val oreBlock = obj.oreBlock.get()
+            val deepslateOreBlock = obj.deepslateOreBlock.get()
 
             /**
              * For the block item, we parent the block's model:
              * */
             withExistingParent(oreBlock.blockID.toString(), modLoc("block/${oreBlock.blockID.path}"))
+            withExistingParent(deepslateOreBlock.blockID.toString(), modLoc("block/${deepslateOreBlock.blockID.path}"))
 
             /**
              * For the raw ore, we create a model with 2 layers, like the block model:

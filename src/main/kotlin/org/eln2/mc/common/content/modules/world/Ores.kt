@@ -31,6 +31,8 @@ object Eln2Ores : ContentModule() {
         val rawOreItem: RegistryObject<Item>
         val oreBlock: RegistryObject<Block>
         val oreBlockItem: RegistryObject<BlockItem>
+        val deepslateOreBlock: RegistryObject<Block>
+        val deepslateOreBlockItem: RegistryObject<BlockItem>
 
         override fun get() = oreBlock.get()
     }
@@ -77,6 +79,8 @@ object Eln2Ores : ContentModule() {
         this.rawOreItem.withItemTint(0, color)
         this.oreBlockItem.withItemTint(1, color)
         this.oreBlock.withBlockTint(1, color)
+        this.deepslateOreBlockItem.withItemTint(1, color)
+        this.deepslateOreBlock.withBlockTint(1, color)
 
         ORE_FOR_MODEL_DATAGEN.addUnique(this) {
             DEBUGGER_BREAK("Duplicate default ore model $this")
@@ -93,10 +97,18 @@ object Eln2Ores : ContentModule() {
         return this
     }
 
+    private fun<T : OreRegistryItem> T.withMiningTagDatagen(tag: net.minecraft.tags.TagKey<Block>) : T {
+        this.oreBlock.withTagDatagen(tag)
+        this.deepslateOreBlock.withTagDatagen(tag)
+        return this
+    }
+
     data class BasicOreRegistryItem(
         override val rawOreItem: RegistryObject<Item>,
         override val oreBlock: RegistryObject<Block>,
-        override val oreBlockItem: RegistryObject<BlockItem>
+        override val oreBlockItem: RegistryObject<BlockItem>,
+        override val deepslateOreBlock: RegistryObject<Block>,
+        override val deepslateOreBlockItem: RegistryObject<BlockItem>
     ) : OreRegistryItem
 
     /**
@@ -116,60 +128,68 @@ object Eln2Ores : ContentModule() {
             BlockItem(oreBlock.get(), Item.Properties())
         }
 
-        return BasicOreRegistryItem(rawOreItem, oreBlock, oreBlockItem)
+        val deepslateOreBlock = BlockRegistry.blockOnly("deepslate_${oreName}_ore") {
+            Block(BlockBehaviour.Properties.copy(Blocks.DEEPSLATE_IRON_ORE).requiresCorrectToolForDrops())
+        }
+
+        val deepslateOreBlockItem = BlockRegistry.blockItemOnly("deepslate_${oreName}_ore") {
+            BlockItem(deepslateOreBlock.get(), Item.Properties())
+        }
+
+        return BasicOreRegistryItem(rawOreItem, oreBlock, oreBlockItem, deepslateOreBlock, deepslateOreBlockItem)
     }
 
     //#endregion
 
     val MAGNETITE_ORE = basicOre("magnetite")
-        .withTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
-        .withTagDatagen(BlockTags.NEEDS_IRON_TOOL)
+        .withMiningTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
+        .withMiningTagDatagen(BlockTags.NEEDS_IRON_TOOL)
         .withLootDatagen()
         .withModelDatagen(MyColor(0xFF333333))
         .withVanillaSmeltingDatagen { Items.IRON_INGOT }
 
     val LEAD_ORE = basicOre("lead")
-        .withTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
-        .withTagDatagen(BlockTags.NEEDS_STONE_TOOL)
+        .withMiningTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
+        .withMiningTagDatagen(BlockTags.NEEDS_STONE_TOOL)
         .withLootDatagen()
         .withModelDatagen(MyColor(90, 90, 120))
         .withVanillaSmeltingDatagen(Eln2Ingredients.LEAD_INGOT)
 
     val TIN_ORE = basicOre("tin")
-        .withTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
-        .withTagDatagen(BlockTags.NEEDS_IRON_TOOL)
+        .withMiningTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
+        .withMiningTagDatagen(BlockTags.NEEDS_IRON_TOOL)
         .withLootDatagen()
         .withModelDatagen(MyColor(144, 135, 131))
         .withVanillaSmeltingDatagen(Eln2Ingredients.TIN_INGOT)
 
     val SULFUR_ORE = basicOre("sulfur")
-        .withTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
-        .withTagDatagen(BlockTags.NEEDS_STONE_TOOL)
+        .withMiningTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
+        .withMiningTagDatagen(BlockTags.NEEDS_STONE_TOOL)
         .withLootDatagen()
         .withModelDatagen(MyColor(200, 180, 50))
         .withRawItemTagDatagen(Eln2ConventionTags.RAW_MATERIAL_SULFUR)
 
     val ASBESTOS_ORE = basicOre("asbestos")
-        .withTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
-        .withTagDatagen(BlockTags.NEEDS_STONE_TOOL)
+        .withMiningTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
+        .withMiningTagDatagen(BlockTags.NEEDS_STONE_TOOL)
         .withLootDatagen()
         .withModelDatagen(MyColor(180, 180, 190))
 
     val SALTPETER_ORE = basicOre("saltpeter")
-        .withTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
-        .withTagDatagen(BlockTags.NEEDS_STONE_TOOL)
+        .withMiningTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
+        .withMiningTagDatagen(BlockTags.NEEDS_STONE_TOOL)
         .withLootDatagen()
         .withModelDatagen(MyColor(255, 230, 200))
 
     val SCHEELITE_ORE = basicOre("scheelite")
-        .withTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
-        .withTagDatagen(BlockTags.NEEDS_IRON_TOOL)
+        .withMiningTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
+        .withMiningTagDatagen(BlockTags.NEEDS_IRON_TOOL)
         .withLootDatagen()
         .withModelDatagen(MyColor(255, 245, 200))
 
     val TRONA_ORE = basicOre("trona")
-        .withTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
-        .withTagDatagen(BlockTags.NEEDS_STONE_TOOL)
+        .withMiningTagDatagen(BlockTags.MINEABLE_WITH_PICKAXE)
+        .withMiningTagDatagen(BlockTags.NEEDS_STONE_TOOL)
         .withLootDatagen()
         .withModelDatagen(MyColor(200, 195, 185))
 }
