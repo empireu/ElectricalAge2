@@ -13,6 +13,7 @@ import org.eln2.mc.common.cells.foundation.CellGraph
 import org.eln2.mc.common.parts.PartRegistry
 import org.eln2.mc.common.parts.foundation.Part
 import org.eln2.mc.common.parts.foundation.PartWithCell
+import org.eln2.mc.extensions.destroyPart
 import org.eln2.mc.mathematics.FacingDirection
 import kotlin.math.abs
 
@@ -105,7 +106,7 @@ fun GameTestHelper.partAt(position: BlockPos, face: Direction = Direction.UP): P
 fun GameTestHelper.partAt(x: Int, z: Int): Part = partAt(arenaPosition(x, z))
 
 fun GameTestHelper.breakPartAt(position: BlockPos, face: Direction = Direction.UP) {
-    multipartAt(position).breakPart(partAt(position, face))
+    level.destroyPart(partAt(position, face), false)
 }
 
 fun GameTestHelper.breakPartAt(x: Int, z: Int) = breakPartAt(arenaPosition(x, z))

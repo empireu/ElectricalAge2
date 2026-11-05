@@ -8,6 +8,7 @@ import net.minecraft.world.level.block.Blocks
 import net.minecraftforge.gametest.GameTestHolder
 import net.minecraftforge.gametest.PrefixGameTestTemplate
 import org.eln2.mc.MODID
+import org.eln2.mc.common.blocks.BlockRegistry
 
 @GameTestHolder(MODID)
 @PrefixGameTestTemplate(false)
@@ -20,6 +21,19 @@ object SubstrateGameTests {
         checkThat(getBlockState(arenaPosition(x, z)).isAir) {
             "The multipart block at $x, $z should be replaced by air"
         }
+    }
+
+    @GameTest(template = ARENA)
+    @JvmStatic
+    fun emptyMultipartIsRemovedByANeighborUpdate(helper: GameTestHelper) {
+        val position = arenaPosition(2, 2)
+
+        helper.setBlock(position.below(), Blocks.STONE)
+        helper.setBlock(position, BlockRegistry.MULTIPART_BLOCK.get())
+        helper.setBlock(position.below(), Blocks.AIR)
+
+        helper.checkMultipartGone(2, 2)
+        helper.succeed()
     }
 
     @GameTest(template = ARENA)

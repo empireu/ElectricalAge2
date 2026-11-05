@@ -325,7 +325,6 @@ class MultipartBlock : BaseEntityBlock(
                 }
 
                 if (multipart.isEmpty) {
-                    check(removedPart != null)
                     destroyMultipart(pLevel, pPos)
                 }
             }
