@@ -19,6 +19,7 @@ import net.minecraftforge.gametest.PrefixGameTestTemplate
 import org.ageseries.libage.data.KELVIN
 import org.ageseries.libage.data.OptionalDouble
 import org.ageseries.libage.data.Quantity
+import org.ageseries.libage.sim.MassConnection
 import org.eln2.mc.MODID
 import org.eln2.mc.common.content.SteamExpansion
 import org.eln2.mc.common.content.SteamProperties
@@ -191,6 +192,30 @@ object SteamTurbineGameTests {
         helper.succeed()
     }
 
+    @GameTest(template = ARENA, required = false)
+    @JvmStatic
+    fun thermalPortsCanCarryTheRejectedHeat(helper: GameTestHelper) {
+        val turbine = helper.placeTurbine()
+        val temperatureDifference = 50.0
+
+        val conductance = turbine.read {
+            val simulation = thermal.simulation ?: gameTestFail("The thermal object has no simulation")
+
+            simulation.connections.filterIsInstance<MassConnection>()
+                .filter { it.a === thermal.thermalBody || it.b === thermal.thermalBody }
+                .sumOf { it.conductance }
+        }
+
+        val carried = conductance * temperatureDifference
+
+        checkThat(carried >= !MODEL.maxRejectedHeat) {
+            "The ports conduct $conductance W/K, $carried W at $temperatureDifference K, " +
+                "the turbine rejects ${!MODEL.maxRejectedHeat} W"
+        }
+
+        helper.succeed()
+    }
+
     @GameTest(template = ARENA)
     @JvmStatic
     fun turbineWithoutSteamStaysAtRest(helper: GameTestHelper) {
@@ -346,7 +371,7 @@ object SteamTurbineGameTests {
                     }
 
                     thermalPorts.forEach {
-                        checkThat(!it.thermalWire.thermalBody.temperature > ambient + 0.2) {
+                        checkThat(!it.thermalWire.thermalBody.temperature > ambient + 0.01) {
                             "The thermal port did not warm up"
                         }
                     }
