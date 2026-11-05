@@ -154,6 +154,7 @@ class DcMotorKineticObject(cell: DcMotorCell) : KineticObject<DcMotorCell>(cell)
 
     init {
         cell.options.frictionNodeDescription.applyTo(node)
+        node.viscousDamping += cell.options.coreDependentLoss
     }
 
     override fun addNodes(builder: KineticNodeSet) {
@@ -261,7 +262,6 @@ class DcMotorCell(
 
         wasteHeat += electrical.armatureResistor.power * dt
         wasteHeat += kinetic.node.deltaHeatFromFriction
-        wasteHeat += options.coreDependentLoss * (kinetic.node.angularVelocity * kinetic.node.angularVelocity) * dt
 
         thermal.thermalBody.energy += Quantity(wasteHeat, JOULE)
     }

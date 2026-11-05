@@ -14,6 +14,7 @@ import org.eln2.mc.common.content.ThermalElectricGenerator
 import org.eln2.mc.common.content.ThermalElectricGeneratorModel
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import kotlin.math.min
 
@@ -197,6 +198,27 @@ class GeneratorTests {
         }
 
         assertTrue(!heavy.generator.angularVelocity < !light.generator.angularVelocity)
+    }
+
+    @Disabled("Bug: engine torque ignores the angular velocity, so shaft power can exceed the heat drawn.")
+    @Test
+    fun coldSideIsNeverCooledByRunningTheEngine() {
+        val run = run(1500.0, 300.0)
+        var coldEnergy = !run.cold.energy
+        var largestHeatDrawn = 0.0
+
+        repeat(6000) {
+            run.step(Double.POSITIVE_INFINITY)
+
+            val currentEnergy = !run.cold.energy
+
+            largestHeatDrawn = maxOf(largestHeatDrawn, (coldEnergy - currentEnergy) / deltaTime)
+            coldEnergy = currentEnergy
+        }
+
+        assertEquals(0.0, largestHeatDrawn, 1e-6) {
+            "The running engine drew up to $largestHeatDrawn W out of the cold side"
+        }
     }
 
     @Test

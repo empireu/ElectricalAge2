@@ -20,6 +20,7 @@ object KineticGameTests {
     private const val TORQUE_CONSTANT = 2.05
     private const val COULOMB_FRICTION = 1.0
     private const val VISCOUS_DAMPING = 0.01
+    private const val CORE_LOSS = 1e-6
     private const val BREAKDOWN_VELOCITY = 100.0 * 2.0 * Math.PI
 
     private val MOTOR get() = Eln2Kinetic.BASIC_DC_MOTOR_PART
@@ -91,6 +92,37 @@ object KineticGameTests {
                 val expected = (COULOMB_FRICTION + VISCOUS_DAMPING * speed) / TORQUE_CONSTANT
 
                 checkClose(expected, abs(circuit.armatureCurrent()), expected * 0.05, "Armature current")
+            }
+            .thenSucceed()
+    }
+
+    @GameTest(template = ARENA)
+    @JvmStatic
+    fun coreLossBrakesTheRotor(helper: GameTestHelper) {
+        val circuit = helper.placeMotorCircuit(4, 10.0)
+
+        checkClose(VISCOUS_DAMPING + CORE_LOSS, circuit.cell.kinetic.node.viscousDamping, 1e-12, "Viscous damping")
+        helper.succeed()
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = 150)
+    @JvmStatic
+    fun steadyStateBackEmfPowerBecomesFrictionHeat(helper: GameTestHelper) {
+        val circuit = helper.placeMotorCircuit(4, 10.0)
+
+        helper.startSequence()
+            .thenExecuteAfter(60) {
+                val (backEmfPower, frictionPower) = circuit.motor.graph().runSuspended {
+                    val electrical = circuit.cell.electrical
+                    val node = circuit.cell.kinetic.node
+
+                    Pair(
+                        abs(electrical.voltageSource.potential * electrical.armatureResistor.current),
+                        node.deltaHeatFromFriction / node.simulation.dt
+                    )
+                }
+
+                checkClose(backEmfPower, frictionPower, backEmfPower * 0.02, "Friction heat power")
             }
             .thenSucceed()
     }
