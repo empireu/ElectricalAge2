@@ -522,7 +522,7 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
         /**
          * P.S. Iterating the jagged array shouldn't be an issue, we expect like 10 of those endpoints to exist per network.
          * */
-        for (endpoints in importEndpointsByPipe.values) {
+        for (endpoints in exportEndpointsByPipe.values) {
             for (endpoint in endpoints) {
                 for (i in 0 until endpoint.capability.tanks) {
                     if(endpoint.capability.isFluidValid(i, fluid)) {
@@ -715,7 +715,10 @@ class FluidPipeNetwork(val repository: FluidPipeNetworkManager.Repository, val l
                 }
 
                 if(simulatedFill >= FractionalFluidStack.EPSILON) {
-                    remainingCandidates++
+                    if(!fillFractionalSimulationTable.containsKey(handler)) {
+                        remainingCandidates++
+                    }
+
                     fillFractionalSimulationTable.put(handler, simulatedFill)
                 }
             }
