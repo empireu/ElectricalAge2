@@ -34,10 +34,10 @@ object Eln2SteamTurbine : ContentModule() {
 
     val STEAM_TURBINE_MODEL = SteamTurbineGeneratorModel(
         etaFactor = 0.5,
-        maxFlowRate = 35.0,
+        maxFlowRate = 52.0,
         maxTorque = Quantity(2400.0, NEWTON_METER),
         maxPower = Quantity(50000.0, WATT),
-        coldSideMass = Quantity(50.0, KILOGRAM),
+        coldSideMass = Quantity(500.0, KILOGRAM),
         coldSideMaterial = ChemicalElement.Copper.asMaterial,
         coldSideLeakage = ConnectionParameters(conductance = Quantity(100.0, WATT_PER_KELVIN)),
         referenceAngularVelocity = Quantity(104.72, RADIAN_PER_SECOND),
@@ -49,7 +49,7 @@ object Eln2SteamTurbine : ContentModule() {
     val SHAFT_FRICTION = FrictionNodeDescription(
         Quantity(10.0, KILOGRAM_METER2),
         NodeFrictionDescription(
-            0.5,
+            0.05,
             Quantity(0.5, NEWTON_METER),
             Quantity(1.0, NEWTON_METER)
         )

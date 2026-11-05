@@ -146,7 +146,7 @@ data class TemperatureExplosionBehaviorOptions(
     val decayRate: Double = 0.25,
 )
 
-private fun defaultNotifier(cell: Cell) : Boolean {
+fun defaultNotifier(cell: Cell) : Boolean {
     val container = cell.container ?: return false
 
     fun sound(level: net.minecraft.world.level.Level, x: Double, y: Double, z: Double) {

@@ -6,7 +6,6 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
-import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.HorizontalDirectionalBlock
 import net.minecraft.world.level.block.entity.BlockEntity
@@ -46,6 +45,7 @@ import org.eln2.mc.common.blocks.foundation.*
 import org.eln2.mc.common.cells.foundation.*
 import org.eln2.mc.common.content.modules.Eln2ForgeFluids
 import org.eln2.mc.common.content.modules.Eln2SteamTurbine
+import org.eln2.mc.common.events.schedulePre
 import org.eln2.mc.common.fluids.foundation.*
 import org.eln2.mc.common.network.serverToClient.BulkPacketHandlerBlockEntity
 import org.eln2.mc.common.network.serverToClient.ClientSidePacketHandlerBuilder
@@ -64,7 +64,7 @@ import kotlin.math.min
  * Model parameters for the [SteamTurbineGenerator].
  *
  * @param etaFactor Scales the Carnot efficiency. The actual efficiency is `(1 - T_cold / T_hot) * [etaFactor]`. A value of `0.5` means the turbine achieves half the ideal Carnot efficiency.
- * @param maxFlowRate Maximum steam consumption per tick (mB/sec). This limits the total thermal power the turbine can extract from the steam. Combined with [etaFactor] and the steam enthalpy, this determines the theoretical maximum mechanical output. Should be tuned so that `eta * maxFlowRate * 20 * dH` does not exceed [maxPower], making [maxPower] the effective cap.
+ * @param maxFlowRate Maximum steam consumption, in gas mB per second. This limits the total thermal power the turbine can extract from the steam. Combined with [etaFactor] and the steam enthalpy, this determines the theoretical maximum mechanical output. Should be tuned so that `eta * maxFlowRate * dH` reaches [maxPower] with the hottest steam a tank can hold.
  * @param maxTorque Hard cap on the torque applied to the kinetic shaft. At low angular velocities, the torque demanded by the load may exceed what the turbine can mechanically deliver; this prevents unrealistically high startup torque. Should be several times the nominal torque at [referenceAngularVelocity].
  * @param maxPower Hard cap on mechanical output power. Regardless of steam supply or efficiency, the turbine will not produce more than this. This is the primary parameter that bounds the turbine's rating.
  * @param coldSideMass Mass of the cold-side thermal mass. This is the internal heat exchanger / condenser surface that absorbs waste heat (including kinetic friction). A larger mass means slower temperature changes, giving the player more time to react to cooling failures.
@@ -73,7 +73,7 @@ import kotlin.math.min
  * @param referenceAngularVelocity Reference shaft angular velocity for scaling. Used as the design-point speed at which the turbine produces its rated power.
  * @param breakdownAngularVelocity Shaft speed at which the turbine is destroyed by overspeed. Should be well above [referenceAngularVelocity] to allow normal operation but catch runaway conditions.
  * @param breakdownTemperature Cold-side temperature at which the turbine is destroyed by overheating. Triggers when the cooling system is inadequate and the cold side runs away.
- * @param overcapacityThreshold Ratio at which the output tank triggers an explosion. If the total output fluid (water + steam) exceeds `maxCapacity * [overcapacityThreshold]`, the turbine explodes.
+ * @param overcapacityThreshold Ratio at which the output tanks trigger an explosion. If the water or the steam exceeds the capacity of its tank times [overcapacityThreshold], the turbine explodes.
  */
 data class SteamTurbineGeneratorModel(
     val etaFactor: Double,
@@ -88,6 +88,83 @@ data class SteamTurbineGeneratorModel(
     val breakdownTemperature: Quantity<Temperature>,
     val overcapacityThreshold: Double,
 )
+
+class SteamProperties(
+    val steamHeatCapacity: Double,
+    val waterHeatCapacity: Double,
+    val latentHeat: Double,
+    val boilingPoint: Double
+) {
+    fun steamEnthalpy(temperature: Double) =
+        waterHeatCapacity * boilingPoint + latentHeat + steamHeatCapacity * (temperature - boilingPoint)
+
+    fun condenses(temperature: Double) = temperature < boilingPoint
+
+    fun exhaustEnthalpy(temperature: Double) = if (condenses(temperature)) {
+        waterHeatCapacity * temperature
+    } else {
+        steamEnthalpy(temperature)
+    }
+
+    companion object {
+        fun load(): SteamProperties? {
+            val steam = PhysicalFluidManager.getProperties(Eln2ForgeFluids.STEAM.get())
+                ?: return null
+
+            val water = PhysicalFluidManager.getProperties(Fluids.WATER)
+                ?: return null
+
+            val condensation = FluidTransformationManager.getTransformations(Eln2ForgeFluids.STEAM.get())?.condensation
+                ?: return null
+
+            return SteamProperties(
+                !steam.specificHeatCapacity / steam.gasExpansionFactor,
+                !water.specificHeatCapacity / steam.gasExpansionFactor,
+                !condensation.enthalpy / steam.gasExpansionFactor,
+                !condensation.temperature
+            )
+        }
+    }
+}
+
+class SteamExpansion(
+    val flow: Double,
+    val thermalPower: Double,
+    val mechanicalPower: Double,
+    val condenses: Boolean
+) {
+    companion object {
+        fun calculate(
+            model: SteamTurbineGeneratorModel,
+            properties: SteamProperties,
+            availableSteam: Double,
+            hotTemperature: Double,
+            coldTemperature: Double,
+            dt: Double
+        ): SteamExpansion? {
+            if (availableSteam < FractionalFluidStack.EPSILON || hotTemperature <= coldTemperature) {
+                return null
+            }
+
+            val enthalpyDrop = properties.steamEnthalpy(hotTemperature) - properties.exhaustEnthalpy(coldTemperature)
+
+            if (enthalpyDrop <= 0.0) {
+                return null
+            }
+
+            val flow = min(availableSteam / dt, model.maxFlowRate)
+            val efficiency = (1.0 - coldTemperature / hotTemperature) * model.etaFactor
+            val thermalPower = flow * enthalpyDrop
+
+            return SteamExpansion(
+                flow,
+                thermalPower,
+                min(efficiency * thermalPower, !model.maxPower),
+                properties.condenses(coldTemperature)
+            )
+        }
+    }
+}
 
 class SteamTurbineKineticObject(cell: SteamTurbineCell) : KineticObject<SteamTurbineCell>(cell), PersistentObject {
     val node = KineticDouble()
@@ -268,10 +345,13 @@ class SteamTurbineCell(ci: CellCreateInfo, val model: SteamTurbineGeneratorModel
             handler.outputFluidEnergy += deltaSteamProduced * handler.steamCp * tCold
         }
 
-        val totalOutput = handler.outputWater + handler.outputSteam
-        val maxCapacity = SteamTurbineBlockEntity.SteamTurbineFluidHandler.OUTPUT_WATER_CAPACITY + SteamTurbineBlockEntity.SteamTurbineFluidHandler.OUTPUT_STEAM_CAPACITY
+        val waterLimit =
+            SteamTurbineBlockEntity.SteamTurbineFluidHandler.OUTPUT_WATER_CAPACITY * model.overcapacityThreshold
 
-        if (totalOutput > maxCapacity * model.overcapacityThreshold) {
+        val steamLimit =
+            SteamTurbineBlockEntity.SteamTurbineFluidHandler.OUTPUT_STEAM_CAPACITY * model.overcapacityThreshold
+
+        if (handler.outputWater > waterLimit || handler.outputSteam > steamLimit) {
             explode()
             return
         }
@@ -294,13 +374,9 @@ class SteamTurbineCell(ci: CellCreateInfo, val model: SteamTurbineGeneratorModel
 
     @OnServerThread
     private fun explode() {
-        val blockEntity = container as? BlockEntity
-            ?: return
-
-        val level = blockEntity.level as? ServerLevel
-            ?: return
-
-        level.destroyBlock(blockEntity.blockPos, true)
+        schedulePre(0) {
+            defaultNotifier(this)
+        }
     }
 
     override fun saveCellData() = CompoundTag()
@@ -313,99 +389,68 @@ class SteamTurbineCell(ci: CellCreateInfo, val model: SteamTurbineGeneratorModel
  * - Waste heat (including kinetic friction) is dumped into the cold-side thermal mass
  * - Exhaust fluid exits at T_cold (water if below boiling, steam otherwise)
  */
-@Suppress("UnnecessaryVariable")
 class SteamTurbineGenerator(val cell: SteamTurbineCell) {
     companion object {
         private const val EPSILON_OMEGA = 1e-6
     }
+
+    private var appliedTorque = 0.0
+    private var speedBeforeStep = 0.0
 
     /**
      * Called in SimulationPhase.Pre. Reads snapshot values, computes thermodynamic
      * conversion, applies torque to the kinetic node, and accumulates fluid/heat deltas.
      */
     fun preTick(dt: Double) {
-        val snapshotSteam = cell.snapshotInputSteam
-        val snapshotTemp = cell.snapshotInputTemp
+        val node = cell.kinetic.node
 
-        if (snapshotSteam < FractionalFluidStack.EPSILON) {
-            cell.kinetic.node.externalTorque = 0.0
-            return
-        }
+        appliedTorque = 0.0
+        speedBeforeStep = node.angularVelocity
+        node.externalTorque = 0.0
 
-        val maxFlow = cell.model.maxFlowRate
-        val mDot = min(snapshotSteam / dt, maxFlow)
+        val properties = SteamProperties.load()
+            ?: return
 
-        if (mDot <= 0.0) {
-            cell.kinetic.node.externalTorque = 0.0
-            return
-        }
+        val expansion = SteamExpansion.calculate(
+            cell.model,
+            properties,
+            cell.snapshotInputSteam - cell.deltaSteamConsumed,
+            cell.snapshotInputTemp,
+            !cell.thermal.thermalBody.temperature,
+            dt
+        ) ?: return
 
-        val tHot = snapshotTemp
-        val tCold = !cell.thermal.thermalBody.temperature
+        val speed = max(abs(node.angularVelocity), EPSILON_OMEGA)
 
-        if (tHot <= tCold || tHot <= 0.0) {
-            cell.kinetic.node.externalTorque = 0.0
-            return
-        }
+        appliedTorque = min(expansion.mechanicalPower / speed, !cell.model.maxTorque)
+        node.externalTorque = appliedTorque
 
-        val eta = ((1.0 - tCold / tHot) * cell.model.etaFactor).coerceIn(0.0, 1.0)
+        val consumed = expansion.flow * dt
 
-        val tBoil = 373.15
-        val steamProperties = PhysicalFluidManager.getPropertiesWithFallback(Eln2ForgeFluids.STEAM.get())
-        val steamExpansionFactor = steamProperties.gasExpansionFactor
-        val cpSteam = !steamProperties.specificHeatCapacity / steamExpansionFactor
-        val cpWater = !PhysicalFluidManager.getPropertiesWithFallback(Fluids.WATER).specificHeatCapacity / steamExpansionFactor
+        cell.deltaSteamConsumed += consumed
 
-        val steamTransformation = FluidTransformationManager.getTransformations(Eln2ForgeFluids.STEAM.get())
-        val lVap = (steamTransformation?.condensation?.enthalpy?.value ?: 2260000.0) / steamExpansionFactor
+        if (expansion.condenses) {
+            val steamExpansionFactor =
+                PhysicalFluidManager.requireProperties(Eln2ForgeFluids.STEAM.get()).gasExpansionFactor
 
-        val hSteam = cpWater * tBoil + lVap + cpSteam * (tHot - tBoil)
-        val hExhaust = if (tCold < tBoil) {
-            cpWater * tCold
+            cell.deltaWaterProduced += consumed / steamExpansionFactor
         } else {
-            cpWater * tBoil + lVap + cpSteam * (tCold - tBoil)
+            cell.deltaSteamProduced += consumed
         }
 
-        val dH = hSteam - hExhaust
-
-        if (dH <= 0.0) {
-            cell.kinetic.node.externalTorque = 0.0
-            return
-        }
-
-        val pThermal = mDot * dH
-        val pMech = min(eta * pThermal, !cell.model.maxPower)
-
-        val omega = abs(cell.kinetic.node.angularVelocity)
-        val omegaNz = max(omega, EPSILON_OMEGA)
-        val torque = min(pMech / omegaNz, !cell.model.maxTorque)
-
-        cell.kinetic.node.externalTorque = torque
-
-        val qWaste = pThermal - pMech
-
-        cell.deltaSteamConsumed += mDot * dt
-        if (tCold < tBoil) {
-            cell.deltaWaterProduced += mDot * dt / steamExpansionFactor
-        } else {
-            cell.deltaSteamProduced += mDot * dt
-        }
-        cell.deltaColdSideHeat += qWaste * dt
+        cell.deltaColdSideHeat += expansion.thermalPower * dt
     }
 
     /**
-     * Called in SimulationPhase.Post. After the kinetic solver has run,
-     * reads friction heat and adds all waste heat to the cold-side thermal mass.
+     * Called in SimulationPhase.Post.
+     * Subtracts the work done on the shaft from the energy the steam released and adds the rest to the cold-side thermal mass, together with the friction heat.
      */
     fun postTick(dt: Double) {
-        val frictionHeat = cell.kinetic.node.deltaHeatFromFriction
-        val wasteHeat = cell.deltaColdSideHeat
-        val totalHeat = wasteHeat + frictionHeat
+        val node = cell.kinetic.node
+        val shaftWork = appliedTorque * 0.5 * (speedBeforeStep + node.angularVelocity) * dt
+        val heat = cell.deltaColdSideHeat - shaftWork + node.deltaHeatFromFriction
 
-        if (totalHeat > 0.0) {
-            cell.thermal.thermalBody.energy += Quantity(totalHeat, JOULE)
-        }
-
+        cell.thermal.thermalBody.energy += Quantity(heat, JOULE)
         cell.deltaColdSideHeat = 0.0
     }
 }
