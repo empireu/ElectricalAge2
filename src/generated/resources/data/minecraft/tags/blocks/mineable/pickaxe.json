@@ -1,12 +1,20 @@
 {
   "values": [
     "eln2:magnetite_ore",
+    "eln2:deepslate_magnetite_ore",
     "eln2:lead_ore",
+    "eln2:deepslate_lead_ore",
     "eln2:tin_ore",
+    "eln2:deepslate_tin_ore",
     "eln2:sulfur_ore",
+    "eln2:deepslate_sulfur_ore",
     "eln2:asbestos_ore",
+    "eln2:deepslate_asbestos_ore",
     "eln2:saltpeter_ore",
+    "eln2:deepslate_saltpeter_ore",
     "eln2:scheelite_ore",
-    "eln2:trona_ore"
+    "eln2:deepslate_scheelite_ore",
+    "eln2:trona_ore",
+    "eln2:deepslate_trona_ore"
   ]
 }
