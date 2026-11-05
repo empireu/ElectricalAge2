@@ -665,9 +665,17 @@ open class TerminalVRGObject<C : Cell>(cell: C, val plus: Pole = Pole.Positive, 
  * The voltage source object has a bundle of resistors, whose External Pins are exported to other objects, and
  * a voltage source, connected to the Internal Pins of the bundle.
  * */
-class VoltageSourceObject(cell: Cell) : ElectricalObject<Cell>(cell) {
+class VoltageSourceObject(cell: Cell) : ElectricalObject<Cell>(cell), PersistentObject {
     val source = PotentialSource()
     val resistors = ResistorBundle(cell, 1e-4)
+
+    override fun saveObjectNbt() = CompoundTag().also {
+        it.putDouble(POTENTIAL, source.potential)
+    }
+
+    override fun loadObjectNbt(tag: CompoundTag) {
+        source.potential = tag.getDouble(POTENTIAL)
+    }
 
     override fun offerPolar(remote: ElectricalObject<*>) = resistors.getOfferedResistor(remote)
 
@@ -687,6 +695,10 @@ class VoltageSourceObject(cell: Cell) : ElectricalObject<Cell>(cell) {
         resistors.forEach {
             map.join(it.offerInternal(), source.offerExternal())
         }
+    }
+
+    companion object {
+        private const val POTENTIAL = "potential"
     }
 }
 

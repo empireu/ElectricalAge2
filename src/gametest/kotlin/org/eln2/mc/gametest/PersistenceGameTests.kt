@@ -237,6 +237,24 @@ object PersistenceGameTests {
 
     @GameTest(template = ARENA)
     @JvmStatic
+    fun savedSourcePotentialIsRestored(helper: GameTestHelper) {
+        val source = helper.placePart(5, 5, Eln2BasicComponents.VOLTAGE_SOURCE_PART)
+        val sourceCell = source.cellAs<VoltageSourceCell>()
+
+        source.graph().runSuspended {
+            sourceCell.voltageSource.source.potential = 120.0
+        }
+
+        val restored = CellGraph
+            .fromNbt(source.graph().saved(), CellGraphManager(helper.level), helper.level)
+            .cellAtLocatorOf(sourceCell) as VoltageSourceCell
+
+        checkClose(120.0, restored.voltageSource.source.potential, 1e-9, "Restored potential")
+        helper.succeed()
+    }
+
+    @GameTest(template = ARENA)
+    @JvmStatic
     fun savedDiodeStateIsRestored(helper: GameTestHelper) {
         val source = helper.placePart(5, 7, Eln2BasicComponents.VOLTAGE_SOURCE_PART)
         helper.placePart(5, 6, WIRE)
