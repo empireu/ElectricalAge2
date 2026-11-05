@@ -16,7 +16,7 @@ import kotlin.math.abs
 @PrefixGameTestTemplate(false)
 object KineticGameTests {
     private const val ARMATURE_RESISTANCE = 0.0667
-    private const val BACK_EMF_CONSTANT = 2.06
+    private const val BACK_EMF_CONSTANT = 2.05
     private const val TORQUE_CONSTANT = 2.05
     private const val COULOMB_FRICTION = 1.0
     private const val VISCOUS_DAMPING = 0.01
@@ -122,7 +122,7 @@ object KineticGameTests {
                     )
                 }
 
-                checkClose(backEmfPower, frictionPower, backEmfPower * 0.02, "Friction heat power")
+                checkClose(backEmfPower, frictionPower, backEmfPower * 0.002, "Friction heat power")
             }
             .thenSucceed()
     }

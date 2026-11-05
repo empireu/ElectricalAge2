@@ -135,11 +135,11 @@ class ThermalElectricGenerator(val coldSide: ThermalMass, val hotSide: ThermalMa
         // Max thermal power that can be converted to mechanical power.
         val maxThermalPower = etaEngine * heatConversionAvailable
 
-        // Engine torque proportional to ΔT and thermal conductance, scaled by reference ω.
-        val kTorque = (etaEngine * !model.heatExchangerConductance) / !model.referenceAngularVelocity
-        engineTorque = Quantity(kTorque * (!deltaT).coerceAtLeast(0.0), NEWTON_METER)
-
         val omegaNz = (!angularVelocity).nz()
+
+        // Engine torque proportional to ΔT and thermal conductance, scaled by reference ω, limited by the heat.
+        val kTorque = (etaEngine * !model.heatExchangerConductance) / !model.referenceAngularVelocity
+        engineTorque = Quantity(min(kTorque * (!deltaT).coerceAtLeast(0.0), maxThermalPower / omegaNz), NEWTON_METER)
 
         // Kinetic energy of the shaft assembly.
         kineticEnergy = Quantity((0.5 * !model.inertia * (!angularVelocity * !angularVelocity)), JOULE)

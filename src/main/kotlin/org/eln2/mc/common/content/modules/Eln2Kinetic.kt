@@ -257,7 +257,7 @@ object Eln2Kinetic : ContentModule() {
             1e-6,
             Quantity(0.0667, OHM),
             Quantity(1.25, MILLI * HENRY),
-            Quantity(2.06, VOLT_PER_RADIAN_PER_SECOND),
+            Quantity(2.05, VOLT_PER_RADIAN_PER_SECOND),
             Quantity(2.05, NEWTON_METER_PER_AMPERE),
             Quantity(100.0, REVOLUTION_PER_SECOND),
             Quantity(781.691, VOLT),
